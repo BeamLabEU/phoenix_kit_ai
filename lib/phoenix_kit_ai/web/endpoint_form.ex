@@ -29,39 +29,15 @@ defmodule PhoenixKitAI.Web.EndpointForm do
   def param_input(assigns) do
     field = assigns.definition.field
     field_str = Atom.to_string(field)
-
-    current_value =
-      assigns.form.params[field_str] ||
-        (assigns.endpoint && Map.get(assigns.endpoint, field)) ||
-        assigns.definition[:default] ||
-        ""
-
-    # For string_list type, convert array to newline-separated string
-    current_value =
-      case {assigns.definition.type, current_value} do
-        {:string_list, list} when is_list(list) -> Enum.join(list, "\n")
-        _ -> current_value
-      end
-
-    input_class =
-      case assigns.size do
-        "sm" -> "input input-bordered input-sm"
-        _ -> "input input-bordered"
-      end
-
-    textarea_class =
-      case assigns.size do
-        "sm" -> "textarea textarea-bordered textarea-sm"
-        _ -> "textarea textarea-bordered"
-      end
+    current_value = resolve_current_value(assigns, field, field_str)
 
     assigns =
       assigns
       |> assign(:field, field)
       |> assign(:field_str, field_str)
       |> assign(:current_value, current_value)
-      |> assign(:input_class, input_class)
-      |> assign(:textarea_class, textarea_class)
+      |> assign(:input_class, size_class(assigns.size, "input"))
+      |> assign(:textarea_class, size_class(assigns.size, "textarea"))
 
     ~H"""
     <div class="form-control">
@@ -112,6 +88,24 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     </div>
     """
   end
+
+  defp resolve_current_value(assigns, field, field_str) do
+    value =
+      assigns.form.params[field_str] ||
+        (assigns.endpoint && Map.get(assigns.endpoint, field)) ||
+        assigns.definition[:default] ||
+        ""
+
+    case {assigns.definition.type, value} do
+      {:string_list, list} when is_list(list) -> Enum.join(list, "\n")
+      _ -> value
+    end
+  end
+
+  defp size_class("sm", "input"), do: "input input-bordered input-sm"
+  defp size_class(_, "input"), do: "input input-bordered"
+  defp size_class("sm", "textarea"), do: "textarea textarea-bordered textarea-sm"
+  defp size_class(_, "textarea"), do: "textarea textarea-bordered"
 
   defp get_max_for_field("max_tokens", _definition, selected_model) do
     selected_model && selected_model.max_completion_tokens

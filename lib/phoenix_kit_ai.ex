@@ -285,8 +285,8 @@ defmodule PhoenixKitAI do
     ]
   end
 
-  # css_sources/0 is defined in the local phoenix_kit but not yet in the Hex release.
-  # Once phoenix_kit >= 1.7.x includes the callback, add @impl PhoenixKit.Module here.
+  @impl PhoenixKit.Module
+  @dialyzer {:nowarn_function, css_sources: 0}
   def css_sources, do: [:phoenix_kit_ai]
 
   @impl PhoenixKit.Module

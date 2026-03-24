@@ -140,22 +140,13 @@ defmodule PhoenixKitAI.OpenRouterClient do
     # Default to :text for backward compatibility
     opts = Keyword.put_new(opts, :model_type, :text)
 
-    case fetch_models(api_key, opts) do
-      {:ok, models} ->
-        grouped =
-          models
-          |> Enum.group_by(fn model ->
-            case String.split(model.id, "/") do
-              [provider | _] -> provider
-              _ -> "other"
-            end
-          end)
-          |> Enum.sort_by(fn {provider, _} -> provider end)
+    with {:ok, models} <- fetch_models(api_key, opts) do
+      grouped =
+        models
+        |> Enum.group_by(&provider_from_model/1)
+        |> Enum.sort_by(fn {provider, _} -> provider end)
 
-        {:ok, grouped}
-
-      {:error, reason} ->
-        {:error, reason}
+      {:ok, grouped}
     end
   end
 
@@ -497,21 +488,25 @@ defmodule PhoenixKitAI.OpenRouterClient do
     architecture["modality"] || ""
   end
 
+  defp provider_from_model(model) do
+    case String.split(model.id, "/") do
+      [provider | _] -> provider
+      _ -> "other"
+    end
+  end
+
   @doc """
   Fetches details for a specific model by ID.
 
   Returns `{:ok, model}` or `{:error, reason}`.
   """
   def fetch_model(api_key, model_id, opts \\ []) do
-    case fetch_models(api_key, opts) do
-      {:ok, models} ->
-        case Enum.find(models, fn m -> m.id == model_id end) do
-          nil -> {:error, "Model not found"}
-          model -> {:ok, model}
-        end
-
-      {:error, reason} ->
-        {:error, reason}
+    with {:ok, models} <- fetch_models(api_key, opts),
+         model when not is_nil(model) <- Enum.find(models, fn m -> m.id == model_id end) do
+      {:ok, model}
+    else
+      nil -> {:error, "Model not found"}
+      {:error, reason} -> {:error, reason}
     end
   end
 

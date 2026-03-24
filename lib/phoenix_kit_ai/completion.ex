@@ -72,37 +72,15 @@ defmodule PhoenixKitAI.Completion do
   def chat_completion(endpoint, messages, opts \\ []) do
     url = build_url(endpoint, "/chat/completions")
     headers = OpenRouterClient.build_headers_from_endpoint(endpoint)
-
     body = build_chat_body(endpoint.model, messages, opts)
-
     start_time = System.monotonic_time(:millisecond)
 
     case http_post(url, headers, body) do
       {:ok, %{status_code: 200, body: response_body}} ->
-        end_time = System.monotonic_time(:millisecond)
-        latency_ms = end_time - start_time
-
-        case Jason.decode(response_body) do
-          {:ok, response} ->
-            {:ok, Map.put(response, "latency_ms", latency_ms)}
-
-          {:error, _} ->
-            {:error, "Invalid JSON response"}
-        end
-
-      {:ok, %{status_code: 401}} ->
-        {:error, "Invalid API key"}
-
-      {:ok, %{status_code: 402}} ->
-        {:error, "Insufficient credits"}
-
-      {:ok, %{status_code: 429}} ->
-        {:error, "Rate limited"}
+        parse_success_response(response_body, start_time)
 
       {:ok, %{status_code: status, body: response_body}} ->
-        error_msg = extract_error_message(response_body) || "API error: #{status}"
-        Logger.warning("OpenRouter completion failed: #{status} - #{response_body}")
-        {:error, error_msg}
+        handle_error_status(status, response_body)
 
       {:error, :timeout} ->
         {:error, "Request timeout"}
@@ -111,6 +89,25 @@ defmodule PhoenixKitAI.Completion do
         Logger.warning("OpenRouter completion error: #{inspect(reason)}")
         {:error, "Connection error: #{inspect(reason)}"}
     end
+  end
+
+  defp parse_success_response(response_body, start_time) do
+    latency_ms = System.monotonic_time(:millisecond) - start_time
+
+    case Jason.decode(response_body) do
+      {:ok, response} -> {:ok, Map.put(response, "latency_ms", latency_ms)}
+      {:error, _} -> {:error, "Invalid JSON response"}
+    end
+  end
+
+  defp handle_error_status(401, _body), do: {:error, "Invalid API key"}
+  defp handle_error_status(402, _body), do: {:error, "Insufficient credits"}
+  defp handle_error_status(429, _body), do: {:error, "Rate limited"}
+
+  defp handle_error_status(status, response_body) do
+    error_msg = extract_error_message(response_body) || "API error: #{status}"
+    Logger.warning("OpenRouter completion failed: #{status} - #{response_body}")
+    {:error, error_msg}
   end
 
   @doc """
@@ -189,30 +186,23 @@ defmodule PhoenixKitAI.Completion do
   Cost is stored in nanodollars (1/1,000,000 of a dollar) to preserve precision
   for cheap API calls. Stored in the cost_cents field for backward compatibility.
   """
-  def extract_usage(response) do
-    case response do
-      %{"usage" => usage} when is_map(usage) ->
-        # OpenRouter returns cost in dollars (as "cost" field)
-        # Store in nanodollars (1/1000000 of a dollar) for precision
-        # e.g., $0.00003 becomes 30 nanodollars
-        cost_cents =
-          case usage["cost"] || usage["total_cost"] do
-            nil -> nil
-            cost when is_number(cost) -> round(cost * 1_000_000)
-            _ -> nil
-          end
-
-        %{
-          prompt_tokens: usage["prompt_tokens"] || 0,
-          completion_tokens: usage["completion_tokens"] || 0,
-          total_tokens: usage["total_tokens"] || 0,
-          cost_cents: cost_cents
-        }
-
-      _ ->
-        %{prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, cost_cents: nil}
-    end
+  def extract_usage(%{"usage" => usage}) when is_map(usage) do
+    %{
+      prompt_tokens: usage["prompt_tokens"] || 0,
+      completion_tokens: usage["completion_tokens"] || 0,
+      total_tokens: usage["total_tokens"] || 0,
+      cost_cents: parse_cost(usage["cost"] || usage["total_cost"])
+    }
   end
+
+  def extract_usage(_response) do
+    %{prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, cost_cents: nil}
+  end
+
+  # Store in nanodollars (1/1000000 of a dollar) for precision
+  # e.g., $0.00003 becomes 30 nanodollars
+  defp parse_cost(cost) when is_number(cost), do: round(cost * 1_000_000)
+  defp parse_cost(_), do: nil
 
   # Private functions
 

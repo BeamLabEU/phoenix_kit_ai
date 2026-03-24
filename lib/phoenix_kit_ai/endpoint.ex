@@ -307,22 +307,20 @@ defmodule PhoenixKitAI.Endpoint do
     provider = get_field(changeset, :provider)
     api_key = get_change(changeset, :api_key)
 
-    if api_key do
-      case provider do
-        "openrouter" ->
-          if String.starts_with?(api_key, "sk-or-") or String.length(api_key) >= 32 do
-            changeset
-          else
-            add_error(changeset, :api_key, "doesn't look like a valid OpenRouter API key")
-          end
+    validate_api_key_for_provider(changeset, provider, api_key)
+  end
 
-        _ ->
-          changeset
-      end
-    else
+  defp validate_api_key_for_provider(changeset, _provider, nil), do: changeset
+
+  defp validate_api_key_for_provider(changeset, "openrouter", api_key) do
+    if String.starts_with?(api_key, "sk-or-") or String.length(api_key) >= 32 do
       changeset
+    else
+      add_error(changeset, :api_key, "doesn't look like a valid OpenRouter API key")
     end
   end
+
+  defp validate_api_key_for_provider(changeset, _provider, _api_key), do: changeset
 
   defp validate_temperature(changeset) do
     case get_field(changeset, :temperature) do

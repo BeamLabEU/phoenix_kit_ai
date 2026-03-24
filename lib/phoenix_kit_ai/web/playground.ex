@@ -132,34 +132,28 @@ defmodule PhoenixKitAI.Web.Playground do
     if uuid == socket.assigns.selected_prompt_uuid do
       socket
     else
-      prompt =
-        if uuid do
-          Enum.find(socket.assigns.prompts, &(&1.uuid == uuid))
-        end
-
-      edited_content = if prompt, do: prompt.content, else: nil
-      variables = if prompt, do: Prompt.extract_variables(edited_content || ""), else: []
-
-      variable_values =
-        if prompt do
-          Map.new(variables, fn var -> {var, ""} end)
-        else
-          %{}
-        end
-
-      socket
-      |> assign(:selected_prompt_uuid, uuid)
-      |> assign(:selected_prompt, prompt)
-      |> assign(:edited_content, edited_content)
-      |> assign(:edited_variables, variables)
-      |> assign(:variable_values, variable_values)
-      |> assign(:response_text, nil)
-      |> assign(:response_usage, nil)
-      |> assign(:response_error, nil)
+      apply_prompt_selection(socket, uuid)
     end
   end
 
   defp maybe_update_prompt(socket, _), do: socket
+
+  defp apply_prompt_selection(socket, uuid) do
+    prompt = uuid && Enum.find(socket.assigns.prompts, &(&1.uuid == uuid))
+    edited_content = if prompt, do: prompt.content, else: nil
+    variables = if prompt, do: Prompt.extract_variables(edited_content || ""), else: []
+    variable_values = if prompt, do: Map.new(variables, fn var -> {var, ""} end), else: %{}
+
+    socket
+    |> assign(:selected_prompt_uuid, uuid)
+    |> assign(:selected_prompt, prompt)
+    |> assign(:edited_content, edited_content)
+    |> assign(:edited_variables, variables)
+    |> assign(:variable_values, variable_values)
+    |> assign(:response_text, nil)
+    |> assign(:response_usage, nil)
+    |> assign(:response_error, nil)
+  end
 
   defp maybe_update_content(socket, %{"edited_content" => content}) do
     new_vars = Prompt.extract_variables(content)

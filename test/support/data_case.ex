@@ -24,11 +24,12 @@ defmodule PhoenixKitAI.DataCase do
     end
   end
 
+  alias Ecto.Adapters.SQL.Sandbox
   alias PhoenixKitAI.Test
 
   setup tags do
-    pid = Ecto.Adapters.SQL.Sandbox.start_owner!(Test.Repo, shared: not tags[:async])
-    on_exit(fn -> Ecto.Adapters.SQL.Sandbox.stop_owner(pid) end)
+    pid = Sandbox.start_owner!(Test.Repo, shared: not tags[:async])
+    on_exit(fn -> Sandbox.stop_owner(pid) end)
     :ok
   end
 end
