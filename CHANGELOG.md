@@ -1,3 +1,13 @@
+## 0.1.1 - 2026-03-25
+
+### Fixed
+- Fix wrong GitHub org in README git dependency (mdon → BeamLabEU)
+- Remove unused test.setup/test.reset mix aliases (no local migrations)
+- Clarify migration module is called by parent app, not run directly
+
+### Added
+- Add versioning & releases section to AGENTS.md
+
 ## 0.1.0 - 2026-03-24
 
 ### Added

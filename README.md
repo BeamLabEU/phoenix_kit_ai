@@ -147,7 +147,7 @@ Currently supports **OpenRouter** (100+ models from Anthropic, OpenAI, Google, M
 | `enabled?/0` | DB-backed boolean with rescue fallback |
 | `enable_system/0` | Persists via Settings API |
 | `disable_system/0` | Persists via Settings API |
-| `version/0` | `"0.1.0"` |
+| `version/0` | `"0.1.1"` |
 | `permission_metadata/0` | key: `"ai"`, icon: `hero-sparkles` |
 | `admin_tabs/0` | 5 tabs (parent + 4 subtabs) |
 | `css_sources/0` | `[:phoenix_kit_ai]` |
