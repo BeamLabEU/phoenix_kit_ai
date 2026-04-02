@@ -62,7 +62,7 @@
                 <label class="label">
                   <span class="label-text font-medium">Provider</span>
                 </label>
-                <select name="endpoint[provider]" class="select select-bordered">
+                <select name="endpoint[provider]" class="select">
                   <%= for {label, value} <- Endpoint.provider_options() do %>
                     <option
                       value={value}
@@ -313,7 +313,7 @@
                       name="provider"
                       phx-change="select_provider"
                       phx-hook="ResetSelect"
-                      class="select select-bordered w-full"
+                      class="select w-full"
                     >
                       <option value="" selected>
                         — Select provider ({length(@models_grouped)} available) —
@@ -524,7 +524,7 @@
                         </label>
                         <select
                           name="endpoint[reasoning_effort]"
-                          class="select select-bordered select-sm"
+                          class="select select-sm"
                         >
                           <option value="">Default (medium)</option>
                           <%= for {label, value} <- PhoenixKitAI.Endpoint.reasoning_effort_options() do %>

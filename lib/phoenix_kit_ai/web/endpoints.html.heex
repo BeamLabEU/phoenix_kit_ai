@@ -372,7 +372,7 @@
             <%!-- Filters --%>
             <form phx-change="usage_filter" class="flex flex-wrap items-center gap-2 mb-4">
               <%!-- Date filter (always visible) --%>
-              <select name="date" class="select select-sm select-bordered">
+              <select name="date" class="select select-sm">
                 <option value="today" selected={@usage_filter_date == "today"}>Today</option>
                 <option value="7d" selected={@usage_filter_date == "7d"}>Last 7 Days</option>
                 <option value="30d" selected={@usage_filter_date == "30d"}>Last 30 Days</option>
@@ -381,7 +381,7 @@
 
               <%!-- Other filters (only show dropdowns with 2+ options) --%>
               <%= if length(@usage_filter_options.endpoints) > 1 do %>
-                <select name="endpoint" class="select select-sm select-bordered">
+                <select name="endpoint" class="select select-sm">
                   <option value="">All Endpoints</option>
                   <%= for {id, name} <- @usage_filter_options.endpoints do %>
                     <option value={id} selected={@usage_filter_endpoint == id}>{name}</option>
@@ -390,7 +390,7 @@
               <% end %>
 
               <%= if length(@usage_filter_options.models) > 1 do %>
-                <select name="model" class="select select-sm select-bordered">
+                <select name="model" class="select select-sm">
                   <option value="">All Models</option>
                   <%= for model <- @usage_filter_options.models do %>
                     <option value={model} selected={@usage_filter_model == model}>
@@ -401,7 +401,7 @@
               <% end %>
 
               <%= if length(@usage_filter_options.statuses) > 1 do %>
-                <select name="status" class="select select-sm select-bordered">
+                <select name="status" class="select select-sm">
                   <option value="">All Statuses</option>
                   <%= for status <- @usage_filter_options.statuses do %>
                     <option value={status} selected={@usage_filter_status == status}>
@@ -412,7 +412,7 @@
               <% end %>
 
               <%= if length(@usage_filter_options.sources) > 1 do %>
-                <select name="source" class="select select-sm select-bordered">
+                <select name="source" class="select select-sm">
                   <option value="">All Sources</option>
                   <%= for source <- @usage_filter_options.sources do %>
                     <option value={source} selected={@usage_filter_source == source}>
