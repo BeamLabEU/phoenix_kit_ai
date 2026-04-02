@@ -54,22 +54,21 @@
                 <label class="block text-sm font-medium mb-2">
                   Endpoint <span class="text-error">*</span>
                 </label>
-                <select
-                  class="select select-bordered w-full"
-                  name="endpoint_uuid"
-                >
-                  <option value="">Select an endpoint...</option>
-                  <%= for endpoint <- @endpoints do %>
-                    <option
-                      value={endpoint.uuid}
-                      selected={endpoint.uuid == @selected_endpoint_uuid}
-                    >
-                      {endpoint.name} ({PhoenixKitAI.Endpoint.short_model_name(
-                        endpoint.model
-                      )})
-                    </option>
-                  <% end %>
-                </select>
+                <label class="select w-full">
+                  <select name="endpoint_uuid">
+                    <option value="">Select an endpoint...</option>
+                    <%= for endpoint <- @endpoints do %>
+                      <option
+                        value={endpoint.uuid}
+                        selected={endpoint.uuid == @selected_endpoint_uuid}
+                      >
+                        {endpoint.name} ({PhoenixKitAI.Endpoint.short_model_name(
+                          endpoint.model
+                        )})
+                      </option>
+                    <% end %>
+                  </select>
+                </label>
                 <%= if Enum.empty?(@endpoints) do %>
                   <p class="text-sm text-warning mt-1">
                     No enabled endpoints.
@@ -85,17 +84,16 @@
                 <label class="block text-sm font-medium mb-2">
                   Prompt <span class="text-base-content/60 font-normal ml-2">Optional</span>
                 </label>
-                <select
-                  class="select select-bordered w-full"
-                  name="prompt_uuid"
-                >
-                  <option value="">Freeform (no prompt template)</option>
-                  <%= for prompt <- @prompts do %>
-                    <option value={prompt.uuid} selected={prompt.uuid == @selected_prompt_uuid}>
-                      {prompt.name}
-                    </option>
-                  <% end %>
-                </select>
+                <label class="select w-full">
+                  <select name="prompt_uuid">
+                    <option value="">Freeform (no prompt template)</option>
+                    <%= for prompt <- @prompts do %>
+                      <option value={prompt.uuid} selected={prompt.uuid == @selected_prompt_uuid}>
+                        {prompt.name}
+                      </option>
+                    <% end %>
+                  </select>
+                </label>
               </div>
             </div>
           </div>

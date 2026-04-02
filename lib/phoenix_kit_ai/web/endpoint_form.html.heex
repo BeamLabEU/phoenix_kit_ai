@@ -62,19 +62,21 @@
                 <label class="label">
                   <span class="label-text font-medium">Provider</span>
                 </label>
-                <select name="endpoint[provider]" class="select select-bordered">
-                  <%= for {label, value} <- Endpoint.provider_options() do %>
-                    <option
-                      value={value}
-                      selected={
-                        (@form.params["provider"] || (@endpoint && @endpoint.provider) ||
-                           "openrouter") == value
-                      }
-                    >
-                      {label}
-                    </option>
-                  <% end %>
-                </select>
+                <label class="select">
+                  <select name="endpoint[provider]">
+                    <%= for {label, value} <- Endpoint.provider_options() do %>
+                      <option
+                        value={value}
+                        selected={
+                          (@form.params["provider"] || (@endpoint && @endpoint.provider) ||
+                             "openrouter") == value
+                        }
+                      >
+                        {label}
+                      </option>
+                    <% end %>
+                  </select>
+                </label>
               </div>
             </div>
 
@@ -308,24 +310,25 @@
                 <% else %>
                   <%!-- Provider Selection --%>
                   <div>
-                    <select
-                      id="provider_picker"
-                      name="provider"
-                      phx-change="select_provider"
-                      phx-hook="ResetSelect"
-                      class="select select-bordered w-full"
-                    >
-                      <option value="" selected>
-                        — Select provider ({length(@models_grouped)} available) —
-                      </option>
-                      <%= for {provider, models} <- @models_grouped do %>
-                        <option value={provider} selected={@selected_provider == provider}>
-                          {PhoenixKitAI.OpenRouterClient.humanize_provider(provider)} ({length(
-                            models
-                          )} models)
+                    <label class="select w-full">
+                      <select
+                        id="provider_picker"
+                        name="provider"
+                        phx-change="select_provider"
+                        phx-hook="ResetSelect"
+                      >
+                        <option value="" selected>
+                          — Select provider ({length(@models_grouped)} available) —
                         </option>
-                      <% end %>
-                    </select>
+                        <%= for {provider, models} <- @models_grouped do %>
+                          <option value={provider} selected={@selected_provider == provider}>
+                            {PhoenixKitAI.OpenRouterClient.humanize_provider(provider)} ({length(
+                              models
+                            )} models)
+                          </option>
+                        <% end %>
+                      </select>
+                    </label>
                   </div>
 
                   <%!-- Model Cards (shown after provider selected) --%>
@@ -522,23 +525,22 @@
                         <label class="label py-1">
                           <span class="label-text text-sm">Effort Level</span>
                         </label>
-                        <select
-                          name="endpoint[reasoning_effort]"
-                          class="select select-bordered select-sm"
-                        >
-                          <option value="">Default (medium)</option>
-                          <%= for {label, value} <- PhoenixKitAI.Endpoint.reasoning_effort_options() do %>
-                            <option
-                              value={value}
-                              selected={
-                                @form.params["reasoning_effort"] == value ||
-                                  (@endpoint && @endpoint.reasoning_effort == value)
-                              }
-                            >
-                              {label}
-                            </option>
-                          <% end %>
-                        </select>
+                        <label class="select select-sm">
+                          <select name="endpoint[reasoning_effort]">
+                            <option value="">Default (medium)</option>
+                            <%= for {label, value} <- PhoenixKitAI.Endpoint.reasoning_effort_options() do %>
+                              <option
+                                value={value}
+                                selected={
+                                  @form.params["reasoning_effort"] == value ||
+                                    (@endpoint && @endpoint.reasoning_effort == value)
+                                }
+                              >
+                                {label}
+                              </option>
+                            <% end %>
+                          </select>
+                        </label>
                       </div>
 
                       <%!-- Reasoning Max Tokens --%>
