@@ -290,7 +290,7 @@ defmodule PhoenixKitAI do
   def css_sources, do: [:phoenix_kit_ai]
 
   @impl PhoenixKit.Module
-  def version, do: "0.1.2"
+  def version, do: "0.1.3"
 
   @impl PhoenixKit.Module
   def route_module, do: PhoenixKitAI.Routes

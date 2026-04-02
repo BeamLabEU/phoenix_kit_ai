@@ -1,7 +1,7 @@
 defmodule PhoenixKitAI.MixProject do
   use Mix.Project
 
-  @version "0.1.2"
+  @version "0.1.3"
   @source_url "https://github.com/BeamLabEU/phoenix_kit_ai"
 
   def project do
@@ -54,7 +54,7 @@ defmodule PhoenixKitAI.MixProject do
       {:phoenix_kit, "~> 1.7"},
 
       # LiveView is needed for the admin pages.
-      {:phoenix_live_view, "~> 1.0"},
+      {:phoenix_live_view, "~> 1.1"},
 
       # Optional: add ex_doc for generating documentation
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
