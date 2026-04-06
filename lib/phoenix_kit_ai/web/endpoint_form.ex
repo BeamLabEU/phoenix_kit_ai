@@ -134,15 +134,17 @@ defmodule PhoenixKitAI.Web.EndpointForm do
   @impl true
   def mount(params, _session, socket) do
     if AI.enabled?() do
+      if connected?(socket), do: PhoenixKit.Integrations.Events.subscribe()
+
       project_title = Settings.get_project_title()
+
+      openrouter_connections = PhoenixKit.Integrations.list_connections("openrouter")
 
       socket =
         socket
         |> assign(:project_title, project_title)
         |> assign(:current_path, Routes.path("/admin/ai"))
-        |> assign(:validating_api_key, false)
-        |> assign(:api_key_valid, nil)
-        |> assign(:api_key_error, nil)
+        |> assign(:openrouter_connections, openrouter_connections)
         |> assign(:models, [])
         |> assign(:models_grouped, [])
         |> assign(:models_loading, false)
@@ -163,11 +165,29 @@ defmodule PhoenixKitAI.Web.EndpointForm do
 
   defp load_endpoint(socket, nil) do
     changeset = AI.change_endpoint(%Endpoint{})
+    connections = socket.assigns.openrouter_connections
 
-    socket
-    |> assign(:page_title, "New AI Endpoint")
-    |> assign(:endpoint, nil)
-    |> assign(:form, to_form(changeset))
+    # Auto-select if there's exactly one connection
+    {active, connected} =
+      case connections do
+        [%{uuid: uuid}] -> {uuid, PhoenixKit.Integrations.connected?(uuid)}
+        _ -> {"openrouter", false}
+      end
+
+    socket =
+      socket
+      |> assign(:page_title, "New AI Endpoint")
+      |> assign(:endpoint, nil)
+      |> assign(:form, to_form(changeset))
+      |> assign(:active_connection, active)
+      |> assign(:integration_connected, connected)
+
+    if connected do
+      send(self(), :fetch_models_from_integration)
+      assign(socket, :models_loading, true)
+    else
+      socket
+    end
   end
 
   defp load_endpoint(socket, id) do
@@ -179,16 +199,20 @@ defmodule PhoenixKitAI.Web.EndpointForm do
 
       endpoint ->
         changeset = AI.change_endpoint(endpoint)
+        provider_key = endpoint.provider || "openrouter"
+        connected = PhoenixKit.Integrations.connected?(provider_key)
 
         socket =
           socket
           |> assign(:page_title, "Edit AI Endpoint")
           |> assign(:endpoint, endpoint)
           |> assign(:form, to_form(changeset))
+          |> assign(:active_connection, provider_key)
+          |> assign(:integration_connected, connected)
 
-        # Load models if endpoint has API key
-        if endpoint.api_key && String.length(endpoint.api_key) > 10 do
-          send(self(), {:fetch_models, endpoint.api_key})
+        # Load models if integration is connected
+        if connected do
+          send(self(), :fetch_models_from_integration)
           assign(socket, :models_loading, true)
         else
           socket
@@ -344,22 +368,25 @@ defmodule PhoenixKitAI.Web.EndpointForm do
   end
 
   @impl true
-  def handle_event("validate_api_key", _params, socket) do
-    api_key =
-      socket.assigns.form.params["api_key"] ||
-        (socket.assigns.endpoint && socket.assigns.endpoint.api_key) ||
-        ""
+  def handle_event("select_openrouter_connection", %{"uuid" => uuid}, socket) do
+    # Store the integration UUID in the endpoint's provider field
+    updated_params = Map.put(socket.assigns.form.params, "provider", uuid)
+    form = %{socket.assigns.form | params: updated_params}
 
-    if String.length(api_key) > 10 do
-      socket =
-        socket
-        |> assign(:validating_api_key, true)
-        |> assign(:models_loading, true)
+    connected = PhoenixKit.Integrations.connected?(uuid)
 
-      send(self(), {:do_validate_api_key, api_key})
-      {:noreply, socket}
+    socket =
+      socket
+      |> assign(:form, form)
+      |> assign(:active_connection, uuid)
+      |> assign(:integration_connected, connected)
+
+    # Reload models with new connection
+    if connected do
+      send(self(), :fetch_models_from_integration)
+      {:noreply, assign(socket, :models_loading, true)}
     else
-      {:noreply, assign(socket, api_key_error: "Please enter an API key first")}
+      {:noreply, socket}
     end
   end
 
@@ -372,6 +399,14 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     }
 
     params = Map.put(params, "provider_settings", provider_settings)
+
+    # Use the active connection UUID as the provider (from integration picker)
+    params =
+      if socket.assigns[:active_connection] do
+        Map.put(params, "provider", socket.assigns.active_connection)
+      else
+        params
+      end
 
     # Parse numeric fields and string lists
     params =
@@ -388,6 +423,34 @@ defmodule PhoenixKitAI.Web.EndpointForm do
       |> parse_string_list("stop")
 
     save_endpoint(socket, params)
+  end
+
+  defp reload_connections(socket) do
+    connections = PhoenixKit.Integrations.list_connections("openrouter")
+    current_active = socket.assigns[:active_connection]
+
+    # Auto-select if only one connection and nothing valid is selected
+    active =
+      cond do
+        # Current selection still exists in the list — keep it
+        current_active && Enum.any?(connections, &(&1.uuid == current_active)) ->
+          current_active
+
+        # Only one connection — auto-select it
+        length(connections) == 1 ->
+          hd(connections).uuid
+
+        # Fallback
+        true ->
+          current_active || "openrouter"
+      end
+
+    connected = PhoenixKit.Integrations.connected?(active)
+
+    socket
+    |> assign(:openrouter_connections, connections)
+    |> assign(:active_connection, active)
+    |> assign(:integration_connected, connected)
   end
 
   defp parse_float(params, key) do
@@ -482,30 +545,38 @@ defmodule PhoenixKitAI.Web.EndpointForm do
       {:noreply, put_flash(socket, :error, gettext("Something went wrong. Please try again."))}
   end
 
+  # PubSub: reload connections when integrations change
   @impl true
-  def handle_info({:do_validate_api_key, api_key}, socket) do
-    case OpenRouterClient.validate_api_key(api_key) do
-      {:ok, _data} ->
-        # Also fetch models on successful validation
+  def handle_info({event, _, _}, socket)
+      when event in [
+             :integration_setup_saved,
+             :integration_connected,
+             :integration_connection_added
+           ] do
+    {:noreply, reload_connections(socket)}
+  end
+
+  def handle_info({event, _}, socket)
+      when event in [:integration_disconnected, :integration_connection_removed] do
+    {:noreply, reload_connections(socket)}
+  end
+
+  def handle_info({:integration_validated, _, _}, socket) do
+    {:noreply, reload_connections(socket)}
+  end
+
+  @impl true
+  def handle_info(:fetch_models_from_integration, socket) do
+    active_key = socket.assigns[:active_connection] || "openrouter"
+
+    case PhoenixKit.Integrations.get_credentials(active_key) do
+      {:ok, %{"api_key" => api_key}} when is_binary(api_key) and api_key != "" ->
         send(self(), {:fetch_models, api_key})
-
-        socket =
-          socket
-          |> assign(:validating_api_key, false)
-          |> assign(:api_key_valid, true)
-          |> assign(:api_key_error, nil)
-
         {:noreply, socket}
 
-      {:error, reason} ->
-        socket =
-          socket
-          |> assign(:validating_api_key, false)
-          |> assign(:api_key_valid, false)
-          |> assign(:api_key_error, reason)
-          |> assign(:models_loading, false)
-
-        {:noreply, socket}
+      _ ->
+        {:noreply,
+         assign(socket, models_loading: false, models_error: "No OpenRouter API key configured")}
     end
   end
 

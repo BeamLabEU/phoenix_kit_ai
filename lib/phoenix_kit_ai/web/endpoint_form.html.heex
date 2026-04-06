@@ -80,47 +80,19 @@
               </div>
             </div>
 
-            <div class="form-control mt-4">
+            <div class="mt-4">
               <label class="label">
-                <span class="label-text font-medium">API Key *</span>
+                <span class="label-text font-medium">OpenRouter Connection</span>
               </label>
-              <div class="join w-full">
-                <input
-                  type="password"
-                  name="endpoint[api_key]"
-                  value={@form.params["api_key"] || (@endpoint && @endpoint.api_key) || ""}
-                  class={[
-                    "input input-bordered join-item flex-1",
-                    @form.errors[:api_key] && "input-error"
-                  ]}
-                  placeholder="sk-or-v1-..."
-                  required
-                />
-                <button
-                  type="button"
-                  class={["btn join-item", @validating_api_key && "loading"]}
-                  phx-click="validate_api_key"
-                  disabled={@validating_api_key}
-                >
-                  {if @validating_api_key, do: "Validating...", else: "Validate & Load Models"}
-                </button>
-              </div>
-
-              <%= if @api_key_valid == true do %>
-                <label class="label">
-                  <span class="label-text-alt text-success flex items-center gap-1">
-                    <.icon name="hero-check-circle" class="w-4 h-4" /> API key is valid
-                  </span>
-                </label>
-              <% end %>
-
-              <%= if @api_key_error do %>
-                <label class="label">
-                  <span class="label-text-alt text-error flex items-center gap-1">
-                    <.icon name="hero-x-circle" class="w-4 h-4" /> {@api_key_error}
-                  </span>
-                </label>
-              <% end %>
+              <.integration_picker
+                id="endpoint-openrouter-picker"
+                connections={@openrouter_connections}
+                selected={if @active_connection, do: [@active_connection], else: []}
+                provider="openrouter"
+                compact={true}
+                on_select="select_openrouter_connection"
+                empty_url={PhoenixKit.Utils.Routes.path("/admin/settings/integrations/new")}
+              />
             </div>
           </div>
         </div>

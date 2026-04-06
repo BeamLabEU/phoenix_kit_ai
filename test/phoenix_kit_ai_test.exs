@@ -131,6 +131,12 @@ defmodule PhoenixKitAITest do
     end
   end
 
+  describe "required_integrations/0" do
+    test "declares openrouter as required" do
+      assert PhoenixKitAI.required_integrations() == ["openrouter"]
+    end
+  end
+
   describe "optional callbacks have defaults" do
     test "get_config/0 returns a map" do
       config = PhoenixKitAI.get_config()

@@ -286,7 +286,19 @@ defmodule PhoenixKitAI.OpenRouterClient do
   - `:x_title` - Site title for rankings
   - `:include_usage` - Include detailed usage/cost info (default: true for completions)
   """
-  def build_headers(api_key, opts \\ []) do
+  def build_headers(api_key, opts \\ [])
+
+  def build_headers(nil, _opts) do
+    require Logger
+
+    Logger.error(
+      "[OpenRouterClient] build_headers called with nil API key — no integration configured?"
+    )
+
+    [{"Content-Type", "application/json"}]
+  end
+
+  def build_headers(api_key, opts) do
     base_headers = [
       {"Authorization", "Bearer #{api_key}"},
       {"Content-Type", "application/json"}
@@ -319,9 +331,14 @@ defmodule PhoenixKitAI.OpenRouterClient do
 
   @doc """
   Builds headers from an Endpoint struct's provider_settings.
+
+  Resolves the API key from `PhoenixKit.Integrations` using the endpoint's
+  provider field, falling back to the endpoint's own api_key if present (legacy).
   """
-  def build_headers_from_endpoint(%{api_key: api_key, provider_settings: settings}) do
+  def build_headers_from_endpoint(%{provider: provider, provider_settings: settings} = endpoint) do
     settings = settings || %{}
+
+    api_key = resolve_api_key(provider, endpoint)
 
     opts =
       []
@@ -329,6 +346,14 @@ defmodule PhoenixKitAI.OpenRouterClient do
       |> maybe_add_opt(:x_title, settings["x_title"])
 
     build_headers(api_key, opts)
+  end
+
+  defp resolve_api_key(provider, endpoint) do
+    # provider is the endpoint's provider field, e.g. "openrouter" or "openrouter:my-key"
+    case PhoenixKit.Integrations.get_credentials(provider) do
+      {:ok, %{"api_key" => key}} when is_binary(key) and key != "" -> key
+      _ -> endpoint.api_key
+    end
   end
 
   @doc """

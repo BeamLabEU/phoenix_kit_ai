@@ -290,6 +290,9 @@ defmodule PhoenixKitAI do
   def css_sources, do: [:phoenix_kit_ai]
 
   @impl PhoenixKit.Module
+  def required_integrations, do: ["openrouter"]
+
+  @impl PhoenixKit.Module
   def version, do: "0.1.3"
 
   @impl PhoenixKit.Module
@@ -1602,8 +1605,13 @@ defmodule PhoenixKitAI do
       endpoint.model == nil or endpoint.model == "" ->
         {:error, "Endpoint has no model configured"}
 
-      endpoint.api_key == nil or endpoint.api_key == "" ->
-        {:error, "Endpoint has no API key configured"}
+      PhoenixKit.Integrations.get_credentials(endpoint.provider) == {:error, :deleted} ->
+        {:error,
+         "The integration used by this endpoint has been deleted. Please select a new one in the endpoint settings."}
+
+      not PhoenixKit.Integrations.connected?(endpoint.provider) ->
+        {:error,
+         "No integration configured for this endpoint. Set up the API key in Settings → Integrations."}
 
       endpoint.enabled == false ->
         {:error, "Endpoint is disabled"}

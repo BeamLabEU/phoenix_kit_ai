@@ -35,7 +35,7 @@ This is a **library** (not a standalone Phoenix app) that provides AI capabiliti
 
 - **`PhoenixKitAI.Completion`** (`lib/phoenix_kit_ai/completion.ex`) — HTTP client for OpenRouter chat completions and embeddings.
 
-- **`PhoenixKitAI.OpenRouterClient`** (`lib/phoenix_kit_ai/openrouter_client.ex`) — API key validation, model discovery, header building.
+- **`PhoenixKitAI.OpenRouterClient`** (`lib/phoenix_kit_ai/openrouter_client.ex`) — API key validation, model discovery, header building. API keys are resolved from `PhoenixKit.Integrations` via the endpoint's `provider` field (a UUID referencing an integration connection).
 
 - **`PhoenixKitAI.AIModel`** (`lib/phoenix_kit_ai/ai_model.ex`) — Normalized struct for OpenRouter model data.
 
@@ -51,6 +51,7 @@ This is a **library** (not a standalone Phoenix app) that provides AI capabiliti
 4. `route_module/0` provides additional admin routes (new/edit/usage) via `admin_routes/0`
 5. Settings are persisted via `PhoenixKit.Settings` API (DB-backed in parent app)
 6. Permissions are declared via `permission_metadata/0` and checked via `Scope.has_module_access?/2`
+7. API keys are managed centrally via `PhoenixKit.Integrations`. Each endpoint stores an integration connection UUID in its `provider` field. The module declares `required_integrations: ["openrouter"]`.
 
 ### Database Tables
 
