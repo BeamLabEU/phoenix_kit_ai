@@ -1,3 +1,16 @@
+## 0.1.4 - 2026-04-06
+
+### Changed
+- Migrate API key management to centralized PhoenixKit.Integrations system
+- Endpoint provider field now stores integration connection UUID
+- Endpoint form uses shared IntegrationPicker component
+- Declares `required_integrations: ["openrouter"]`
+
+## 0.1.3 - 2026-04-02
+
+### Changed
+- Update dependencies
+
 ## 0.1.2 - 2026-03-25
 
 ### Removed
