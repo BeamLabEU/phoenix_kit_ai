@@ -39,7 +39,7 @@ This is a **library** (not a standalone Phoenix app) that provides AI capabiliti
 
 - **`PhoenixKitAI.AIModel`** (`lib/phoenix_kit_ai/ai_model.ex`) — Normalized struct for OpenRouter model data.
 
-- **`PhoenixKitAI.Routes`** (`lib/phoenix_kit_ai/routes.ex`) — Route module providing admin sub-routes (new/edit forms, usage page).
+- **`PhoenixKitAI.Routes`** (`lib/phoenix_kit_ai/routes.ex`) — Route module providing admin sub-routes (new/edit forms, usage page). Auto-discovered and compiled into PhoenixKit's `live_session :phoenix_kit_admin` — never hand-register these routes in the parent app's `router.ex`. See `phoenix_kit/guides/custom-admin-pages.md` for the authoritative admin routing reference.
 
 - **`PhoenixKitAI.Web.*`** (`lib/phoenix_kit_ai/web/`) — Admin LiveViews: Endpoints, EndpointForm, Prompts, PromptForm, Playground.
 
