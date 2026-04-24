@@ -91,3 +91,62 @@ defmodule PhoenixKitAI.OpenRouterClientTest do
     end
   end
 end
+
+defmodule PhoenixKitAI.OpenRouterClient.LegacyFallbackTest do
+  # Hits the DB through PhoenixKit.Integrations.get_credentials/1
+  # to take the fallback branch, so this group needs DataCase.
+  use PhoenixKitAI.DataCase, async: false
+
+  import ExUnit.CaptureLog
+
+  alias PhoenixKitAI.Endpoint
+  alias PhoenixKitAI.OpenRouterClient
+
+  describe "build_headers_from_endpoint/1 — legacy api_key fallback" do
+    # `resolve_api_key/2` falls back to `endpoint.api_key` when the
+    # provider key isn't a registered integration. PR #3 added a
+    # deprecation `Logger.warning` on that path identifying the
+    # endpoint by name + uuid so the noise is actionable. Pin the
+    # warning's content; without this test, dropping the helper or
+    # silencing the log goes unnoticed.
+
+    test "emits a deprecation warning identifying the endpoint when the legacy api_key path is used" do
+      endpoint = %Endpoint{
+        uuid: "01234567-89ab-7def-8000-0000000000aa",
+        name: "Legacy Endpoint",
+        provider: "openrouter-not-registered-#{System.unique_integer([:positive])}",
+        api_key: "sk-or-v1-legacy",
+        provider_settings: %{}
+      }
+
+      log =
+        capture_log(fn ->
+          headers = OpenRouterClient.build_headers_from_endpoint(endpoint)
+          # Headers still get built — fallback path returns the
+          # legacy key, not nil.
+          assert {"Authorization", "Bearer sk-or-v1-legacy"} in headers
+        end)
+
+      assert log =~ "deprecated endpoint.api_key"
+      assert log =~ ~s("Legacy Endpoint")
+      assert log =~ endpoint.uuid
+    end
+
+    test "does NOT warn when the legacy api_key field is empty" do
+      endpoint = %Endpoint{
+        uuid: "01234567-89ab-7def-8000-0000000000bb",
+        name: "Empty Legacy",
+        provider: "openrouter-not-registered-#{System.unique_integer([:positive])}",
+        api_key: "",
+        provider_settings: %{}
+      }
+
+      log =
+        capture_log(fn ->
+          OpenRouterClient.build_headers_from_endpoint(endpoint)
+        end)
+
+      refute log =~ "deprecated endpoint.api_key"
+    end
+  end
+end

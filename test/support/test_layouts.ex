@@ -25,6 +25,11 @@ defmodule PhoenixKitAI.Test.Layouts do
 
   def app(assigns) do
     ~H"""
+    <div :if={msg = Phoenix.Flash.get(@flash, :info)} id="flash-info" role="alert">{msg}</div>
+    <div :if={msg = Phoenix.Flash.get(@flash, :error)} id="flash-error" role="alert">{msg}</div>
+    <div :if={msg = Phoenix.Flash.get(@flash, :warning)} id="flash-warning" role="alert">
+      {msg}
+    </div>
     {@inner_content}
     """
   end

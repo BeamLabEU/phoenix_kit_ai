@@ -22,6 +22,7 @@ support_dir = Path.expand("support", __DIR__)
   {PhoenixKitAI.Test.Layouts, "test_layouts.ex"},
   {PhoenixKitAI.Test.Router, "test_router.ex"},
   {PhoenixKitAI.Test.Endpoint, "test_endpoint.ex"},
+  {PhoenixKitAI.ActivityLogAssertions, "activity_log_assertions.ex"},
   {PhoenixKitAI.DataCase, "data_case.ex"},
   {PhoenixKitAI.LiveCase, "live_case.ex"}
 ]

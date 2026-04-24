@@ -22,6 +22,7 @@ defmodule PhoenixKitAI.DataCase do
       import Ecto
       import Ecto.Changeset
       import Ecto.Query
+      import PhoenixKitAI.ActivityLogAssertions
       import PhoenixKitAI.DataCase
     end
   end

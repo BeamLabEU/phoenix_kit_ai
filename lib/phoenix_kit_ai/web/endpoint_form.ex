@@ -546,7 +546,12 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     end
   end
 
-  defp integration_warning(%{provider: provider, api_key: api_key}) do
+  @doc false
+  # Public for testability. Returns the soft-warning string for an
+  # endpoint whose `provider` points at a disconnected integration AND
+  # has no legacy `api_key` fallback. Returns nil when either branch
+  # of the safety net keeps the endpoint working.
+  def integration_warning(%{provider: provider, api_key: api_key}) do
     cond do
       provider in [nil, ""] ->
         nil

@@ -29,6 +29,7 @@ defmodule PhoenixKitAI.LiveCase do
       import Plug.Conn
       import Phoenix.ConnTest
       import Phoenix.LiveViewTest
+      import PhoenixKitAI.ActivityLogAssertions
       import PhoenixKitAI.LiveCase
     end
   end

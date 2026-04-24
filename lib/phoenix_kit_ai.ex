@@ -280,6 +280,12 @@ defmodule PhoenixKitAI do
     Settings.get_boolean_setting("ai_enabled", false)
   rescue
     _ -> false
+  catch
+    # `Settings.get_boolean_setting/2` can hit a shutting-down pool
+    # in tests and exit on `DBConnection.Holder.checkout/3`. The
+    # convention is "must return false as fallback" — that includes
+    # process exits, not just exceptions.
+    :exit, _ -> false
   end
 
   @doc """
@@ -320,6 +326,8 @@ defmodule PhoenixKitAI do
     fun.()
   rescue
     _ -> 0
+  catch
+    :exit, _ -> 0
   end
 
   # ===========================================
