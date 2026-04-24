@@ -55,7 +55,7 @@ defmodule PhoenixKitAI.Web.Playground do
     else
       {:ok,
        socket
-       |> put_flash(:error, "AI module is not enabled")
+       |> put_flash(:error, gettext("AI module is not enabled"))
        |> push_navigate(to: Routes.path("/admin/modules"))}
     end
   end
@@ -80,7 +80,7 @@ defmodule PhoenixKitAI.Web.Playground do
     endpoint_uuid = socket.assigns.selected_endpoint_uuid
 
     if is_nil(endpoint_uuid) do
-      {:noreply, put_flash(socket, :error, "Please select an endpoint")}
+      {:noreply, put_flash(socket, :error, gettext("Please select an endpoint"))}
     else
       socket =
         socket
@@ -213,7 +213,7 @@ defmodule PhoenixKitAI.Web.Playground do
 
         {:error, reason} ->
           socket
-          |> assign(:response_error, reason)
+          |> assign(:response_error, PhoenixKitAI.Errors.message(reason))
       end
 
     {:noreply, assign(socket, :sending, false)}
@@ -265,7 +265,7 @@ defmodule PhoenixKitAI.Web.Playground do
   end
 
   defp execute_freeform_request(_endpoint_uuid, "", _system) do
-    {:error, "Please enter a message"}
+    {:error, :empty_input}
   end
 
   defp execute_freeform_request(endpoint_uuid, message, system) do

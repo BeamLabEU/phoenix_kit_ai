@@ -21,6 +21,7 @@ defmodule PhoenixKitAI.Web.Prompts do
   use Gettext, backend: PhoenixKitWeb.Gettext
 
   alias PhoenixKit.Settings
+  alias PhoenixKit.Users.Auth.Scope
   alias PhoenixKit.Utils.Routes
   alias PhoenixKitAI, as: AI
 
@@ -116,15 +117,18 @@ defmodule PhoenixKitAI.Web.Prompts do
   def handle_event("toggle_prompt", %{"uuid" => uuid}, socket) do
     prompt = AI.get_prompt!(uuid)
 
-    case AI.update_prompt(prompt, %{enabled: !prompt.enabled}) do
-      {:ok, _updated} ->
+    case AI.update_prompt(prompt, %{enabled: !prompt.enabled}, actor_opts(socket)) do
+      {:ok, updated} ->
+        message =
+          if updated.enabled, do: gettext("Prompt enabled"), else: gettext("Prompt disabled")
+
         {:noreply,
          socket
          |> reload_prompts()
-         |> put_flash(:info, "Prompt #{if prompt.enabled, do: "disabled", else: "enabled"}")}
+         |> put_flash(:info, message)}
 
       {:error, _changeset} ->
-        {:noreply, put_flash(socket, :error, "Failed to update prompt")}
+        {:noreply, put_flash(socket, :error, gettext("Failed to update prompt"))}
     end
   end
 
@@ -132,15 +136,15 @@ defmodule PhoenixKitAI.Web.Prompts do
   def handle_event("delete_prompt", %{"uuid" => uuid}, socket) do
     prompt = AI.get_prompt!(uuid)
 
-    case AI.delete_prompt(prompt) do
+    case AI.delete_prompt(prompt, actor_opts(socket)) do
       {:ok, _} ->
         {:noreply,
          socket
          |> reload_prompts()
-         |> put_flash(:info, "Prompt deleted")}
+         |> put_flash(:info, gettext("Prompt deleted"))}
 
       {:error, _} ->
-        {:noreply, put_flash(socket, :error, "Failed to delete prompt")}
+        {:noreply, put_flash(socket, :error, gettext("Failed to delete prompt"))}
     end
   end
 
@@ -237,6 +241,24 @@ defmodule PhoenixKitAI.Web.Prompts do
     case socket.assigns do
       %{__changed__: _, current_path: path} when is_binary(path) -> path
       _ -> session["current_path"] || Routes.ai_path() <> "/prompts"
+    end
+  end
+
+  # Activity attribution — passed through to AI.update_prompt/3 and
+  # AI.delete_prompt/2 so the mutation is logged against the right actor.
+  defp actor_opts(socket) do
+    role = if admin?(socket), do: "admin", else: "user"
+
+    case socket.assigns[:phoenix_kit_current_user] do
+      %{uuid: uuid} when is_binary(uuid) -> [actor_uuid: uuid, actor_role: role]
+      _ -> [actor_role: role]
+    end
+  end
+
+  defp admin?(socket) do
+    case socket.assigns[:phoenix_kit_current_scope] do
+      nil -> false
+      scope -> Scope.admin?(scope)
     end
   end
 end

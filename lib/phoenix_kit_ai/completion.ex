@@ -51,7 +51,8 @@ defmodule PhoenixKitAI.Completion do
   ## Returns
 
   - `{:ok, response}` - Successful response with completion
-  - `{:error, reason}` - Error with reason string
+  - `{:error, reason}` - Error atom or tagged tuple. See
+    `PhoenixKitAI.Errors` for the full reason vocabulary and translation.
 
   ## Response Structure
 
@@ -90,11 +91,11 @@ defmodule PhoenixKitAI.Completion do
         handle_error_status(status, response_body)
 
       {:error, :timeout} ->
-        {:error, "Request timeout"}
+        {:error, :request_timeout}
 
       {:error, reason} ->
-        Logger.warning("OpenRouter completion error: #{inspect(reason)}")
-        {:error, "Connection error: #{inspect(reason)}"}
+        Logger.warning("OpenRouter completion transport error: #{inspect(reason)}")
+        {:error, {:connection_error, reason}}
     end
   end
 
@@ -103,21 +104,29 @@ defmodule PhoenixKitAI.Completion do
 
     case Jason.decode(response_body) do
       {:ok, response} -> {:ok, Map.put(response, "latency_ms", latency_ms)}
-      {:error, _} -> {:error, "Invalid JSON response"}
+      {:error, _} -> {:error, :invalid_json_response}
     end
   end
 
   @doc false
   # Public for testability. Maps an HTTP status + response body to a
-  # user-facing {:error, reason} tuple.
-  def handle_error_status(401, _body), do: {:error, "Invalid API key"}
-  def handle_error_status(402, _body), do: {:error, "Insufficient credits"}
-  def handle_error_status(429, _body), do: {:error, "Rate limited"}
+  # `{:error, reason}` tuple where `reason` is an atom or tagged tuple.
+  def handle_error_status(401, _body), do: {:error, :invalid_api_key}
+  def handle_error_status(402, _body), do: {:error, :insufficient_credits}
+  def handle_error_status(429, _body), do: {:error, :rate_limited}
 
   def handle_error_status(status, response_body) do
-    error_msg = extract_error_message(response_body) || "API error: #{status}"
-    Logger.warning("OpenRouter completion failed: #{status} - #{response_body}")
-    {:error, error_msg}
+    # Log only the parsed error message (not the raw body) to avoid
+    # persisting potentially sensitive provider data to application logs.
+    case extract_error_message(response_body) do
+      nil ->
+        Logger.warning("OpenRouter completion failed: #{status} (no parsable error body)")
+
+      msg ->
+        Logger.warning("OpenRouter completion failed: #{status} - #{msg}")
+    end
+
+    {:error, {:api_error, status}}
   end
 
   @doc """
@@ -136,7 +145,8 @@ defmodule PhoenixKitAI.Completion do
   ## Returns
 
   - `{:ok, response}` - Response with embeddings
-  - `{:error, reason}` - Error with reason
+  - `{:error, reason}` - Error atom or tagged tuple. See
+    `PhoenixKitAI.Errors` for the full reason vocabulary and translation.
   """
   def embeddings(endpoint, input, opts \\ []) do
     url = build_url(endpoint, "/embeddings")
@@ -153,23 +163,17 @@ defmodule PhoenixKitAI.Completion do
 
     case http_post(url, headers, body) do
       {:ok, %{status_code: 200, body: response_body}} ->
-        end_time = System.monotonic_time(:millisecond)
-        latency_ms = end_time - start_time
-
-        case Jason.decode(response_body) do
-          {:ok, response} ->
-            {:ok, Map.put(response, "latency_ms", latency_ms)}
-
-          {:error, _} ->
-            {:error, "Invalid JSON response"}
-        end
+        parse_success_response(response_body, start_time)
 
       {:ok, %{status_code: status, body: response_body}} ->
-        error_msg = extract_error_message(response_body) || "API error: #{status}"
-        {:error, error_msg}
+        handle_error_status(status, response_body)
+
+      {:error, :timeout} ->
+        {:error, :request_timeout}
 
       {:error, reason} ->
-        {:error, "Connection error: #{inspect(reason)}"}
+        Logger.warning("OpenRouter embeddings transport error: #{inspect(reason)}")
+        {:error, {:connection_error, reason}}
     end
   end
 
@@ -182,10 +186,10 @@ defmodule PhoenixKitAI.Completion do
         {:ok, content}
 
       %{"choices" => []} ->
-        {:error, "No choices in response"}
+        {:error, :no_choices_in_response}
 
       _ ->
-        {:error, "Invalid response format"}
+        {:error, :invalid_response_format}
     end
   end
 

@@ -669,10 +669,14 @@
         <%!-- Actions --%>
         <div class="flex justify-end gap-3">
           <.link navigate={Routes.ai_path()} class="btn btn-ghost">
-            Cancel
+            {gettext("Cancel")}
           </.link>
-          <button type="submit" class="btn btn-primary">
-            {if @endpoint, do: "Update Endpoint", else: "Create Endpoint"}
+          <button
+            type="submit"
+            class="btn btn-primary"
+            phx-disable-with={gettext("Saving…")}
+          >
+            {if @endpoint, do: gettext("Update Endpoint"), else: gettext("Create Endpoint")}
           </button>
         </div>
       </.form>

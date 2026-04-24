@@ -66,6 +66,8 @@ defmodule PhoenixKitAI.Prompt do
   alias PhoenixKit.Utils.Date, as: UtilsDate
   alias PhoenixKit.Utils.Slug
 
+  @type t :: %__MODULE__{}
+
   @primary_key {:uuid, UUIDv7, autogenerate: true}
 
   # Regex for extracting variable names from content

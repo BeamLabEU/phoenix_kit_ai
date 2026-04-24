@@ -6,41 +6,53 @@ defmodule PhoenixKitAI.CompletionTest do
   alias PhoenixKitAI.Completion
 
   describe "handle_error_status/2" do
-    test "401 returns invalid API key error" do
-      assert Completion.handle_error_status(401, "") == {:error, "Invalid API key"}
+    test "401 returns :invalid_api_key" do
+      assert Completion.handle_error_status(401, "") == {:error, :invalid_api_key}
     end
 
-    test "402 returns insufficient credits error" do
-      assert Completion.handle_error_status(402, "") == {:error, "Insufficient credits"}
+    test "402 returns :insufficient_credits" do
+      assert Completion.handle_error_status(402, "") == {:error, :insufficient_credits}
     end
 
-    test "429 returns rate limited error" do
-      assert Completion.handle_error_status(429, "") == {:error, "Rate limited"}
+    test "429 returns :rate_limited" do
+      assert Completion.handle_error_status(429, "") == {:error, :rate_limited}
     end
 
-    test "503 with OpenRouter-shaped error body returns the API message" do
+    test "generic non-2xx returns {:api_error, status} and logs the parsed message" do
       body = ~s({"error":{"message":"Upstream timeout"}})
 
-      assert capture_log(fn ->
-               assert Completion.handle_error_status(503, body) ==
-                        {:error, "Upstream timeout"}
-             end) =~ "OpenRouter completion failed: 503"
+      log =
+        capture_log(fn ->
+          assert Completion.handle_error_status(503, body) == {:error, {:api_error, 503}}
+        end)
+
+      assert log =~ "OpenRouter completion failed: 503"
+      assert log =~ "Upstream timeout"
+      # Raw body should NOT be in the log when we have a parsed message
+      refute log =~ "error\":{\"message"
     end
 
-    test "500 with opaque body falls back to generic error" do
-      assert capture_log(fn ->
-               assert Completion.handle_error_status(500, "<!DOCTYPE html>") ==
-                        {:error, "API error: 500"}
-             end) =~ "OpenRouter completion failed: 500"
+    test "generic non-2xx with opaque body logs 'no parsable error body'" do
+      log =
+        capture_log(fn ->
+          assert Completion.handle_error_status(500, "<!DOCTYPE html>") ==
+                   {:error, {:api_error, 500}}
+        end)
+
+      assert log =~ "OpenRouter completion failed: 500 (no parsable error body)"
+      # Raw HTML body should NOT be logged
+      refute log =~ "DOCTYPE"
     end
 
-    test "400 with string error body returns the error string" do
+    test "400 with string error body returns {:api_error, 400}" do
       body = ~s({"error":"missing required field: model"})
 
-      assert capture_log(fn ->
-               assert Completion.handle_error_status(400, body) ==
-                        {:error, "missing required field: model"}
-             end) =~ "OpenRouter completion failed: 400"
+      log =
+        capture_log(fn ->
+          assert Completion.handle_error_status(400, body) == {:error, {:api_error, 400}}
+        end)
+
+      assert log =~ "missing required field: model"
     end
   end
 
@@ -75,13 +87,13 @@ defmodule PhoenixKitAI.CompletionTest do
       assert Completion.extract_content(response) == {:ok, "Hi!"}
     end
 
-    test "returns error when choices are empty" do
+    test "returns :no_choices_in_response when choices are empty" do
       assert Completion.extract_content(%{"choices" => []}) ==
-               {:error, "No choices in response"}
+               {:error, :no_choices_in_response}
     end
 
-    test "returns error for malformed response" do
-      assert Completion.extract_content(%{}) == {:error, "Invalid response format"}
+    test "returns :invalid_response_format for malformed response" do
+      assert Completion.extract_content(%{}) == {:error, :invalid_response_format}
     end
   end
 
@@ -111,6 +123,19 @@ defmodule PhoenixKitAI.CompletionTest do
                total_tokens: 0,
                cost_cents: nil
              } = Completion.extract_usage(%{})
+    end
+
+    test "reads total_cost as fallback for cost" do
+      response = %{
+        "usage" => %{
+          "prompt_tokens" => 0,
+          "completion_tokens" => 0,
+          "total_tokens" => 0,
+          "total_cost" => 0.000001
+        }
+      }
+
+      assert %{cost_cents: 1} = Completion.extract_usage(response)
     end
   end
 end

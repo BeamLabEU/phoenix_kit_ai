@@ -21,6 +21,7 @@ defmodule PhoenixKitAI.Web.Endpoints do
   use Gettext, backend: PhoenixKitWeb.Gettext
 
   alias PhoenixKit.Settings
+  alias PhoenixKit.Users.Auth.Scope
   alias PhoenixKit.Utils.Date, as: UtilsDate
   alias PhoenixKit.Utils.Routes
   alias PhoenixKitAI, as: AI
@@ -267,15 +268,20 @@ defmodule PhoenixKitAI.Web.Endpoints do
   def handle_event("toggle_endpoint", %{"uuid" => uuid}, socket) do
     endpoint = AI.get_endpoint!(uuid)
 
-    case AI.update_endpoint(endpoint, %{enabled: !endpoint.enabled}) do
-      {:ok, _updated} ->
+    case AI.update_endpoint(endpoint, %{enabled: !endpoint.enabled}, actor_opts(socket)) do
+      {:ok, updated} ->
+        message =
+          if updated.enabled,
+            do: gettext("Endpoint enabled"),
+            else: gettext("Endpoint disabled")
+
         {:noreply,
          socket
          |> reload_endpoints()
-         |> put_flash(:info, "Endpoint #{if endpoint.enabled, do: "disabled", else: "enabled"}")}
+         |> put_flash(:info, message)}
 
       {:error, _changeset} ->
-        {:noreply, put_flash(socket, :error, "Failed to update endpoint")}
+        {:noreply, put_flash(socket, :error, gettext("Failed to update endpoint"))}
     end
   end
 
@@ -283,17 +289,17 @@ defmodule PhoenixKitAI.Web.Endpoints do
   def handle_event("delete_endpoint", %{"uuid" => uuid}, socket) do
     endpoint = AI.get_endpoint!(uuid)
 
-    case AI.delete_endpoint(endpoint) do
+    case AI.delete_endpoint(endpoint, actor_opts(socket)) do
       {:ok, _} ->
         socket = reload_endpoints(socket)
 
         {:noreply,
          socket
          |> assign(:has_endpoints, not Enum.empty?(socket.assigns.endpoints))
-         |> put_flash(:info, "Endpoint deleted")}
+         |> put_flash(:info, gettext("Endpoint deleted"))}
 
       {:error, _} ->
-        {:noreply, put_flash(socket, :error, "Failed to delete endpoint")}
+        {:noreply, put_flash(socket, :error, gettext("Failed to delete endpoint"))}
     end
   end
 
@@ -587,4 +593,23 @@ defmodule PhoenixKitAI.Web.Endpoints do
     do: "#{Float.round(bytes / 1_048_576, 1)} MB"
 
   defp format_bytes(bytes), do: "#{Float.round(bytes / 1_073_741_824, 2)} GB"
+
+  # Activity attribution — passed through to AI.update_endpoint/3 and
+  # AI.delete_endpoint/2 so the mutation is logged against the right
+  # actor. See PhoenixKitAI moduledoc for the activity logging pattern.
+  defp actor_opts(socket) do
+    role = if admin?(socket), do: "admin", else: "user"
+
+    case socket.assigns[:phoenix_kit_current_user] do
+      %{uuid: uuid} when is_binary(uuid) -> [actor_uuid: uuid, actor_role: role]
+      _ -> [actor_role: role]
+    end
+  end
+
+  defp admin?(socket) do
+    case socket.assigns[:phoenix_kit_current_scope] do
+      nil -> false
+      scope -> Scope.admin?(scope)
+    end
+  end
 end

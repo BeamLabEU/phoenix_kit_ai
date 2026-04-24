@@ -16,10 +16,7 @@ defmodule PhoenixKitAI.OpenRouterClient do
   ## Usage Examples
 
       # Validate an API key
-      case PhoenixKitAI.OpenRouterClient.validate_api_key("sk-or-v1-...") do
-        {:ok, %{credits: credits}} -> IO.puts("Valid! Credits: \#{credits}")
-        {:error, reason} -> IO.puts("Invalid: \#{reason}")
-      end
+      {:ok, %{credits: _}} = PhoenixKitAI.OpenRouterClient.validate_api_key("sk-or-v1-...")
 
       # Fetch available models
       {:ok, models} = PhoenixKitAI.OpenRouterClient.fetch_models("sk-or-v1-...")
@@ -64,24 +61,24 @@ defmodule PhoenixKitAI.OpenRouterClient do
             {:ok, %{valid: true}}
 
           {:error, _} ->
-            {:error, "Invalid JSON response"}
+            {:error, :invalid_json_response}
         end
 
-      {:ok, %{status_code: 401, body: body}} ->
-        Logger.warning("OpenRouter 401 response: #{body}")
-        {:error, "Invalid API key"}
+      {:ok, %{status_code: 401}} ->
+        Logger.warning("OpenRouter 401 response during API key validation")
+        {:error, :invalid_api_key}
 
-      {:ok, %{status_code: 403, body: body}} ->
-        Logger.warning("OpenRouter 403 response: #{body}")
-        {:error, "API key forbidden"}
+      {:ok, %{status_code: 403}} ->
+        Logger.warning("OpenRouter 403 response during API key validation")
+        {:error, :api_key_forbidden}
 
-      {:ok, %{status_code: status, body: body}} ->
-        Logger.warning("OpenRouter API key validation failed: #{status} - #{body}")
-        {:error, "API error: #{status}"}
+      {:ok, %{status_code: status}} ->
+        Logger.warning("OpenRouter API key validation failed: #{status}")
+        {:error, {:api_error, status}}
 
       {:error, reason} ->
-        Logger.warning("OpenRouter API key validation error: #{inspect(reason)}")
-        {:error, "Connection error: #{inspect(reason)}"}
+        Logger.warning("OpenRouter API key validation transport error: #{inspect(reason)}")
+        {:error, {:connection_error, reason}}
     end
   end
 
@@ -118,22 +115,22 @@ defmodule PhoenixKitAI.OpenRouterClient do
             {:ok, normalize_models(models, model_type)}
 
           {:ok, _} ->
-            {:error, "Unexpected response format"}
+            {:error, :invalid_response_format}
 
           {:error, _} ->
-            {:error, "Invalid JSON response"}
+            {:error, :invalid_json_response}
         end
 
       {:ok, %{status_code: 401}} ->
-        {:error, "Invalid API key"}
+        {:error, :invalid_api_key}
 
-      {:ok, %{status_code: status, body: body}} ->
-        Logger.warning("OpenRouter models fetch failed: #{status} - #{body}")
-        {:error, "API error: #{status}"}
+      {:ok, %{status_code: status}} ->
+        Logger.warning("OpenRouter models fetch failed: #{status}")
+        {:error, {:api_error, status}}
 
       {:error, reason} ->
-        Logger.warning("OpenRouter models fetch error: #{inspect(reason)}")
-        {:error, "Connection error: #{inspect(reason)}"}
+        Logger.warning("OpenRouter models fetch transport error: #{inspect(reason)}")
+        {:error, {:connection_error, reason}}
     end
   end
 
@@ -570,7 +567,7 @@ defmodule PhoenixKitAI.OpenRouterClient do
          model when not is_nil(model) <- Enum.find(models, fn m -> m.id == model_id end) do
       {:ok, model}
     else
-      nil -> {:error, "Model not found"}
+      nil -> {:error, :model_not_found}
       {:error, reason} -> {:error, reason}
     end
   end

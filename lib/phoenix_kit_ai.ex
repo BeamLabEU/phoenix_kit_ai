@@ -103,6 +103,7 @@ defmodule PhoenixKitAI do
   @doc """
   Subscribes the current process to AI endpoint changes.
   """
+  @spec subscribe_endpoints() :: :ok | {:error, term()}
   def subscribe_endpoints do
     PubSub.subscribe(@endpoints_topic)
   end
@@ -110,6 +111,7 @@ defmodule PhoenixKitAI do
   @doc """
   Subscribes the current process to AI prompt changes.
   """
+  @spec subscribe_prompts() :: :ok | {:error, term()}
   def subscribe_prompts do
     PubSub.subscribe(@prompts_topic)
   end
@@ -117,6 +119,7 @@ defmodule PhoenixKitAI do
   @doc """
   Subscribes the current process to AI request/usage changes.
   """
+  @spec subscribe_requests() :: :ok | {:error, term()}
   def subscribe_requests do
     PubSub.subscribe(@requests_topic)
   end
@@ -127,6 +130,15 @@ defmodule PhoenixKitAI do
 
   defp repo do
     PhoenixKit.RepoHelper.repo()
+  end
+
+  # Textual-UUID check (36 chars, hyphenated). Core's `UUIDUtils.valid?/1`
+  # delegates to `Ecto.UUID.cast/1`, which also accepts *16-byte* raw
+  # binaries — that means any 16-character slug would be mistaken for a
+  # UUID in UUID-vs-slug dispatch helpers. Guarding with byte_size keeps
+  # the dispatch correct without touching core.
+  defp textual_uuid?(string) when is_binary(string) do
+    byte_size(string) == 36 and UUIDUtils.valid?(string)
   end
 
   defp broadcast_endpoint_change(result, event) do
@@ -160,6 +172,100 @@ defmodule PhoenixKitAI do
       error ->
         error
     end
+  end
+
+  # ===========================================
+  # ACTIVITY LOGGING HELPERS
+  # ===========================================
+
+  # Log a successful endpoint mutation. Failures in the primary
+  # operation bypass logging entirely; logging failures never crash the
+  # caller thanks to the rescue.
+  defp log_endpoint_activity({:ok, endpoint} = result, action, opts) do
+    log_activity(action, endpoint, "endpoint", opts, %{"name" => endpoint.name})
+    result
+  end
+
+  defp log_endpoint_activity(error, _action, _opts), do: error
+
+  defp log_prompt_activity({:ok, prompt} = result, action, opts) do
+    log_activity(action, prompt, "prompt", opts, %{"name" => prompt.name})
+    result
+  end
+
+  defp log_prompt_activity(error, _action, _opts), do: error
+
+  # Enable/disable toggle — logs only when the flag actually changes.
+  defp maybe_log_endpoint_toggle({:ok, endpoint} = result, was_enabled, opts) do
+    cond do
+      was_enabled == endpoint.enabled -> result
+      endpoint.enabled -> log_toggle(result, "endpoint.enabled", endpoint, "endpoint", opts)
+      true -> log_toggle(result, "endpoint.disabled", endpoint, "endpoint", opts)
+    end
+  end
+
+  defp maybe_log_endpoint_toggle(error, _, _), do: error
+
+  defp maybe_log_prompt_toggle({:ok, prompt} = result, was_enabled, opts) do
+    cond do
+      was_enabled == prompt.enabled -> result
+      prompt.enabled -> log_toggle(result, "prompt.enabled", prompt, "prompt", opts)
+      true -> log_toggle(result, "prompt.disabled", prompt, "prompt", opts)
+    end
+  end
+
+  defp maybe_log_prompt_toggle(error, _, _), do: error
+
+  defp log_toggle(result, action, resource, resource_type, opts) do
+    log_activity(action, resource, resource_type, opts, %{"name" => resource.name})
+    result
+  end
+
+  # Unified logger — guarded by Code.ensure_loaded?/1 and rescued so
+  # activity failures never crash the primary operation. No-op on hosts
+  # without PhoenixKit.Activity available.
+  #
+  # The `:undefined_table` case is silently skipped: hosts that haven't
+  # run the core PhoenixKit migrations yet simply don't have the
+  # `phoenix_kit_activities` table, so logging would be noise on every
+  # mutation. Any other failure is logged so real bugs aren't hidden.
+  defp log_activity(action, resource, resource_type, opts, extra) do
+    if Code.ensure_loaded?(PhoenixKit.Activity) do
+      metadata =
+        %{"actor_role" => Keyword.get(opts, :actor_role, "user")}
+        |> Map.merge(extra)
+
+      PhoenixKit.Activity.log(%{
+        action: action,
+        module: "ai",
+        mode: Keyword.get(opts, :mode, "manual"),
+        actor_uuid: Keyword.get(opts, :actor_uuid),
+        resource_type: resource_type,
+        resource_uuid: resource.uuid,
+        metadata: metadata
+      })
+    end
+  rescue
+    e in Postgrex.Error ->
+      if Map.get(e.postgres || %{}, :code) == :undefined_table do
+        # Host hasn't run the core activity migration yet — silent no-op.
+        :activity_log_unavailable
+      else
+        log_activity_failure(action, e)
+      end
+
+    e ->
+      log_activity_failure(action, e)
+  end
+
+  defp log_activity_failure(action, exception) do
+    require Logger
+
+    Logger.warning(
+      "[PhoenixKitAI] activity log failed for #{action}: #{Exception.message(exception)}"
+    )
+
+    :activity_log_failed
   end
 
   # ===========================================
@@ -477,6 +583,7 @@ defmodule PhoenixKitAI do
 
   Raises `Ecto.NoResultsError` if the endpoint does not exist.
   """
+  @spec get_endpoint!(String.t()) :: Endpoint.t()
   def get_endpoint!(id) do
     case get_endpoint(id) do
       nil -> raise Ecto.NoResultsError, queryable: Endpoint
@@ -491,8 +598,9 @@ defmodule PhoenixKitAI do
 
   Returns `nil` if the endpoint does not exist.
   """
+  @spec get_endpoint(term()) :: Endpoint.t() | nil
   def get_endpoint(id) when is_binary(id) do
-    if UUIDUtils.valid?(id) do
+    if textual_uuid?(id) do
       repo().get_by(Endpoint, uuid: id)
     else
       nil
@@ -509,16 +617,19 @@ defmodule PhoenixKitAI do
       {:ok, endpoint} = PhoenixKitAI.resolve_endpoint("019abc12-3456-7def-8901-234567890abc")
       {:ok, endpoint} = PhoenixKitAI.resolve_endpoint(endpoint)
   """
+  @spec resolve_endpoint(term()) ::
+          {:ok, Endpoint.t()}
+          | {:error, :endpoint_not_found | :invalid_endpoint_identifier}
   def resolve_endpoint(id) when is_binary(id) do
     case get_endpoint(id) do
-      nil -> {:error, "Endpoint not found"}
+      nil -> {:error, :endpoint_not_found}
       endpoint -> {:ok, endpoint}
     end
   end
 
   def resolve_endpoint(%Endpoint{} = endpoint), do: {:ok, endpoint}
 
-  def resolve_endpoint(_), do: {:error, "Invalid endpoint identifier"}
+  def resolve_endpoint(_), do: {:error, :invalid_endpoint_identifier}
 
   @doc """
   Creates a new AI endpoint.
@@ -533,29 +644,45 @@ defmodule PhoenixKitAI do
         temperature: 0.7
       })
   """
-  def create_endpoint(attrs) do
+  @spec create_endpoint(map(), keyword()) ::
+          {:ok, Endpoint.t()} | {:error, Ecto.Changeset.t()}
+  def create_endpoint(attrs, opts \\ []) do
     %Endpoint{}
     |> Endpoint.changeset(attrs)
     |> repo().insert()
     |> broadcast_endpoint_change(:endpoint_created)
+    |> log_endpoint_activity("endpoint.created", opts)
   end
 
   @doc """
   Updates an existing AI endpoint.
+
+  Accepts an `:actor_uuid` option so the mutation can be attributed in
+  the activity feed. If the change toggles the `enabled` flag an
+  additional `endpoint.enabled` / `endpoint.disabled` entry is logged.
   """
-  def update_endpoint(%Endpoint{} = endpoint, attrs) do
+  @spec update_endpoint(Endpoint.t(), map(), keyword()) ::
+          {:ok, Endpoint.t()} | {:error, Ecto.Changeset.t()}
+  def update_endpoint(%Endpoint{} = endpoint, attrs, opts \\ []) do
+    was_enabled = endpoint.enabled
+
     endpoint
     |> Endpoint.changeset(attrs)
     |> repo().update()
     |> broadcast_endpoint_change(:endpoint_updated)
+    |> log_endpoint_activity("endpoint.updated", opts)
+    |> maybe_log_endpoint_toggle(was_enabled, opts)
   end
 
   @doc """
   Deletes an AI endpoint.
   """
-  def delete_endpoint(%Endpoint{} = endpoint) do
+  @spec delete_endpoint(Endpoint.t(), keyword()) ::
+          {:ok, Endpoint.t()} | {:error, Ecto.Changeset.t()}
+  def delete_endpoint(%Endpoint{} = endpoint, opts \\ []) do
     repo().delete(endpoint)
     |> broadcast_endpoint_change(:endpoint_deleted)
+    |> log_endpoint_activity("endpoint.deleted", opts)
   end
 
   @doc """
@@ -674,7 +801,7 @@ defmodule PhoenixKitAI do
   Returns `nil` if the prompt does not exist.
   """
   def get_prompt(id) when is_binary(id) do
-    if UUIDUtils.valid?(id) do
+    if textual_uuid?(id) do
       repo().get_by(Prompt, uuid: id)
     else
       nil
@@ -702,29 +829,45 @@ defmodule PhoenixKitAI do
         content: "Translate the following text to {{Language}}:\\n\\n{{Text}}"
       })
   """
-  def create_prompt(attrs) do
+  @spec create_prompt(map(), keyword()) ::
+          {:ok, Prompt.t()} | {:error, Ecto.Changeset.t()}
+  def create_prompt(attrs, opts \\ []) do
     %Prompt{}
     |> Prompt.changeset(attrs)
     |> repo().insert()
     |> broadcast_prompt_change(:prompt_created)
+    |> log_prompt_activity("prompt.created", opts)
   end
 
   @doc """
   Updates an existing AI prompt.
+
+  Accepts an `:actor_uuid` option so the mutation can be attributed in
+  the activity feed. If the change toggles the `enabled` flag an
+  additional `prompt.enabled` / `prompt.disabled` entry is logged.
   """
-  def update_prompt(%Prompt{} = prompt, attrs) do
+  @spec update_prompt(Prompt.t(), map(), keyword()) ::
+          {:ok, Prompt.t()} | {:error, Ecto.Changeset.t()}
+  def update_prompt(%Prompt{} = prompt, attrs, opts \\ []) do
+    was_enabled = prompt.enabled
+
     prompt
     |> Prompt.changeset(attrs)
     |> repo().update()
     |> broadcast_prompt_change(:prompt_updated)
+    |> log_prompt_activity("prompt.updated", opts)
+    |> maybe_log_prompt_toggle(was_enabled, opts)
   end
 
   @doc """
   Deletes an AI prompt.
   """
-  def delete_prompt(%Prompt{} = prompt) do
+  @spec delete_prompt(Prompt.t(), keyword()) ::
+          {:ok, Prompt.t()} | {:error, Ecto.Changeset.t()}
+  def delete_prompt(%Prompt{} = prompt, opts \\ []) do
     repo().delete(prompt)
     |> broadcast_prompt_change(:prompt_deleted)
+    |> log_prompt_activity("prompt.deleted", opts)
   end
 
   @doc """
@@ -771,22 +914,22 @@ defmodule PhoenixKitAI do
   def resolve_prompt(%Prompt{} = prompt), do: {:ok, prompt}
 
   def resolve_prompt(id_or_slug) when is_binary(id_or_slug) do
-    if UUIDUtils.valid?(id_or_slug) do
+    if textual_uuid?(id_or_slug) do
       # It's a UUID
       case get_prompt(id_or_slug) do
-        nil -> {:error, "Prompt not found"}
+        nil -> {:error, {:prompt_error, :not_found}}
         prompt -> {:ok, prompt}
       end
     else
       # It's a slug
       case get_prompt_by_slug(id_or_slug) do
-        nil -> {:error, "Prompt not found"}
+        nil -> {:error, {:prompt_error, :not_found}}
         prompt -> {:ok, prompt}
       end
     end
   end
 
-  def resolve_prompt(_), do: {:error, "Invalid prompt identifier"}
+  def resolve_prompt(_), do: {:error, {:prompt_error, :invalid_identifier}}
 
   @doc """
   Renders a prompt by replacing variables with provided values.
@@ -887,10 +1030,10 @@ defmodule PhoenixKitAI do
   def validate_prompt(prompt) do
     cond do
       prompt.content == nil or prompt.content == "" ->
-        {:error, "Prompt has no content"}
+        {:error, {:prompt_error, :empty_content}}
 
       prompt.enabled == false ->
-        {:error, "Prompt is disabled"}
+        {:error, {:prompt_error, :disabled}}
 
       true ->
         {:ok, prompt}
@@ -1013,7 +1156,7 @@ defmodule PhoenixKitAI do
     end
   end
 
-  def validate_prompt_content(_), do: {:error, "Content must be a string"}
+  def validate_prompt_content(_), do: {:error, {:prompt_error, :content_not_string}}
 
   @doc """
   Gets usage statistics for all prompts.
@@ -1072,7 +1215,7 @@ defmodule PhoenixKitAI do
   end
 
   defp build_prompt_uuid_query(id) when is_binary(id) do
-    if UUIDUtils.valid?(id) do
+    if textual_uuid?(id) do
       from(p in Prompt, where: p.uuid == ^id)
     else
       from(p in Prompt, where: false)
@@ -1166,7 +1309,7 @@ defmodule PhoenixKitAI do
   Returns `nil` if the request does not exist.
   """
   def get_request(id) when is_binary(id) do
-    if UUIDUtils.valid?(id) do
+    if textual_uuid?(id) do
       repo().get_by(Request, uuid: id)
     else
       nil
@@ -1432,8 +1575,11 @@ defmodule PhoenixKitAI do
   ## Returns
 
   - `{:ok, response}` - Full API response including usage stats
-  - `{:error, reason}` - Error with reason string
+  - `{:error, reason}` - Error atom or tagged tuple. See
+    `PhoenixKitAI.Errors` for the vocabulary and translation.
   """
+  @spec complete(String.t() | Endpoint.t(), list(map()), keyword()) ::
+          {:ok, map()} | {:error, term()}
   def complete(endpoint_uuid, messages, opts \\ []) do
     with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
          {:ok, _} <- validate_endpoint(endpoint) do
@@ -1518,6 +1664,8 @@ defmodule PhoenixKitAI do
 
   Same as `complete/3`
   """
+  @spec ask(String.t() | Endpoint.t(), String.t(), keyword()) ::
+          {:ok, map()} | {:error, term()}
   def ask(endpoint_uuid, prompt, opts \\ []) when is_binary(prompt) do
     {system, opts} = Keyword.pop(opts, :system)
 
@@ -1563,8 +1711,10 @@ defmodule PhoenixKitAI do
   ## Returns
 
   - `{:ok, response}` - Response with embeddings
-  - `{:error, reason}` - Error with reason
+  - `{:error, reason}` - Error atom or tagged tuple.
   """
+  @spec embed(String.t() | Endpoint.t(), String.t() | list(String.t()), keyword()) ::
+          {:ok, map()} | {:error, term()}
   def embed(endpoint_uuid, input, opts \\ []) do
     with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
          {:ok, _} <- validate_endpoint(endpoint) do
@@ -1614,18 +1764,16 @@ defmodule PhoenixKitAI do
   defp validate_endpoint(endpoint) do
     cond do
       endpoint.model == nil or endpoint.model == "" ->
-        {:error, "Endpoint has no model configured"}
+        {:error, :endpoint_no_model}
 
       PhoenixKit.Integrations.get_credentials(endpoint.provider) == {:error, :deleted} ->
-        {:error,
-         "The integration used by this endpoint has been deleted. Please select a new one in the endpoint settings."}
+        {:error, :integration_deleted}
 
       not PhoenixKit.Integrations.connected?(endpoint.provider) ->
-        {:error,
-         "No integration configured for this endpoint. Set up the API key in Settings → Integrations."}
+        {:error, :integration_not_configured}
 
       endpoint.enabled == false ->
-        {:error, "Endpoint is disabled"}
+        {:error, :endpoint_disabled}
 
       true ->
         {:ok, endpoint}

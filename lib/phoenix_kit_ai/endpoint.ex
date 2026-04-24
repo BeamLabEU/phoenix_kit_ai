@@ -69,6 +69,8 @@ defmodule PhoenixKitAI.Endpoint do
 
   alias PhoenixKit.Utils.Date, as: UtilsDate
 
+  @type t :: %__MODULE__{}
+
   @primary_key {:uuid, UUIDv7, autogenerate: true}
   @valid_providers ~w(openrouter)
 
@@ -195,6 +197,7 @@ defmodule PhoenixKitAI.Endpoint do
     |> validate_penalties()
     |> validate_reasoning()
     |> maybe_set_default_base_url()
+    |> unique_constraint(:name)
   end
 
   @doc """

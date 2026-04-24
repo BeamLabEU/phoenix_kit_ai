@@ -148,11 +148,15 @@ Translate the following text to {{Language}}:
                 navigate={PhoenixKit.Utils.Routes.ai_path() <> "/prompts"}
                 class="btn btn-ghost"
               >
-                Cancel
+                {gettext("Cancel")}
               </.link>
-              <button type="submit" class="btn btn-primary">
+              <button
+                type="submit"
+                class="btn btn-primary"
+                phx-disable-with={gettext("Saving…")}
+              >
                 <.icon name="hero-check" class="w-4 h-4 mr-2" />
-                {if @prompt, do: "Update Prompt", else: "Create Prompt"}
+                {if @prompt, do: gettext("Update Prompt"), else: gettext("Create Prompt")}
               </button>
             </div>
           </.form>

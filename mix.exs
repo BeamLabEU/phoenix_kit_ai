@@ -31,7 +31,7 @@ defmodule PhoenixKitAI.MixProject do
 
   def application do
     [
-      extra_applications: [:logger]
+      extra_applications: [:logger, :phoenix_kit]
     ]
   end
 
@@ -61,7 +61,10 @@ defmodule PhoenixKitAI.MixProject do
 
       # Code quality
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
+
+      # LiveView test rendering
+      {:lazy_html, ">= 0.1.0", only: :test}
     ]
   end
 

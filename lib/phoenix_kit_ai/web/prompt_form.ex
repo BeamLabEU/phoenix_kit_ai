@@ -9,6 +9,7 @@ defmodule PhoenixKitAI.Web.PromptForm do
   use PhoenixKitWeb, :live_view
 
   alias PhoenixKit.Settings
+  alias PhoenixKit.Users.Auth.Scope
   alias PhoenixKit.Utils.Routes
   alias PhoenixKitAI, as: AI
   alias PhoenixKitAI.Prompt
@@ -33,7 +34,7 @@ defmodule PhoenixKitAI.Web.PromptForm do
     else
       {:ok,
        socket
-       |> put_flash(:error, "AI module is not enabled")
+       |> put_flash(:error, gettext("AI module is not enabled"))
        |> push_navigate(to: Routes.path("/admin/modules"))}
     end
   end
@@ -51,7 +52,7 @@ defmodule PhoenixKitAI.Web.PromptForm do
     case AI.get_prompt(id) do
       nil ->
         socket
-        |> put_flash(:error, "Prompt not found")
+        |> put_flash(:error, gettext("Prompt not found"))
         |> push_navigate(to: Routes.ai_path() <> "/prompts")
 
       prompt ->
@@ -102,20 +103,25 @@ defmodule PhoenixKitAI.Web.PromptForm do
   # ===========================================
 
   defp save_prompt(socket, params) do
+    opts = actor_opts(socket)
+
     result =
       if socket.assigns.prompt do
-        AI.update_prompt(socket.assigns.prompt, params)
+        AI.update_prompt(socket.assigns.prompt, params, opts)
       else
-        AI.create_prompt(params)
+        AI.create_prompt(params, opts)
       end
 
     case result do
       {:ok, _prompt} ->
-        action = if socket.assigns.prompt, do: "updated", else: "created"
+        message =
+          if socket.assigns.prompt,
+            do: gettext("Prompt updated successfully"),
+            else: gettext("Prompt created successfully")
 
         {:noreply,
          socket
-         |> put_flash(:info, "Prompt #{action} successfully")
+         |> put_flash(:info, message)
          |> push_navigate(to: Routes.ai_path() <> "/prompts")}
 
       {:error, changeset} ->
@@ -131,5 +137,21 @@ defmodule PhoenixKitAI.Web.PromptForm do
       )
 
       {:noreply, put_flash(socket, :error, gettext("Something went wrong. Please try again."))}
+  end
+
+  defp actor_opts(socket) do
+    role = if admin?(socket), do: "admin", else: "user"
+
+    case socket.assigns[:phoenix_kit_current_user] do
+      %{uuid: uuid} when is_binary(uuid) -> [actor_uuid: uuid, actor_role: role]
+      _ -> [actor_role: role]
+    end
+  end
+
+  defp admin?(socket) do
+    case socket.assigns[:phoenix_kit_current_scope] do
+      nil -> false
+      scope -> Scope.admin?(scope)
+    end
   end
 end
