@@ -32,6 +32,15 @@ defmodule PhoenixKitAI.OpenRouterClient do
   @base_url "https://openrouter.ai/api/v1"
   @timeout 30_000
 
+  # OpenRouter's /models endpoint does not return embedding models, so we ship
+  # a curated list. This table is manually maintained — bump the date when
+  # refreshing, and users can append more via config:
+  #
+  #     config :phoenix_kit_ai, embedding_models: [
+  #       %{"id" => "custom/model", "name" => "Custom", ...}
+  #     ]
+  @embedding_models_last_updated "2026-03-24"
+
   @doc """
   Validates an OpenRouter API key by making a request to the /models endpoint.
 
@@ -172,16 +181,33 @@ defmodule PhoenixKitAI.OpenRouterClient do
   @doc """
   Fetches embedding models from OpenRouter.
 
-  Note: Embedding models are fetched from a hardcoded list as OpenRouter
-  doesn't return them from the /models endpoint. The actual embedding
-  request goes to /api/v1/embeddings.
+  Note: Embedding models are not returned by `/models`, so this function
+  returns a curated list maintained in source (last refreshed
+  `#{@embedding_models_last_updated}`) merged with any user-contributed
+  entries from `config :phoenix_kit_ai, :embedding_models`.
 
   Returns `{:ok, models}` with a list of known embedding models.
   """
   def fetch_embedding_models(_api_key, _opts \\ []) do
+    {:ok, builtin_embedding_models() ++ user_embedding_models()}
+  end
+
+  @doc """
+  Returns the date the built-in embedding model list was last refreshed.
+  """
+  def embedding_models_last_updated, do: @embedding_models_last_updated
+
+  defp user_embedding_models do
+    case Application.get_env(:phoenix_kit_ai, :embedding_models, []) do
+      list when is_list(list) -> list
+      _ -> []
+    end
+  end
+
+  defp builtin_embedding_models do
     # OpenRouter embedding models - these are not returned by /models endpoint
     # They must be used via POST /api/v1/embeddings
-    models = [
+    [
       %{
         "id" => "openai/text-embedding-3-large",
         "name" => "Text Embedding 3 Large",
@@ -255,8 +281,6 @@ defmodule PhoenixKitAI.OpenRouterClient do
         "pricing" => %{"prompt" => 0.00000002, "completion" => 0}
       }
     ]
-
-    {:ok, models}
   end
 
   @doc """

@@ -124,7 +124,12 @@ defmodule PhoenixKitAI.Web.PromptForm do
   rescue
     e ->
       require Logger
-      Logger.error("Prompt save failed: #{Exception.message(e)}")
+
+      Logger.error(
+        "Prompt save failed: " <>
+          Exception.format(:error, e, __STACKTRACE__)
+      )
+
       {:noreply, put_flash(socket, :error, gettext("Something went wrong. Please try again."))}
   end
 end

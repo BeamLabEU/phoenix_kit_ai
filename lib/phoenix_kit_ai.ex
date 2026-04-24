@@ -194,15 +194,26 @@ defmodule PhoenixKitAI do
 
   @doc """
   Gets the AI module configuration with statistics.
+
+  Stat queries are wrapped in a try/rescue so that environments without a
+  live Repo connection (early boot, test cases without sandbox checkout)
+  still get a well-formed map — matching the defensive pattern in
+  `enabled?/0`.
   """
   @impl PhoenixKit.Module
   def get_config do
     %{
       enabled: enabled?(),
-      endpoints_count: count_endpoints(),
-      total_requests: count_requests(),
-      total_tokens: sum_tokens()
+      endpoints_count: safe_count(&count_endpoints/0),
+      total_requests: safe_count(&count_requests/0),
+      total_tokens: safe_count(&sum_tokens/0)
     }
+  end
+
+  defp safe_count(fun) do
+    fun.()
+  rescue
+    _ -> 0
   end
 
   # ===========================================
@@ -1659,11 +1670,21 @@ defmodule PhoenixKitAI do
   # ===========================================
 
   @doc false
-  # Captures full debug context: source, stacktrace, and caller context
+  # Captures full debug context: source, stacktrace, and caller context.
+  #
+  # Memory capture is opt-in via `config :phoenix_kit_ai, capture_request_memory: true`
+  # to avoid bloating JSONB metadata on every request.
   defp capture_caller_info do
-    # Get process info (stacktrace + memory in one call)
-    [{:current_stacktrace, stack}, {:memory, memory}] =
-      Process.info(self(), [:current_stacktrace, :memory])
+    keys =
+      if Application.get_env(:phoenix_kit_ai, :capture_request_memory, false) do
+        [:current_stacktrace, :memory]
+      else
+        [:current_stacktrace]
+      end
+
+    info = Process.info(self(), keys)
+    stack = Keyword.fetch!(info, :current_stacktrace)
+    memory = Keyword.get(info, :memory)
 
     # Format stacktrace for storage
     formatted_stack = format_stacktrace(stack)
@@ -1716,12 +1737,13 @@ defmodule PhoenixKitAI do
     # Get Phoenix request_id from Logger metadata (if in request context)
     logger_meta = Logger.metadata()
 
-    %{
+    base = %{
       request_id: Keyword.get(logger_meta, :request_id),
       node: node() |> Atom.to_string(),
-      pid: self() |> inspect(),
-      memory_bytes: memory
+      pid: self() |> inspect()
     }
+
+    if is_integer(memory), do: Map.put(base, :memory_bytes, memory), else: base
   end
 
   # ===========================================
@@ -1765,7 +1787,6 @@ defmodule PhoenixKitAI do
         messages: normalize_messages(messages),
         response: response_content,
         request_payload: request_payload,
-        raw_response: response,
         # Debug context (source tracking)
         source: source,
         stacktrace: stacktrace,

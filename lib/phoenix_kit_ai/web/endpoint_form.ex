@@ -541,7 +541,12 @@ defmodule PhoenixKitAI.Web.EndpointForm do
   rescue
     e ->
       require Logger
-      Logger.error("Endpoint save failed: #{Exception.message(e)}")
+
+      Logger.error(
+        "Endpoint save failed: " <>
+          Exception.format(:error, e, __STACKTRACE__)
+      )
+
       {:noreply, put_flash(socket, :error, gettext("Something went wrong. Please try again."))}
   end
 

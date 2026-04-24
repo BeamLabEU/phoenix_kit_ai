@@ -10,6 +10,13 @@ defmodule PhoenixKitAI.Completion do
   - `/chat/completions` - Text and vision completions
   - `/embeddings` - Text embeddings
   - `/images/generations` - Image generation (planned)
+
+  ## Logging conventions
+
+  - `Logger.warning` — expected/recoverable external failures (non-2xx HTTP
+    responses, transport errors, rate limits). Callers see a user-facing error.
+  - `Logger.error` — unexpected internal failures (unknown error shapes,
+    parse failures).
   """
 
   require Logger
@@ -100,11 +107,14 @@ defmodule PhoenixKitAI.Completion do
     end
   end
 
-  defp handle_error_status(401, _body), do: {:error, "Invalid API key"}
-  defp handle_error_status(402, _body), do: {:error, "Insufficient credits"}
-  defp handle_error_status(429, _body), do: {:error, "Rate limited"}
+  @doc false
+  # Public for testability. Maps an HTTP status + response body to a
+  # user-facing {:error, reason} tuple.
+  def handle_error_status(401, _body), do: {:error, "Invalid API key"}
+  def handle_error_status(402, _body), do: {:error, "Insufficient credits"}
+  def handle_error_status(429, _body), do: {:error, "Rate limited"}
 
-  defp handle_error_status(status, response_body) do
+  def handle_error_status(status, response_body) do
     error_msg = extract_error_message(response_body) || "API error: #{status}"
     Logger.warning("OpenRouter completion failed: #{status} - #{response_body}")
     {:error, error_msg}
@@ -285,16 +295,19 @@ defmodule PhoenixKitAI.Completion do
         {:error, :timeout}
 
       {:error, %Req.TransportError{reason: reason}} ->
-        Logger.error("HTTP POST failed: #{inspect(reason)}")
+        Logger.warning("HTTP POST transport error: #{inspect(reason)}")
         {:error, reason}
 
       {:error, reason} ->
-        Logger.error("HTTP POST failed: #{inspect(reason)}")
+        Logger.error("HTTP POST failed with unexpected error: #{inspect(reason)}")
         {:error, reason}
     end
   end
 
-  defp extract_error_message(body) do
+  @doc false
+  # Public for testability. Parses an OpenRouter error body and returns
+  # the human-readable message, or nil if the shape is unrecognised.
+  def extract_error_message(body) do
     case Jason.decode(body) do
       {:ok, %{"error" => %{"message" => message}}} -> message
       {:ok, %{"error" => error}} when is_binary(error) -> error
