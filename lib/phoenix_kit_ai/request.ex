@@ -1,4 +1,6 @@
 defmodule PhoenixKitAI.Request do
+  use Gettext, backend: PhoenixKitWeb.Gettext
+
   @moduledoc """
   AI request schema for PhoenixKit AI system.
 
@@ -72,6 +74,9 @@ defmodule PhoenixKitAI.Request do
   alias PhoenixKit.Users.Auth.User
   alias PhoenixKitAI.Endpoint
   alias PhoenixKitAI.Prompt
+
+  @type t :: %__MODULE__{}
+
   @primary_key {:uuid, UUIDv7, autogenerate: true}
   @valid_statuses ~w(success error timeout)
   @valid_request_types ~w(text_completion chat embedding)
@@ -171,12 +176,16 @@ defmodule PhoenixKitAI.Request do
   def valid_request_types, do: @valid_request_types
 
   @doc """
-  Returns a human-readable status label.
+  Returns a human-readable, gettext-translated status label.
+
+  Literal-call clauses are required so `mix gettext.extract` picks the
+  strings up — a `gettext(status)` call over a variable wouldn't make
+  it into the .pot.
   """
-  def status_label("success"), do: "Success"
-  def status_label("error"), do: "Error"
-  def status_label("timeout"), do: "Timeout"
-  def status_label(_), do: "Unknown"
+  def status_label("success"), do: gettext("Success")
+  def status_label("error"), do: gettext("Error")
+  def status_label("timeout"), do: gettext("Timeout")
+  def status_label(_), do: gettext("Unknown")
 
   @doc """
   Returns a CSS class for the status badge.

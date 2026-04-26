@@ -4,29 +4,78 @@ defmodule PhoenixKitAI.ErrorsTest do
   alias PhoenixKitAI.Errors
 
   describe "message/1 — plain atoms" do
-    test "known atoms translate to strings" do
-      atoms = [
-        :endpoint_not_found,
-        :endpoint_disabled,
-        :invalid_endpoint_identifier,
-        :invalid_api_key,
-        :insufficient_credits,
-        :rate_limited,
-        :request_timeout,
-        :invalid_json_response,
-        :no_choices_in_response,
-        :invalid_response_format,
-        :empty_input,
-        :endpoint_no_model,
-        :integration_deleted,
-        :integration_not_configured
-      ]
+    # Pin the EXACT translated string for every atom in the public
+    # error vocabulary. `assert is_binary/1` is the wrong bar — every
+    # branch returns a binary — so a typo in one of the gettext calls
+    # would slip through. A new atom added to `Errors.message/1` MUST
+    # come with a row here.
 
-      for atom <- atoms do
-        result = Errors.message(atom)
-        assert is_binary(result), "expected string for #{atom}, got #{inspect(result)}"
-        assert result != "", "empty message for #{atom}"
-      end
+    test ":endpoint_not_found" do
+      assert Errors.message(:endpoint_not_found) == "Endpoint not found"
+    end
+
+    test ":endpoint_disabled" do
+      assert Errors.message(:endpoint_disabled) == "Endpoint is disabled"
+    end
+
+    test ":invalid_endpoint_identifier" do
+      assert Errors.message(:invalid_endpoint_identifier) == "Invalid endpoint identifier"
+    end
+
+    test ":invalid_api_key" do
+      assert Errors.message(:invalid_api_key) == "Invalid API key"
+    end
+
+    test ":api_key_forbidden" do
+      assert Errors.message(:api_key_forbidden) == "API key forbidden"
+    end
+
+    test ":model_not_found" do
+      assert Errors.message(:model_not_found) == "Model not found"
+    end
+
+    test ":insufficient_credits" do
+      assert Errors.message(:insufficient_credits) == "Insufficient credits"
+    end
+
+    test ":rate_limited" do
+      assert Errors.message(:rate_limited) == "Rate limited"
+    end
+
+    test ":request_timeout" do
+      assert Errors.message(:request_timeout) == "Request timeout"
+    end
+
+    test ":invalid_json_response" do
+      assert Errors.message(:invalid_json_response) == "Invalid JSON response"
+    end
+
+    test ":no_choices_in_response" do
+      assert Errors.message(:no_choices_in_response) == "No choices in response"
+    end
+
+    test ":invalid_response_format" do
+      assert Errors.message(:invalid_response_format) == "Invalid response format"
+    end
+
+    test ":empty_input" do
+      assert Errors.message(:empty_input) == "Input cannot be empty"
+    end
+
+    test ":endpoint_no_model" do
+      assert Errors.message(:endpoint_no_model) == "Endpoint has no model configured"
+    end
+
+    test ":integration_deleted carries the full guidance string" do
+      msg = Errors.message(:integration_deleted)
+      assert msg =~ "integration used by this endpoint has been deleted"
+      assert msg =~ "Please select a new one"
+    end
+
+    test ":integration_not_configured points to Settings → Integrations" do
+      msg = Errors.message(:integration_not_configured)
+      assert msg =~ "No integration configured for this endpoint"
+      assert msg =~ "Settings → Integrations"
     end
   end
 

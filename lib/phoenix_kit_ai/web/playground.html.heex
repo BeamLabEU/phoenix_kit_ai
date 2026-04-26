@@ -217,12 +217,13 @@
               <button
                 type="submit"
                 class="btn btn-primary"
+                phx-disable-with={gettext("Sending…")}
                 disabled={@sending || is_nil(@selected_endpoint_uuid)}
               >
                 <%= if @sending do %>
-                  <span class="loading loading-spinner loading-sm"></span> Sending...
+                  <span class="loading loading-spinner loading-sm"></span> {gettext("Sending…")}
                 <% else %>
-                  <.icon name="hero-paper-airplane" class="w-4 h-4 mr-1" /> Send
+                  <.icon name="hero-paper-airplane" class="w-4 h-4 mr-1" /> {gettext("Send")}
                 <% end %>
               </button>
             </div>

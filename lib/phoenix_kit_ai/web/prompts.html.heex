@@ -52,24 +52,23 @@
       <div class="card bg-base-200 p-8 text-center">
         <div class="flex flex-col items-center gap-4">
           <.icon name="hero-document-text" class="w-16 h-16 text-base-content/30" />
-          <h2 class="text-xl font-semibold">No Prompts Yet</h2>
+          <h2 class="text-xl font-semibold">{gettext("No Prompts Yet")}</h2>
           <p class="text-base-content/70 max-w-md">
-            Create reusable prompt templates with variable substitution.
-            Use <code class="bg-base-300 px-1 rounded">{"{{VariableName}}"}</code>
-            syntax for dynamic content.
+            {gettext("Create reusable prompt templates with variable substitution.")}
+            {gettext("Use the {{VariableName}} syntax for dynamic content.")}
           </p>
           <.link
             navigate={PhoenixKit.Utils.Routes.ai_path() <> "/prompts/new"}
             class="btn btn-primary mt-4"
           >
-            <.icon name="hero-plus" class="w-5 h-5 mr-2" /> Create First Prompt
+            <.icon name="hero-plus" class="w-5 h-5 mr-2" /> {gettext("Create First Prompt")}
           </.link>
         </div>
       </div>
     <% else %>
       <%!-- Sort Controls --%>
       <div class="flex items-center gap-2 mb-4 flex-wrap">
-        <span class="text-sm text-base-content/70">Sort by:</span>
+        <span class="text-sm text-base-content/70">{gettext("Sort by:")}</span>
         <%= for {field, label} <- @sort_options do %>
           <button
             phx-click="sort"
@@ -134,7 +133,7 @@
                         <%= if prompt.last_used_at do %>
                           <.time_ago datetime={prompt.last_used_at} />
                         <% else %>
-                          Never used
+                          {gettext("Never used")}
                         <% end %>
                       </span>
                     </div>
@@ -178,7 +177,8 @@
                   <button
                     phx-click="delete_prompt"
                     phx-value-uuid={prompt.uuid}
-                    data-confirm="Are you sure you want to delete this prompt?"
+                    phx-disable-with={gettext("Deleting…")}
+                    data-confirm={gettext("Are you sure you want to delete this prompt?")}
                     class="btn btn-xs btn-outline btn-error tooltip tooltip-bottom"
                     data-tip={gettext("Delete")}
                   >

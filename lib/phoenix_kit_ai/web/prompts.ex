@@ -20,6 +20,8 @@ defmodule PhoenixKitAI.Web.Prompts do
   use PhoenixKitWeb, :live_view
   use Gettext, backend: PhoenixKitWeb.Gettext
 
+  require Logger
+
   alias PhoenixKit.Settings
   alias PhoenixKit.Users.Auth.Scope
   alias PhoenixKit.Utils.Routes
@@ -200,9 +202,17 @@ defmodule PhoenixKitAI.Web.Prompts do
     {:noreply, reload_prompts(socket)}
   end
 
-  # Catch-all for other PubSub messages
+  # Catch-all for unmatched messages (PubSub from other modules, late
+  # replies after navigation, etc.). Log at :debug per the workspace
+  # sync precedent — never silently swallow a message we didn't expect.
   @impl true
-  def handle_info(_msg, socket), do: {:noreply, socket}
+  def handle_info(msg, socket) do
+    Logger.debug(fn ->
+      "[PhoenixKitAI.Web.Prompts] unhandled handle_info: #{inspect(msg)}"
+    end)
+
+    {:noreply, socket}
+  end
 
   # ===========================================
   # PRIVATE HELPERS

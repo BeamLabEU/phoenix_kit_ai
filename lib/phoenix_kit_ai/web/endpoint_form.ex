@@ -8,6 +8,8 @@ defmodule PhoenixKitAI.Web.EndpointForm do
 
   use PhoenixKitWeb, :live_view
 
+  require Logger
+
   alias PhoenixKit.Integrations
   alias PhoenixKit.Integrations.Events, as: IntegrationEvents
   alias PhoenixKit.Settings
@@ -523,8 +525,6 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     end
   rescue
     e ->
-      require Logger
-
       Logger.error(
         "Endpoint save failed: " <>
           Exception.format(:error, e, __STACKTRACE__)
@@ -662,6 +662,18 @@ defmodule PhoenixKitAI.Web.EndpointForm do
 
         {:noreply, socket}
     end
+  end
+
+  # Catch-all for unmatched messages (PubSub from other modules, late
+  # replies after navigation, etc.). Log at :debug per the workspace
+  # sync precedent — never silently swallow a message we didn't expect.
+  @impl true
+  def handle_info(msg, socket) do
+    Logger.debug(fn ->
+      "[PhoenixKitAI.Web.EndpointForm] unhandled handle_info: #{inspect(msg)}"
+    end)
+
+    {:noreply, socket}
   end
 
   # Private helpers

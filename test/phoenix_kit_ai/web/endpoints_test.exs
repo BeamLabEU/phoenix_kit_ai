@@ -55,5 +55,30 @@ defmodule PhoenixKitAI.Web.EndpointsTest do
 
       assert_activity_logged("endpoint.deleted", resource_uuid: endpoint.uuid)
     end
+
+    test "delete button declares phx-disable-with so a slow delete can't be double-clicked",
+         %{conn: conn} do
+      _endpoint = fixture_endpoint()
+
+      {:ok, _view, html} = live(conn, "/en/admin/ai/endpoints")
+
+      # Pin the C5 fix from the 2026-04-26 re-validation pass — matches
+      # the canonical attribute regex used elsewhere in the suite.
+      assert html =~ ~r/phx-click="delete_endpoint"[^>]+phx-disable-with/
+    end
+  end
+
+  describe "handle_info catch-all" do
+    test "ignores unrelated PubSub messages without crashing", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints")
+
+      send(view.pid, :unknown_msg_from_another_module)
+      send(view.pid, {:something_we_dont_care_about, %{}, %{}})
+
+      # If the catch-all clause is missing, send/2 above plus the
+      # `render/1` round-trip would surface a `FunctionClauseError`.
+      # `render/1` returning a binary is the proof we want.
+      assert is_binary(render(view))
+    end
   end
 end
