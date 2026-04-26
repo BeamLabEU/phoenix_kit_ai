@@ -473,11 +473,18 @@ defmodule PhoenixKitAI.OpenRouterClient do
     # Convert headers list to map format for Req
     headers_map = Map.new(headers)
 
-    case Req.get(url,
-           headers: headers_map,
-           receive_timeout: @timeout,
-           connect_options: [timeout: @timeout]
-         ) do
+    base_opts = [
+      headers: headers_map,
+      receive_timeout: @timeout,
+      connect_options: [timeout: @timeout]
+    ]
+
+    # `:req_options` is empty in production. Tests opt in via
+    # `Application.put_env(:phoenix_kit_ai, :req_options, plug: {Req.Test, Stub})`
+    # to route through `Req.Test` stubs without external HTTP traffic.
+    opts = base_opts ++ Application.get_env(:phoenix_kit_ai, :req_options, [])
+
+    case Req.get(url, opts) do
       {:ok, %Req.Response{status: status, body: body}} ->
         # Req automatically decodes JSON, so encode it back to string for consistency
         body_string =
