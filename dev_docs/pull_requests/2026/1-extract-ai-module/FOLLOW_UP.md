@@ -240,9 +240,106 @@ gaps the current C-step checklist surfaced and the fixes applied.
   exception and returns `false`. Suppressing the log lives in core,
   out of scope for this module.
 
+## Fixed (Batch 3 — fix-everything pass 2026-04-26)
+
+User said "FIX EVERYTHING" — closing every Batch 2 deferred item in
+the same re-run. Items below are the ones Batch 2 explicitly skipped
+plus one new C12 finding the deeper pass surfaced.
+
+- ~~**SSRF on `endpoint.base_url`**~~ (security HIGH) — added
+  `validate_base_url/1` to the `Endpoint.changeset/2` pipeline at
+  `lib/phoenix_kit_ai/endpoint.ex`. Rejects non-`http(s)` schemes
+  (`file://`, `gopher://`, `javascript:`, …), missing host, the IPv4
+  ranges 0/8 / 10/8 / 127/8 / 169.254/16 / 172.16/12 / 192.168/16,
+  IPv6 loopback `::1`, IPv6 link-local `fe80::/10`, IPv6
+  unique-local `fc00::/7`, and any `*.local` mDNS hostname. Opt-in
+  bypass via `config :phoenix_kit_ai, :allow_internal_endpoint_urls,
+  true` for self-hosted Ollama / intranet inference deployments —
+  scheme guard still fires even with the override. Pinned by 12 new
+  tests in `test/phoenix_kit_ai/endpoint_test.exs` covering each
+  rejection + boundary cases (172.15 / 172.32 stay public) + the
+  config-bypass round-trip + a public-hostname sanity batch.
+- ~~**Bulk `@spec` backfill on the public API**~~ (doc) — added
+  `@spec` declarations on:
+  - `phoenix_kit_ai.ex` — every `PhoenixKit.Module` callback
+    (`module_key`, `module_name`, `permission_metadata`, `admin_tabs`,
+    `css_sources`, `required_integrations`, `version`, `route_module`,
+    `enabled?`, `enable_system`, `disable_system`, `get_config`),
+    every topic helper (`endpoints_topic`, `prompts_topic`,
+    `requests_topic`), every listing + count + change + mark
+    function (`list_endpoints`, `count_endpoints`,
+    `count_enabled_endpoints`, `change_endpoint`,
+    `mark_endpoint_validated`, `list_prompts`, `list_enabled_prompts`,
+    `count_prompts`, `count_enabled_prompts`, `change_prompt`,
+    `record_prompt_usage`, `count_requests`, `sum_tokens`), every
+    prompt CRUD-shape helper (`get_prompt!`, `get_prompt`,
+    `get_prompt_by_slug`, `enable_prompt`, `disable_prompt`,
+    `duplicate_prompt`). 24 specs total.
+  - `request.ex` — `valid_statuses`, `valid_request_types`,
+    `status_label`, `status_color`, `format_latency`, `format_tokens`,
+    `format_cost`. 7 specs total.
+  - Got an `unknown_type PhoenixKit.Module.Tab.t/0` from dialyzer on
+    the first `admin_tabs` spec — the alias is
+    `PhoenixKit.Dashboard.Tab`, not `PhoenixKit.Module.Tab`; corrected.
+- ~~**Component refactor: raw HTML inputs → core `<.input>` /
+  `<.select>` / `<.textarea>`**~~ (UX) —
+  - `lib/phoenix_kit_ai/web/prompt_form.html.heex` — full rewrite.
+    Name, Slug, Description, System Prompt, Content all use core
+    components. Errors plumbed via
+    `Enum.map(@form[:x].errors, &PhoenixKitWeb.Components.Core.Input.translate_error/1)`
+    on textarea/select calls (those components don't auto-extract
+    errors from the FormField like `<.input>` does — discrepancy in
+    core). Help-section copy + cancel/submit buttons gettext-wrapped.
+  - `lib/phoenix_kit_ai/web/endpoint_form.html.heex` — Basic Info
+    Name + Description swapped to `<.input>` / `<.textarea>`;
+    Provider select swapped to `<.select>`; Reasoning Effort and
+    Reasoning Max Tokens swapped to `<.select>` / `<.input>`. The
+    bespoke provider/model picker grids and the dynamic
+    `<.param_input>` parameter grid stay raw — they have runtime-
+    constructed field shapes that `%FormField{}` can't model
+    cleanly.
+- ~~**LV edge-case tests**~~ (test depth) —
+  - `test/phoenix_kit_ai/web/endpoint_form_test.exs` — 4 new tests:
+    Unicode name + emoji round-trips through changeset + DB; SQL
+    metacharacters in name (`'; DROP TABLE …; --`) round-trip
+    verbatim (Ecto's parameterised path makes injection a non-issue);
+    name >100 chars rejected with the expected length error; empty
+    name on the validate event renders an inline error (proves
+    `:action = :validate` is set so `<.input>` gates on it).
+  - `test/phoenix_kit_ai/web/prompt_form_test.exs` — 4 new tests:
+    Unicode name + content round-trip; SQL metacharacters in
+    content; >10k-char content accepted (no length cap on content);
+    empty content on validate event renders inline error.
+
+### New finding caught by the deeper Batch 3 pass
+
+- **`PhoenixKit.Module.Tab` vs `PhoenixKit.Dashboard.Tab`** (LOW) —
+  The `admin_tabs/0` spec initially used the wrong module name; the
+  `Tab` struct lives at `PhoenixKit.Dashboard.Tab`, not
+  `PhoenixKit.Module.Tab`. Dialyzer caught it on the first run.
+  Fixed before commit.
+
+## Files touched (Batch 3)
+
+| File | Change |
+|------|--------|
+| `lib/phoenix_kit_ai/endpoint.ex` | SSRF guard: `validate_base_url/1` + `internal_host?/1` + IPv4/IPv6 internal-IP clauses + `allow_internal_endpoint_urls` opt-in |
+| `lib/phoenix_kit_ai.ex` | 24 `@spec` declarations on public API + corrected `admin_tabs/0` Tab type |
+| `lib/phoenix_kit_ai/request.ex` | 7 `@spec` declarations on public helpers |
+| `lib/phoenix_kit_ai/web/prompt_form.html.heex` | Full refactor → `<.input>` / `<.textarea>`; gettext on help + buttons |
+| `lib/phoenix_kit_ai/web/endpoint_form.html.heex` | Basic Info + Provider + Reasoning fields → `<.input>` / `<.select>` / `<.textarea>` |
+| `test/phoenix_kit_ai/endpoint_test.exs` | 12 SSRF guard tests (each reject + bypass + public-host sanity) |
+| `test/phoenix_kit_ai/web/endpoint_form_test.exs` | 4 edge-case tests (Unicode, SQL meta, length, empty-validate) |
+| `test/phoenix_kit_ai/web/prompt_form_test.exs` | 4 edge-case tests (Unicode, SQL meta, long content, empty-validate) |
+
+## Verification (Batch 3)
+
+- `mix precommit` ✓ (compile + format + credo --strict + dialyzer
+  0 errors after fixing the `Tab` alias)
+- `mix test` — 223 tests, 0 failures (was 201 after Batch 2; +22
+  from SSRF + edge-case suites)
+- `for i in 1..10; do mix test --seed $i; done` — 10/10 stable
+
 ## Open
 
-None from this re-validation. Two items deliberately surfaced for
-Max's scheduling: SSRF on `endpoint.base_url` (HIGH; needs a
-dedicated hardening PR) and the bulk `@spec` backfill (LOW; doc
-pass).
+None. Every item Batch 2 deferred is closed in Batch 3.
