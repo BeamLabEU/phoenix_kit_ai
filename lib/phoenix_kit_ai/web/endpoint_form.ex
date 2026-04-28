@@ -176,7 +176,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     {active, connected} =
       case connections do
         [%{uuid: uuid}] -> {uuid, Integrations.connected?(uuid)}
-        _ -> {"openrouter", false}
+        _ -> {nil, false}
       end
 
     socket =
@@ -204,15 +204,31 @@ defmodule PhoenixKitAI.Web.EndpointForm do
 
       endpoint ->
         changeset = AI.change_endpoint(endpoint)
-        provider_key = endpoint.provider || "openrouter"
-        connected = Integrations.connected?(provider_key)
+        connections = socket.assigns.openrouter_connections
+
+        # Only treat the saved provider as the active connection if it matches
+        # an existing integration UUID. Otherwise leave it nil so the picker
+        # shows either the available connections or the empty state.
+        active =
+          cond do
+            endpoint.provider && Enum.any?(connections, &(&1.uuid == endpoint.provider)) ->
+              endpoint.provider
+
+            match?([_], connections) ->
+              hd(connections).uuid
+
+            true ->
+              nil
+          end
+
+        connected = active && Integrations.connected?(active)
 
         socket =
           socket
           |> assign(:page_title, "Edit AI Endpoint")
           |> assign(:endpoint, endpoint)
           |> assign(:form, to_form(changeset))
-          |> assign(:active_connection, provider_key)
+          |> assign(:active_connection, active)
           |> assign(:integration_connected, connected)
 
         # Load models if integration is connected
@@ -445,12 +461,12 @@ defmodule PhoenixKitAI.Web.EndpointForm do
         length(connections) == 1 ->
           hd(connections).uuid
 
-        # Fallback
+        # No valid selection — leave nil so picker shows empty state
         true ->
-          current_active || "openrouter"
+          nil
       end
 
-    connected = Integrations.connected?(active)
+    connected = active && Integrations.connected?(active)
 
     socket
     |> assign(:openrouter_connections, connections)
