@@ -230,11 +230,22 @@ defmodule PhoenixKitAI.CompletionCoverageTest do
       stub_transport_error(:nxdomain)
       ep = endpoint_fixture()
 
-      # Production code path is exercised; a failed-request row may or
-      # may not land depending on whether the changeset accepts the
-      # tuple-shaped reason as `error_message`.
       assert {:error, {:connection_error, :nxdomain}} =
                PhoenixKitAI.complete(ep.uuid, [%{role: "user", content: "hi"}])
+
+      # Failed-request row must land. error_message is a :string column,
+      # so the tuple-shaped reason gets rendered via Errors.message/1
+      # while the original shape is kept in metadata.error_reason.
+      requests = PhoenixKitAI.list_requests() |> elem(0)
+
+      assert %{
+               status: "error",
+               error_message: error_message,
+               metadata: %{"error_reason" => "{:connection_error, :nxdomain}"}
+             } = Enum.find(requests, &(&1.endpoint_uuid == ep.uuid))
+
+      assert is_binary(error_message)
+      assert error_message =~ "Connection error"
     end
 
     test "rejects an unknown endpoint with :endpoint_not_found" do

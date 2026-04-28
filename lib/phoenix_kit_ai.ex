@@ -60,6 +60,20 @@ defmodule PhoenixKitAI do
 
       # Extract the response text
       {:ok, text} = PhoenixKitAI.extract_content(response)
+
+  ## Configuration
+
+      # Persist message + response content in request metadata (default: true).
+      # Disable for deployments with PII / data-retention obligations — token
+      # counts, latency, model, and cost are still recorded.
+      config :phoenix_kit_ai, capture_request_content: false
+
+      # Capture process memory in request caller_context (default: false).
+      config :phoenix_kit_ai, capture_request_memory: true
+
+      # Allow endpoint base_url to point at private/loopback IPs (default: false).
+      # Required for self-hosted Ollama / intranet inference.
+      config :phoenix_kit_ai, allow_internal_endpoint_urls: true
   """
 
   use PhoenixKit.Module
@@ -694,14 +708,24 @@ defmodule PhoenixKitAI do
           {:ok, Endpoint.t()} | {:error, Ecto.Changeset.t()}
   def update_endpoint(%Endpoint{} = endpoint, attrs, opts \\ []) do
     was_enabled = endpoint.enabled
+    changeset = Endpoint.changeset(endpoint, attrs)
+    # Skip the activity row when the update is a no-op (no field actually
+    # changed). The toggle log keeps its own guard so an enable/disable
+    # via a bare `%{enabled: x}` still attributes correctly.
+    has_changes = changeset.changes != %{}
 
-    endpoint
-    |> Endpoint.changeset(attrs)
+    changeset
     |> repo().update()
     |> broadcast_endpoint_change(:endpoint_updated)
-    |> log_endpoint_activity("endpoint.updated", opts)
+    |> maybe_log_endpoint_update(has_changes, opts)
     |> maybe_log_endpoint_toggle(was_enabled, opts)
   end
+
+  defp maybe_log_endpoint_update({:ok, _} = result, true, opts) do
+    log_endpoint_activity(result, "endpoint.updated", opts)
+  end
+
+  defp maybe_log_endpoint_update(result, _has_changes, _opts), do: result
 
   @doc """
   Deletes an AI endpoint.
@@ -889,14 +913,21 @@ defmodule PhoenixKitAI do
           {:ok, Prompt.t()} | {:error, Ecto.Changeset.t()}
   def update_prompt(%Prompt{} = prompt, attrs, opts \\ []) do
     was_enabled = prompt.enabled
+    changeset = Prompt.changeset(prompt, attrs)
+    has_changes = changeset.changes != %{}
 
-    prompt
-    |> Prompt.changeset(attrs)
+    changeset
     |> repo().update()
     |> broadcast_prompt_change(:prompt_updated)
-    |> log_prompt_activity("prompt.updated", opts)
+    |> maybe_log_prompt_update(has_changes, opts)
     |> maybe_log_prompt_toggle(was_enabled, opts)
   end
+
+  defp maybe_log_prompt_update({:ok, _} = result, true, opts) do
+    log_prompt_activity(result, "prompt.updated", opts)
+  end
+
+  defp maybe_log_prompt_update(result, _has_changes, _opts), do: result
 
   @doc """
   Deletes an AI prompt.
@@ -1956,13 +1987,40 @@ defmodule PhoenixKitAI do
         _ -> nil
       end
 
-    # Build the request payload we sent (for debugging)
-    request_payload = %{
-      model: endpoint.model,
-      messages: normalize_messages(messages),
+    # User-content persistence is opt-out. Default `true` preserves the
+    # debugging shape we've shipped so far; deployments with PII or
+    # data-retention obligations can flip it off via
+    # `config :phoenix_kit_ai, capture_request_content: false`. Token
+    # counts, latency, model, and cost are always recorded.
+    capture_content = capture_request_content?()
+    normalized = if capture_content, do: normalize_messages(messages), else: nil
+
+    base_metadata = %{
       temperature: endpoint.temperature,
-      max_tokens: endpoint.max_tokens
+      max_tokens: endpoint.max_tokens,
+      # Debug context (source tracking)
+      source: source,
+      stacktrace: stacktrace,
+      caller_context: caller_context
     }
+
+    metadata =
+      if capture_content do
+        request_payload = %{
+          model: endpoint.model,
+          messages: normalized,
+          temperature: endpoint.temperature,
+          max_tokens: endpoint.max_tokens
+        }
+
+        Map.merge(base_metadata, %{
+          messages: normalized,
+          response: response_content,
+          request_payload: request_payload
+        })
+      else
+        Map.put(base_metadata, :content_redacted, true)
+      end
 
     create_request(%{
       endpoint_uuid: endpoint.uuid,
@@ -1977,17 +2035,7 @@ defmodule PhoenixKitAI do
       cost_cents: usage.cost_cents,
       latency_ms: response["latency_ms"],
       status: "success",
-      metadata: %{
-        temperature: endpoint.temperature,
-        max_tokens: endpoint.max_tokens,
-        messages: normalize_messages(messages),
-        response: response_content,
-        request_payload: request_payload,
-        # Debug context (source tracking)
-        source: source,
-        stacktrace: stacktrace,
-        caller_context: caller_context
-      }
+      metadata: metadata
     })
   end
 
@@ -2000,6 +2048,21 @@ defmodule PhoenixKitAI do
          caller_context,
          prompt_info
        ) do
+    capture_content = capture_request_content?()
+
+    metadata =
+      %{
+        # Original reason atom/tuple — preserved alongside the
+        # human-readable error_message so callers can still filter on
+        # the machine-readable shape.
+        error_reason: inspect(reason),
+        # Debug context (source tracking)
+        source: source,
+        stacktrace: stacktrace,
+        caller_context: caller_context
+      }
+      |> maybe_add_content(:messages, capture_content, fn -> normalize_messages(messages) end)
+
     create_request(%{
       endpoint_uuid: endpoint.uuid,
       endpoint_name: endpoint.name,
@@ -2008,15 +2071,27 @@ defmodule PhoenixKitAI do
       model: endpoint.model,
       request_type: "chat",
       status: "error",
-      error_message: reason,
-      metadata: %{
-        messages: normalize_messages(messages),
-        # Debug context (source tracking)
-        source: source,
-        stacktrace: stacktrace,
-        caller_context: caller_context
-      }
+      error_message: error_reason_to_string(reason),
+      metadata: metadata
     })
+  end
+
+  defp maybe_add_content(metadata, _key, false, _build),
+    do: Map.put(metadata, :content_redacted, true)
+
+  defp maybe_add_content(metadata, key, true, build), do: Map.put(metadata, key, build.())
+
+  # Render a `{:error, reason}` value into a string suitable for the
+  # `error_message` :string column. `Errors.message/1` is total — atoms,
+  # tagged tuples, and strings all collapse to a translated string.
+  defp error_reason_to_string(reason), do: PhoenixKitAI.Errors.message(reason)
+
+  # Whether to persist user/assistant message content to request metadata.
+  # Defaults to `true` for parity with the shipped behaviour. Deployments
+  # with retention or PII concerns set
+  # `config :phoenix_kit_ai, capture_request_content: false`.
+  defp capture_request_content? do
+    Application.get_env(:phoenix_kit_ai, :capture_request_content, true)
   end
 
   # Normalize messages to ensure consistent format for storage
@@ -2061,8 +2136,9 @@ defmodule PhoenixKitAI do
       model: endpoint.model,
       request_type: "embedding",
       status: "error",
-      error_message: reason,
+      error_message: error_reason_to_string(reason),
       metadata: %{
+        error_reason: inspect(reason),
         # Debug context (source tracking)
         source: source,
         stacktrace: stacktrace,

@@ -196,8 +196,15 @@ defmodule PhoenixKitAI.OpenRouterClient do
 
   defp user_embedding_models do
     case Application.get_env(:phoenix_kit_ai, :embedding_models, []) do
-      list when is_list(list) -> list
-      _ -> []
+      list when is_list(list) ->
+        list
+
+      other ->
+        Logger.warning(
+          "[PhoenixKitAI] :embedding_models config must be a list, got #{inspect(other)} — ignoring"
+        )
+
+        []
     end
   end
 
@@ -381,14 +388,28 @@ defmodule PhoenixKitAI.OpenRouterClient do
     end
   end
 
+  # Warn at most once per endpoint per VM. The legacy fallback path runs
+  # on every chat completion, and a per-request warning floods logs for
+  # endpoints that haven't migrated to Integrations yet. `:persistent_term`
+  # gives us O(1) check + write and survives across processes.
   defp warn_legacy_api_key(%{uuid: uuid, name: name, api_key: key})
        when is_binary(key) and key != "" do
-    Logger.warning(
-      "[PhoenixKitAI] endpoint #{inspect(name)} (#{uuid}) is using the " <>
-        "deprecated endpoint.api_key field. Migrate it to a " <>
-        "PhoenixKit.Integrations connection; the api_key column will be " <>
-        "removed in a future major version."
-    )
+    key_term = {__MODULE__, :legacy_warned, uuid}
+
+    case :persistent_term.get(key_term, :unwarned) do
+      :warned ->
+        :ok
+
+      :unwarned ->
+        :persistent_term.put(key_term, :warned)
+
+        Logger.warning(
+          "[PhoenixKitAI] endpoint #{inspect(name)} (#{uuid}) is using the " <>
+            "deprecated endpoint.api_key field. Migrate it to a " <>
+            "PhoenixKit.Integrations connection; the api_key column will be " <>
+            "removed in a future major version."
+        )
+    end
   end
 
   defp warn_legacy_api_key(_), do: :ok

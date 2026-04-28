@@ -450,8 +450,13 @@ defmodule PhoenixKitAI.Endpoint do
   # mitigated here (would require resolution at request time, which is
   # racy). The acute threat we're guarding is the literal IP shape
   # (cloud-metadata is always `169.254.169.254` literal).
+  #
+  # Strips a single trailing dot (FQDN form): `127.0.0.1.` is the same
+  # loopback host to the OS resolver, so it must not bypass the guard.
   defp internal_host?(host) when is_binary(host) do
-    case :inet.parse_address(to_charlist(host)) do
+    normalized = String.trim_trailing(host, ".")
+
+    case :inet.parse_address(to_charlist(normalized)) do
       {:ok, ip} -> internal_ip?(ip)
       _ -> false
     end
@@ -464,11 +469,26 @@ defmodule PhoenixKitAI.Endpoint do
   defp internal_ip?({169, 254, _, _}), do: true
   defp internal_ip?({172, b, _, _}) when b in 16..31, do: true
   defp internal_ip?({192, 168, _, _}), do: true
+  # CGNAT / shared address space (RFC 6598). Used by ISPs and on-prem
+  # Kubernetes pod networks; not internet-routable.
+  defp internal_ip?({100, b, _, _}) when b in 64..127, do: true
   # IPv6 — loopback `::1`, unspecified `::`, link-local `fe80::/10`,
   # unique-local `fc00::/7`.
   defp internal_ip?({0, 0, 0, 0, 0, 0, 0, 0}), do: true
   defp internal_ip?({0, 0, 0, 0, 0, 0, 0, 1}), do: true
   defp internal_ip?({a, _, _, _, _, _, _, _}) when a in 0xFC00..0xFDFF, do: true
   defp internal_ip?({a, _, _, _, _, _, _, _}) when a in 0xFE80..0xFEBF, do: true
+  # IPv4-mapped IPv6 (`::ffff:a.b.c.d`). Without this clause an attacker
+  # could wrap any IPv4 restriction — `::ffff:127.0.0.1` and
+  # `::ffff:169.254.169.254` were both bypasses before. Recurse against
+  # the embedded IPv4 to keep the guard list authoritative.
+  defp internal_ip?({0, 0, 0, 0, 0, 0xFFFF, hi, lo}) do
+    a = div(hi, 256)
+    b = rem(hi, 256)
+    c = div(lo, 256)
+    d = rem(lo, 256)
+    internal_ip?({a, b, c, d})
+  end
+
   defp internal_ip?(_), do: false
 end

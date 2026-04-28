@@ -313,6 +313,49 @@ defmodule PhoenixKitAI.EndpointTest do
         assert changeset.valid?, "expected #{url} to pass"
       end
     end
+
+    test "IPv4-mapped IPv6 addresses do not bypass the IPv4 guard" do
+      # Without the {0,0,0,0,0,0xFFFF,_,_} clause, these wrap loopback
+      # and AWS metadata respectively and slip through the v4 checks.
+      for url <- [
+            "http://[::ffff:127.0.0.1]/",
+            "http://[::ffff:169.254.169.254]/",
+            "http://[::ffff:10.0.0.1]/",
+            "http://[::ffff:192.168.1.1]/"
+          ] do
+        changeset = ssrf_changeset(url)
+        refute changeset.valid?, "expected #{url} to be rejected"
+
+        assert errors_on(changeset)[:base_url]
+               |> Enum.any?(&(&1 =~ "private/loopback/link-local"))
+      end
+    end
+
+    test "CGNAT range 100.64.0.0/10 is rejected" do
+      for url <- [
+            "http://100.64.0.1/",
+            "http://100.127.255.254/"
+          ] do
+        changeset = ssrf_changeset(url)
+        refute changeset.valid?, "expected #{url} to be rejected"
+      end
+
+      # 100.63.x and 100.128.x are public — boundary checks.
+      for url <- ["http://100.63.255.254/", "http://100.128.0.1/"] do
+        changeset = ssrf_changeset(url)
+        assert changeset.valid?, "expected #{url} to pass (outside CGNAT range)"
+      end
+    end
+
+    test "trailing-dot loopback host is rejected" do
+      # `127.0.0.1.` is the FQDN form of loopback. The OS resolver
+      # accepts it; without normalization it slips past parse_address.
+      changeset = ssrf_changeset("http://127.0.0.1./")
+      refute changeset.valid?
+
+      assert errors_on(changeset)[:base_url]
+             |> Enum.any?(&(&1 =~ "private/loopback/link-local"))
+    end
   end
 
   defp ssrf_changeset(url) do
