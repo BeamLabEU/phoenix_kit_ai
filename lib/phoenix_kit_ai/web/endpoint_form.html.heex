@@ -17,37 +17,27 @@
         <%!-- Basic Info Card --%>
         <div class="card bg-base-100 shadow-lg">
           <div class="card-body">
-            <h2 class="card-title text-lg">Basic Information</h2>
+            <h2 class="card-title text-lg">{gettext("Basic Information")}</h2>
 
             <div class="space-y-4 mt-4">
-              <div>
-                <label class="label">
-                  <span class="label-text font-medium">Name *</span>
-                </label>
-                <input
-                  type="text"
-                  name="endpoint[name]"
-                  value={@form.params["name"] || (@endpoint && @endpoint.name) || ""}
-                  class={["input input-bordered w-full", @form.errors[:name] && "input-error"]}
-                  placeholder="e.g., Claude Fast"
-                  required
-                />
-                <%= if @form.errors[:name] do %>
-                  <p class="text-error text-sm mt-1">{translate_error(@form.errors[:name])}</p>
-                <% end %>
-              </div>
+              <.input
+                field={@form[:name]}
+                type="text"
+                label={gettext("Name") <> " *"}
+                placeholder={gettext("e.g., Claude Fast")}
+                required
+              />
 
-              <div>
-                <label class="label">
-                  <span class="label-text font-medium">Description</span>
-                </label>
-                <textarea
-                  name="endpoint[description]"
-                  class="textarea textarea-bordered w-full"
-                  placeholder="Optional description of this endpoint's purpose"
-                  rows="2"
-                >{@form.params["description"] || (@endpoint && @endpoint.description) || ""}</textarea>
-              </div>
+              <.textarea
+                field={@form[:description]}
+                errors={
+                  Enum.map(@form[:description].errors,
+                    &PhoenixKitWeb.Components.Core.Input.translate_error/1)
+                }
+                label={gettext("Description")}
+                placeholder={gettext("Optional description of this endpoint's purpose")}
+                rows="2"
+              />
             </div>
           </div>
         </div>
@@ -58,26 +48,11 @@
             <h2 class="card-title text-lg">Provider Configuration</h2>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-              <div class="form-control">
-                <label class="label">
-                  <span class="label-text font-medium">Provider</span>
-                </label>
-                <label class="select">
-                  <select name="endpoint[provider]">
-                    <%= for {label, value} <- Endpoint.provider_options() do %>
-                      <option
-                        value={value}
-                        selected={
-                          (@form.params["provider"] || (@endpoint && @endpoint.provider) ||
-                             "openrouter") == value
-                        }
-                      >
-                        {label}
-                      </option>
-                    <% end %>
-                  </select>
-                </label>
-              </div>
+              <.select
+                field={@form[:provider]}
+                label={gettext("Provider")}
+                options={Endpoint.provider_options()}
+              />
             </div>
 
             <div class="mt-4">
@@ -493,47 +468,25 @@
                   <div class="border-t border-base-300 mt-3 pt-3">
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <%!-- Reasoning Effort --%>
-                      <div class="form-control">
-                        <label class="label py-1">
-                          <span class="label-text text-sm">Effort Level</span>
-                        </label>
-                        <label class="select select-sm">
-                          <select name="endpoint[reasoning_effort]">
-                            <option value="">Default (medium)</option>
-                            <%= for {label, value} <- PhoenixKitAI.Endpoint.reasoning_effort_options() do %>
-                              <option
-                                value={value}
-                                selected={
-                                  @form.params["reasoning_effort"] == value ||
-                                    (@endpoint && @endpoint.reasoning_effort == value)
-                                }
-                              >
-                                {label}
-                              </option>
-                            <% end %>
-                          </select>
-                        </label>
-                      </div>
+                      <.select
+                        field={@form[:reasoning_effort]}
+                        label={gettext("Effort Level")}
+                        prompt={gettext("Default (medium)")}
+                        options={PhoenixKitAI.Endpoint.reasoning_effort_options()}
+                        class="select-sm"
+                      />
 
                       <%!-- Reasoning Max Tokens --%>
-                      <div class="form-control">
-                        <label class="label py-1">
-                          <span class="label-text text-sm">Token Limit</span>
-                        </label>
-                        <input
-                          type="number"
-                          name="endpoint[reasoning_max_tokens]"
-                          value={
-                            @form.params["reasoning_max_tokens"] ||
-                              (@endpoint && @endpoint.reasoning_max_tokens) || ""
-                          }
-                          min="1024"
-                          max="32000"
-                          step="1024"
-                          class="input input-bordered input-sm"
-                          placeholder="1024-32000"
-                        />
-                      </div>
+                      <.input
+                        field={@form[:reasoning_max_tokens]}
+                        type="number"
+                        label={gettext("Token Limit")}
+                        min="1024"
+                        max="32000"
+                        step="1024"
+                        class="input-sm"
+                        placeholder="1024-32000"
+                      />
 
                       <%!-- Hide Reasoning Toggle --%>
                       <div class="form-control">
@@ -669,10 +622,14 @@
         <%!-- Actions --%>
         <div class="flex justify-end gap-3">
           <.link navigate={Routes.ai_path()} class="btn btn-ghost">
-            Cancel
+            {gettext("Cancel")}
           </.link>
-          <button type="submit" class="btn btn-primary">
-            {if @endpoint, do: "Update Endpoint", else: "Create Endpoint"}
+          <button
+            type="submit"
+            class="btn btn-primary"
+            phx-disable-with={gettext("Saving…")}
+          >
+            {if @endpoint, do: gettext("Update Endpoint"), else: gettext("Create Endpoint")}
           </button>
         </div>
       </.form>

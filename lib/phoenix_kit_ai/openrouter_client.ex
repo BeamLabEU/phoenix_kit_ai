@@ -16,10 +16,7 @@ defmodule PhoenixKitAI.OpenRouterClient do
   ## Usage Examples
 
       # Validate an API key
-      case PhoenixKitAI.OpenRouterClient.validate_api_key("sk-or-v1-...") do
-        {:ok, %{credits: credits}} -> IO.puts("Valid! Credits: \#{credits}")
-        {:error, reason} -> IO.puts("Invalid: \#{reason}")
-      end
+      {:ok, %{credits: _}} = PhoenixKitAI.OpenRouterClient.validate_api_key("sk-or-v1-...")
 
       # Fetch available models
       {:ok, models} = PhoenixKitAI.OpenRouterClient.fetch_models("sk-or-v1-...")
@@ -31,6 +28,15 @@ defmodule PhoenixKitAI.OpenRouterClient do
 
   @base_url "https://openrouter.ai/api/v1"
   @timeout 30_000
+
+  # OpenRouter's /models endpoint does not return embedding models, so we ship
+  # a curated list. This table is manually maintained — bump the date when
+  # refreshing, and users can append more via config:
+  #
+  #     config :phoenix_kit_ai, embedding_models: [
+  #       %{"id" => "custom/model", "name" => "Custom", ...}
+  #     ]
+  @embedding_models_last_updated "2026-03-24"
 
   @doc """
   Validates an OpenRouter API key by making a request to the /models endpoint.
@@ -55,24 +61,24 @@ defmodule PhoenixKitAI.OpenRouterClient do
             {:ok, %{valid: true}}
 
           {:error, _} ->
-            {:error, "Invalid JSON response"}
+            {:error, :invalid_json_response}
         end
 
-      {:ok, %{status_code: 401, body: body}} ->
-        Logger.warning("OpenRouter 401 response: #{body}")
-        {:error, "Invalid API key"}
+      {:ok, %{status_code: 401}} ->
+        Logger.warning("OpenRouter 401 response during API key validation")
+        {:error, :invalid_api_key}
 
-      {:ok, %{status_code: 403, body: body}} ->
-        Logger.warning("OpenRouter 403 response: #{body}")
-        {:error, "API key forbidden"}
+      {:ok, %{status_code: 403}} ->
+        Logger.warning("OpenRouter 403 response during API key validation")
+        {:error, :api_key_forbidden}
 
-      {:ok, %{status_code: status, body: body}} ->
-        Logger.warning("OpenRouter API key validation failed: #{status} - #{body}")
-        {:error, "API error: #{status}"}
+      {:ok, %{status_code: status}} ->
+        Logger.warning("OpenRouter API key validation failed: #{status}")
+        {:error, {:api_error, status}}
 
       {:error, reason} ->
-        Logger.warning("OpenRouter API key validation error: #{inspect(reason)}")
-        {:error, "Connection error: #{inspect(reason)}"}
+        Logger.warning("OpenRouter API key validation transport error: #{inspect(reason)}")
+        {:error, {:connection_error, reason}}
     end
   end
 
@@ -109,22 +115,22 @@ defmodule PhoenixKitAI.OpenRouterClient do
             {:ok, normalize_models(models, model_type)}
 
           {:ok, _} ->
-            {:error, "Unexpected response format"}
+            {:error, :invalid_response_format}
 
           {:error, _} ->
-            {:error, "Invalid JSON response"}
+            {:error, :invalid_json_response}
         end
 
       {:ok, %{status_code: 401}} ->
-        {:error, "Invalid API key"}
+        {:error, :invalid_api_key}
 
-      {:ok, %{status_code: status, body: body}} ->
-        Logger.warning("OpenRouter models fetch failed: #{status} - #{body}")
-        {:error, "API error: #{status}"}
+      {:ok, %{status_code: status}} ->
+        Logger.warning("OpenRouter models fetch failed: #{status}")
+        {:error, {:api_error, status}}
 
       {:error, reason} ->
-        Logger.warning("OpenRouter models fetch error: #{inspect(reason)}")
-        {:error, "Connection error: #{inspect(reason)}"}
+        Logger.warning("OpenRouter models fetch transport error: #{inspect(reason)}")
+        {:error, {:connection_error, reason}}
     end
   end
 
@@ -172,16 +178,33 @@ defmodule PhoenixKitAI.OpenRouterClient do
   @doc """
   Fetches embedding models from OpenRouter.
 
-  Note: Embedding models are fetched from a hardcoded list as OpenRouter
-  doesn't return them from the /models endpoint. The actual embedding
-  request goes to /api/v1/embeddings.
+  Note: Embedding models are not returned by `/models`, so this function
+  returns a curated list maintained in source (last refreshed
+  `#{@embedding_models_last_updated}`) merged with any user-contributed
+  entries from `config :phoenix_kit_ai, :embedding_models`.
 
   Returns `{:ok, models}` with a list of known embedding models.
   """
   def fetch_embedding_models(_api_key, _opts \\ []) do
+    {:ok, builtin_embedding_models() ++ user_embedding_models()}
+  end
+
+  @doc """
+  Returns the date the built-in embedding model list was last refreshed.
+  """
+  def embedding_models_last_updated, do: @embedding_models_last_updated
+
+  defp user_embedding_models do
+    case Application.get_env(:phoenix_kit_ai, :embedding_models, []) do
+      list when is_list(list) -> list
+      _ -> []
+    end
+  end
+
+  defp builtin_embedding_models do
     # OpenRouter embedding models - these are not returned by /models endpoint
     # They must be used via POST /api/v1/embeddings
-    models = [
+    [
       %{
         "id" => "openai/text-embedding-3-large",
         "name" => "Text Embedding 3 Large",
@@ -255,8 +278,6 @@ defmodule PhoenixKitAI.OpenRouterClient do
         "pricing" => %{"prompt" => 0.00000002, "completion" => 0}
       }
     ]
-
-    {:ok, models}
   end
 
   @doc """
@@ -351,10 +372,26 @@ defmodule PhoenixKitAI.OpenRouterClient do
   defp resolve_api_key(provider, endpoint) do
     # provider is the endpoint's provider field, e.g. "openrouter" or "openrouter:my-key"
     case PhoenixKit.Integrations.get_credentials(provider) do
-      {:ok, %{"api_key" => key}} when is_binary(key) and key != "" -> key
-      _ -> endpoint.api_key
+      {:ok, %{"api_key" => key}} when is_binary(key) and key != "" ->
+        key
+
+      _ ->
+        warn_legacy_api_key(endpoint)
+        endpoint.api_key
     end
   end
+
+  defp warn_legacy_api_key(%{uuid: uuid, name: name, api_key: key})
+       when is_binary(key) and key != "" do
+    Logger.warning(
+      "[PhoenixKitAI] endpoint #{inspect(name)} (#{uuid}) is using the " <>
+        "deprecated endpoint.api_key field. Migrate it to a " <>
+        "PhoenixKit.Integrations connection; the api_key column will be " <>
+        "removed in a future major version."
+    )
+  end
+
+  defp warn_legacy_api_key(_), do: :ok
 
   @doc """
   Returns the base URL for OpenRouter API.
@@ -436,11 +473,18 @@ defmodule PhoenixKitAI.OpenRouterClient do
     # Convert headers list to map format for Req
     headers_map = Map.new(headers)
 
-    case Req.get(url,
-           headers: headers_map,
-           receive_timeout: @timeout,
-           connect_options: [timeout: @timeout]
-         ) do
+    base_opts = [
+      headers: headers_map,
+      receive_timeout: @timeout,
+      connect_options: [timeout: @timeout]
+    ]
+
+    # `:req_options` is empty in production. Tests opt in via
+    # `Application.put_env(:phoenix_kit_ai, :req_options, plug: {Req.Test, Stub})`
+    # to route through `Req.Test` stubs without external HTTP traffic.
+    opts = base_opts ++ Application.get_env(:phoenix_kit_ai, :req_options, [])
+
+    case Req.get(url, opts) do
       {:ok, %Req.Response{status: status, body: body}} ->
         # Req automatically decodes JSON, so encode it back to string for consistency
         body_string =
@@ -530,7 +574,7 @@ defmodule PhoenixKitAI.OpenRouterClient do
          model when not is_nil(model) <- Enum.find(models, fn m -> m.id == model_id end) do
       {:ok, model}
     else
-      nil -> {:error, "Model not found"}
+      nil -> {:error, :model_not_found}
       {:error, reason} -> {:error, reason}
     end
   end

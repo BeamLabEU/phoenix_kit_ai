@@ -66,6 +66,8 @@ defmodule PhoenixKitAI.Prompt do
   alias PhoenixKit.Utils.Date, as: UtilsDate
   alias PhoenixKit.Utils.Slug
 
+  @type t :: %__MODULE__{}
+
   @primary_key {:uuid, UUIDv7, autogenerate: true}
 
   # Regex for extracting variable names from content
@@ -394,11 +396,18 @@ defmodule PhoenixKitAI.Prompt do
 
   def format_variables_for_display(_), do: ""
 
+  # Valid variable name: letter or underscore, followed by letters/digits/underscores.
+  # Matches common templating conventions and disallows leading digits.
+  @valid_variable_name ~r/^[a-zA-Z_][a-zA-Z0-9_]*$/
+
   @doc """
   Checks if content has valid variable syntax.
 
-  Returns `true` if all `{{...}}` patterns contain valid variable names
-  (alphanumeric and underscores only), or if there are no variables.
+  A valid variable name starts with a letter or underscore and contains only
+  letters, digits, and underscores. Leading digits are not allowed.
+
+  Returns `true` if all `{{...}}` patterns contain valid variable names,
+  or if there are no variables.
 
   ## Examples
 
@@ -410,6 +419,9 @@ defmodule PhoenixKitAI.Prompt do
 
       iex> PhoenixKitAI.Prompt.valid_content?("Hello {{User Name}}!")
       false
+
+      iex> PhoenixKitAI.Prompt.valid_content?("Hello {{1st_name}}!")
+      false
   """
   def valid_content?(content) when is_binary(content) do
     # Find all {{...}} patterns including potentially invalid ones
@@ -417,7 +429,7 @@ defmodule PhoenixKitAI.Prompt do
 
     # Check if all captured groups are valid variable names
     Enum.all?(all_patterns, fn [_full, inner] ->
-      Regex.match?(~r/^\w+$/, inner)
+      Regex.match?(@valid_variable_name, inner)
     end)
   end
 
@@ -440,7 +452,7 @@ defmodule PhoenixKitAI.Prompt do
     ~r/\{\{([^}]+)\}\}/
     |> Regex.scan(content)
     |> Enum.map(fn [_full, inner] -> inner end)
-    |> Enum.reject(fn inner -> Regex.match?(~r/^\w+$/, inner) end)
+    |> Enum.reject(fn inner -> Regex.match?(@valid_variable_name, inner) end)
   end
 
   def invalid_variables(_), do: []

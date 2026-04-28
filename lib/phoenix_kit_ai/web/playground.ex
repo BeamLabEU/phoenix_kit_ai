@@ -12,6 +12,8 @@ defmodule PhoenixKitAI.Web.Playground do
   use PhoenixKitWeb, :live_view
   use Gettext, backend: PhoenixKitWeb.Gettext
 
+  require Logger
+
   alias Phoenix.LiveView.JS
   alias PhoenixKit.Settings
   alias PhoenixKit.Utils.Routes
@@ -55,7 +57,7 @@ defmodule PhoenixKitAI.Web.Playground do
     else
       {:ok,
        socket
-       |> put_flash(:error, "AI module is not enabled")
+       |> put_flash(:error, gettext("AI module is not enabled"))
        |> push_navigate(to: Routes.path("/admin/modules"))}
     end
   end
@@ -80,7 +82,7 @@ defmodule PhoenixKitAI.Web.Playground do
     endpoint_uuid = socket.assigns.selected_endpoint_uuid
 
     if is_nil(endpoint_uuid) do
-      {:noreply, put_flash(socket, :error, "Please select an endpoint")}
+      {:noreply, put_flash(socket, :error, gettext("Please select an endpoint"))}
     else
       socket =
         socket
@@ -213,10 +215,22 @@ defmodule PhoenixKitAI.Web.Playground do
 
         {:error, reason} ->
           socket
-          |> assign(:response_error, reason)
+          |> assign(:response_error, PhoenixKitAI.Errors.message(reason))
       end
 
     {:noreply, assign(socket, :sending, false)}
+  end
+
+  # Catch-all for unmatched messages (PubSub from other modules, late
+  # replies after navigation, etc.). Log at :debug per the workspace
+  # sync precedent — never silently swallow a message we didn't expect.
+  @impl true
+  def handle_info(msg, socket) do
+    Logger.debug(fn ->
+      "[PhoenixKitAI.Web.Playground] unhandled handle_info: #{inspect(msg)}"
+    end)
+
+    {:noreply, socket}
   end
 
   # ===========================================
@@ -265,7 +279,7 @@ defmodule PhoenixKitAI.Web.Playground do
   end
 
   defp execute_freeform_request(_endpoint_uuid, "", _system) do
-    {:error, "Please enter a message"}
+    {:error, :empty_input}
   end
 
   defp execute_freeform_request(endpoint_uuid, message, system) do

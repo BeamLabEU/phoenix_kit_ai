@@ -1,25 +1,28 @@
 defmodule PhoenixKitAI.DataCase do
   @moduledoc """
-  This module defines the setup for tests requiring
-  access to the application's data layer.
+  This module defines the setup for tests requiring access to the
+  application's data layer.
 
-  You may define functions here to be used as helpers in
-  your tests.
+  Tests using this case are **automatically tagged `:integration`** so
+  they are excluded when the test database is unavailable (the tag is
+  filtered out in `test/test_helper.exs`).
 
-  Finally, if the test case interacts with the database,
-  we enable the SQL sandbox, so changes done to the database
-  are reverted at the end of every test.
+  The SQL sandbox is enabled so changes done to the database are
+  reverted at the end of every test.
   """
 
   use ExUnit.CaseTemplate
 
   using do
     quote do
+      @moduletag :integration
+
       alias PhoenixKitAI.Test.Repo
 
       import Ecto
       import Ecto.Changeset
       import Ecto.Query
+      import PhoenixKitAI.ActivityLogAssertions
       import PhoenixKitAI.DataCase
     end
   end

@@ -8,7 +8,12 @@ defmodule PhoenixKitAI.Web.EndpointForm do
 
   use PhoenixKitWeb, :live_view
 
+  require Logger
+
+  alias PhoenixKit.Integrations
+  alias PhoenixKit.Integrations.Events, as: IntegrationEvents
   alias PhoenixKit.Settings
+  alias PhoenixKit.Users.Auth.Scope
   alias PhoenixKit.Utils.Routes
   alias PhoenixKitAI, as: AI
   alias PhoenixKitAI.AIModel
@@ -134,11 +139,11 @@ defmodule PhoenixKitAI.Web.EndpointForm do
   @impl true
   def mount(params, _session, socket) do
     if AI.enabled?() do
-      if connected?(socket), do: PhoenixKit.Integrations.Events.subscribe()
+      if connected?(socket), do: IntegrationEvents.subscribe()
 
       project_title = Settings.get_project_title()
 
-      openrouter_connections = PhoenixKit.Integrations.list_connections("openrouter")
+      openrouter_connections = Integrations.list_connections("openrouter")
 
       socket =
         socket
@@ -158,7 +163,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     else
       {:ok,
        socket
-       |> put_flash(:error, "AI module is not enabled")
+       |> put_flash(:error, gettext("AI module is not enabled"))
        |> push_navigate(to: Routes.path("/admin/modules"))}
     end
   end
@@ -170,7 +175,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     # Auto-select if there's exactly one connection
     {active, connected} =
       case connections do
-        [%{uuid: uuid}] -> {uuid, PhoenixKit.Integrations.connected?(uuid)}
+        [%{uuid: uuid}] -> {uuid, Integrations.connected?(uuid)}
         _ -> {nil, false}
       end
 
@@ -194,7 +199,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     case AI.get_endpoint(id) do
       nil ->
         socket
-        |> put_flash(:error, "Endpoint not found")
+        |> put_flash(:error, gettext("Endpoint not found"))
         |> push_navigate(to: Routes.ai_path())
 
       endpoint ->
@@ -216,7 +221,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
               nil
           end
 
-        connected = active && PhoenixKit.Integrations.connected?(active)
+        connected = active && Integrations.connected?(active)
 
         socket =
           socket
@@ -389,7 +394,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     updated_params = Map.put(socket.assigns.form.params, "provider", uuid)
     form = %{socket.assigns.form | params: updated_params}
 
-    connected = PhoenixKit.Integrations.connected?(uuid)
+    connected = Integrations.connected?(uuid)
 
     socket =
       socket
@@ -442,7 +447,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
   end
 
   defp reload_connections(socket) do
-    connections = PhoenixKit.Integrations.list_connections("openrouter")
+    connections = Integrations.list_connections("openrouter")
     current_active = socket.assigns[:active_connection]
 
     # Auto-select if only one connection and nothing valid is selected
@@ -461,7 +466,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
           nil
       end
 
-    connected = active && PhoenixKit.Integrations.connected?(active)
+    connected = active && Integrations.connected?(active)
 
     socket
     |> assign(:openrouter_connections, connections)
@@ -469,86 +474,66 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     |> assign(:integration_connected, connected)
   end
 
-  defp parse_float(params, key) do
+  # Normalise a form field value (always a string from HTML) into the
+  # shape the changeset expects. Blank strings become nil; invalid
+  # numeric input is left untouched so Ecto can emit its own error.
+  defp parse_field(params, key, parser) do
     case params[key] do
-      nil ->
-        params
-
-      "" ->
-        Map.put(params, key, nil)
-
-      val when is_binary(val) ->
-        case Float.parse(val) do
-          {num, _} -> Map.put(params, key, num)
-          :error -> params
-        end
-
-      _ ->
-        params
+      nil -> params
+      "" -> Map.put(params, key, nil)
+      val when is_binary(val) -> Map.put(params, key, parser.(val, params[key]))
+      _ -> params
     end
+  end
+
+  defp parse_float(params, key) do
+    parse_field(params, key, fn val, original ->
+      case Float.parse(val) do
+        {num, _} -> num
+        :error -> original
+      end
+    end)
   end
 
   defp parse_integer(params, key) do
-    case params[key] do
-      nil ->
-        params
-
-      "" ->
-        Map.put(params, key, nil)
-
-      val when is_binary(val) ->
-        case Integer.parse(val) do
-          {num, _} -> Map.put(params, key, num)
-          :error -> params
-        end
-
-      _ ->
-        params
-    end
+    parse_field(params, key, fn val, original ->
+      case Integer.parse(val) do
+        {num, _} -> num
+        :error -> original
+      end
+    end)
   end
 
   defp parse_string_list(params, key) do
-    case params[key] do
-      nil ->
-        params
+    parse_field(params, key, fn val, _original ->
+      list =
+        val
+        |> String.split(~r/[\r\n]+/)
+        |> Enum.map(&String.trim/1)
+        |> Enum.reject(&(&1 == ""))
 
-      "" ->
-        Map.put(params, key, nil)
-
-      val when is_binary(val) ->
-        # Split by newlines and filter empty strings
-        list =
-          val
-          |> String.split(~r/[\r\n]+/)
-          |> Enum.map(&String.trim/1)
-          |> Enum.reject(&(&1 == ""))
-
-        if list == [] do
-          Map.put(params, key, nil)
-        else
-          Map.put(params, key, list)
-        end
-
-      _ ->
-        params
-    end
+      if list == [], do: nil, else: list
+    end)
   end
 
   defp save_endpoint(socket, params) do
+    opts = actor_opts(socket)
+
     result =
       if socket.assigns.endpoint do
-        AI.update_endpoint(socket.assigns.endpoint, params)
+        AI.update_endpoint(socket.assigns.endpoint, params, opts)
       else
-        AI.create_endpoint(params)
+        AI.create_endpoint(params, opts)
       end
 
     case result do
-      {:ok, _endpoint} ->
+      {:ok, endpoint} ->
         action = if socket.assigns.endpoint, do: "updated", else: "created"
+        message = save_success_message(endpoint, action)
 
         {:noreply,
          socket
-         |> put_flash(:info, "Endpoint #{action} successfully")
+         |> put_flash(:info, message)
          |> push_navigate(to: Routes.ai_path())}
 
       {:error, changeset} ->
@@ -556,9 +541,69 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     end
   rescue
     e ->
-      require Logger
-      Logger.error("Endpoint save failed: #{Exception.message(e)}")
+      Logger.error(
+        "Endpoint save failed: " <>
+          Exception.format(:error, e, __STACKTRACE__)
+      )
+
       {:noreply, put_flash(socket, :error, gettext("Something went wrong. Please try again."))}
+  end
+
+  # Builds the post-save flash message, appending a soft warning when the
+  # endpoint's `provider` points at an integration that is not currently
+  # connected AND there is no legacy `api_key` fallback. Save still
+  # succeeds — the user is free to connect the integration afterwards.
+  defp save_success_message(endpoint, action) do
+    base = gettext("Endpoint %{action} successfully", action: action)
+
+    case integration_warning(endpoint) do
+      nil -> base
+      warning -> base <> ". " <> warning
+    end
+  end
+
+  @doc false
+  # Public for testability. Returns the soft-warning string for an
+  # endpoint whose `provider` points at a disconnected integration AND
+  # has no legacy `api_key` fallback. Returns nil when either branch
+  # of the safety net keeps the endpoint working.
+  def integration_warning(%{provider: provider, api_key: api_key}) do
+    cond do
+      provider in [nil, ""] ->
+        nil
+
+      Integrations.connected?(provider) ->
+        nil
+
+      is_binary(api_key) and api_key != "" ->
+        # Legacy endpoint with a stored key — fallback path still works.
+        nil
+
+      true ->
+        gettext(
+          "The %{provider} integration is not connected — requests will fail until you connect it in Settings → Integrations.",
+          provider: "\"#{provider}\""
+        )
+    end
+  end
+
+  # Captures the current admin/user's UUID so the Activity feed can
+  # attribute the mutation to the right actor. Returns an empty list
+  # when the scope isn't available (e.g. in isolated test sockets).
+  defp actor_opts(socket) do
+    role = if admin?(socket), do: "admin", else: "user"
+
+    case socket.assigns[:phoenix_kit_current_user] do
+      %{uuid: uuid} when is_binary(uuid) -> [actor_uuid: uuid, actor_role: role]
+      _ -> [actor_role: role]
+    end
+  end
+
+  defp admin?(socket) do
+    case socket.assigns[:phoenix_kit_current_scope] do
+      nil -> false
+      scope -> Scope.admin?(scope)
+    end
   end
 
   # PubSub: reload connections when integrations change
@@ -585,7 +630,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
   def handle_info(:fetch_models_from_integration, socket) do
     active_key = socket.assigns[:active_connection] || "openrouter"
 
-    case PhoenixKit.Integrations.get_credentials(active_key) do
+    case Integrations.get_credentials(active_key) do
       {:ok, %{"api_key" => api_key}} when is_binary(api_key) and api_key != "" ->
         send(self(), {:fetch_models, api_key})
         {:noreply, socket}
@@ -629,10 +674,22 @@ defmodule PhoenixKitAI.Web.EndpointForm do
         socket =
           socket
           |> assign(:models_loading, false)
-          |> assign(:models_error, reason)
+          |> assign(:models_error, PhoenixKitAI.Errors.message(reason))
 
         {:noreply, socket}
     end
+  end
+
+  # Catch-all for unmatched messages (PubSub from other modules, late
+  # replies after navigation, etc.). Log at :debug per the workspace
+  # sync precedent — never silently swallow a message we didn't expect.
+  @impl true
+  def handle_info(msg, socket) do
+    Logger.debug(fn ->
+      "[PhoenixKitAI.Web.EndpointForm] unhandled handle_info: #{inspect(msg)}"
+    end)
+
+    {:noreply, socket}
   end
 
   # Private helpers

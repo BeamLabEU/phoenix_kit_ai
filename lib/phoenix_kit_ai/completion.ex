@@ -10,6 +10,13 @@ defmodule PhoenixKitAI.Completion do
   - `/chat/completions` - Text and vision completions
   - `/embeddings` - Text embeddings
   - `/images/generations` - Image generation (planned)
+
+  ## Logging conventions
+
+  - `Logger.warning` — expected/recoverable external failures (non-2xx HTTP
+    responses, transport errors, rate limits). Callers see a user-facing error.
+  - `Logger.error` — unexpected internal failures (unknown error shapes,
+    parse failures).
   """
 
   require Logger
@@ -44,7 +51,8 @@ defmodule PhoenixKitAI.Completion do
   ## Returns
 
   - `{:ok, response}` - Successful response with completion
-  - `{:error, reason}` - Error with reason string
+  - `{:error, reason}` - Error atom or tagged tuple. See
+    `PhoenixKitAI.Errors` for the full reason vocabulary and translation.
 
   ## Response Structure
 
@@ -83,11 +91,11 @@ defmodule PhoenixKitAI.Completion do
         handle_error_status(status, response_body)
 
       {:error, :timeout} ->
-        {:error, "Request timeout"}
+        {:error, :request_timeout}
 
       {:error, reason} ->
-        Logger.warning("OpenRouter completion error: #{inspect(reason)}")
-        {:error, "Connection error: #{inspect(reason)}"}
+        Logger.warning("OpenRouter completion transport error: #{inspect(reason)}")
+        {:error, {:connection_error, reason}}
     end
   end
 
@@ -96,18 +104,29 @@ defmodule PhoenixKitAI.Completion do
 
     case Jason.decode(response_body) do
       {:ok, response} -> {:ok, Map.put(response, "latency_ms", latency_ms)}
-      {:error, _} -> {:error, "Invalid JSON response"}
+      {:error, _} -> {:error, :invalid_json_response}
     end
   end
 
-  defp handle_error_status(401, _body), do: {:error, "Invalid API key"}
-  defp handle_error_status(402, _body), do: {:error, "Insufficient credits"}
-  defp handle_error_status(429, _body), do: {:error, "Rate limited"}
+  @doc false
+  # Public for testability. Maps an HTTP status + response body to a
+  # `{:error, reason}` tuple where `reason` is an atom or tagged tuple.
+  def handle_error_status(401, _body), do: {:error, :invalid_api_key}
+  def handle_error_status(402, _body), do: {:error, :insufficient_credits}
+  def handle_error_status(429, _body), do: {:error, :rate_limited}
 
-  defp handle_error_status(status, response_body) do
-    error_msg = extract_error_message(response_body) || "API error: #{status}"
-    Logger.warning("OpenRouter completion failed: #{status} - #{response_body}")
-    {:error, error_msg}
+  def handle_error_status(status, response_body) do
+    # Log only the parsed error message (not the raw body) to avoid
+    # persisting potentially sensitive provider data to application logs.
+    case extract_error_message(response_body) do
+      nil ->
+        Logger.warning("OpenRouter completion failed: #{status} (no parsable error body)")
+
+      msg ->
+        Logger.warning("OpenRouter completion failed: #{status} - #{msg}")
+    end
+
+    {:error, {:api_error, status}}
   end
 
   @doc """
@@ -126,7 +145,8 @@ defmodule PhoenixKitAI.Completion do
   ## Returns
 
   - `{:ok, response}` - Response with embeddings
-  - `{:error, reason}` - Error with reason
+  - `{:error, reason}` - Error atom or tagged tuple. See
+    `PhoenixKitAI.Errors` for the full reason vocabulary and translation.
   """
   def embeddings(endpoint, input, opts \\ []) do
     url = build_url(endpoint, "/embeddings")
@@ -143,23 +163,17 @@ defmodule PhoenixKitAI.Completion do
 
     case http_post(url, headers, body) do
       {:ok, %{status_code: 200, body: response_body}} ->
-        end_time = System.monotonic_time(:millisecond)
-        latency_ms = end_time - start_time
-
-        case Jason.decode(response_body) do
-          {:ok, response} ->
-            {:ok, Map.put(response, "latency_ms", latency_ms)}
-
-          {:error, _} ->
-            {:error, "Invalid JSON response"}
-        end
+        parse_success_response(response_body, start_time)
 
       {:ok, %{status_code: status, body: response_body}} ->
-        error_msg = extract_error_message(response_body) || "API error: #{status}"
-        {:error, error_msg}
+        handle_error_status(status, response_body)
+
+      {:error, :timeout} ->
+        {:error, :request_timeout}
 
       {:error, reason} ->
-        {:error, "Connection error: #{inspect(reason)}"}
+        Logger.warning("OpenRouter embeddings transport error: #{inspect(reason)}")
+        {:error, {:connection_error, reason}}
     end
   end
 
@@ -172,10 +186,10 @@ defmodule PhoenixKitAI.Completion do
         {:ok, content}
 
       %{"choices" => []} ->
-        {:error, "No choices in response"}
+        {:error, :no_choices_in_response}
 
       _ ->
-        {:error, "Invalid response format"}
+        {:error, :invalid_response_format}
     end
   end
 
@@ -264,12 +278,18 @@ defmodule PhoenixKitAI.Completion do
     # Convert headers list to map format for Req
     headers_map = Map.new(headers)
 
-    case Req.post(url,
-           json: body,
-           headers: headers_map,
-           receive_timeout: @timeout,
-           connect_options: [timeout: @timeout]
-         ) do
+    base_opts = [
+      json: body,
+      headers: headers_map,
+      receive_timeout: @timeout,
+      connect_options: [timeout: @timeout]
+    ]
+
+    # `:req_options` is empty in production. Tests opt in via
+    # `Application.put_env(:phoenix_kit_ai, :req_options, plug: {Req.Test, Stub})`.
+    opts = base_opts ++ Application.get_env(:phoenix_kit_ai, :req_options, [])
+
+    case Req.post(url, opts) do
       {:ok, %Req.Response{status: status, body: response_body}} ->
         # Req automatically decodes JSON, so encode it back to string for consistency
         body_string =
@@ -285,16 +305,19 @@ defmodule PhoenixKitAI.Completion do
         {:error, :timeout}
 
       {:error, %Req.TransportError{reason: reason}} ->
-        Logger.error("HTTP POST failed: #{inspect(reason)}")
+        Logger.warning("HTTP POST transport error: #{inspect(reason)}")
         {:error, reason}
 
       {:error, reason} ->
-        Logger.error("HTTP POST failed: #{inspect(reason)}")
+        Logger.error("HTTP POST failed with unexpected error: #{inspect(reason)}")
         {:error, reason}
     end
   end
 
-  defp extract_error_message(body) do
+  @doc false
+  # Public for testability. Parses an OpenRouter error body and returns
+  # the human-readable message, or nil if the shape is unrecognised.
+  def extract_error_message(body) do
     case Jason.decode(body) do
       {:ok, %{"error" => %{"message" => message}}} -> message
       {:ok, %{"error" => error}} when is_binary(error) -> error

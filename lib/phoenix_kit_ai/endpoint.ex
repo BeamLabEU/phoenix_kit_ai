@@ -13,8 +13,12 @@ defmodule PhoenixKitAI.Endpoint do
   - `description`: Optional description of the endpoint's purpose
 
   ### Provider Configuration
-  - `provider`: Provider type (currently "openrouter")
-  - `api_key`: Provider API key
+  - `provider`: Integration connection key (e.g. `"openrouter"` or
+    `"openrouter:my-key"`). Resolved via `PhoenixKit.Integrations`.
+  - `api_key`: **Deprecated.** Legacy field retained only so pre-Integrations
+    endpoints keep working. New endpoints should leave this blank and set
+    up an OpenRouter connection under Settings → Integrations instead.
+    Will be removed in a future major version.
   - `base_url`: Optional custom base URL for the provider
   - `provider_settings`: Provider-specific settings (JSON)
     - For OpenRouter: `http_referer`, `x_title` headers
@@ -64,6 +68,8 @@ defmodule PhoenixKitAI.Endpoint do
   import Ecto.Changeset
 
   alias PhoenixKit.Utils.Date, as: UtilsDate
+
+  @type t :: %__MODULE__{}
 
   @primary_key {:uuid, UUIDv7, autogenerate: true}
   @valid_providers ~w(openrouter)
@@ -191,6 +197,8 @@ defmodule PhoenixKitAI.Endpoint do
     |> validate_penalties()
     |> validate_reasoning()
     |> maybe_set_default_base_url()
+    |> validate_base_url()
+    |> unique_constraint(:name)
   end
 
   @doc """
@@ -379,4 +387,88 @@ defmodule PhoenixKitAI.Endpoint do
       changeset
     end
   end
+
+  # SSRF guard. `base_url` is user-supplied via the form, so without
+  # validation an admin could create an endpoint pointing at AWS
+  # cloud-metadata (`169.254.169.254`), corporate intranet ranges, or
+  # the local loopback and have the server fetch on their behalf via
+  # `Completion.build_url/2` → `Req.post/2`. We default to a strict
+  # public-only allowlist; deployments that need self-hosted /
+  # localhost endpoints (Ollama, intranet inference servers) opt in
+  # explicitly via `config :phoenix_kit_ai, allow_internal_endpoint_urls: true`.
+  defp validate_base_url(changeset) do
+    case get_field(changeset, :base_url) do
+      nil -> changeset
+      "" -> changeset
+      url when is_binary(url) -> validate_base_url_string(changeset, url)
+      _ -> add_error(changeset, :base_url, "must be a string")
+    end
+  end
+
+  defp validate_base_url_string(changeset, url) do
+    uri = URI.parse(url)
+
+    cond do
+      uri.scheme not in ["http", "https"] ->
+        add_error(changeset, :base_url, "must use http or https scheme")
+
+      is_nil(uri.host) or uri.host == "" ->
+        add_error(changeset, :base_url, "must include a hostname")
+
+      Application.get_env(:phoenix_kit_ai, :allow_internal_endpoint_urls, false) ->
+        changeset
+
+      String.ends_with?(uri.host, ".local") ->
+        add_error(
+          changeset,
+          :base_url,
+          "cannot point at .local mDNS hostnames (set allow_internal_endpoint_urls if you need this)"
+        )
+
+      uri.host == "localhost" ->
+        add_error(
+          changeset,
+          :base_url,
+          "cannot point at localhost (set allow_internal_endpoint_urls if you need this)"
+        )
+
+      internal_host?(uri.host) ->
+        add_error(
+          changeset,
+          :base_url,
+          "cannot point at private/loopback/link-local addresses (set allow_internal_endpoint_urls if you need this)"
+        )
+
+      true ->
+        changeset
+    end
+  end
+
+  # Returns true for any hostname that resolves to an RFC1918, loopback,
+  # link-local, or unspecified IP literal. Hostnames that aren't IP
+  # literals fall through to `false` — DNS-rebinding attacks aren't
+  # mitigated here (would require resolution at request time, which is
+  # racy). The acute threat we're guarding is the literal IP shape
+  # (cloud-metadata is always `169.254.169.254` literal).
+  defp internal_host?(host) when is_binary(host) do
+    case :inet.parse_address(to_charlist(host)) do
+      {:ok, ip} -> internal_ip?(ip)
+      _ -> false
+    end
+  end
+
+  # IPv4 ranges
+  defp internal_ip?({0, _, _, _}), do: true
+  defp internal_ip?({10, _, _, _}), do: true
+  defp internal_ip?({127, _, _, _}), do: true
+  defp internal_ip?({169, 254, _, _}), do: true
+  defp internal_ip?({172, b, _, _}) when b in 16..31, do: true
+  defp internal_ip?({192, 168, _, _}), do: true
+  # IPv6 — loopback `::1`, unspecified `::`, link-local `fe80::/10`,
+  # unique-local `fc00::/7`.
+  defp internal_ip?({0, 0, 0, 0, 0, 0, 0, 0}), do: true
+  defp internal_ip?({0, 0, 0, 0, 0, 0, 0, 1}), do: true
+  defp internal_ip?({a, _, _, _, _, _, _, _}) when a in 0xFC00..0xFDFF, do: true
+  defp internal_ip?({a, _, _, _, _, _, _, _}) when a in 0xFE80..0xFEBF, do: true
+  defp internal_ip?(_), do: false
 end

@@ -2,7 +2,7 @@
     <.admin_page_header back={PhoenixKit.Utils.Routes.ai_path() <> "/prompts"}>
       <h1 class="text-xl sm:text-2xl lg:text-3xl font-bold text-base-content">{@page_title}</h1>
       <p class="text-sm text-base-content/60 mt-0.5">
-        Create reusable prompts with variable substitution
+        {gettext("Create reusable prompts with variable substitution")}
       </p>
     </.admin_page_header>
 
@@ -13,107 +13,79 @@
         <div class="card-body">
           <.form for={@form} phx-change="validate" phx-submit="save" class="space-y-5">
             <%!-- Name --%>
-            <div>
-              <label class="block text-sm font-medium mb-2">
-                Name <span class="text-error">*</span>
-              </label>
-              <input
-                type="text"
-                name="prompt[name]"
-                value={@form[:name].value || ""}
-                class={"input input-bordered w-full #{if @form.errors[:name], do: "input-error"}"}
-                placeholder="e.g., Translator, Code Reviewer"
-                phx-debounce="1000"
-                required
-              />
-              <%= if @form.errors[:name] do %>
-                <p class="text-error text-sm mt-1">{elem(@form.errors[:name], 0)}</p>
-              <% end %>
-            </div>
+            <.input
+              field={@form[:name]}
+              type="text"
+              label={gettext("Name") <> " *"}
+              placeholder={gettext("e.g., Translator, Code Reviewer")}
+              phx-debounce="1000"
+              required
+            />
 
-            <%!-- Slug --%>
-            <div>
-              <label class="block text-sm font-medium mb-2">
-                Slug
-                <span class="text-base-content/60 font-normal ml-2">
-                  Auto-generated from name
-                </span>
-              </label>
-              <input
-                type="text"
-                name="prompt[slug]"
-                value={@form[:slug].value || ""}
-                class="input input-bordered w-full font-mono text-sm bg-base-300"
-                placeholder="auto-generated-slug"
-                readonly
-              />
-            </div>
+            <%!-- Slug — auto-generated, read-only --%>
+            <.input
+              field={@form[:slug]}
+              type="text"
+              label={gettext("Slug")}
+              class="font-mono text-sm bg-base-300"
+              placeholder={gettext("auto-generated-slug")}
+              readonly
+            />
 
             <%!-- Description --%>
-            <div>
-              <label class="block text-sm font-medium mb-2">
-                Description <span class="text-base-content/60 font-normal ml-2">Optional</span>
-              </label>
-              <textarea
-                name="prompt[description]"
-                class="textarea textarea-bordered w-full"
-                rows="2"
-                placeholder="Brief description of what this prompt does..."
-              >{@form[:description].value || ""}</textarea>
-            </div>
+            <.textarea
+              field={@form[:description]}
+              errors={
+                Enum.map(@form[:description].errors,
+                  &PhoenixKitWeb.Components.Core.Input.translate_error/1)
+              }
+              label={gettext("Description (Optional)")}
+              rows="2"
+              placeholder={gettext("Brief description of what this prompt does...")}
+            />
 
             <%!-- System Prompt --%>
             <div>
-              <label class="block text-sm font-medium mb-2">
-                System Prompt <span class="text-base-content/60 font-normal ml-2">Optional</span>
-              </label>
-              <textarea
-                name="prompt[system_prompt]"
-                class={"textarea textarea-bordered w-full font-mono text-sm #{if @form.errors[:system_prompt], do: "textarea-error"}"}
+              <.textarea
+                field={@form[:system_prompt]}
+                errors={
+                  Enum.map(@form[:system_prompt].errors,
+                    &PhoenixKitWeb.Components.Core.Input.translate_error/1)
+                }
+                label={gettext("System Prompt (Optional)")}
                 rows="4"
-                placeholder="Optional system instructions for the AI model...
-
-Example:
-You are a professional {{Role}} who always responds in {{Language}}."
-              >{@form[:system_prompt].value || ""}</textarea>
+                class="font-mono text-sm"
+                placeholder={
+                  gettext("Optional system instructions for the AI model.\n\nExample:\nYou are a professional {{Role}} who always responds in {{Language}}.")
+                }
+              />
               <p class="text-sm text-base-content/60 mt-1">
-                Sent as the system message before the user prompt. Supports {"{{variables}}"} too.
+                {gettext("Sent as the system message before the user prompt. Supports {{variables}} too.")}
               </p>
-              <%= if @form.errors[:system_prompt] do %>
-                <p class="text-error text-sm mt-1">{elem(@form.errors[:system_prompt], 0)}</p>
-              <% end %>
             </div>
 
             <%!-- Content --%>
-            <div>
-              <label class="block text-sm font-medium mb-2">
-                Content <span class="text-error">*</span>
-              </label>
-              <textarea
-                name="prompt[content]"
-                class={"textarea textarea-bordered w-full font-mono text-sm #{if @form.errors[:content], do: "textarea-error"}"}
-                rows="8"
-                placeholder="Enter your prompt template...
-
-Use {{VariableName}} for dynamic content.
-
-Example:
-Translate the following text to {{Language}}:
-
-{{Text}}"
-                required
-              >{@form[:content].value || ""}</textarea>
-              <%= if @form.errors[:content] do %>
-                <p class="text-error text-sm mt-1">{elem(@form.errors[:content], 0)}</p>
-              <% end %>
-            </div>
+            <.textarea
+              field={@form[:content]}
+              errors={
+                Enum.map(@form[:content].errors,
+                  &PhoenixKitWeb.Components.Core.Input.translate_error/1)
+              }
+              label={gettext("Content") <> " *"}
+              rows="8"
+              class="font-mono text-sm"
+              placeholder={
+                gettext("Enter your prompt template...\n\nUse {{VariableName}} for dynamic content.\n\nExample:\nTranslate the following text to {{Language}}:\n\n{{Text}}")
+              }
+              required
+            />
 
             <%!-- Extracted Variables Preview --%>
             <%= if length(@extracted_variables) > 0 do %>
               <div class="alert">
                 <.icon name="hero-variable" class="w-5 h-5" />
                 <div>
-                  <div class="font-medium">Detected Variables</div>
+                  <div class="font-medium">{gettext("Detected Variables")}</div>
                   <div class="flex flex-wrap gap-2 mt-1">
                     <%= for var <- @extracted_variables do %>
                       <span class="badge badge-primary badge-outline font-mono">
@@ -125,7 +97,7 @@ Translate the following text to {{Language}}:
               </div>
             <% end %>
 
-            <%!-- Enabled Toggle --%>
+            <%!-- Enabled Toggle — stylised, kept as raw HTML --%>
             <div>
               <label class="flex items-center gap-3 cursor-pointer">
                 <input
@@ -135,10 +107,10 @@ Translate the following text to {{Language}}:
                   checked={@form[:enabled].value != false}
                   class="checkbox checkbox-primary"
                 />
-                <span class="font-medium">Enabled</span>
+                <span class="font-medium">{gettext("Enabled")}</span>
               </label>
               <p class="text-sm text-base-content/60 mt-1 ml-8">
-                Disabled prompts cannot be used via the API
+                {gettext("Disabled prompts cannot be used via the API")}
               </p>
             </div>
 
@@ -148,11 +120,15 @@ Translate the following text to {{Language}}:
                 navigate={PhoenixKit.Utils.Routes.ai_path() <> "/prompts"}
                 class="btn btn-ghost"
               >
-                Cancel
+                {gettext("Cancel")}
               </.link>
-              <button type="submit" class="btn btn-primary">
+              <button
+                type="submit"
+                class="btn btn-primary"
+                phx-disable-with={gettext("Saving…")}
+              >
                 <.icon name="hero-check" class="w-4 h-4 mr-2" />
-                {if @prompt, do: "Update Prompt", else: "Create Prompt"}
+                {if @prompt, do: gettext("Update Prompt"), else: gettext("Create Prompt")}
               </button>
             </div>
           </.form>
@@ -163,11 +139,12 @@ Translate the following text to {{Language}}:
       <div class="card bg-base-200 mt-6">
         <div class="card-body">
           <h3 class="card-title text-lg">
-            <.icon name="hero-question-mark-circle" class="w-5 h-5" /> Variable Syntax
+            <.icon name="hero-question-mark-circle" class="w-5 h-5" />
+            {gettext("Variable Syntax")}
           </h3>
           <div class="text-sm space-y-4">
             <div>
-              <p class="mb-2">Use double curly braces for variables:</p>
+              <p class="mb-2">{gettext("Use double curly braces for variables:")}</p>
               <div class="bg-base-300 p-3 rounded font-mono text-xs">
                 Translate to {"{{Language}}"}:<br />
                 {"{{Text}}"}
@@ -175,30 +152,31 @@ Translate the following text to {{Language}}:
             </div>
 
             <div>
-              <p class="font-medium mb-1">Naming rules:</p>
+              <p class="font-medium mb-1">{gettext("Naming rules:")}</p>
               <ul class="list-disc list-inside text-base-content/70 space-y-1">
                 <li>
-                  Use letters, numbers, and underscores only —
-                  <span class="text-error">no spaces</span>
+                  {gettext("Use letters, numbers, and underscores only —")}
+                  <span class="text-error">{gettext("no spaces")}</span>
                 </li>
                 <li>
                   <code class="bg-base-300 px-1 rounded">{"{{UserLanguage}}"}</code>
-                  or <code class="bg-base-300 px-1 rounded">{"{{user_language}}"}</code>
-                  — both work
+                  {gettext("or")}
+                  <code class="bg-base-300 px-1 rounded">{"{{user_language}}"}</code>
+                  {gettext("— both work")}
                 </li>
                 <li>
                   <code class="bg-base-300 px-1 rounded">{"{{User Language}}"}</code>
-                  — won't be detected as a variable
+                  {gettext("— won't be detected as a variable")}
                 </li>
               </ul>
             </div>
 
             <div>
-              <p class="font-medium mb-1">Missing variables:</p>
+              <p class="font-medium mb-1">{gettext("Missing variables:")}</p>
               <p class="text-base-content/70">
-                If a variable isn't provided when the prompt is used, it stays as-is in the output
-                (e.g., <code class="bg-base-300 px-1 rounded">{"{{Language}}"}</code>
-                remains unchanged).
+                {gettext("If a variable isn't provided when the prompt is used, it stays as-is in the output (e.g.,")}
+                <code class="bg-base-300 px-1 rounded">{"{{Language}}"}</code>
+                {gettext("remains unchanged).")}
               </p>
             </div>
           </div>
