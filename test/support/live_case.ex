@@ -76,6 +76,40 @@ defmodule PhoenixKitAI.LiveCase do
   end
 
   @doc """
+  Seed an OpenRouter integration connection in `phoenix_kit_settings` so
+  `PhoenixKit.Integrations.list_connections("openrouter")` returns it.
+  Returns `%{uuid: setting_uuid, name: connection_name}` — `uuid` is the
+  value the endpoint form treats as `active_connection`.
+
+  No `api_key` is included, so `Integrations.connected?/1` stays `false`
+  and the LV doesn't trigger a model fetch on mount. Tests that need a
+  "connected" connection should pass `data: %{"api_key" => "sk-..."}`.
+  """
+  def seed_openrouter_connection(name, opts \\ []) when is_binary(name) do
+    extra = Keyword.get(opts, :data, %{})
+
+    full_data =
+      Map.merge(
+        %{
+          "provider" => "openrouter",
+          "name" => name,
+          "auth_type" => "api_key",
+          "status" => "disconnected"
+        },
+        extra
+      )
+
+    {:ok, setting} =
+      PhoenixKit.Settings.update_json_setting_with_module(
+        "integration:openrouter:#{name}",
+        full_data,
+        "integrations"
+      )
+
+    %{uuid: setting.uuid, name: name}
+  end
+
+  @doc """
   Insert a minimal prompt with a unique name. Accepts a map or keyword
   list of overrides.
   """
