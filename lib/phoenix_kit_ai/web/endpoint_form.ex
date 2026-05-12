@@ -745,10 +745,20 @@ defmodule PhoenixKitAI.Web.EndpointForm do
   end
 
   defp refresh_provider_options(socket, connections) do
+    # The "keep current_provider in the list" branch only applies on
+    # edit — preserving the endpoint's saved provider when its
+    # provider has 0 connections. On `:new`, `current_provider` is
+    # the mount default ("openrouter"), not a saved selection;
+    # padding it in would surface a dead-end provider whose only
+    # path forward is "go set up an integration first."
+    editing? = socket.assigns[:endpoint] != nil
+
+    pinned_provider = if editing?, do: socket.assigns[:current_provider]
+
     assign(
       socket,
       :provider_options,
-      provider_options_for(connections, socket.assigns[:current_provider])
+      provider_options_for(connections, pinned_provider)
     )
   end
 
@@ -1075,7 +1085,59 @@ defmodule PhoenixKitAI.Web.EndpointForm do
   end
 
   @impl true
-  def handle_info({:fetch_models, api_key, _integration_uuid}, socket) do
+  def handle_info({:fetch_models, api_key, uuid}, socket) do
+    # Stale-fetch guard: if the operator picked a different
+    # integration between Task scheduling and message delivery,
+    # `uuid` no longer matches the active connection — drop the
+    # response so it can't repopulate models for the wrong
+    # integration. Defence in depth; `:validation_done` already
+    # gates the producer side.
+    #
+    # Both sides have to be concrete uuids for the guard to fire.
+    # A nil `active_connection` (operator deselected, or unit-test
+    # direct send) bypasses the guard — the section gating renders
+    # an empty body in that state anyway, so stale data is harmless.
+    active = socket.assigns[:active_connection]
+
+    cond do
+      is_binary(uuid) and is_binary(active) and active != uuid ->
+        {:noreply, socket}
+
+      true ->
+        do_fetch_models(socket, api_key)
+    end
+  end
+
+  # The integration's `/models` fetch is wedged or slow; the picker
+  # spinner has been spinning for 10s. Surface a "still loading" hint
+  # so the operator knows it's not the UI that's stuck — they can
+  # decide to wait or cancel out. The handler is idempotent: if the
+  # actual fetch already completed, models_loading is false and we
+  # leave models_loading_slow false too (no UI change).
+  @impl true
+  def handle_info(:model_fetch_slow, socket) do
+    if socket.assigns[:models_loading] do
+      {:noreply, assign(socket, :models_loading_slow, true)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  # Catch-all for unmatched messages (PubSub from other modules, late
+  # replies after navigation, etc.). Log at :debug per the workspace
+  # sync precedent — never silently swallow a message we didn't expect.
+  @impl true
+  def handle_info(msg, socket) do
+    Logger.debug(fn ->
+      "[PhoenixKitAI.Web.EndpointForm] unhandled handle_info: #{inspect(msg)}"
+    end)
+
+    {:noreply, socket}
+  end
+
+  # Private helpers
+
+  defp do_fetch_models(socket, api_key) do
     base_url = current_models_base_url(socket)
     fallback_provider = socket.assigns[:current_provider]
 
@@ -1159,35 +1221,6 @@ defmodule PhoenixKitAI.Web.EndpointForm do
         {:noreply, socket}
     end
   end
-
-  # The integration's `/models` fetch is wedged or slow; the picker
-  # spinner has been spinning for 10s. Surface a "still loading" hint
-  # so the operator knows it's not the UI that's stuck — they can
-  # decide to wait or cancel out. The handler is idempotent: if the
-  # actual fetch already completed, models_loading is false and we
-  # leave models_loading_slow false too (no UI change).
-  @impl true
-  def handle_info(:model_fetch_slow, socket) do
-    if socket.assigns[:models_loading] do
-      {:noreply, assign(socket, :models_loading_slow, true)}
-    else
-      {:noreply, socket}
-    end
-  end
-
-  # Catch-all for unmatched messages (PubSub from other modules, late
-  # replies after navigation, etc.). Log at :debug per the workspace
-  # sync precedent — never silently swallow a message we didn't expect.
-  @impl true
-  def handle_info(msg, socket) do
-    Logger.debug(fn ->
-      "[PhoenixKitAI.Web.EndpointForm] unhandled handle_info: #{inspect(msg)}"
-    end)
-
-    {:noreply, socket}
-  end
-
-  # Private helpers
 
   defp format_validation_error(reason) when is_binary(reason), do: reason
   defp format_validation_error(reason), do: PhoenixKitAI.Errors.message(reason)
@@ -1451,6 +1484,8 @@ defmodule PhoenixKitAI.Web.EndpointForm do
   end
 
   def format_price(value) when is_number(value) do
-    "$#{:erlang.float_to_binary(value * 1_000_000, decimals: 2)}"
+    # `value * 1.0` forces an integer (free-tier 0 pricing) up to float
+    # before :erlang.float_to_binary/2, which raises on integer input.
+    "$#{:erlang.float_to_binary(value * 1.0 * 1_000_000, decimals: 2)}"
   end
 end

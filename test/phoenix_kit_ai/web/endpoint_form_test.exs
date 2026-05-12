@@ -689,6 +689,24 @@ defmodule PhoenixKitAI.Web.EndpointFormTest do
       assert html =~ "/admin/settings/integrations"
       assert html =~ "Set one up in Settings → Integrations"
     end
+
+    test "new mount with only mistral connection doesn't surface openrouter as a dead-end option",
+         %{conn: conn} do
+      # Regression: `current_provider` is mount-defaulted to
+      # "openrouter" even on `:new` with no saved endpoint. The
+      # filter previously padded `current_provider` into the
+      # dropdown unconditionally, surfacing OpenRouter as a clickable
+      # dead-end (no connection → "Pick an integration above" placeholder
+      # with no integration to pick). Padding now requires
+      # `socket.assigns.endpoint != nil` (i.e. edit mode).
+      seed_mistral_connection("only-mistral-#{System.unique_integer([:positive])}")
+
+      {:ok, _view, html} = live(conn, "/en/admin/ai/endpoints/new")
+
+      assert html =~ ~s(value="mistral">Mistral)
+      refute html =~ ~s(value="openrouter">OpenRouter)
+      refute html =~ ~s(value="deepseek">DeepSeek)
+    end
   end
 
   describe "handle_info catch-all" do
@@ -831,6 +849,17 @@ defmodule PhoenixKitAI.Web.EndpointFormTest do
       # Should render explicitly, not get swallowed by an empty check.
       assert EndpointForm.format_price(0.0) == "$0.00"
       assert EndpointForm.format_price("0") == "$0.00"
+    end
+
+    test "renders a bare integer without crashing" do
+      # `:erlang.float_to_binary/2` requires a float; integer input
+      # raises `ArgumentError`. Jason decodes a bare-integer JSON
+      # value (e.g. free-tier `0` pricing) into an Elixir integer,
+      # which `is_number/1` accepts but `float_to_binary/2` rejects.
+      # The helper coerces via `value * 1.0` before formatting — pin
+      # the integer paths so a regression would surface here.
+      assert EndpointForm.format_price(0) == "$0.00"
+      assert EndpointForm.format_price(2) == "$2000000.00"
     end
   end
 
