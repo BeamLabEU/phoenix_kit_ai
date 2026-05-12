@@ -1,6 +1,7 @@
 defmodule PhoenixKitAI.Web.EndpointFormTest do
   use PhoenixKitAI.LiveCase
 
+  alias PhoenixKitAI.Test.Repo, as: TestRepo
   alias PhoenixKitAI.Web.EndpointForm
 
   describe "new" do
@@ -85,7 +86,7 @@ defmodule PhoenixKitAI.Web.EndpointFormTest do
       # treated as "no fallback" by every downstream consumer.
       endpoint = fixture_endpoint(api_key: "sk-temp")
 
-      PhoenixKitAI.Test.Repo.query!(
+      TestRepo.query!(
         "UPDATE phoenix_kit_ai_endpoints SET api_key = '' WHERE uuid = $1",
         [Ecto.UUID.dump!(endpoint.uuid)]
       )

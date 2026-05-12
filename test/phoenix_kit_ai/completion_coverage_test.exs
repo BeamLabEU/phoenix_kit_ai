@@ -14,6 +14,7 @@ defmodule PhoenixKitAI.CompletionCoverageTest do
   import Ecto.Query
 
   alias PhoenixKitAI.{Completion, Endpoint, Prompt}
+  alias PhoenixKitAI.Test.Repo, as: TestRepo
 
   setup do
     Application.put_env(:phoenix_kit_ai, :req_options,
@@ -657,7 +658,7 @@ defmodule PhoenixKitAI.CompletionCoverageTest do
   defp clear_api_key(endpoint) do
     {1, _} =
       from(e in PhoenixKitAI.Endpoint, where: e.uuid == ^endpoint.uuid)
-      |> PhoenixKitAI.Test.Repo.update_all(set: [api_key: ""])
+      |> TestRepo.update_all(set: [api_key: ""])
 
     PhoenixKitAI.get_endpoint!(endpoint.uuid)
   end
@@ -665,7 +666,7 @@ defmodule PhoenixKitAI.CompletionCoverageTest do
   defp stamp_integration_uuid(endpoint, integration_uuid) do
     {1, _} =
       from(e in PhoenixKitAI.Endpoint, where: e.uuid == ^endpoint.uuid)
-      |> PhoenixKitAI.Test.Repo.update_all(set: [integration_uuid: integration_uuid])
+      |> TestRepo.update_all(set: [integration_uuid: integration_uuid])
 
     PhoenixKitAI.get_endpoint!(endpoint.uuid)
   end
@@ -675,9 +676,7 @@ defmodule PhoenixKitAI.CompletionCoverageTest do
   # fallback (removed in local core post strict-UUID flip) so the
   # tests exercise identical logic in both worlds.
   defp clear_all_openrouter_connections do
-    PhoenixKitAI.Test.Repo.query!(
-      "DELETE FROM phoenix_kit_settings WHERE key LIKE 'integration:openrouter:%'"
-    )
+    TestRepo.query!("DELETE FROM phoenix_kit_settings WHERE key LIKE 'integration:openrouter:%'")
 
     :ok
   end

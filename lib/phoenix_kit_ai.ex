@@ -596,42 +596,40 @@ defmodule PhoenixKitAI do
         _ -> nil
       end
 
-    cond do
-      is_nil(integration_uuid) ->
-        require Logger
+    if is_nil(integration_uuid) do
+      require Logger
 
-        Logger.warning(
-          "[PhoenixKitAI] Skipping legacy api_key group (#{length(endpoints)} endpoints) — " <>
-            "could not resolve integration uuid"
-        )
+      Logger.warning(
+        "[PhoenixKitAI] Skipping legacy api_key group (#{length(endpoints)} endpoints) — " <>
+          "could not resolve integration uuid"
+      )
 
-        0
+      0
+    else
+      case PhoenixKit.Integrations.save_setup(integration_uuid, %{"api_key" => api_key}) do
+        {:ok, _saved} ->
+          count = update_endpoints_provider(endpoints, full_key, integration_uuid)
 
-      true ->
-        case PhoenixKit.Integrations.save_setup(integration_uuid, %{"api_key" => api_key}) do
-          {:ok, _saved} ->
-            count = update_endpoints_provider(endpoints, full_key, integration_uuid)
+          if count > 0 do
+            log_migration_activity(:credentials_migrated, %{
+              "endpoint_count" => count,
+              "integration_uuid" => integration_uuid,
+              "connection_name" => name
+            })
+          end
 
-            if count > 0 do
-              log_migration_activity(:credentials_migrated, %{
-                "endpoint_count" => count,
-                "integration_uuid" => integration_uuid,
-                "connection_name" => name
-              })
-            end
+          count
 
-            count
+        {:error, _reason} ->
+          require Logger
 
-          {:error, _reason} ->
-            require Logger
+          Logger.warning(
+            "[PhoenixKitAI] Skipping legacy api_key group (#{length(endpoints)} endpoints) — " <>
+              "save_setup failed"
+          )
 
-            Logger.warning(
-              "[PhoenixKitAI] Skipping legacy api_key group (#{length(endpoints)} endpoints) — " <>
-                "save_setup failed"
-            )
-
-            0
-        end
+          0
+      end
     end
   rescue
     _ -> 0
@@ -664,7 +662,11 @@ defmodule PhoenixKitAI do
     _ -> 0
   end
 
-  defp maybe_add_integration_uuid(set_clause, nil), do: set_clause
+  # Caller (`update_endpoints_provider/3`) is only reachable via the
+  # `is_nil(integration_uuid) -> 0` short-circuit one frame up, so the
+  # `nil` clause here is unreachable per dialyzer's typeflow. Empty
+  # string is still possible (call sites that pass through raw form
+  # input) — keep that branch.
   defp maybe_add_integration_uuid(set_clause, ""), do: set_clause
 
   defp maybe_add_integration_uuid(set_clause, uuid) when is_binary(uuid) do
@@ -804,18 +806,16 @@ defmodule PhoenixKitAI do
   defp promote_provider_to_integration_uuid(%{uuid: endpoint_uuid, provider: provider}) do
     integration_uuid = resolve_provider_to_uuid(provider)
 
-    cond do
-      is_nil(integration_uuid) ->
-        :no_match
+    if is_nil(integration_uuid) do
+      :no_match
+    else
+      {count, _} =
+        from(e in Endpoint, where: e.uuid == ^endpoint_uuid and is_nil(e.integration_uuid))
+        |> repo().update_all(
+          set: [integration_uuid: integration_uuid, updated_at: DateTime.utc_now()]
+        )
 
-      true ->
-        {count, _} =
-          from(e in Endpoint, where: e.uuid == ^endpoint_uuid and is_nil(e.integration_uuid))
-          |> repo().update_all(
-            set: [integration_uuid: integration_uuid, updated_at: DateTime.utc_now()]
-          )
-
-        if count > 0, do: :ok, else: :no_op
+      if count > 0, do: :ok, else: :no_op
     end
   rescue
     _ -> :error

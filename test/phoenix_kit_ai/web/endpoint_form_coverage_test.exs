@@ -9,6 +9,7 @@ defmodule PhoenixKitAI.Web.EndpointFormCoverageTest do
 
   use PhoenixKitAI.LiveCase
 
+  alias PhoenixKit.Integrations.Events, as: IntegrationsEvents
   alias PhoenixKitAI.AIModel
   alias PhoenixKitAI.Web.EndpointForm
 
@@ -601,7 +602,7 @@ defmodule PhoenixKitAI.Web.EndpointFormCoverageTest do
       # broadcasts `:integration_validated` once the HTTP call returns.
       # That broadcast is our "Task done" signal — without it, `render(view)`
       # can return before the Task even sends its result message.
-      :ok = PhoenixKit.Integrations.Events.subscribe()
+      :ok = IntegrationsEvents.subscribe()
 
       view |> render_hook("retry_model_fetch", %{})
 

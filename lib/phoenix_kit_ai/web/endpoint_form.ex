@@ -1099,12 +1099,10 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     # an empty body in that state anyway, so stale data is harmless.
     active = socket.assigns[:active_connection]
 
-    cond do
-      is_binary(uuid) and is_binary(active) and active != uuid ->
-        {:noreply, socket}
-
-      true ->
-        do_fetch_models(socket, api_key)
+    if is_binary(uuid) and is_binary(active) and active != uuid do
+      {:noreply, socket}
+    else
+      do_fetch_models(socket, api_key)
     end
   end
 
