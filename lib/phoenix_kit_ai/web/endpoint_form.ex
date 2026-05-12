@@ -998,22 +998,31 @@ defmodule PhoenixKitAI.Web.EndpointForm do
         # which actually verifies the Bearer token) so a bad key
         # can't paint a working-looking model grid.
         #
-        # The validation runs in a Task to keep the LV responsive
-        # (Req.get is blocking; doing it inline would freeze the LV
-        # process for the duration of the round-trip). The Task
-        # records the validation result (PubSub auto-broadcasts on
-        # status change → picker badge updates) and sends
-        # `{:validation_done, uuid, result, api_key}` back so the LV
-        # can decide whether to continue with the model fetch.
+        # The validation runs in a supervised Task to keep the LV
+        # responsive (Req.get is blocking; inline would freeze the LV
+        # process for the round-trip). The Task records the validation
+        # result (PubSub auto-broadcasts on status change → picker
+        # badge updates) and sends `{:validation_done, uuid, result,
+        # api_key}` back so the LV can decide whether to continue
+        # with the model fetch.
         #
-        # `$callers` propagation: `Task.start` doesn't carry the
-        # caller chain that `Req.Test.allow/3` walks to find the
-        # stubbed plug. We copy the LV's chain into the Task so
-        # tests that allow the LV pid also cover this Task.
+        # `Task.Supervisor.start_child` (not bare `Task.start`) is the
+        # playbook-mandated shape for fire-and-forget LV-spawned work:
+        # if the Task crashes (HTTP transport error not caught by
+        # `validate_connection`, sandbox exit in tests, etc.) the
+        # supervisor restarts/discards rather than orphaning the
+        # process. `Task.start_link` is wrong here — a linked crash
+        # would take down the LV process.
+        #
+        # `$callers` propagation: `Task.Supervisor.start_child`
+        # doesn't carry the caller chain that `Req.Test.allow/3`
+        # walks to find the stubbed plug. We copy the LV's chain
+        # into the Task so tests that allow the LV pid also cover
+        # this Task.
         parent = self()
         callers = [parent | Process.get(:"$callers", [])]
 
-        Task.start(fn ->
+        Task.Supervisor.start_child(PhoenixKit.TaskSupervisor, fn ->
           Process.put(:"$callers", callers)
           result = Integrations.validate_connection(active_key)
           Integrations.record_validation(active_key, result)
