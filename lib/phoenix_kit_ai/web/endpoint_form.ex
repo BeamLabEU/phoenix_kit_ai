@@ -94,6 +94,105 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     """
   end
 
+  attr(:model, :map, required: true)
+  attr(:selected, :boolean, required: true)
+  attr(:show_clear, :boolean, default: false)
+
+  @doc """
+  Renders a single model option as a clickable card with name, ID,
+  context-length / max-output badges, and prompt / completion pricing.
+
+  The same card is used in two places:
+
+  * **Inside the model grid** — the operator's browse surface. Click
+    selects. The currently-selected card is excluded from the grid
+    (it's hoisted to the top — see below) so each model appears in
+    exactly one location.
+  * **Hoisted above the grid as the "Current Model"** — when
+    `@selected_model` is set, the card moves out of the grid to the
+    top of the section. `show_clear: true` adds an "X" button that
+    deselects (drops the card back into the grid). Clicking the
+    card body itself is a no-op (selecting an already-selected
+    model has no effect).
+
+  This keeps a single source of truth for the rich model display —
+  badges + pricing — instead of duplicating the layout between a
+  separate summary panel and the grid.
+  """
+  def model_card(assigns) do
+    pricing = assigns.model.pricing || %{}
+
+    assigns =
+      assigns
+      |> assign(:prompt_price, format_price(pricing["prompt"]))
+      |> assign(:completion_price, format_price(pricing["completion"]))
+
+    ~H"""
+    <div class="relative">
+      <button
+        type="button"
+        phx-click="select_model"
+        phx-value-model={@model.id}
+        data-search-text={String.downcase("#{@model.name || ""} #{@model.id}")}
+        class={
+          "rounded-lg border p-3 transition-colors cursor-pointer text-left w-full " <>
+            if(@show_clear, do: "pr-10 ", else: "") <>
+            if @selected do
+              "border-primary bg-primary/10 ring-2 ring-primary/20"
+            else
+              "border-base-300 bg-base-200 hover:border-primary hover:bg-base-100"
+            end
+        }
+      >
+        <div class="min-w-0">
+          <div class="font-semibold truncate">
+            {@model.name || @model.id}
+          </div>
+
+          <div class="text-xs font-mono text-base-content/50 truncate">
+            {@model.id}
+          </div>
+
+          <div class="flex flex-wrap gap-1 mt-2">
+            <span :if={@model.context_length} class="badge badge-outline badge-xs h-auto">
+              {format_number(@model.context_length)} ctx
+            </span>
+
+            <span :if={@model.max_completion_tokens} class="badge badge-outline badge-xs h-auto">
+              {format_number(@model.max_completion_tokens)} out
+            </span>
+
+            <span :if={@prompt_price} class="badge badge-success badge-outline badge-xs h-auto">
+              {@prompt_price}/M in
+            </span>
+
+            <span :if={@completion_price} class="badge badge-warning badge-outline badge-xs h-auto">
+              {@completion_price}/M out
+            </span>
+          </div>
+        </div>
+      </button>
+
+      <%!-- Clear button overlay — only present on the hoisted card
+           at the top. The button sits outside the main click target
+           (which would itself trigger `select_model` on the same
+           id, a no-op). Anchored to the top-right corner; the
+           `right-10` offset from the pre-drop check-icon layout is
+           gone now that the check icon was removed. --%>
+      <button
+        :if={@show_clear}
+        type="button"
+        phx-click="clear_model"
+        class="btn btn-ghost btn-sm btn-square absolute top-2 right-2"
+        aria-label={gettext("Clear model")}
+        title={gettext("Clear model")}
+      >
+        <.icon name="hero-x-mark" class="w-4 h-4" />
+      </button>
+    </div>
+    """
+  end
+
   defp resolve_current_value(assigns, field, field_str) do
     value =
       assigns.form.params[field_str] ||
@@ -148,6 +247,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
       |> assign(:project_title, nil)
       |> assign(:current_path, Routes.path("/admin/ai"))
       |> assign(:provider_connections, [])
+      |> assign(:provider_options, Endpoint.provider_options())
       |> assign(:current_provider, "openrouter")
       |> assign(:models, [])
       |> assign(:models_grouped, [])
@@ -277,11 +377,14 @@ defmodule PhoenixKitAI.Web.EndpointForm do
 
   defp handle_initial_params(params, socket) do
     if AI.enabled?() do
+      connections = load_all_provider_connections()
+
       socket =
         socket
         |> assign(:project_title, Settings.get_project_title())
-        |> assign(:provider_connections, load_all_provider_connections())
+        |> assign(:provider_connections, connections)
         |> load_endpoint(params["id"])
+        |> refresh_provider_options(connections)
         |> assign(:loaded_id, params["id"])
 
       {:noreply, socket}
@@ -302,10 +405,16 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     # picks up the new provider's default URL.
     {params, socket} = maybe_handle_provider_change(params, socket)
 
+    # Build the changeset to keep `@form` and `@selected_model` in
+    # sync with user input, but DON'T stamp `:action, :validate` —
+    # that's what makes Phoenix's `<.input>` render error markup, and
+    # surfacing "can't be blank" before the user clicks Save is the
+    # behaviour the boss explicitly didn't want. Errors come back on
+    # save-failure via the action that `Repo.insert/update` stamps
+    # automatically.
     changeset =
       (socket.assigns.endpoint || %Endpoint{})
       |> AI.change_endpoint(params)
-      |> Map.put(:action, :validate)
 
     # Update selected model when model changes
     selected_model =
@@ -367,10 +476,10 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     current_params = socket.assigns.form.params || %{}
     new_params = Map.put(current_params, "model", model_id)
 
+    # No action stamp — see the comment in the `"validate"` handler.
     changeset =
       (socket.assigns.endpoint || %Endpoint{})
       |> AI.change_endpoint(new_params)
-      |> Map.put(:action, :validate)
 
     socket =
       socket
@@ -391,10 +500,10 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     current_params = socket.assigns.form.params || %{}
     new_params = Map.put(current_params, "model", "")
 
+    # No action stamp — see the comment in the `"validate"` handler.
     changeset =
       (socket.assigns.endpoint || %Endpoint{})
       |> AI.change_endpoint(new_params)
-      |> Map.put(:action, :validate)
 
     socket =
       socket
@@ -410,10 +519,10 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     current_params = socket.assigns.form.params || %{}
     new_params = Map.put(current_params, "model", model_id)
 
+    # No action stamp — see the comment in the `"validate"` handler.
     changeset =
       (socket.assigns.endpoint || %Endpoint{})
       |> AI.change_endpoint(new_params)
-      |> Map.put(:action, :validate)
 
     socket =
       socket
@@ -452,10 +561,10 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     # directly was a footgun waiting to happen.
     new_params = Map.put(socket.assigns.form.params, "integration_uuid", nil)
 
+    # No action stamp — see the comment in the `"validate"` handler.
     changeset =
       (socket.assigns.endpoint || %Endpoint{})
       |> AI.change_endpoint(new_params)
-      |> Map.put(:action, :validate)
 
     socket =
       socket
@@ -478,12 +587,24 @@ defmodule PhoenixKitAI.Web.EndpointForm do
 
     connected = Integrations.connected?(uuid)
 
+    # Clear stale model state from any previous integration. Without
+    # this, switching A → B leaves A's model list rendered while B's
+    # fetch is in flight (and if B's fetch fails, A's models stay
+    # visible alongside the error pane — a misleading combination).
+    # The picker is about to repopulate from B's response anyway, so
+    # zeroing out is safe.
     socket =
       socket
       |> assign(:form, form)
       |> assign(:active_connection, uuid)
       |> assign(:selected_uuids, [uuid])
       |> assign(:integration_connected, connected)
+      |> assign(:models, [])
+      |> assign(:models_grouped, [])
+      |> assign(:models_error, nil)
+      |> assign(:selected_provider, nil)
+      |> assign(:provider_models, [])
+      |> assign(:selected_model, nil)
 
     # Reload models with new connection
     if connected do
@@ -620,6 +741,15 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     |> assign(:active_connection, active)
     |> assign(:selected_uuids, selected_uuids)
     |> assign(:integration_connected, connected)
+    |> refresh_provider_options(connections)
+  end
+
+  defp refresh_provider_options(socket, connections) do
+    assign(
+      socket,
+      :provider_options,
+      provider_options_for(connections, socket.assigns[:current_provider])
+    )
   end
 
   # Loads connections for every AI provider in one shot. The picker
@@ -630,6 +760,40 @@ defmodule PhoenixKitAI.Web.EndpointForm do
   defp load_all_provider_connections do
     Endpoint.valid_providers()
     |> Enum.flat_map(&Integrations.list_connections/1)
+  end
+
+  # Provider-dropdown options filtered to providers with at least one
+  # configured integration. Two special cases:
+  #
+  # * **No connections anywhere** → fall back to the full provider list
+  #   so the dropdown is still usable while the operator follows the
+  #   "Settings → Integrations" hint to set one up. Checked against the
+  #   raw connection list (not the connection set + current_provider)
+  #   so the mount-default `current_provider = "openrouter"` doesn't
+  #   silently turn the full-fallback into "just OpenRouter".
+  #
+  # * **Editing an endpoint whose provider has 0 connections** → keep
+  #   the endpoint's saved provider in the list so the user's
+  #   selection doesn't vanish mid-flow.
+  defp provider_options_for(connections, current_provider) do
+    available_from_connections =
+      connections
+      |> Enum.map(& &1.data["provider"])
+      |> Enum.reject(&is_nil/1)
+      |> MapSet.new()
+
+    if MapSet.size(available_from_connections) == 0 do
+      Endpoint.provider_options()
+    else
+      available =
+        if current_provider,
+          do: MapSet.put(available_from_connections, current_provider),
+          else: available_from_connections
+
+      Enum.filter(Endpoint.provider_options(), fn {_label, key} ->
+        MapSet.member?(available, key)
+      end)
+    end
   end
 
   # Normalise a form field value (always a string from HTML) into the
@@ -828,7 +992,46 @@ defmodule PhoenixKitAI.Web.EndpointForm do
 
     case active_key && Integrations.get_credentials(active_key) do
       {:ok, %{"api_key" => api_key}} when is_binary(api_key) and api_key != "" ->
-        send(self(), {:fetch_models, api_key})
+        # Validate-then-fetch. The model fetch is gated on a real
+        # auth check (`Integrations.validate_connection/2` hits the
+        # provider's `validation.url` — `/auth/key` for OpenRouter,
+        # which actually verifies the Bearer token) so a bad key
+        # can't paint a working-looking model grid.
+        #
+        # The validation runs in a supervised Task to keep the LV
+        # responsive (Req.get is blocking; inline would freeze the LV
+        # process for the round-trip). The Task records the validation
+        # result (PubSub auto-broadcasts on status change → picker
+        # badge updates) and sends `{:validation_done, uuid, result,
+        # api_key}` back so the LV can decide whether to continue
+        # with the model fetch.
+        #
+        # `Task.Supervisor.start_child` (not bare `Task.start`) is the
+        # playbook-mandated shape for fire-and-forget LV-spawned work:
+        # if the Task crashes (HTTP transport error not caught by
+        # `validate_connection`, sandbox exit in tests, etc.) the
+        # supervisor restarts/discards rather than orphaning the
+        # process. `Task.start_link` is wrong here — a linked crash
+        # would take down the LV process.
+        #
+        # `$callers` propagation: `Task.Supervisor.start_child`
+        # doesn't carry the caller chain that `Req.Test.allow/3`
+        # walks to find the stubbed plug. We copy the LV's chain
+        # into the Task so tests that allow the LV pid also cover
+        # this Task.
+        parent = self()
+        callers = [parent | Process.get(:"$callers", [])]
+
+        Task.Supervisor.start_child(PhoenixKit.TaskSupervisor, fn ->
+          Process.put(:"$callers", callers)
+          result = Integrations.validate_connection(active_key)
+          Integrations.record_validation(active_key, result)
+          send(parent, {:validation_done, active_key, result, api_key})
+        end)
+
+        # Loading-state assigns were already set by the caller's
+        # `start_model_fetch_indicators`; leave them alone so the
+        # spinner stays visible until validation resolves.
         {:noreply, socket}
 
       _ ->
@@ -841,8 +1044,38 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     end
   end
 
+  # Validation succeeded — proceed with the model fetch.
+  # Guarded on `active_connection` matching the uuid the Task ran for
+  # so a stale completion from a previously-picked integration can't
+  # repopulate models after the operator switched.
   @impl true
-  def handle_info({:fetch_models, api_key}, socket) do
+  def handle_info({:validation_done, uuid, :ok, api_key}, socket) do
+    if socket.assigns[:active_connection] == uuid do
+      send(self(), {:fetch_models, api_key, uuid})
+      {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  # Validation failed — clear loading + surface the auth error.
+  # No model fetch is issued so the grid stays empty (no false-positive
+  # "look, models are loading!" while the key can't actually auth).
+  def handle_info({:validation_done, uuid, {:error, reason}, _api_key}, socket) do
+    if socket.assigns[:active_connection] == uuid do
+      socket =
+        socket
+        |> stop_model_fetch_indicators()
+        |> assign(:models_error, format_validation_error(reason))
+
+      {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_info({:fetch_models, api_key, _integration_uuid}, socket) do
     base_url = current_models_base_url(socket)
     fallback_provider = socket.assigns[:current_provider]
 
@@ -854,6 +1087,14 @@ defmodule PhoenixKitAI.Web.EndpointForm do
 
     case OpenRouterClient.fetch_models_grouped(api_key, fetch_opts) do
       {:ok, grouped} ->
+        # Intentionally NOT calling `record_validation(:ok)` here —
+        # OpenRouter's `/models` endpoint is effectively public
+        # (returns 200 + the model list for any / no Bearer token),
+        # so fetch success doesn't prove the api_key can actually
+        # authenticate a chat completion. The real auth check is the
+        # provider's `validation.url` (`/auth/key` for OpenRouter),
+        # which `:validate_integration` kicks off in parallel.
+
         # Flatten for easy lookup
         models =
           grouped
@@ -869,6 +1110,19 @@ defmodule PhoenixKitAI.Web.EndpointForm do
               nil
           end
 
+        # When the response groups under a single provider (Mistral /
+        # DeepSeek / any direct API whose model IDs don't carry a
+        # `provider/model` slash), the "select provider" dropdown is a
+        # one-option click that gates the grid behind needless friction.
+        # Auto-select the sole group so the operator lands directly on
+        # the model cards. The grid clear-button still lets them empty
+        # the selection if they want to dismiss the picker.
+        {selected_provider, provider_models} =
+          case grouped do
+            [{provider, models}] -> {provider, models}
+            _ -> {socket.assigns[:selected_provider], socket.assigns[:provider_models] || []}
+          end
+
         socket =
           socket
           |> stop_model_fetch_indicators()
@@ -876,10 +1130,17 @@ defmodule PhoenixKitAI.Web.EndpointForm do
           |> assign(:models_grouped, grouped)
           |> assign(:models_error, nil)
           |> assign(:selected_model, selected_model)
+          |> assign(:selected_provider, selected_provider)
+          |> assign(:provider_models, provider_models)
 
         {:noreply, socket}
 
       {:error, reason} ->
+        # Same rationale as the success branch above — fetch_models
+        # isn't the right validation signal. The parallel
+        # `:validate_integration` Task handles the real check.
+        translated = PhoenixKitAI.Errors.message(reason)
+
         # Log the failure with grep-able context (provider + reason) so
         # operators can correlate "model dropdown is empty" reports with
         # upstream API issues. Provider is the form-side selection at
@@ -893,7 +1154,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
         socket =
           socket
           |> stop_model_fetch_indicators()
-          |> assign(:models_error, PhoenixKitAI.Errors.message(reason))
+          |> assign(:models_error, translated)
 
         {:noreply, socket}
     end
@@ -927,6 +1188,9 @@ defmodule PhoenixKitAI.Web.EndpointForm do
   end
 
   # Private helpers
+
+  defp format_validation_error(reason) when is_binary(reason), do: reason
+  defp format_validation_error(reason), do: PhoenixKitAI.Errors.message(reason)
 
   defp find_model(models, model_id) do
     Enum.find(models, fn m -> m.id == model_id end)
@@ -985,8 +1249,11 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     endpoint_url = endpoint && endpoint.base_url
 
     cond do
-      (endpoint && endpoint.provider == current_provider) and
-        is_binary(endpoint_url) and endpoint_url != "" ->
+      # Use `&&` throughout: strict `and` raises BadBooleanError on
+      # `nil` (which is what `endpoint && endpoint.provider == ...`
+      # returns when `endpoint` is nil on the new-endpoint flow).
+      endpoint && endpoint.provider == current_provider && is_binary(endpoint_url) &&
+          endpoint_url != "" ->
         endpoint_url
 
       is_binary(current_provider) ->
@@ -1151,5 +1418,39 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     |> Enum.chunk_every(3)
     |> Enum.join(",")
     |> String.reverse()
+  end
+
+  @doc """
+  Formats a per-token model price as a per-million-tokens display.
+
+  OpenRouter pricing comes back in two shapes — newer rows use a JSON
+  number, older rows use a stringified float. This helper accepts
+  either and returns a rounded "$X.XX" string. Returns `nil` for
+  empty/missing values so the template can render-or-skip cleanly.
+
+  ## Examples
+
+      iex> EndpointForm.format_price(0.0000015)
+      "$1.50"
+
+      iex> EndpointForm.format_price("0.0000015")
+      "$1.50"
+
+      iex> EndpointForm.format_price(nil)
+      nil
+  """
+  @spec format_price(number() | String.t() | nil) :: String.t() | nil
+  def format_price(nil), do: nil
+  def format_price(""), do: nil
+
+  def format_price(value) when is_binary(value) do
+    case Float.parse(value) do
+      {n, _} -> format_price(n)
+      :error -> nil
+    end
+  end
+
+  def format_price(value) when is_number(value) do
+    "$#{:erlang.float_to_binary(value * 1_000_000, decimals: 2)}"
   end
 end

@@ -52,20 +52,24 @@
           <div class="card-body">
             <h2 class="card-title text-lg">{gettext("Provider Configuration")}</h2>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+            <div class="mt-4 max-w-md">
               <.select
                 field={@form[:provider]}
                 label={gettext("Provider")}
-                options={Endpoint.provider_options()}
+                options={@provider_options}
               />
+              <p class="text-xs text-base-content/60 mt-1">
+                {gettext("Need another integration?")}
+                <.pk_link
+                  navigate="/admin/settings/integrations"
+                  class="link link-primary"
+                >
+                  {gettext("Set one up in Settings → Integrations")}
+                </.pk_link>.
+              </p>
             </div>
 
             <div class="mt-4">
-              <label class="label">
-                <span class="label-text font-medium">
-                  {Endpoint.provider_label(@current_provider)} {gettext("Connection")}
-                </span>
-              </label>
               <.integration_picker
                 id="endpoint-provider-picker"
                 connections={@provider_connections}
@@ -150,133 +154,108 @@
           </div>
         </div>
 
-        <%!-- Model Selection Card --%>
-        <div class="card bg-base-100 shadow-lg">
+        <%!-- Model Selection Card.
+
+             Header always renders so the operator can see the form
+             has more sections beyond Provider Configuration. Body
+             content is gated on `@active_connection` — without a
+             picked integration, the model fetch can't run, so the
+             card body becomes a short placeholder pointing at the
+             picker above. --%>
+        <div class={[
+          "card bg-base-100 shadow-lg",
+          if(!@active_connection, do: "opacity-60")
+        ]}>
           <div class="card-body">
-            <h2 class="card-title text-lg">{gettext("Model Selection")}</h2>
+            <h2 class={
+              "card-title text-lg " <>
+                if(@active_connection, do: "", else: "text-base-content/50")
+            }>
+              {gettext("Model Selection")}
+            </h2>
+
+            <%= unless @active_connection do %>
+              <p class="text-base-content/50 text-sm">
+                {gettext("Pick an integration above to load available models.")}
+              </p>
+            <% end %>
 
             <% current_model_id = @form.params["model"] || (@endpoint && @endpoint.model)
             has_model = current_model_id && current_model_id != "" %>
 
-            <%!-- Current Model Display Box --%>
+            <%= if @active_connection do %>
+            <%!-- Current Model panel.
+
+                 Three render paths:
+
+                 1. **Selected model is in the loaded list** — hoist
+                    the rich `<.model_card>` out of the grid below
+                    and render it here with a Clear (X) button. The
+                    grid then filters it out so the same card never
+                    appears twice on the page.
+
+                 2. **Saved model ID isn't in the loaded list**
+                    (drift — provider changed, model deprecated, or
+                    fetch failed). The card can't be hoisted because
+                    the data isn't there; fall back to a compact ID +
+                    drift-warning row.
+
+                 3. **No model selected** — friendly empty state. --%>
             <div class="form-control mt-4">
               <label class="label">
-                <span class="label-text font-medium">Current Model *</span>
+                <span class="label-text font-medium">{gettext("Current Model")} *</span>
               </label>
 
               <%!-- Hidden input to store the actual model value --%>
               <input type="hidden" name="endpoint[model]" value={current_model_id || ""} />
 
-              <%= if has_model do %>
-                <div class={[
-                  "rounded-lg border p-4",
-                  @form.errors[:model] && "border-error",
-                  !@form.errors[:model] && "border-base-300 bg-base-200"
-                ]}>
-                  <div class="flex items-start justify-between">
-                    <div class="flex-1">
-                      <%!-- Model Name --%>
-                      <div class="font-semibold text-lg">
-                        <%= if @selected_model do %>
-                          {@selected_model.name || current_model_id}
-                        <% else %>
-                          {current_model_id}
-                        <% end %>
-                      </div>
+              <%= cond do %>
+                <% @selected_model -> %>
+                  <.model_card model={@selected_model} selected={true} show_clear={true} />
 
-                      <%!-- Model ID --%>
-                      <div class="text-sm font-mono text-base-content/60 mt-1">
+                <% has_model -> %>
+                  <%!-- Drift: saved ID isn't in the loaded list. --%>
+                  <div class={[
+                    "rounded-lg border p-3 flex items-center justify-between gap-3",
+                    @form.errors[:model] && "border-error",
+                    !@form.errors[:model] && "border-base-300 bg-base-200"
+                  ]}>
+                    <div class="flex-1 min-w-0">
+                      <div class="font-semibold truncate">
                         {current_model_id}
                       </div>
-
-                      <%!-- Model Details --%>
-                      <%= if @selected_model do %>
-                        <div class="flex flex-wrap gap-2 mt-3">
-                          <%!-- Provider --%>
-                          <% provider = current_model_id |> String.split("/") |> List.first() %>
-                          <span class="badge badge-outline badge-sm h-auto">
-                            <.icon name="hero-building-office-2" class="w-3 h-3 mr-1" />
-                            {PhoenixKitAI.OpenRouterClient.humanize_provider(provider)}
-                          </span>
-
-                          <%!-- Context Length --%>
-                          <%= if @selected_model.context_length do %>
-                            <span class="badge badge-outline badge-sm h-auto">
-                              <.icon name="hero-document-text" class="w-3 h-3 mr-1" />
-                              {format_number(@selected_model.context_length)} ctx
-                            </span>
-                          <% end %>
-
-                          <%!-- Max Completion Tokens --%>
-                          <%= if @selected_model.max_completion_tokens do %>
-                            <span class="badge badge-outline badge-sm h-auto">
-                              <.icon name="hero-pencil" class="w-3 h-3 mr-1" />
-                              {format_number(@selected_model.max_completion_tokens)} max output
-                            </span>
-                          <% end %>
-
-                          <%!-- Pricing --%>
-                          <%= if @selected_model.pricing do %>
-                            <% pricing = @selected_model.pricing %>
-                            <%= if pricing["prompt"] do %>
-                              <span class="badge badge-success badge-outline badge-sm h-auto">
-                                <% prompt_price =
-                                  if is_binary(pricing["prompt"]),
-                                    do: String.to_float(pricing["prompt"]),
-                                    else: pricing["prompt"] %> ${Float.round(
-                                  prompt_price * 1_000_000,
-                                  2
-                                )}/M in
-                              </span>
-                            <% end %>
-                            <%= if pricing["completion"] do %>
-                              <span class="badge badge-warning badge-outline badge-sm h-auto">
-                                <% completion_price =
-                                  if is_binary(pricing["completion"]),
-                                    do: String.to_float(pricing["completion"]),
-                                    else: pricing["completion"] %> ${Float.round(
-                                  completion_price * 1_000_000,
-                                  2
-                                )}/M out
-                              </span>
-                            <% end %>
-                          <% end %>
-                        </div>
-                      <% else %>
-                        <%!-- Model not in current list --%>
-                        <div class="mt-3">
-                          <span class="badge badge-warning badge-sm gap-1">
-                            <.icon name="hero-exclamation-triangle" class="w-3 h-3" />
-                            Not in current model list
-                          </span>
-                        </div>
-                      <% end %>
+                      <div class="mt-1">
+                        <span class="badge badge-warning badge-xs gap-1">
+                          <.icon name="hero-exclamation-triangle" class="w-3 h-3" />
+                          {gettext("Not in current model list")}
+                        </span>
+                      </div>
                     </div>
 
-                    <%!-- Clear button --%>
                     <button
                       type="button"
                       phx-click="clear_model"
-                      class="btn btn-ghost btn-sm btn-square"
-                      title="Clear model"
+                      class="btn btn-ghost btn-sm btn-square shrink-0"
+                      aria-label={gettext("Clear model")}
+                      title={gettext("Clear model")}
                     >
                       <.icon name="hero-x-mark" class="w-4 h-4" />
                     </button>
                   </div>
-                </div>
-              <% else %>
-                <%!-- No model selected placeholder --%>
-                <div class={[
-                  "rounded-lg border border-dashed p-6 text-center",
-                  @form.errors[:model] && "border-error bg-error/5",
-                  !@form.errors[:model] && "border-base-300"
-                ]}>
-                  <.icon name="hero-cube" class="w-8 h-8 mx-auto text-base-content/30" />
-                  <p class="text-base-content/50 mt-2">No model selected</p>
-                  <p class="text-sm text-base-content/40">
-                    Choose a model from the dropdown below
-                  </p>
-                </div>
+
+                <% true -> %>
+                  <%!-- Empty state. --%>
+                  <div class={[
+                    "rounded-lg border border-dashed p-6 text-center",
+                    @form.errors[:model] && "border-error bg-error/5",
+                    !@form.errors[:model] && "border-base-300"
+                  ]}>
+                    <.icon name="hero-cube" class="w-8 h-8 mx-auto text-base-content/30" />
+                    <p class="text-base-content/50 mt-2">{gettext("No model selected")}</p>
+                    <p class="text-sm text-base-content/40">
+                      {gettext("Choose a model from the list below")}
+                    </p>
+                  </div>
               <% end %>
 
               <%= if @form.errors[:model] do %>
@@ -288,14 +267,17 @@
               <% end %>
             </div>
 
-            <%!-- Model Selection (Waterfall: Provider → Model) --%>
+            <%!-- Model browse area. When a model is hoisted above as
+                 "Current Model", this label reads "Change model";
+                 otherwise "Select model". The grid below excludes
+                 the hoisted card so each model appears once. --%>
             <div class="form-control mt-4">
               <label class="label">
                 <span class="label-text font-medium">
                   <%= if has_model do %>
-                    Change Model
+                    {gettext("Change Model")}
                   <% else %>
-                    Select Model
+                    {gettext("Select Model")}
                   <% end %>
                 </span>
               </label>
@@ -332,24 +314,28 @@
                   </button>
                 </div>
                 <%= if Enum.empty?(@models_grouped) do %>
-                  <%!-- Fallback to text input when no models loaded --%>
+                  <%!-- Fallback to manual model-ID entry.
+                       Disabled until an integration is connected so
+                       the operator can't type a value into a field
+                       whose action is unreachable. The hint below
+                       explains the gate. --%>
                   <div class="join w-full">
                     <input
                       type="text"
                       id="manual_model_input"
                       class="input input-bordered join-item flex-1"
-                      placeholder="Enter model ID (e.g., anthropic/claude-3-haiku)"
+                      placeholder={gettext("Enter model ID (e.g., anthropic/claude-3-haiku)")}
+                      disabled={!@integration_connected}
+                      phx-hook="ManualModelInput"
                     />
                     <button
                       type="button"
                       phx-click="set_manual_model"
-                      onclick="
-                      const input = document.getElementById('manual_model_input');
-                      this.setAttribute('phx-value-model', input.value);
-                    "
+                      data-manual-model-submit
+                      disabled={!@integration_connected}
                       class="btn btn-primary join-item"
                     >
-                      Set Model
+                      {gettext("Set Model")}
                     </button>
                   </div>
                   <label class="label">
@@ -360,8 +346,14 @@
                     </span>
                   </label>
                 <% else %>
-                  <%!-- Provider Selection --%>
-                  <div>
+                  <%!-- Provider Selection. Hidden when only one
+                       provider group exists (direct-API providers
+                       like Mistral / DeepSeek whose model IDs don't
+                       carry a `provider/model` slash) — the LV
+                       auto-selects the sole group so the operator
+                       lands on the model grid directly instead of
+                       clicking through a one-option dropdown. --%>
+                  <div :if={length(@models_grouped) > 1}>
                     <label class="select w-full">
                       <select
                         id="provider_picker"
@@ -370,7 +362,7 @@
                         phx-hook="ResetSelect"
                       >
                         <option value="" selected>
-                          — Select provider ({length(@models_grouped)} available) —
+                          — {gettext("Select provider (%{count} available)", count: length(@models_grouped))} —
                         </option>
                         <%= for {provider, models} <- @models_grouped do %>
                           <option value={provider} selected={@selected_provider == provider}>
@@ -392,96 +384,47 @@
                             @selected_provider
                           )}
                         </span>
+                        <%!-- Only show Clear when there's a provider
+                             dropdown to fall back to. With one group
+                             auto-selected, clearing would orphan the
+                             user with no way to re-enter the grid. --%>
                         <button
+                          :if={length(@models_grouped) > 1}
                           type="button"
                           phx-click="select_provider"
                           phx-value-provider=""
                           class="btn btn-ghost btn-xs"
                         >
-                          <.icon name="hero-x-mark" class="w-3 h-3" /> Clear
+                          <.icon name="hero-x-mark" class="w-3 h-3" /> {gettext("Clear")}
                         </button>
                       </div>
 
-                      <div class="grid gap-2 max-h-80 overflow-y-auto pr-1">
-                        <%= for model <- @provider_models do %>
-                          <% pricing = model.pricing || %{} %>
-                          <% is_selected = current_model_id == model.id %>
-                          <button
-                            type="button"
-                            phx-click="select_model"
-                            phx-value-model={model.id}
-                            class={[
-                              "rounded-lg border p-3 transition-colors cursor-pointer text-left w-full",
-                              is_selected &&
-                                "border-primary bg-primary/10 ring-2 ring-primary/20",
-                              !is_selected &&
-                                "border-base-300 bg-base-200 hover:border-primary hover:bg-base-100"
-                            ]}
-                          >
-                            <div class="flex items-start justify-between gap-2">
-                              <div class="flex-1 min-w-0">
-                                <%!-- Model Name --%>
-                                <div class="font-semibold truncate">
-                                  {model.name || model.id}
-                                </div>
+                      <%!-- Filter input. Client-side filter via the
+                           data-search-text attribute on each card —
+                           no LV round-trip for keystrokes. Auto-shown
+                           when the grid has more than 6 entries; the
+                           hook scopes itself to the sibling grid by
+                           data-grid-id. --%>
+                      <input
+                        :if={length(@provider_models) > 6}
+                        type="text"
+                        id="model_grid_search"
+                        data-grid-id="model_grid"
+                        phx-hook="ModelGridSearch"
+                        placeholder={gettext("Filter models…")}
+                        class="input input-bordered input-sm w-full mb-2"
+                      />
 
-                                <%!-- Model ID --%>
-                                <div class="text-xs font-mono text-base-content/50 truncate">
-                                  {model.id}
-                                </div>
-
-                                <%!-- Badges --%>
-                                <div class="flex flex-wrap gap-1 mt-2">
-                                  <%!-- Context Length --%>
-                                  <%= if model.context_length do %>
-                                    <span class="badge badge-outline badge-xs h-auto">
-                                      {format_number(model.context_length)} ctx
-                                    </span>
-                                  <% end %>
-
-                                  <%!-- Max Output --%>
-                                  <%= if model.max_completion_tokens do %>
-                                    <span class="badge badge-outline badge-xs h-auto">
-                                      {format_number(model.max_completion_tokens)} out
-                                    </span>
-                                  <% end %>
-
-                                  <%!-- Pricing --%>
-                                  <%= if pricing["prompt"] do %>
-                                    <% prompt_price =
-                                      if is_binary(pricing["prompt"]),
-                                        do: String.to_float(pricing["prompt"]),
-                                        else: pricing["prompt"] %>
-                                    <span class="badge badge-success badge-outline badge-xs h-auto">
-                                      ${Float.round(prompt_price * 1_000_000, 2)}/M in
-                                    </span>
-                                  <% end %>
-                                  <%= if pricing["completion"] do %>
-                                    <% completion_price =
-                                      if is_binary(pricing["completion"]),
-                                        do: String.to_float(pricing["completion"]),
-                                        else: pricing["completion"] %>
-                                    <span class="badge badge-warning badge-outline badge-xs h-auto">
-                                      ${Float.round(completion_price * 1_000_000, 2)}/M out
-                                    </span>
-                                  <% end %>
-                                </div>
-                              </div>
-
-                              <%!-- Select indicator --%>
-                              <%= if is_selected do %>
-                                <.icon
-                                  name="hero-check-circle-solid"
-                                  class="w-5 h-5 text-primary flex-shrink-0 mt-1"
-                                />
-                              <% else %>
-                                <.icon
-                                  name="hero-chevron-right"
-                                  class="w-4 h-4 text-base-content/30 flex-shrink-0 mt-1"
-                                />
-                              <% end %>
-                            </div>
-                          </button>
+                      <%!-- Grid excludes the currently-selected model
+                           — it's hoisted to the "Current Model" panel
+                           above so each card appears in exactly one
+                           place. Clicking a different card in the
+                           grid selects it (and the previous selection
+                           drops back into the grid on the next
+                           render). --%>
+                      <div id="model_grid" class="grid gap-2 max-h-80 overflow-y-auto pr-1">
+                        <%= for model <- @provider_models, model.id != current_model_id do %>
+                          <.model_card model={model} selected={false} />
                         <% end %>
                       </div>
                     </div>
@@ -493,6 +436,7 @@
                 <% end %>
               <% end %>
             </div>
+            <% end %>
           </div>
         </div>
 
@@ -502,7 +446,11 @@
         <% basic_params = supported_params[:basic] || [] %>
         <% advanced_params = supported_params[:advanced] || [] %>
 
-        <%= if @selected_model || (@form.params["model"] && @form.params["model"] != "") || (@endpoint && @endpoint.model) do %>
+        <% has_model_for_params =
+          @selected_model || (@form.params["model"] && @form.params["model"] != "") ||
+            (@endpoint && @endpoint.model) %>
+
+        <%= if has_model_for_params && @active_connection do %>
           <div class="card bg-base-100 shadow-lg">
             <div class="card-body">
               <h2 class="card-title text-lg">{gettext("Generation Parameters")}</h2>
@@ -647,13 +595,19 @@
             </div>
           </div>
         <% else %>
-          <%!-- Placeholder when no model selected --%>
+          <%!-- Placeholder for two states:
+                 * No integration picked yet — operator can't reach
+                   the model picker until they do.
+                 * Integration picked but no model selected. --%>
           <div class="card bg-base-100 shadow-lg opacity-60">
             <div class="card-body">
               <h2 class="card-title text-lg text-base-content/50">{gettext("Generation Parameters")}</h2>
               <p class="text-base-content/50 text-sm">
-                Select a model above to configure generation parameters.
-                Available parameters depend on the selected model.
+                <%= if @active_connection do %>
+                  {gettext("Select a model above to configure generation parameters. Available parameters depend on the selected model.")}
+                <% else %>
+                  {gettext("Pick an integration above, then a model, to configure generation parameters.")}
+                <% end %>
               </p>
             </div>
           </div>
@@ -662,16 +616,45 @@
         <%!-- Optional Settings Card —
              HTTP-Referer / X-Title are OpenRouter-specific request
              headers (used for app rankings on openrouter.ai).
-             Mistral and DeepSeek don't honour them, so don't bother
-             surfacing the fields there. --%>
-        <div :if={@current_provider == "openrouter"} class="card bg-base-100 shadow-lg">
+             Mistral and DeepSeek don't honour them, so don't surface
+             the fields there.
+
+             Header always renders (greyed when no integration is
+             picked) so the operator can see this section exists.
+             Body shows only when the operator has picked an
+             OpenRouter integration. --%>
+        <% show_optional_body = @active_connection && @current_provider == "openrouter" %>
+        <div class={[
+          "card bg-base-100 shadow-lg",
+          if(!show_optional_body, do: "opacity-60")
+        ]}>
           <div class="card-body">
-            <h2 class="card-title text-lg">{gettext("Optional Provider Settings")}</h2>
+            <h2 class={
+              "card-title text-lg " <>
+                if(show_optional_body, do: "", else: "text-base-content/50")
+            }>
+              {gettext("Optional Provider Settings")}
+            </h2>
+
+            <%= unless show_optional_body do %>
+              <p class="text-base-content/50 text-sm">
+                <%= cond do %>
+                  <% is_nil(@active_connection) -> %>
+                    {gettext("Pick an integration above to see optional provider-specific settings.")}
+                  <% @current_provider != "openrouter" -> %>
+                    {gettext("These settings apply only to OpenRouter.")}
+                  <% true -> %>
+                    {gettext("No optional settings for this provider.")}
+                <% end %>
+              </p>
+            <% end %>
+
+            <%= if show_optional_body do %>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
               <div class="form-control">
                 <label class="label">
-                  <span class="label-text font-medium">HTTP Referer</span>
+                  <span class="label-text font-medium">{gettext("HTTP Referer")}</span>
                 </label>
                 <input
                   type="url"
@@ -685,13 +668,13 @@
                   placeholder="https://yourapp.com"
                 />
                 <label class="label">
-                  <span class="label-text-alt text-base-content/50">For OpenRouter rankings</span>
+                  <span class="label-text-alt text-base-content/50">{gettext("For OpenRouter rankings")}</span>
                 </label>
               </div>
 
               <div class="form-control">
                 <label class="label">
-                  <span class="label-text font-medium">X-Title</span>
+                  <span class="label-text font-medium">{gettext("X-Title")}</span>
                 </label>
                 <input
                   type="text"
@@ -704,12 +687,15 @@
                   placeholder="My Application"
                 />
                 <label class="label">
-                  <span class="label-text-alt text-base-content/50">App name for OpenRouter</span>
+                  <span class="label-text-alt text-base-content/50">{gettext("App name for OpenRouter")}</span>
                 </label>
               </div>
             </div>
+            <% end %>
 
-            <%!-- Enabled Toggle --%>
+            <%!-- Enabled Toggle. Always rendered — applies to every
+                 endpoint regardless of provider, so it stays visible
+                 even when the rest of this card is greyed out. --%>
             <div class="form-control mt-4">
               <label class="label cursor-pointer justify-start gap-4">
                 <input
@@ -722,7 +708,7 @@
                   }
                   class="checkbox checkbox-primary"
                 />
-                <span class="label-text font-medium">Endpoint Enabled</span>
+                <span class="label-text font-medium">{gettext("Endpoint Enabled")}</span>
               </label>
             </div>
           </div>
@@ -773,3 +759,52 @@
       <% end %>
     </div>
   </div>
+
+<%!-- Inline hook for the manual-model-id fallback. Stamps the input's
+     current value onto the sibling submit button's phx-value-model
+     just before LiveView reads the click — replacing the previous
+     `onclick="..."` inline JS, which mixed imperative DOM with LV
+     events and tripped strict-CSP setups. --%>
+<script>
+  if (!window.PhoenixKitHooks) window.PhoenixKitHooks = {};
+  window.PhoenixKitHooks.ManualModelInput = {
+    mounted() {
+      this.button = this.el
+        .closest('.join')
+        ?.querySelector('[data-manual-model-submit]');
+      if (!this.button) return;
+
+      this.sync = () => {
+        this.button.setAttribute('phx-value-model', this.el.value);
+      };
+      this.el.addEventListener('input', this.sync);
+      this.sync();
+    },
+    destroyed() {
+      this.el.removeEventListener?.('input', this.sync);
+    }
+  };
+
+  // Client-side filter over the model grid. Scopes to the grid
+  // referenced by `data-grid-id`; toggles `display: none` on cards
+  // whose `data-search-text` doesn't contain the query. No LV
+  // round-trip per keystroke.
+  window.PhoenixKitHooks.ModelGridSearch = {
+    mounted() {
+      this.handler = (e) => {
+        const query = (e.target.value || '').toLowerCase().trim();
+        const grid = document.getElementById(e.target.dataset.gridId);
+        if (!grid) return;
+        grid.querySelectorAll('button[data-search-text]').forEach((card) => {
+          const text = card.getAttribute('data-search-text') || '';
+          card.style.display =
+            query === '' || text.indexOf(query) !== -1 ? '' : 'none';
+        });
+      };
+      this.el.addEventListener('input', this.handler);
+    },
+    destroyed() {
+      this.el.removeEventListener?.('input', this.handler);
+    }
+  };
+</script>

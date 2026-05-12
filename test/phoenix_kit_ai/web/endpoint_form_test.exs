@@ -502,6 +502,195 @@ defmodule PhoenixKitAI.Web.EndpointFormTest do
     end
   end
 
+  describe "select_provider_connection on :new mount — drained handle_info" do
+    # Regression: `select_provider_connection` queues
+    # `send(self(), :fetch_models_from_integration)` which calls
+    # `current_models_base_url/1`. That function had a
+    # `endpoint && endpoint.provider == cp` chain feeding a strict
+    # `and is_binary(url) and url != ""` — when `@endpoint` is nil
+    # (the `:new` action), the left side reduces to `nil`, and
+    # `nil and ...` raises `BadBooleanError`. The fix is `&&`
+    # throughout. Pinning here so a regression to strict `and`
+    # would fail this test.
+    #
+    # The synchronous picker handler isn't enough — the crashing
+    # code lives in the queued handle_info. We have to drain the
+    # mailbox by rendering after the hook (or `:sys.get_state`,
+    # which also drains up to its own message).
+
+    test "picking an integration on /endpoints/new doesn't crash the LV",
+         %{conn: conn} do
+      %{uuid: uuid} =
+        seed_openrouter_connection("new-mount-pick-#{System.unique_integer([:positive])}")
+
+      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/new")
+
+      # Sanity: no endpoint loaded yet (new mode).
+      assert :sys.get_state(view.pid).socket.assigns.endpoint == nil
+
+      # Pick — this queues :fetch_models_from_integration.
+      view
+      |> render_hook("select_provider_connection", %{
+        "uuid" => uuid,
+        "action" => "select"
+      })
+
+      # Drain the mailbox. `render(view)` round-trips through the LV
+      # process which forces it to process queued messages (including
+      # the `:fetch_models_from_integration` self-send). If the
+      # `current_models_base_url/1` `and`-vs-`&&` regression
+      # returned, this call would raise.
+      html = render(view)
+
+      # Post-pick state holds: the LV is still alive, the pick took
+      # effect, and the model-fetch lifecycle assigns flipped.
+      assigns = :sys.get_state(view.pid).socket.assigns
+      assert assigns.active_connection == uuid
+      assert assigns.selected_uuids == [uuid]
+      # Either still loading or completed — both prove handle_info ran
+      # without crashing.
+      assert is_boolean(assigns.models_loading)
+      # And the rendered HTML still looks like the endpoint form (not
+      # a crash page).
+      assert html =~ "Provider Configuration"
+    end
+
+    test "switching integrations clears stale model state from the previous selection",
+         %{conn: conn} do
+      # Regression: pre-fix, `select_provider_connection` only set
+      # `active_connection` and triggered a new fetch — it didn't
+      # clear `@models_grouped` / `@models` / `@selected_provider` /
+      # `@provider_models`. If integration A's fetch had previously
+      # populated those and integration B's fetch fails (or just
+      # hasn't returned yet), the picker rendered A's stale model
+      # list alongside B's error pane or loading spinner. Confusing
+      # and misleading.
+      %{uuid: uuid_a} =
+        seed_openrouter_connection("first-#{System.unique_integer([:positive])}")
+
+      %{uuid: uuid_b} =
+        seed_openrouter_connection("second-#{System.unique_integer([:positive])}")
+
+      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/new")
+
+      # Pick A and pretend A's fetch completed with some models.
+      view
+      |> render_hook("select_provider_connection", %{
+        "uuid" => uuid_a,
+        "action" => "select"
+      })
+
+      :sys.replace_state(view.pid, fn state ->
+        assigns = state.socket.assigns
+        models = [%PhoenixKitAI.AIModel{id: "fake/model-a", name: "Fake A"}]
+        grouped = [{"fake", models}]
+
+        new_assigns =
+          assigns
+          |> Map.put(:models, models)
+          |> Map.put(:models_grouped, grouped)
+          |> Map.put(:selected_provider, "fake")
+          |> Map.put(:provider_models, models)
+          |> Map.put(:__changed__, %{})
+
+        %{state | socket: %{state.socket | assigns: new_assigns}}
+      end)
+
+      assigns_after_a = :sys.get_state(view.pid).socket.assigns
+      assert assigns_after_a.models_grouped == [{"fake", assigns_after_a.models}]
+
+      # Now switch to B. Stale model state from A must be wiped
+      # synchronously — even before B's fetch returns.
+      view
+      |> render_hook("select_provider_connection", %{
+        "uuid" => uuid_b,
+        "action" => "select"
+      })
+
+      assigns_after_b = :sys.get_state(view.pid).socket.assigns
+      assert assigns_after_b.active_connection == uuid_b
+      assert assigns_after_b.models == []
+      assert assigns_after_b.models_grouped == []
+      assert assigns_after_b.selected_provider == nil
+      assert assigns_after_b.provider_models == []
+      assert assigns_after_b.selected_model == nil
+    end
+  end
+
+  describe "Provider dropdown — filtered to providers with integrations" do
+    # The select used to render every entry in `Endpoint.provider_options()`
+    # regardless of whether the operator had set up an integration for
+    # that provider. Now the LV filters the option list to providers
+    # with ≥1 connection (plus the currently-edited endpoint's provider,
+    # so edit flows don't lose the saved selection).
+
+    # `value="openrouter"` substring matches both the unselected and
+    # selected variants of the rendered `<option>`. The select wraps in
+    # `selected=""` when that value is currently bound, which would
+    # break a stricter `<option value="..">` match.
+
+    test "dropdown lists only providers with at least one connection (new mode)",
+         %{conn: conn} do
+      seed_openrouter_connection("filter-#{System.unique_integer([:positive])}")
+
+      {:ok, _view, html} = live(conn, "/en/admin/ai/endpoints/new")
+
+      # OpenRouter has a connection, so it's in the option list.
+      assert html =~ ~s(value="openrouter">OpenRouter)
+      # Mistral and DeepSeek have none seeded → omitted.
+      refute html =~ ~s(value="mistral">Mistral)
+      refute html =~ ~s(value="deepseek">DeepSeek)
+    end
+
+    test "falls back to all providers when none have any connection",
+         %{conn: conn} do
+      # No seed: zero integrations of any provider. Filter would yield
+      # an empty list, which would render an unusable dropdown — the
+      # LV falls back to the full provider list so the operator can
+      # still scan the available providers + see the hint pointing to
+      # Settings → Integrations.
+      {:ok, _view, html} = live(conn, "/en/admin/ai/endpoints/new")
+
+      assert html =~ ~s(value="openrouter">OpenRouter)
+      assert html =~ ~s(value="mistral">Mistral)
+      assert html =~ ~s(value="deepseek">DeepSeek)
+    end
+
+    test "edit flow keeps the endpoint's saved provider in the list even if it has 0 connections",
+         %{conn: conn} do
+      # Seed only mistral. Pin an endpoint to openrouter (zero
+      # connections). The edit dropdown must still include openrouter
+      # so the user's existing choice doesn't vanish mid-flow.
+      seed_mistral_connection("keep-saved-#{System.unique_integer([:positive])}")
+
+      endpoint =
+        fixture_endpoint(
+          provider: "openrouter",
+          integration_uuid: nil
+        )
+
+      {:ok, _view, html} = live(conn, "/en/admin/ai/endpoints/#{endpoint.uuid}/edit")
+
+      # Mistral has a connection → in list.
+      assert html =~ ~s(value="mistral">Mistral)
+      # Openrouter has no connection BUT is the endpoint's saved
+      # provider → included.
+      assert html =~ ~s(value="openrouter">OpenRouter)
+      # DeepSeek has neither → excluded.
+      refute html =~ ~s(value="deepseek">DeepSeek)
+    end
+
+    test "renders the 'Set one up in Settings → Integrations' hint link",
+         %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/en/admin/ai/endpoints/new")
+
+      assert html =~ "Need another integration?"
+      # The link target — uses prefix path helpers.
+      assert html =~ "/admin/settings/integrations"
+      assert html =~ "Set one up in Settings → Integrations"
+    end
+  end
+
   describe "handle_info catch-all" do
     test "ignores unrelated PubSub messages without crashing", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/new")
@@ -567,23 +756,158 @@ defmodule PhoenixKitAI.Web.EndpointFormTest do
       assert changeset.errors[:name] |> elem(0) =~ "should be at most"
     end
 
-    test "empty name on the validate event renders an inline error", %{conn: conn} do
+    test "empty name on the validate event does NOT surface 'can't be blank'", %{conn: conn} do
+      # The boss explicitly didn't want "can't be blank" popping up
+      # mid-typing. The validate handler still rebuilds the changeset
+      # (to keep `@form` and `@selected_model` in sync), but it no
+      # longer stamps `:action, :validate` — which is what `<.input>`
+      # checks before rendering error markup. Errors come back on
+      # save-failure (see the test below).
       {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/new")
 
-      # `phx-change="validate"` fires on every keystroke. The form body
-      # has a hidden `endpoint[model]` input that must match what the
-      # LV rendered, so we trigger validate via render_change with the
-      # field we actually want to vary, leaving the model alone.
       html =
         view
         |> render_change("validate", %{
           "endpoint" => %{"name" => "", "provider" => "openrouter", "model" => ""}
         })
 
-      # Inline error renders because the LV's validate event sets
-      # `:action = :validate` (endpoint_form.ex:236, 300, 324, 343),
-      # gating `<.input>`'s error display.
-      assert html =~ "can&#39;t be blank" or html =~ "blank"
+      refute html =~ "can&#39;t be blank"
+      refute html =~ "can't be blank"
+    end
+
+    test "submitting with empty required fields renders inline errors", %{conn: conn} do
+      # The save path lets `AI.create_endpoint/2` run the changeset
+      # through `Repo.insert`, which stamps `action: :insert` on the
+      # returned `{:error, changeset}`. That action is what gates
+      # `<.input>`'s error markup, so blanks finally show up to the
+      # operator — but only after they tried to commit.
+      #
+      # Note: the Model Selection card (with its hidden `endpoint[model]`
+      # input) is gated on `@active_connection`, so on the /new mount
+      # with no integration picked, that field isn't in the DOM. The
+      # form-helper bindings only cover what's currently rendered;
+      # blank `name` alone is sufficient to drive the error path.
+      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/new")
+
+      html =
+        view
+        |> form("form[phx-submit=\"save\"]",
+          endpoint: %{"name" => "", "provider" => "openrouter"}
+        )
+        |> render_submit()
+
+      assert html =~ "can&#39;t be blank" or html =~ "can't be blank"
+    end
+  end
+
+  describe "format_price/1" do
+    # OpenRouter pricing comes back as either a JSON number or a
+    # stringified float depending on the model row's age. The helper
+    # normalises both into a rounded "$X.XX" per-million display
+    # string, and returns nil for empty/missing values so the
+    # template can render-or-skip cleanly.
+
+    test "renders a JSON-number price as $/M dollars rounded to 2 places" do
+      assert EndpointForm.format_price(0.0000015) == "$1.50"
+      assert EndpointForm.format_price(0.000010) == "$10.00"
+    end
+
+    test "parses a stringified float and renders the same shape" do
+      assert EndpointForm.format_price("0.0000015") == "$1.50"
+      assert EndpointForm.format_price("0.00000025") == "$0.25"
+    end
+
+    test "returns nil for empty / nil inputs so the template can :if-skip" do
+      assert EndpointForm.format_price(nil) == nil
+      assert EndpointForm.format_price("") == nil
+    end
+
+    test "returns nil for unparseable strings — doesn't render '$NaN'" do
+      assert EndpointForm.format_price("not-a-number") == nil
+    end
+
+    test "renders zero as $0.00" do
+      # OpenRouter occasionally lists free models with 0 pricing.
+      # Should render explicitly, not get swallowed by an empty check.
+      assert EndpointForm.format_price(0.0) == "$0.00"
+      assert EndpointForm.format_price("0") == "$0.00"
+    end
+  end
+
+  describe "Section gating — greyed headers when no integration picked" do
+    # Boss flagged that an unreachable card body is dead weight, but
+    # the headers should still appear (greyed) so the operator knows
+    # the form has more sections beyond Provider Configuration. Pin
+    # the three card headers that gate on `@active_connection`.
+
+    test "Model Selection header renders with greyed class when no integration",
+         %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/en/admin/ai/endpoints/new")
+
+      # Header visible (we don't hide the section)…
+      assert html =~ "Model Selection"
+      # …but greyed via the daisyUI muted text class.
+      assert html =~ ~s|text-base-content/50">\n              Model Selection|
+      # And body shows the "pick an integration" placeholder, not
+      # the rich grid.
+      assert html =~ "Pick an integration above to load available models"
+      # Sanity — no model-card scaffolding rendered.
+      refute html =~ ~s|id="model_grid"|
+    end
+
+    test "Generation Parameters header greyed + placeholder shown",
+         %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/en/admin/ai/endpoints/new")
+
+      # The "no model" placeholder card carries both the greyed
+      # header and the no-integration-specific placeholder copy.
+      assert html =~ "Generation Parameters"
+
+      assert html =~
+               "Pick an integration above, then a model, to configure generation parameters."
+    end
+
+    test "Optional Provider Settings header greyed + placeholder shown",
+         %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/en/admin/ai/endpoints/new")
+
+      assert html =~ "Optional Provider Settings"
+      assert html =~ "Pick an integration above to see optional provider-specific settings."
+
+      # The OpenRouter-specific HTTP-Referer / X-Title inputs are
+      # NOT rendered when the gate doesn't open.
+      refute html =~ ~s|name="endpoint[provider_settings][http_referer]"|
+
+      # Endpoint Enabled toggle DOES still render — applies to
+      # every endpoint regardless of provider, kept outside the
+      # body gate intentionally.
+      assert html =~ ~s|name="endpoint[enabled]"|
+    end
+  end
+
+  describe "Manual model-id fallback — gating + accessibility" do
+    # The fallback `<input>` and "Set Model" `<button>` appear when
+    # the model grid is empty. Without an integration connected,
+    # there's no way to actually load models — so both controls go
+    # `disabled` rather than tempting the operator to type into a
+    # field whose action is unreachable.
+
+    test "input + submit button are disabled when no integration is picked",
+         %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/en/admin/ai/endpoints/new")
+
+      # With no integration picked, `@active_connection` is nil
+      # AND the Model Selection card is in placeholder mode, so
+      # the manual-id fallback isn't even rendered in this state
+      # (it lives inside the gated body block). The placeholder
+      # IS rendered.
+      assert html =~ "Pick an integration above to load available models"
+
+      # And specifically the manual model id input + button are
+      # NOT in the DOM at all (gated out with the rest of the
+      # body).
+      refute html =~ ~s|id="manual_model_input"|
+      refute html =~ "Set Model"
     end
   end
 end

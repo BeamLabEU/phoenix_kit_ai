@@ -172,21 +172,23 @@ defmodule PhoenixKitAI.Web.EndpointFormCoverageTest do
         }
       })
 
-      # Switching provider should empty the model in the rendered form.
-      html =
-        render_change(view, "validate", %{
-          "endpoint" => %{
-            "name" => "PV",
-            "provider" => "mistral",
-            "model" => "anthropic/claude-3-haiku"
-          }
-        })
+      # Switching provider should empty the model param via
+      # `maybe_handle_provider_change/2`. The Model Selection card
+      # (which carries the hidden `endpoint[model]` input in the DOM)
+      # is gated on `@active_connection`, so on this no-integration
+      # mount we assert directly on the form's params rather than the
+      # rendered HTML.
+      render_change(view, "validate", %{
+        "endpoint" => %{
+          "name" => "PV",
+          "provider" => "mistral",
+          "model" => "anthropic/claude-3-haiku"
+        }
+      })
 
-      # The hidden input that round-trips the value should now carry
-      # an empty string (not the OpenRouter-shaped id), and the model
-      # display block should be in its empty state.
-      refute html =~ ~s|value="anthropic/claude-3-haiku"|
-      assert html =~ ~s|name="endpoint[model]"|
+      assigns = :sys.get_state(view.pid).socket.assigns
+      assert assigns.form.params["model"] == ""
+      assert assigns.form.params["provider"] == "mistral"
     end
   end
 
@@ -338,7 +340,7 @@ defmodule PhoenixKitAI.Web.EndpointFormCoverageTest do
 
       {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/new")
       Req.Test.allow(stub_module, self(), view.pid)
-      send(view.pid, {:fetch_models, "sk-test-key"})
+      send(view.pid, {:fetch_models, "sk-test-key", "01900000-0000-7000-8000-000000000000"})
       assert is_binary(render(view))
     end
 
@@ -384,7 +386,7 @@ defmodule PhoenixKitAI.Web.EndpointFormCoverageTest do
         }
       })
 
-      send(view.pid, {:fetch_models, "sk-test-key"})
+      send(view.pid, {:fetch_models, "sk-test-key", "01900000-0000-7000-8000-000000000000"})
       _ = render(view)
 
       assert_receive {:fetched_url, host, path}, 1_000
@@ -430,7 +432,7 @@ defmodule PhoenixKitAI.Web.EndpointFormCoverageTest do
 
       {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/#{ep.uuid}/edit")
       Req.Test.allow(stub_module, self(), view.pid)
-      send(view.pid, {:fetch_models, "sk-test-key"})
+      send(view.pid, {:fetch_models, "sk-test-key", "01900000-0000-7000-8000-000000000000"})
 
       html = render(view)
       # Once the fetch succeeds, selected_model gets populated. Generation
@@ -457,7 +459,7 @@ defmodule PhoenixKitAI.Web.EndpointFormCoverageTest do
 
       {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/new")
       Req.Test.allow(stub_module, self(), view.pid)
-      send(view.pid, {:fetch_models, "sk-test-key"})
+      send(view.pid, {:fetch_models, "sk-test-key", "01900000-0000-7000-8000-000000000000"})
 
       html = render(view)
       # `OpenRouterClient` returns `{:connection_error, :nxdomain}`,
@@ -593,16 +595,28 @@ defmodule PhoenixKitAI.Web.EndpointFormCoverageTest do
         %{lv_state | socket: socket}
       end)
 
+      # Subscribe to PubSub so we can synchronously wait for the
+      # validation Task to complete. The validate-then-fetch flow
+      # runs validation in a Task to keep the LV responsive; `record_validation`
+      # broadcasts `:integration_validated` once the HTTP call returns.
+      # That broadcast is our "Task done" signal — without it, `render(view)`
+      # can return before the Task even sends its result message.
+      :ok = PhoenixKit.Integrations.Events.subscribe()
+
       view |> render_hook("retry_model_fetch", %{})
-      # Force a sync render so any queued :fetch_models_from_integration
-      # → {:fetch_models, _} → Req.get chain finishes before assertion.
+
+      # Wait for the Task's validation to land.
+      assert_receive {:integration_validated, _, _}, 2_000
+
+      # Now drain the LV's mailbox (it should have :validation_done
+      # queued from the Task, which sets `models_error`).
       _ = render(view)
 
       assigns = :sys.get_state(view.pid).socket.assigns
-      # After Retry, the credential lookup succeeded and `{:fetch_models, _}`
-      # was sent. The stub returned 500, so the error pane re-rendered
-      # with the upstream-error message — different from the original
-      # ":timeout" we seeded, proving the re-fetch actually ran.
+      # After Retry, validation ran against the stub which returned 500.
+      # The error pane re-rendered with the upstream-error message —
+      # different from the original ":timeout" we seeded, proving the
+      # re-fetch actually ran.
       assert is_binary(assigns.models_error)
       refute assigns.models_error =~ ":timeout"
     end
@@ -688,7 +702,7 @@ defmodule PhoenixKitAI.Web.EndpointFormCoverageTest do
       Req.Test.allow(stub_module, self(), view.pid)
 
       # Populate models_grouped via the fetch.
-      send(view.pid, {:fetch_models, "sk-test-key"})
+      send(view.pid, {:fetch_models, "sk-test-key", "01900000-0000-7000-8000-000000000000"})
       _ = render(view)
 
       # Drive select_provider with a real provider in models_grouped.

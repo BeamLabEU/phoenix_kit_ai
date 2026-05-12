@@ -123,6 +123,16 @@ Application.put_env(:phoenix_kit_ai, :test_repo_available, repo_available)
 {:ok, _pid} = PhoenixKit.PubSub.Manager.start_link([])
 {:ok, _pid} = PhoenixKit.ModuleRegistry.start_link([])
 
+# `PhoenixKit.TaskSupervisor` is the named Task.Supervisor that
+# `Task.Supervisor.start_child/2` callsites in the AI module's LVs
+# target for fire-and-forget supervised work (validate-then-fetch in
+# endpoint_form.ex). Production starts it as part of
+# `PhoenixKit.Supervisor`; the test VM only runs the minimal subset
+# above, so we boot it explicitly here. Without this, any LV test
+# that hits the validation path crashes with `(EXIT) no process` on
+# the start_child call.
+{:ok, _pid} = Task.Supervisor.start_link(name: PhoenixKit.TaskSupervisor)
+
 # Force PhoenixKit's URL prefix cache so `Routes.ai_path/0` produces
 # paths that the test router matches. Admin paths always get the
 # default locale ("en") prefix, so the test router scopes under

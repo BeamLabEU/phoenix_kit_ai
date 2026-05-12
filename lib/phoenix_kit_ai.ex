@@ -472,8 +472,22 @@ defmodule PhoenixKitAI do
         :skipped
 
       any_openrouter_integration_exists?() ->
-        # Operator already set up Integrations manually — record that
-        # we've reached the desired end state and skip future runs.
+        # The auto-migrator only ever creates `integration:openrouter:*`
+        # rows (its target population is endpoints with `provider ==
+        # "openrouter"` and a non-empty `api_key`). If any OpenRouter
+        # connection already exists in `phoenix_kit_settings`, the
+        # operator either set Integrations up manually OR a previous
+        # run completed — either way the desired end state is reached.
+        # Mark complete and skip future runs.
+        #
+        # **Scope clarification** (PR #6 review finding #8): this gate
+        # is OpenRouter-only. A multi-provider deployment that has,
+        # say, a Mistral integration set up but still has unmigrated
+        # legacy OpenRouter `api_key` columns will NOT trip this guard
+        # — the migration runs normally for the OpenRouter rows.
+        # `any_openrouter_integration_exists?/0` mirrors the
+        # migration's actual target population, not a global "any
+        # integration anywhere" check.
         mark_legacy_api_key_migration_complete()
         :skipped
 
@@ -2390,6 +2404,26 @@ defmodule PhoenixKitAI do
   # empty — same as the request path. The error reason distinguishes
   # between "you pinned an integration that was deleted" (orphan) and
   # "you never wired anything up" so the user-facing message is honest.
+  #
+  # **Intentional behaviour change vs pre-strict-UUID** (PR #6 review
+  # finding #2): the old shape short-circuited on
+  # `not Integrations.connected?(endpoint.provider)` — an integration
+  # with stored credentials but in a not-`"connected"` state would
+  # fail validation pre-API. The new ladder does NOT consult
+  # `connected?/1`: as long as a credential exists in any of the
+  # three sources, we let the upstream provider be the source of
+  # truth on whether the key actually authenticates. This matches
+  # how the request path resolves credentials — validation only
+  # disagrees with the eventual request when one of the three
+  # sources changes between validate and dispatch, which is a
+  # narrower window than the old shape's "stale `connected?` state"
+  # window. A row that's `"error"` or `"configured"` (creds present,
+  # never validated) now reaches the upstream API and gets a real
+  # 401/403 instead of a pre-emptive `:integration_not_configured`.
+  # If a caller specifically wants "is this key healthy right now",
+  # they should call `PhoenixKit.Integrations.validate_connection/2`
+  # directly — `endpoint_credential_status/1` is the
+  # `is this endpoint dispatchable` check, not a health check.
   defp endpoint_credential_status(endpoint) do
     cond do
       match?({:ok, _}, lookup_credentials(endpoint.integration_uuid)) ->
