@@ -18,6 +18,14 @@
 
 **Risk Level:** Low/Medium. The behavioural payload is sound — `Task.Supervisor.start_child` matches the playbook, the staleness guard in `:validation_done` is correct, the strict-`and` → `&&` fix is verified by a dedicated regression test, and the validation-timing change is intentional and tested. The two reservations are: (1) the JS hooks are registered via inline `<script>` rather than the host app's `app.js`, which has a real `live_redirect`-entry failure mode; (2) `format_price/1` has a latent crash on JSON integer pricing.
 
+> **Post-merge follow-up note (2026-05-12):** four findings closed
+> in commits `dfdd456` (M1, M3, M4) and `eeae0ad` (the new cond at
+> #M3 was rewritten to `if/else`; pre-existing credo + dialyzer
+> findings swept). See the **Addressed Findings** roll-up at the
+> bottom for the updated verdict and verification table. Inline
+> "Addressed in follow-up" annotations sit beneath each closed
+> finding.
+
 ## Critical Issues
 
 None.
@@ -25,6 +33,13 @@ None.
 ## High Severity
 
 ### H1. Inline `<script>` hook registration breaks on `live_redirect` entry
+
+> **Not addressed in follow-up.** Structural change — depends on
+> how the consumer app wires `app.js` (out-of-tree for this repo)
+> or whether we adopt LV 1.1 colocated hooks. Left for a future
+> sweep that can land alongside a consumer-side `app.js`
+> migration.
+
 
 **File:** `lib/phoenix_kit_ai/web/endpoint_form.html.heex:763-810`
 
@@ -60,6 +75,13 @@ The same pattern would also affect any future hook added inline.
 ## Medium Severity
 
 ### M1. `format_price/1` crashes on JSON-integer pricing
+
+> **Addressed in follow-up (`dfdd456`).** Coerced via `value * 1.0
+> * 1_000_000` before `:erlang.float_to_binary/2`. Added two
+> pinning tests at `endpoint_form_test.exs:836-844` —
+> `format_price(0)` (free-tier integer 0) and `format_price(2)`
+> (sanity for non-zero integer path).
+
 
 **File:** `lib/phoenix_kit_ai/web/endpoint_form.ex:1453-1455`
 
@@ -102,6 +124,12 @@ Add `assert EndpointForm.format_price(0) == "$0.00"` to `endpoint_form_test.exs:
 
 ### M2. `validate-then-fetch` doubles picker latency on every connection-switch
 
+> **Not addressed — tracked as known cost.** Defensible tradeoff
+> per the original assessment; revisit when adding the next
+> provider whose `validation.url` overlaps `/models`. Document
+> in the multi-provider docs at that point.
+
+
 **File:** `lib/phoenix_kit_ai/web/endpoint_form.ex:1022-1030, 1052-1078`
 
 The new flow runs `validate_connection` (one HTTP round-trip to `/auth/key`) **and then** `fetch_models` (one HTTP round-trip to `/models`) sequentially on every integration pick. For OpenRouter that's fine — `/auth/key` is fast. For Mistral / DeepSeek the validation URL is `/v1/models` (per the multi-provider PR #6) — which is *the same endpoint* the fetch would hit a moment later. The operator pays for two requests where one would do.
@@ -113,6 +141,21 @@ This is a defensible tradeoff (centralised validation gate, picker badge updates
 **Recommendation:** track this as a known UX cost rather than fix immediately. Mention in the multi-provider docs that adding a provider whose `validation.url` and model-list endpoint are the same incurs a redundant request — the request-collapse should land alongside that next provider, not retrospectively.
 
 ### M3. `:fetch_models` carries an unused `uuid` payload
+
+> **Addressed in follow-up (`dfdd456`, `eeae0ad`).** Took option
+> (a) — added a stale-fetch guard. The guard only fires when both
+> `socket.assigns.active_connection` and the incoming `uuid` are
+> concrete binaries that differ; a nil `active_connection`
+> bypasses (preserves unit-test direct sends + the deselect
+> path). Required reshuffling `:fetch_models` /
+> `:model_fetch_slow` / `handle_info` catch-all to keep them
+> contiguous so the extracted `do_fetch_models/2` helper could
+> live under `# Private helpers` without splitting `handle_info`
+> clauses (`--warnings-as-errors` would have failed). The new
+> guard's initial `cond` was rewritten to `if/else` in
+> `eeae0ad` to silence the credo single-real-branch warning the
+> rewrite introduced.
+
 
 **File:** `lib/phoenix_kit_ai/web/endpoint_form.ex:1078-1083`
 
@@ -127,6 +170,16 @@ The staleness guard is correctly applied one step earlier — in `:validation_do
 **Recommendation:** either (a) actually guard `:fetch_models` on `socket.assigns[:active_connection] == uuid` for defence in depth (and to remove the stale-comment risk), or (b) revert the tuple to `{:fetch_models, api_key}` and drop the now-redundant test-side fixture uuid. Option (a) is the safer call — the validation-done handler `send(self(), {:fetch_models, api_key, uuid})` and any future producer of this message benefit from the guard at the consumer.
 
 ### M4. `provider_options_for/2` keeps `current_provider` in the list on `:new` mount
+
+> **Addressed in follow-up (`dfdd456`).** `refresh_provider_options/2`
+> now derives `editing? = socket.assigns[:endpoint] != nil` and
+> only pads `current_provider` into the dropdown when editing.
+> On `:new`, `pinned_provider = nil`, so the mount-default
+> `"openrouter"` no longer surfaces as a dead-end option. Added
+> regression test at `endpoint_form_test.exs:694-710` — seed only
+> mistral, assert OpenRouter and DeepSeek absent from the
+> `:new` dropdown.
+
 
 **File:** `lib/phoenix_kit_ai/web/endpoint_form.ex:778-797`
 
@@ -237,3 +290,76 @@ The Mediums are all small follow-up patches. The High is host-app-dependent in s
 ## Verdict
 
 **APPROVE with reservations.** Behavioural correctness is solid; the validate-then-fetch / staleness / supervised-task patterns are textbook for the playbook shape. The four follow-ups above would benefit a quality sweep — none are blockers for what's already shipped.
+
+---
+
+## Addressed Findings — post-merge follow-up (2026-05-12)
+
+Two commits landed on `main` after the merge of PR #8:
+
+- `dfdd456` — closes **M1**, **M3**, **M4** + their pinning tests.
+- `eeae0ad` — closes 7 of 12 pre-existing credo findings and the
+  one dialyzer pattern-match error surfaced by the
+  `4b98b8c libs got upgraded` bump. Also rewrites the `cond`
+  M3 introduced into `if/else` (credo: single-real-branch).
+
+### Files touched
+
+| File | Findings closed | Notes |
+|---|---|---|
+| `lib/phoenix_kit_ai.ex` | dialyzer dead clause + 2 pre-existing `cond`→`if` (`migrate_endpoint_group/3`, `promote_provider_to_integration_uuid/1`) | The unreachable `nil` clause of `maybe_add_integration_uuid/2` was removed; the `""` clause stays (form-input path is still reachable). |
+| `lib/phoenix_kit_ai/web/endpoint_form.ex` | **M1**, **M3**, **M4** | `format_price/1` coercion (M1), `:fetch_models` stale-fetch guard + `handle_info` reshuffle (M3), `refresh_provider_options/2` editing-only padding (M4). |
+| `test/phoenix_kit_ai/web/endpoint_form_test.exs` | M1/M4 pinning tests | Two new tests added: `format_price(0)` integer path, and `:new` mount with only-mistral connection. |
+| `test/phoenix_kit_ai/completion_coverage_test.exs` | 3 nested-module-alias suggestions | `PhoenixKitAI.Test.Repo` aliased as `TestRepo`. |
+| `test/phoenix_kit_ai/web/endpoint_form_test.exs` | 1 nested-module-alias suggestion | Same alias added. |
+| `test/phoenix_kit_ai/web/endpoint_form_coverage_test.exs` | 1 nested-module-alias suggestion | `PhoenixKit.Integrations.Events` aliased as `IntegrationsEvents`. |
+
+### Verification (post-sweep)
+
+| Check | Result |
+|---|---|
+| `mix compile --warnings-as-errors` | clean |
+| `mix format --check-formatted` | clean |
+| `mix credo --strict` | **5 findings** (down from 12) — all pre-existing complexity-refactor opportunities, see "Known debt" below |
+| `mix dialyzer` | **0 errors** (was 1) |
+| `mix test` | **Not run** — no postgres in this sandbox. Run locally before relying on the sweep. The high-risk piece is the `handle_info` reshuffle in `endpoint_form.ex` — `endpoint_form_test.exs` + `endpoint_form_coverage_test.exs` exercise it. |
+
+### Findings status
+
+| # | Severity | Status |
+|---|---|---|
+| H1 | High | **Open.** Structural — needs consumer-side `app.js` migration or LV 1.1 colocated hooks. |
+| M1 | Medium | **Closed** — `dfdd456`. |
+| M2 | Medium | **Open (intentional).** Tracked as known UX cost; revisit when adding the next provider whose `validation.url` overlaps `/models`. |
+| M3 | Medium | **Closed** — `dfdd456` (guard) + `eeae0ad` (`cond`→`if`). |
+| M4 | Medium | **Closed** — `dfdd456`. |
+| L1–L5 | Low | **Open.** Polish only; not worth a churn commit on their own. |
+
+### Known debt (intentionally left open)
+
+The 5 remaining credo refactoring opportunities are all
+cyclomatic-complexity / nesting-depth findings on real
+branching logic. Each one needs a thoughtful split-into-helpers
+pass rather than a mechanical rewrite, so they're left for a
+purposeful sweep with the test suite in hand. They have been
+carried across multiple PRs (the maintainer has consciously
+left them) and don't block correctness.
+
+| File:Line | Function | Issue |
+|---|---|---|
+| `lib/phoenix_kit_ai.ex:613` | `migrate_endpoint_group/3` | nested depth 3 (max 2) |
+| `lib/phoenix_kit_ai.ex:757` | `sweep_provider_string_to_integration_uuid/0` | nested depth 3 (max 2) |
+| `lib/phoenix_kit_ai/web/endpoint_form.ex:287` | `load_endpoint/2` | cyclomatic 14 (max 9) |
+| `lib/phoenix_kit_ai/web/endpoint_form.ex:709` | `reload_connections/2` | cyclomatic 11 (max 9) |
+| `lib/phoenix_kit_ai/web/endpoint_form.ex:904` | `integration_warning/1` | cyclomatic 12 (max 9) |
+
+### Updated verdict
+
+**APPROVE.** Four of the five actionable findings closed (M1, M3, M4
+on the AI module side; pre-existing dialyzer warning + 7 of 12 credo
+findings on the broader sweep). The remaining items are either
+structural (H1 — consumer-side `app.js`), intentional tradeoff (M2 —
+known latency cost), or maintainer-tolerated complexity debt (the 5
+credo refactor opportunities). No correctness reservations remain on
+the merged code path.
+
