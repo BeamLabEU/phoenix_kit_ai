@@ -205,6 +205,29 @@ defmodule PhoenixKitAI.Completion do
   Returns the first non-empty string found, or `nil` if no reasoning is
   present (i.e. for non-reasoning models or when the operator opted out
   of returning reasoning via `reasoning_exclude: true`).
+
+  ## `reasoning_exclude: true` and buggy providers
+
+  The endpoint's `reasoning_exclude` flag controls the REQUEST payload —
+  it tells the provider not to send reasoning back. A correctly-behaving
+  provider then returns a response without any of the three reasoning
+  fields and `extract_reasoning/1` returns `nil`.
+
+  A buggy provider (or one that doesn't honour the flag) might still
+  include reasoning. We deliberately extract it anyway rather than
+  gating the response-side capture on `reasoning_exclude` — the
+  reasoning in `metadata.response_reasoning` then doubles as a
+  breadcrumb that lets operators correlate "request asked for no
+  reasoning but provider sent it anyway" against a specific provider
+  + model + request id (PR #6 review finding #9). PII / data-retention
+  concerns are covered by the `capture_request_content?/0`
+  application-config gate — when content capture is off, the
+  `response_reasoning` metadata is dropped too.
+
+  If you specifically want "discard reasoning when `reasoning_exclude:
+  true` regardless of what the provider sent", that's a separate
+  faithfulness-mode opt the caller would have to set on top of this
+  helper. The helper itself stays transparent.
   """
   @spec extract_reasoning(map()) :: String.t() | nil
   def extract_reasoning(response) do
