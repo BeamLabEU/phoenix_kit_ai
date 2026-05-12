@@ -799,4 +799,115 @@ defmodule PhoenixKitAI.Web.EndpointFormTest do
       assert html =~ "can&#39;t be blank" or html =~ "can't be blank"
     end
   end
+
+  describe "format_price/1" do
+    # OpenRouter pricing comes back as either a JSON number or a
+    # stringified float depending on the model row's age. The helper
+    # normalises both into a rounded "$X.XX" per-million display
+    # string, and returns nil for empty/missing values so the
+    # template can render-or-skip cleanly.
+
+    test "renders a JSON-number price as $/M dollars rounded to 2 places" do
+      assert EndpointForm.format_price(0.0000015) == "$1.50"
+      assert EndpointForm.format_price(0.000010) == "$10.00"
+    end
+
+    test "parses a stringified float and renders the same shape" do
+      assert EndpointForm.format_price("0.0000015") == "$1.50"
+      assert EndpointForm.format_price("0.00000025") == "$0.25"
+    end
+
+    test "returns nil for empty / nil inputs so the template can :if-skip" do
+      assert EndpointForm.format_price(nil) == nil
+      assert EndpointForm.format_price("") == nil
+    end
+
+    test "returns nil for unparseable strings — doesn't render '$NaN'" do
+      assert EndpointForm.format_price("not-a-number") == nil
+    end
+
+    test "renders zero as $0.00" do
+      # OpenRouter occasionally lists free models with 0 pricing.
+      # Should render explicitly, not get swallowed by an empty check.
+      assert EndpointForm.format_price(0.0) == "$0.00"
+      assert EndpointForm.format_price("0") == "$0.00"
+    end
+  end
+
+  describe "Section gating — greyed headers when no integration picked" do
+    # Boss flagged that an unreachable card body is dead weight, but
+    # the headers should still appear (greyed) so the operator knows
+    # the form has more sections beyond Provider Configuration. Pin
+    # the three card headers that gate on `@active_connection`.
+
+    test "Model Selection header renders with greyed class when no integration",
+         %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/en/admin/ai/endpoints/new")
+
+      # Header visible (we don't hide the section)…
+      assert html =~ "Model Selection"
+      # …but greyed via the daisyUI muted text class.
+      assert html =~ ~s|text-base-content/50">\n              Model Selection|
+      # And body shows the "pick an integration" placeholder, not
+      # the rich grid.
+      assert html =~ "Pick an integration above to load available models"
+      # Sanity — no model-card scaffolding rendered.
+      refute html =~ ~s|id="model_grid"|
+    end
+
+    test "Generation Parameters header greyed + placeholder shown",
+         %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/en/admin/ai/endpoints/new")
+
+      # The "no model" placeholder card carries both the greyed
+      # header and the no-integration-specific placeholder copy.
+      assert html =~ "Generation Parameters"
+
+      assert html =~
+               "Pick an integration above, then a model, to configure generation parameters."
+    end
+
+    test "Optional Provider Settings header greyed + placeholder shown",
+         %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/en/admin/ai/endpoints/new")
+
+      assert html =~ "Optional Provider Settings"
+      assert html =~ "Pick an integration above to see optional provider-specific settings."
+
+      # The OpenRouter-specific HTTP-Referer / X-Title inputs are
+      # NOT rendered when the gate doesn't open.
+      refute html =~ ~s|name="endpoint[provider_settings][http_referer]"|
+
+      # Endpoint Enabled toggle DOES still render — applies to
+      # every endpoint regardless of provider, kept outside the
+      # body gate intentionally.
+      assert html =~ ~s|name="endpoint[enabled]"|
+    end
+  end
+
+  describe "Manual model-id fallback — gating + accessibility" do
+    # The fallback `<input>` and "Set Model" `<button>` appear when
+    # the model grid is empty. Without an integration connected,
+    # there's no way to actually load models — so both controls go
+    # `disabled` rather than tempting the operator to type into a
+    # field whose action is unreachable.
+
+    test "input + submit button are disabled when no integration is picked",
+         %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/en/admin/ai/endpoints/new")
+
+      # With no integration picked, `@active_connection` is nil
+      # AND the Model Selection card is in placeholder mode, so
+      # the manual-id fallback isn't even rendered in this state
+      # (it lives inside the gated body block). The placeholder
+      # IS rendered.
+      assert html =~ "Pick an integration above to load available models"
+
+      # And specifically the manual model id input + button are
+      # NOT in the DOM at all (gated out with the rest of the
+      # body).
+      refute html =~ ~s|id="manual_model_input"|
+      refute html =~ "Set Model"
+    end
+  end
 end
