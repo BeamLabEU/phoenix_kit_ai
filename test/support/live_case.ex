@@ -121,12 +121,26 @@ defmodule PhoenixKitAI.LiveCase do
   "connected" connection should pass `data: %{"api_key" => "sk-..."}`.
   """
   def seed_openrouter_connection(name, opts \\ []) when is_binary(name) do
+    seed_provider_connection("openrouter", name, opts)
+  end
+
+  @doc """
+  Seed a Mistral connection — same shape as `seed_openrouter_connection/2`
+  but for the `mistral` provider key. Used by tests that assert on the
+  Provider-dropdown filter behaviour, which needs ≥1 non-OpenRouter
+  connection on the row.
+  """
+  def seed_mistral_connection(name, opts \\ []) when is_binary(name) do
+    seed_provider_connection("mistral", name, opts)
+  end
+
+  defp seed_provider_connection(provider, name, opts) do
     extra = Keyword.get(opts, :data, %{})
 
     full_data =
       Map.merge(
         %{
-          "provider" => "openrouter",
+          "provider" => provider,
           "name" => name,
           "auth_type" => "api_key",
           "status" => "disconnected"
@@ -136,7 +150,7 @@ defmodule PhoenixKitAI.LiveCase do
 
     {:ok, setting} =
       PhoenixKit.Settings.update_json_setting_with_module(
-        "integration:openrouter:#{name}",
+        "integration:#{provider}:#{name}",
         full_data,
         "integrations"
       )
