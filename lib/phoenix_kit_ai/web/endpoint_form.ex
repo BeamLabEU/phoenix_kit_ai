@@ -13,12 +13,12 @@ defmodule PhoenixKitAI.Web.EndpointForm do
   alias PhoenixKit.Integrations
   alias PhoenixKit.Integrations.Events, as: IntegrationEvents
   alias PhoenixKit.Settings
-  alias PhoenixKit.Users.Auth.Scope
   alias PhoenixKit.Utils.Routes
   alias PhoenixKitAI, as: AI
   alias PhoenixKitAI.AIModel
   alias PhoenixKitAI.Endpoint
   alias PhoenixKitAI.OpenRouterClient
+  alias PhoenixKitAI.Web.AuthHelpers
 
   # ===========================================
   # FUNCTION COMPONENTS
@@ -957,21 +957,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
   # Captures the current admin/user's UUID so the Activity feed can
   # attribute the mutation to the right actor. Returns an empty list
   # when the scope isn't available (e.g. in isolated test sockets).
-  defp actor_opts(socket) do
-    role = if admin?(socket), do: "admin", else: "user"
-
-    case socket.assigns[:phoenix_kit_current_user] do
-      %{uuid: uuid} when is_binary(uuid) -> [actor_uuid: uuid, actor_role: role]
-      _ -> [actor_role: role]
-    end
-  end
-
-  defp admin?(socket) do
-    case socket.assigns[:phoenix_kit_current_scope] do
-      nil -> false
-      scope -> Scope.admin?(scope)
-    end
-  end
+  defp actor_opts(socket), do: AuthHelpers.actor_opts(socket)
 
   # PubSub: reload connections when integrations change
   @impl true

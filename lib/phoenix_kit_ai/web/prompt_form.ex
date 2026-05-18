@@ -9,10 +9,10 @@ defmodule PhoenixKitAI.Web.PromptForm do
   use PhoenixKitWeb, :live_view
 
   alias PhoenixKit.Settings
-  alias PhoenixKit.Users.Auth.Scope
   alias PhoenixKit.Utils.Routes
   alias PhoenixKitAI, as: AI
   alias PhoenixKitAI.Prompt
+  alias PhoenixKitAI.Web.AuthHelpers
 
   # ===========================================
   # LIFECYCLE
@@ -162,21 +162,7 @@ defmodule PhoenixKitAI.Web.PromptForm do
       {:noreply, put_flash(socket, :error, gettext("Something went wrong. Please try again."))}
   end
 
-  defp actor_opts(socket) do
-    role = if admin?(socket), do: "admin", else: "user"
-
-    case socket.assigns[:phoenix_kit_current_user] do
-      %{uuid: uuid} when is_binary(uuid) -> [actor_uuid: uuid, actor_role: role]
-      _ -> [actor_role: role]
-    end
-  end
-
-  defp admin?(socket) do
-    case socket.assigns[:phoenix_kit_current_scope] do
-      nil -> false
-      scope -> Scope.admin?(scope)
-    end
-  end
+  defp actor_opts(socket), do: AuthHelpers.actor_opts(socket)
 
   # Catch-all so an unexpected PubSub message or deferred-task reply
   # from a future code path can't crash the form silently. The LV

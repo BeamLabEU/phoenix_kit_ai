@@ -23,12 +23,13 @@ defmodule PhoenixKitAI.Web.Endpoints do
   require Logger
 
   alias PhoenixKit.Settings
-  alias PhoenixKit.Users.Auth.Scope
   alias PhoenixKit.Utils.Date, as: UtilsDate
   alias PhoenixKit.Utils.Format
   alias PhoenixKit.Utils.Routes
   alias PhoenixKitAI, as: AI
   alias PhoenixKitAI.Endpoint
+  alias PhoenixKitAI.Web.AuthHelpers
+  alias PhoenixKitAI.Web.SortHelpers
 
   # Static field list (atoms only) — used for compile-time validation
   # of incoming `?sort=…` params. Labels live in `sort_options/0` below
@@ -171,34 +172,12 @@ defmodule PhoenixKitAI.Web.Endpoints do
   @valid_sort_fields Enum.map(@sort_field_keys, &Atom.to_string/1)
 
   defp parse_sort_params(params) do
-    {
-      parse_sort_field(params["sort"], @valid_sort_fields, :inserted_at),
-      parse_sort_dir(params["dir"]),
-      parse_page(params["page"])
-    }
+    SortHelpers.parse_sort_params(params,
+      valid_fields: @valid_sort_fields,
+      default_sort: :inserted_at,
+      default_dir: :asc
+    )
   end
-
-  defp parse_sort_field(field, valid_fields, default) when is_binary(field) do
-    if field in valid_fields, do: String.to_existing_atom(field), else: default
-  end
-
-  defp parse_sort_field(_, _valid_fields, default), do: default
-
-  defp parse_sort_dir("asc"), do: :asc
-  defp parse_sort_dir("desc"), do: :desc
-  defp parse_sort_dir(_), do: :asc
-
-  defp parse_page(nil), do: 1
-  defp parse_page(""), do: 1
-
-  defp parse_page(p) when is_binary(p) do
-    case Integer.parse(p) do
-      {n, ""} when n > 0 -> n
-      _ -> 1
-    end
-  end
-
-  defp parse_page(_), do: 1
 
   @valid_usage_sort_fields ~w(inserted_at endpoint_name model total_tokens latency_ms cost_cents status)
 
@@ -350,8 +329,8 @@ defmodule PhoenixKitAI.Web.Endpoints do
   def handle_event("sort_form", params, socket) do
     field_str = params["sort_by"] || Atom.to_string(socket.assigns.sort_by)
     dir_str = params["sort_dir"] || Atom.to_string(socket.assigns.sort_dir)
-    field = parse_sort_field(field_str, @valid_sort_fields, socket.assigns.sort_by)
-    dir = parse_sort_dir(dir_str)
+    field = SortHelpers.parse_sort_field(field_str, @valid_sort_fields, socket.assigns.sort_by)
+    dir = SortHelpers.parse_sort_dir(dir_str, socket.assigns.sort_dir)
     path = Routes.ai_path() <> "/endpoints?sort=#{field}&dir=#{dir}"
     {:noreply, push_patch(socket, to: path)}
   end
@@ -667,19 +646,5 @@ defmodule PhoenixKitAI.Web.Endpoints do
   # Activity attribution — passed through to AI.update_endpoint/3 and
   # AI.delete_endpoint/2 so the mutation is logged against the right
   # actor. See PhoenixKitAI moduledoc for the activity logging pattern.
-  defp actor_opts(socket) do
-    role = if admin?(socket), do: "admin", else: "user"
-
-    case socket.assigns[:phoenix_kit_current_user] do
-      %{uuid: uuid} when is_binary(uuid) -> [actor_uuid: uuid, actor_role: role]
-      _ -> [actor_role: role]
-    end
-  end
-
-  defp admin?(socket) do
-    case socket.assigns[:phoenix_kit_current_scope] do
-      nil -> false
-      scope -> Scope.admin?(scope)
-    end
-  end
+  defp actor_opts(socket), do: AuthHelpers.actor_opts(socket)
 end
