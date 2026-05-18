@@ -25,6 +25,7 @@ defmodule PhoenixKitAI.Web.Endpoints do
   alias PhoenixKit.Settings
   alias PhoenixKit.Users.Auth.Scope
   alias PhoenixKit.Utils.Date, as: UtilsDate
+  alias PhoenixKit.Utils.Format
   alias PhoenixKit.Utils.Routes
   alias PhoenixKitAI, as: AI
   alias PhoenixKitAI.Endpoint
@@ -644,15 +645,7 @@ defmodule PhoenixKitAI.Web.Endpoints do
     end
   end
 
-  # Format bytes for display (used in request details modal)
-  defp format_bytes(nil), do: "-"
-  defp format_bytes(bytes) when bytes < 1024, do: "#{bytes} B"
-  defp format_bytes(bytes) when bytes < 1_048_576, do: "#{Float.round(bytes / 1024, 1)} KB"
-
-  defp format_bytes(bytes) when bytes < 1_073_741_824,
-    do: "#{Float.round(bytes / 1_048_576, 1)} MB"
-
-  defp format_bytes(bytes), do: "#{Float.round(bytes / 1_073_741_824, 2)} GB"
+  defp format_bytes(bytes), do: Format.bytes(bytes, unknown: "-")
 
   # Activity attribution — passed through to AI.update_endpoint/3 and
   # AI.delete_endpoint/2 so the mutation is logged against the right
