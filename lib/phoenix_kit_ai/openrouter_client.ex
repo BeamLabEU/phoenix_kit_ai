@@ -24,6 +24,7 @@ defmodule PhoenixKitAI.OpenRouterClient do
       {:ok, models} = PhoenixKitAI.OpenRouterClient.fetch_models("sk-or-v1-...")
   """
 
+  alias PhoenixKit.Utils.Values
   alias PhoenixKitAI.AIModel
 
   require Logger
@@ -384,12 +385,12 @@ defmodule PhoenixKitAI.OpenRouterClient do
     api_key = resolve_api_key(endpoint)
 
     http_referer =
-      blank_to_nil(settings["http_referer"]) ||
-        blank_to_nil(PhoenixKit.Settings.get_setting_cached("site_url"))
+      Values.blank_to_nil(settings["http_referer"]) ||
+        Values.blank_to_nil(PhoenixKit.Settings.get_setting_cached("site_url"))
 
     x_title =
-      blank_to_nil(settings["x_title"]) ||
-        blank_to_nil(PhoenixKit.Settings.get_setting_cached("project_title"))
+      Values.blank_to_nil(settings["x_title"]) ||
+        Values.blank_to_nil(PhoenixKit.Settings.get_setting_cached("project_title"))
 
     opts =
       []
@@ -398,10 +399,6 @@ defmodule PhoenixKitAI.OpenRouterClient do
 
     build_headers(api_key, opts)
   end
-
-  defp blank_to_nil(nil), do: nil
-  defp blank_to_nil(""), do: nil
-  defp blank_to_nil(v) when is_binary(v), do: v
 
   defp resolve_api_key(endpoint) do
     # Prefer the explicit `integration_uuid` reference. Fall back to the

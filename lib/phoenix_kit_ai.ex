@@ -1841,45 +1841,13 @@ defmodule PhoenixKitAI do
   @doc """
   Reorders endpoints based on a list of UUIDs in their new display order.
 
-  Mirrors the projects pattern: writes new `sort_order` values 1..N matching
-  the position of each UUID in `ordered_ids`. Done in a transaction with a
-  two-phase write (first negative indices, then positive) so a unique index
-  on `sort_order` (should one be added) wouldn't trip mid-update.
-
-  Unknown / malformed UUIDs are silently dropped via `dedupe_uuids/1` so a
-  stale drop payload can't poison the rewrite.
+  Delegates to `PhoenixKit.Utils.Reorder.reorder/4` for the shared
+  two-phase index-rewrite primitive. Returns `:ok` on success or
+  `{:error, :too_many_uuids}` when the payload exceeds the cap.
   """
+  @spec reorder_endpoints([String.t()]) :: :ok | {:error, :too_many_uuids}
   def reorder_endpoints(ordered_ids) when is_list(ordered_ids) do
-    case dedupe_endpoint_uuids(ordered_ids) do
-      [] ->
-        :ok
-
-      uuids when length(uuids) > 500 ->
-        {:error, :too_many_uuids}
-
-      uuids ->
-        repo().transaction(fn ->
-          pairs = Enum.with_index(uuids, 1)
-
-          Enum.each(pairs, fn {uuid, idx} ->
-            from(e in Endpoint, where: e.uuid == ^uuid)
-            |> repo().update_all(set: [sort_order: -idx])
-          end)
-
-          Enum.each(pairs, fn {uuid, idx} ->
-            from(e in Endpoint, where: e.uuid == ^uuid)
-            |> repo().update_all(set: [sort_order: idx])
-          end)
-        end)
-
-        :ok
-    end
-  end
-
-  defp dedupe_endpoint_uuids(ids) do
-    ids
-    |> Enum.filter(&(is_binary(&1) and textual_uuid?(&1)))
-    |> Enum.uniq()
+    PhoenixKit.Utils.Reorder.reorder(Endpoint, ordered_ids, :sort_order, repo: repo())
   end
 
   defp build_prompt_uuid_query(id) when is_binary(id) do
