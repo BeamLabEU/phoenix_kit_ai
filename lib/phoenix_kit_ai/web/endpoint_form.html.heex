@@ -670,9 +670,15 @@
                 />
                 <p class="label-text-alt text-base-content/50 mt-1">
                   <%= if @site_url do %>
-                    {gettext("Defaults to site_url from Settings. Leave blank to inherit.")}
+                    {gettext("Defaults to site_url from")}
+                    <.pk_link navigate="/admin/settings" class="link link-primary">
+                      {gettext("Settings")}
+                    </.pk_link>. {gettext("Leave blank to inherit.")}
                   <% else %>
-                    {gettext("For OpenRouter rankings. Set site_url in Settings to use it as the default.")}
+                    {gettext("For OpenRouter rankings. Set site_url in")}
+                    <.pk_link navigate="/admin/settings" class="link link-primary">
+                      {gettext("Settings")}
+                    </.pk_link> {gettext("to use it as the default.")}
                   <% end %>
                 </p>
               </div>
@@ -689,8 +695,10 @@
                   placeholder={@project_title || "My Application"}
                 />
                 <p class="label-text-alt text-base-content/50 mt-1">
-                  {gettext("Defaults to project_title (%{title}) from Settings. Leave blank to inherit.",
-                    title: @project_title)}
+                  {gettext("Defaults to project_title (%{title}) from", title: @project_title)}
+                  <.pk_link navigate="/admin/settings" class="link link-primary">
+                    {gettext("Settings")}
+                  </.pk_link>. {gettext("Leave blank to inherit.")}
                 </p>
               </div>
             </div>
