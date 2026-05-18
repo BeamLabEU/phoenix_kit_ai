@@ -548,28 +548,12 @@
                 title={gettext("No requests match the current filters")}
               />
             <% else %>
-              <%!-- Columns are tiered by importance so the highest-signal
-                   info survives as the viewport narrows:
-
-                     Always:             Time, Endpoint, Status, Actions
-                     sm+ (640px):        + Price
-                     md+ (768px):        + Tokens, Latency
-                     xl+ (1280px):       + Source, Model, Prompt
-
-                   The breakpoints account for the admin layout — the
-                   sidebar folds into a burger below lg (1024px), so a
-                   tablet viewport at md (768px) has the FULL 768px to
-                   itself. From lg onward the sidebar reclaims 256px,
-                   which is why Source/Model/Prompt wait for xl (1280px,
-                   content ~1024px) before appearing — at lg viewport
-                   the content area drops back to ~768px and there's no
-                   room for them.
-
-                   Model lives at xl rather than always — the Endpoint
-                   already identifies the configuration (including its
-                   model), so Model is duplicate signal worth dropping
-                   first. `overflow-x-auto` on the wrapper handles
-                   anything narrower than mobile. --%>
+              <%!-- Columns tier by importance. xl-only columns
+                   (Source/Model/Prompt) wait because the admin sidebar
+                   reclaims 256px from lg+, dropping the content area
+                   back to ~768px — there's no room for them until xl.
+                   Model is xl rather than always-on because the
+                   Endpoint already identifies the configuration. --%>
               <% sort = %{by: @usage_sort_by, dir: @usage_sort_dir} %>
               <.table_default size="sm">
                 <.table_default_header>

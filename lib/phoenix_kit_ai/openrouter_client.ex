@@ -385,11 +385,11 @@ defmodule PhoenixKitAI.OpenRouterClient do
 
     http_referer =
       blank_to_nil(settings["http_referer"]) ||
-        blank_to_nil(PhoenixKit.Settings.get_setting("site_url"))
+        blank_to_nil(PhoenixKit.Settings.get_setting_cached("site_url"))
 
     x_title =
       blank_to_nil(settings["x_title"]) ||
-        blank_to_nil(PhoenixKit.Settings.get_project_title())
+        blank_to_nil(PhoenixKit.Settings.get_setting_cached("project_title"))
 
     opts =
       []
@@ -402,7 +402,6 @@ defmodule PhoenixKitAI.OpenRouterClient do
   defp blank_to_nil(nil), do: nil
   defp blank_to_nil(""), do: nil
   defp blank_to_nil(v) when is_binary(v), do: v
-  defp blank_to_nil(_), do: nil
 
   defp resolve_api_key(endpoint) do
     # Prefer the explicit `integration_uuid` reference. Fall back to the

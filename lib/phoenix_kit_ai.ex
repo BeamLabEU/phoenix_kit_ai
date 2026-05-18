@@ -1854,6 +1854,9 @@ defmodule PhoenixKitAI do
       [] ->
         :ok
 
+      uuids when length(uuids) > 500 ->
+        {:error, :too_many_uuids}
+
       uuids ->
         repo().transaction(fn ->
           pairs = Enum.with_index(uuids, 1)

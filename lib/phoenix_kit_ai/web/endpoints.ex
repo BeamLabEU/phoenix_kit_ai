@@ -357,12 +357,21 @@ defmodule PhoenixKitAI.Web.Endpoints do
   def handle_event("reorder_endpoints", %{"ordered_ids" => ordered_ids} = params, socket)
       when is_list(ordered_ids) do
     moved_id = params["moved_id"]
-    :ok = AI.reorder_endpoints(ordered_ids)
 
-    {:noreply,
-     socket
-     |> push_event("sortable:flash", %{uuid: moved_id, status: "ok"})
-     |> reload_endpoints()}
+    case AI.reorder_endpoints(ordered_ids) do
+      :ok ->
+        {:noreply,
+         socket
+         |> push_event("sortable:flash", %{uuid: moved_id, status: "ok"})
+         |> reload_endpoints()}
+
+      {:error, :too_many_uuids} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, gettext("Too many endpoints to reorder at once."))
+         |> push_event("sortable:flash", %{uuid: moved_id, status: "error"})
+         |> reload_endpoints()}
+    end
   end
 
   # ===========================================
