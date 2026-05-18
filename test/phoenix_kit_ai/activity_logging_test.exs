@@ -183,6 +183,47 @@ defmodule PhoenixKitAI.ActivityLoggingTest do
         }
       )
     end
+
+    test "reorder_endpoints logs `endpoint.reordered` with count + first uuid" do
+      {:ok, e1} =
+        PhoenixKitAI.create_endpoint(%{
+          name: "Reorder A",
+          provider: "openrouter",
+          model: "a/b",
+          api_key: "sk-test-key"
+        })
+
+      {:ok, e2} =
+        PhoenixKitAI.create_endpoint(%{
+          name: "Reorder B",
+          provider: "openrouter",
+          model: "a/b",
+          api_key: "sk-test-key"
+        })
+
+      actor = Ecto.UUID.generate()
+
+      :ok =
+        PhoenixKitAI.reorder_endpoints(
+          [e2.uuid, e1.uuid],
+          actor_uuid: actor,
+          actor_role: "admin"
+        )
+
+      assert_activity_logged("endpoint.reordered",
+        resource_uuid: e2.uuid,
+        actor_uuid: actor,
+        metadata_has: %{"count" => 2, "actor_role" => "admin"}
+      )
+    end
+
+    test "reorder_endpoints with empty list logs nothing" do
+      actor = Ecto.UUID.generate()
+
+      :ok = PhoenixKitAI.reorder_endpoints([], actor_uuid: actor)
+
+      refute_activity_logged("endpoint.reordered", actor_uuid: actor)
+    end
   end
 
   describe "prompt mutations" do
@@ -304,6 +345,42 @@ defmodule PhoenixKitAI.ActivityLoggingTest do
           "error_keys" => ["name"]
         }
       )
+    end
+
+    test "reorder_prompts logs `prompt.reordered` with count" do
+      {:ok, p1} =
+        PhoenixKitAI.create_prompt(%{
+          name: "Reorder P1 #{System.unique_integer([:positive])}",
+          content: "x"
+        })
+
+      {:ok, p2} =
+        PhoenixKitAI.create_prompt(%{
+          name: "Reorder P2 #{System.unique_integer([:positive])}",
+          content: "y"
+        })
+
+      actor = Ecto.UUID.generate()
+
+      :ok =
+        PhoenixKitAI.reorder_prompts([{p2.uuid, 1}, {p1.uuid, 2}],
+          actor_uuid: actor,
+          actor_role: "admin"
+        )
+
+      assert_activity_logged("prompt.reordered",
+        resource_uuid: p2.uuid,
+        actor_uuid: actor,
+        metadata_has: %{"count" => 2, "actor_role" => "admin"}
+      )
+    end
+
+    test "reorder_prompts with empty list logs nothing" do
+      actor = Ecto.UUID.generate()
+
+      :ok = PhoenixKitAI.reorder_prompts([], actor_uuid: actor)
+
+      refute_activity_logged("prompt.reordered", actor_uuid: actor)
     end
   end
 

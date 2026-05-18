@@ -208,6 +208,63 @@ defmodule PhoenixKitAI.Web.EndpointsTest do
     end
   end
 
+  describe "reorder_endpoints" do
+    test "drag-to-reorder rewrites sort_order, flashes ok, and logs `endpoint.reordered`",
+         %{conn: conn} do
+      scope = fake_scope()
+      conn = put_test_scope(conn, scope)
+
+      a = fixture_endpoint(name: "Drag A")
+      b = fixture_endpoint(name: "Drag B")
+
+      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints?sort=sort_order&dir=asc")
+
+      # Simulate the SortableGrid hook's drop event — the JS hook sends
+      # `ordered_ids` (new order) + `moved_id` (the row that was
+      # dragged). Pin this entry point because a regression in the
+      # phx-hook attrs would silently 404 the drop event server-side.
+      render_hook(view, "reorder_endpoints", %{
+        "ordered_ids" => [b.uuid, a.uuid],
+        "moved_id" => b.uuid
+      })
+
+      assert PhoenixKitAI.get_endpoint(b.uuid).sort_order == 1
+      assert PhoenixKitAI.get_endpoint(a.uuid).sort_order == 2
+
+      assert_activity_logged("endpoint.reordered",
+        resource_uuid: b.uuid,
+        actor_uuid: scope.user.uuid,
+        metadata_has: %{"count" => 2, "actor_role" => "user"}
+      )
+    end
+
+    test "Manual sort_order option renders in the sort dropdown", %{conn: conn} do
+      fixture_endpoint(name: "Sort Manual A")
+
+      {:ok, _view, html} = live(conn, "/en/admin/ai/endpoints")
+
+      # Pin the gettext-wrapped Manual label in the sort selector — a
+      # regression that drops the option (or breaks extraction) is
+      # invisible without this assertion.
+      assert html =~ ~s(value="sort_order">Manual)
+    end
+
+    test "oversized payload flashes the error message", %{conn: conn} do
+      _ = fixture_endpoint()
+      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints?sort=sort_order&dir=asc")
+
+      oversized = for _ <- 1..501, do: Ecto.UUID.generate()
+
+      html =
+        render_hook(view, "reorder_endpoints", %{
+          "ordered_ids" => oversized,
+          "moved_id" => List.first(oversized)
+        })
+
+      assert html =~ "Too many endpoints to reorder at once."
+    end
+  end
+
   describe "handle_info catch-all" do
     test "ignores unrelated PubSub messages and logs at :debug", %{conn: conn} do
       # Lift the global Logger level to :debug for the duration of this
