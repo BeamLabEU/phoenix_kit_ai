@@ -184,3 +184,31 @@ The PR's own diff is **APPROVE-quality** — well-reasoned, well-tested, no logi
 Files touched by the follow-up fixes: `lib/phoenix_kit_ai.ex` (M1, M2), `lib/phoenix_kit_ai/web/endpoints.html.heex` (M3), `test/phoenix_kit_ai/{activity_logging_test,coverage_test}.exs` (M2 test updates). `mix.lock` was bumped by the user. L2–L4 remain open for a follow-up sweep.
 
 **Updated verdict: APPROVE.** Build is green on 1.7.112 and warning-free; C1/M1/M2/M3 closed. Outstanding: run the test suite against a database, and address L2–L4 in the next pass.
+
+## Simplify pass — 2026-05-18 (3-agent review of the follow-up fixes)
+
+Ran a reuse / quality / efficiency review over the M1–M3 + precommit-cleanup
+commits. Efficiency came back clean. Findings applied:
+
+- **Param sprawl** — `persist_migrated_credentials/5` → `/4`: dropped the
+  `full_provider` arg (it was just `"openrouter:#{name}"`, derivable from
+  `name`), removing the redundant `full_key` local in `migrate_endpoint_group`.
+- **Reuse** — `derive_base_url`'s inline `is_binary(x) && x != ""` now routes
+  through the new `present?/1` helper, matching `integration_warning`.
+- **Comments** — dropped a redundant WHAT-comment above
+  `maybe_fetch_models_on_load`; trimmed the `persist_migrated_credentials` doc.
+
+Deliberately **not** applied (recorded so the next reviewer doesn't re-flag):
+
+- "Replace the `endpoints.html.heex` `Enum.join` with a bare `class={[…]}`
+  list" — **false positive**. `<.table_default_row>` declares `attr :class,
+  :string`; a bare list reintroduces exactly the M3 compile warning. The join
+  is required by that component's contract.
+- "Normalize `connected` to a strict boolean upstream" — the
+  `when connected in [nil, false]` guard is correct and explicit; the
+  tri-valued `connected` is a pre-existing pattern, out of scope for a
+  no-test-run sweep.
+- Unifying the `maybe_log_*` / `resolve_*` helper pairs — both reviewers
+  independently advised against; the similarity is shallow.
+
+`mix precommit` re-verified green after the simplify edits.
