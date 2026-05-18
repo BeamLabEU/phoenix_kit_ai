@@ -436,6 +436,48 @@ defmodule PhoenixKitAI.EndpointTest do
     end
   end
 
+  describe "reorder_endpoints/2 (integration)" do
+    test "rewrites sort_order to match the given UUID order" do
+      {:ok, a} = create("Reorder A")
+      {:ok, b} = create("Reorder B")
+      {:ok, c} = create("Reorder C")
+
+      :ok = PhoenixKitAI.reorder_endpoints([c.uuid, a.uuid, b.uuid])
+
+      assert PhoenixKitAI.get_endpoint(c.uuid).sort_order == 1
+      assert PhoenixKitAI.get_endpoint(a.uuid).sort_order == 2
+      assert PhoenixKitAI.get_endpoint(b.uuid).sort_order == 3
+    end
+
+    test "filters out malformed UUIDs silently" do
+      {:ok, a} = create("Reorder Filter A")
+      {:ok, b} = create("Reorder Filter B")
+
+      :ok = PhoenixKitAI.reorder_endpoints(["not-a-uuid", b.uuid, nil, a.uuid])
+
+      assert PhoenixKitAI.get_endpoint(b.uuid).sort_order == 1
+      assert PhoenixKitAI.get_endpoint(a.uuid).sort_order == 2
+    end
+
+    test "empty list is a no-op (returns :ok)" do
+      assert PhoenixKitAI.reorder_endpoints([]) == :ok
+    end
+
+    test "rejects payloads above the 500-uuid cap" do
+      uuids = for _ <- 1..501, do: Ecto.UUID.generate()
+      assert {:error, :too_many_uuids} = PhoenixKitAI.reorder_endpoints(uuids)
+    end
+
+    defp create(name) do
+      PhoenixKitAI.create_endpoint(%{
+        name: "#{name} #{System.unique_integer([:positive])}",
+        provider: "openrouter",
+        model: "a/b",
+        api_key: "sk-test-key"
+      })
+    end
+  end
+
   describe "resolve_endpoint/1" do
     test "resolves a valid UUID string to the endpoint struct" do
       {:ok, endpoint} =

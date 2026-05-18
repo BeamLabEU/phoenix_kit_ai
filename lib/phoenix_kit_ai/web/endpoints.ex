@@ -23,22 +23,42 @@ defmodule PhoenixKitAI.Web.Endpoints do
   require Logger
 
   alias PhoenixKit.Settings
-  alias PhoenixKit.Users.Auth.Scope
   alias PhoenixKit.Utils.Date, as: UtilsDate
+  alias PhoenixKit.Utils.Format
   alias PhoenixKit.Utils.Routes
   alias PhoenixKitAI, as: AI
   alias PhoenixKitAI.Endpoint
+  alias PhoenixKitAI.Web.AuthHelpers
+  alias PhoenixKitAI.Web.SortHelpers
 
-  @sort_options [
-    {:id, "ID"},
-    {:name, "Name"},
-    {:enabled, "Status"},
-    {:model, "Model"},
-    {:usage, "Requests"},
-    {:tokens, "Tokens"},
-    {:cost, "Cost"},
-    {:last_used, "Last Used"}
+  # Static field list (atoms only) — used for compile-time validation
+  # of incoming `?sort=…` params. Labels live in `sort_options/0` below
+  # so `gettext/1` sees a literal string at extract time.
+  @sort_field_keys [
+    :sort_order,
+    :inserted_at,
+    :name,
+    :enabled,
+    :model,
+    :usage,
+    :tokens,
+    :cost,
+    :last_used
   ]
+
+  defp sort_options do
+    [
+      {:sort_order, gettext("Manual")},
+      {:inserted_at, gettext("Created")},
+      {:name, gettext("Name")},
+      {:enabled, gettext("Status")},
+      {:model, gettext("Model")},
+      {:usage, gettext("Requests")},
+      {:tokens, gettext("Tokens")},
+      {:cost, gettext("Cost")},
+      {:last_used, gettext("Last Used")}
+    ]
+  end
 
   @page_size 20
 
@@ -64,9 +84,9 @@ defmodule PhoenixKitAI.Web.Endpoints do
       |> assign(:endpoint_stats, %{})
       |> assign(:integrations_by_uuid, %{})
       |> assign(:has_endpoints, false)
-      |> assign(:sort_by, :id)
-      |> assign(:sort_dir, :asc)
-      |> assign(:sort_options, @sort_options)
+      |> assign(:sort_by, :inserted_at)
+      |> assign(:sort_dir, :desc)
+      |> assign(:sort_options, sort_options())
       |> assign(:page, 1)
       |> assign(:page_size, @page_size)
       |> assign(:total_endpoints, 0)
@@ -149,37 +169,15 @@ defmodule PhoenixKitAI.Web.Endpoints do
     end
   end
 
-  @valid_sort_fields Enum.map(@sort_options, fn {field, _} -> Atom.to_string(field) end)
+  @valid_sort_fields Enum.map(@sort_field_keys, &Atom.to_string/1)
 
   defp parse_sort_params(params) do
-    {
-      parse_sort_field(params["sort"], @valid_sort_fields, :id),
-      parse_sort_dir(params["dir"]),
-      parse_page(params["page"])
-    }
+    SortHelpers.parse_sort_params(params,
+      valid_fields: @valid_sort_fields,
+      default_sort: :inserted_at,
+      default_dir: :asc
+    )
   end
-
-  defp parse_sort_field(field, valid_fields, default) when is_binary(field) do
-    if field in valid_fields, do: String.to_existing_atom(field), else: default
-  end
-
-  defp parse_sort_field(_, _valid_fields, default), do: default
-
-  defp parse_sort_dir("asc"), do: :asc
-  defp parse_sort_dir("desc"), do: :desc
-  defp parse_sort_dir(_), do: :asc
-
-  defp parse_page(nil), do: 1
-  defp parse_page(""), do: 1
-
-  defp parse_page(p) when is_binary(p) do
-    case Integer.parse(p) do
-      {n, ""} when n > 0 -> n
-      _ -> 1
-    end
-  end
-
-  defp parse_page(_), do: 1
 
   @valid_usage_sort_fields ~w(inserted_at endpoint_name model total_tokens latency_ms cost_cents status)
 
@@ -323,6 +321,20 @@ defmodule PhoenixKitAI.Web.Endpoints do
     {:noreply, push_patch(socket, to: path)}
   end
 
+  # `<.sort_selector>` event. The field select sends `sort_by` only; the
+  # direction button sends `sort_dir` only. Each missing param is read
+  # from `socket.assigns` so two events in flight can't clobber each
+  # other (race-free by construction). See sort_selector moduledoc.
+  @impl true
+  def handle_event("sort_form", params, socket) do
+    field_str = params["sort_by"] || Atom.to_string(socket.assigns.sort_by)
+    dir_str = params["sort_dir"] || Atom.to_string(socket.assigns.sort_dir)
+    field = SortHelpers.parse_sort_field(field_str, @valid_sort_fields, socket.assigns.sort_by)
+    dir = SortHelpers.parse_sort_dir(dir_str, socket.assigns.sort_dir)
+    path = Routes.ai_path() <> "/endpoints?sort=#{field}&dir=#{dir}"
+    {:noreply, push_patch(socket, to: path)}
+  end
+
   @impl true
   def handle_event("goto_page", %{"page" => page_str}, socket) do
     case Integer.parse(page_str) do
@@ -335,6 +347,27 @@ defmodule PhoenixKitAI.Web.Endpoints do
 
       _ ->
         {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("reorder_endpoints", %{"ordered_ids" => ordered_ids} = params, socket)
+      when is_list(ordered_ids) do
+    moved_id = params["moved_id"]
+
+    case AI.reorder_endpoints(ordered_ids, actor_opts(socket)) do
+      :ok ->
+        {:noreply,
+         socket
+         |> push_event("sortable:flash", %{uuid: moved_id, status: "ok"})
+         |> reload_endpoints()}
+
+      {:error, :too_many_uuids} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, gettext("Too many endpoints to reorder at once."))
+         |> push_event("sortable:flash", %{uuid: moved_id, status: "error"})
+         |> reload_endpoints()}
     end
   end
 
@@ -608,32 +641,10 @@ defmodule PhoenixKitAI.Web.Endpoints do
     end
   end
 
-  # Format bytes for display (used in request details modal)
-  defp format_bytes(nil), do: "-"
-  defp format_bytes(bytes) when bytes < 1024, do: "#{bytes} B"
-  defp format_bytes(bytes) when bytes < 1_048_576, do: "#{Float.round(bytes / 1024, 1)} KB"
-
-  defp format_bytes(bytes) when bytes < 1_073_741_824,
-    do: "#{Float.round(bytes / 1_048_576, 1)} MB"
-
-  defp format_bytes(bytes), do: "#{Float.round(bytes / 1_073_741_824, 2)} GB"
+  defp format_bytes(bytes), do: Format.bytes(bytes, unknown: "-")
 
   # Activity attribution — passed through to AI.update_endpoint/3 and
   # AI.delete_endpoint/2 so the mutation is logged against the right
   # actor. See PhoenixKitAI moduledoc for the activity logging pattern.
-  defp actor_opts(socket) do
-    role = if admin?(socket), do: "admin", else: "user"
-
-    case socket.assigns[:phoenix_kit_current_user] do
-      %{uuid: uuid} when is_binary(uuid) -> [actor_uuid: uuid, actor_role: role]
-      _ -> [actor_role: role]
-    end
-  end
-
-  defp admin?(socket) do
-    case socket.assigns[:phoenix_kit_current_scope] do
-      nil -> false
-      scope -> Scope.admin?(scope)
-    end
-  end
+  defp actor_opts(socket), do: AuthHelpers.actor_opts(socket)
 end

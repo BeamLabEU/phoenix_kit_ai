@@ -1055,6 +1055,11 @@ defmodule PhoenixKitAI do
     {endpoints, total}
   end
 
+  # Stable secondary key applied to every sort branch so tied values get
+  # deterministic ordering (without it, `ORDER BY enabled` with all-true rows
+  # returns whatever physical order PostgreSQL feels like — page/refresh can
+  # subtly shift positions). `:uuid` is UUIDv7 → time-sortable + always unique.
+
   defp apply_endpoint_sorting(query, :usage, dir) do
     # Sort by total request count using a subquery to avoid GROUP BY issues
     stats_subquery =
@@ -1067,7 +1072,7 @@ defmodule PhoenixKitAI do
     from(e in query,
       left_join: s in subquery(stats_subquery),
       on: s.endpoint_uuid == e.uuid,
-      order_by: [{^dir, coalesce(s.count, 0)}]
+      order_by: [{^dir, coalesce(s.count, 0)}, asc: e.uuid]
     )
   end
 
@@ -1083,7 +1088,7 @@ defmodule PhoenixKitAI do
     from(e in query,
       left_join: s in subquery(stats_subquery),
       on: s.endpoint_uuid == e.uuid,
-      order_by: [{^dir, coalesce(s.total, 0)}]
+      order_by: [{^dir, coalesce(s.total, 0)}, asc: e.uuid]
     )
   end
 
@@ -1099,7 +1104,7 @@ defmodule PhoenixKitAI do
     from(e in query,
       left_join: s in subquery(stats_subquery),
       on: s.endpoint_uuid == e.uuid,
-      order_by: [{^dir, coalesce(s.total, 0)}]
+      order_by: [{^dir, coalesce(s.total, 0)}, asc: e.uuid]
     )
   end
 
@@ -1115,18 +1120,18 @@ defmodule PhoenixKitAI do
     from(e in query,
       left_join: s in subquery(stats_subquery),
       on: s.endpoint_uuid == e.uuid,
-      order_by: [{^dir, s.last_used}]
+      order_by: [{^dir, s.last_used}, asc: e.uuid]
     )
   end
 
   defp apply_endpoint_sorting(query, field, dir)
-       when field in [:name, :enabled, :model, :sort_order] do
-    order_by(query, [e], [{^dir, field(e, ^field)}])
+       when field in [:name, :enabled, :model, :sort_order, :inserted_at] do
+    order_by(query, [e], [{^dir, field(e, ^field)}, asc: e.uuid])
   end
 
   defp apply_endpoint_sorting(query, _field, _dir) do
     # Default sorting
-    order_by(query, [e], asc: e.sort_order, desc: e.inserted_at)
+    order_by(query, [e], asc: e.sort_order, desc: e.inserted_at, asc: e.uuid)
   end
 
   @doc """
@@ -1344,7 +1349,9 @@ defmodule PhoenixKitAI do
         enabled -> where(query, [p], p.enabled == ^enabled)
       end
 
-    query = order_by(query, [p], [{^sort_dir, field(p, ^sort_by)}])
+    # Stable tiebreaker on :uuid so tied sort-field values get deterministic
+    # ordering (otherwise pagination + refresh can subtly reshuffle rows).
+    query = order_by(query, [p], [{^sort_dir, field(p, ^sort_by)}, asc: p.uuid])
 
     # If page is provided, return paginated results with total count
     if page do
@@ -1819,8 +1826,12 @@ defmodule PhoenixKitAI do
   Updates the sort order for multiple prompts.
 
   Accepts prompt UUIDs.
+
+  Logs one `prompt.reordered` activity row when the order list isn't
+  empty, with the count + first uuid in metadata so the audit feed
+  captures the drag-to-reorder action without per-row noise.
   """
-  def reorder_prompts(order_list) when is_list(order_list) do
+  def reorder_prompts(order_list, opts \\ []) when is_list(order_list) do
     repo().transaction(fn ->
       Enum.each(order_list, fn {id, sort_order} ->
         build_prompt_uuid_query(id)
@@ -1828,7 +1839,57 @@ defmodule PhoenixKitAI do
       end)
     end)
 
-    :ok
+    case order_list do
+      [] ->
+        :ok
+
+      [{first_uuid, _} | _] ->
+        log_activity(
+          "prompt.reordered",
+          "prompt",
+          first_uuid,
+          opts,
+          %{"count" => length(order_list)}
+        )
+
+        :ok
+    end
+  end
+
+  @doc """
+  Reorders endpoints based on a list of UUIDs in their new display order.
+
+  Delegates to `PhoenixKit.Utils.Reorder.reorder/4` for the shared
+  two-phase index-rewrite primitive. Returns `:ok` on success or
+  `{:error, :too_many_uuids}` when the payload exceeds the cap.
+
+  On success, logs one `endpoint.reordered` activity row with the
+  actual updated count + first uuid so the audit feed records the
+  drag-to-reorder action without per-row noise. `opts` is forwarded
+  to `log_activity/5` so callers can thread `actor_uuid` / `mode`.
+  """
+  @spec reorder_endpoints([String.t()], keyword()) :: :ok | {:error, :too_many_uuids}
+  def reorder_endpoints(ordered_ids, opts \\ []) when is_list(ordered_ids) do
+    case PhoenixKit.Utils.Reorder.reorder(Endpoint, ordered_ids, :sort_order, repo: repo()) do
+      {:ok, 0} ->
+        :ok
+
+      {:ok, count} ->
+        first_uuid = Enum.find(ordered_ids, &is_binary/1)
+
+        log_activity(
+          "endpoint.reordered",
+          "endpoint",
+          first_uuid,
+          opts,
+          %{"count" => count}
+        )
+
+        :ok
+
+      {:error, _} = err ->
+        err
+    end
   end
 
   defp build_prompt_uuid_query(id) when is_binary(id) do

@@ -13,12 +13,12 @@ defmodule PhoenixKitAI.Web.EndpointForm do
   alias PhoenixKit.Integrations
   alias PhoenixKit.Integrations.Events, as: IntegrationEvents
   alias PhoenixKit.Settings
-  alias PhoenixKit.Users.Auth.Scope
   alias PhoenixKit.Utils.Routes
   alias PhoenixKitAI, as: AI
   alias PhoenixKitAI.AIModel
   alias PhoenixKitAI.Endpoint
   alias PhoenixKitAI.OpenRouterClient
+  alias PhoenixKitAI.Web.AuthHelpers
 
   # ===========================================
   # FUNCTION COMPONENTS
@@ -135,7 +135,8 @@ defmodule PhoenixKitAI.Web.EndpointForm do
         phx-value-model={@model.id}
         data-search-text={String.downcase("#{@model.name || ""} #{@model.id}")}
         class={
-          "rounded-lg border p-3 transition-colors cursor-pointer text-left w-full " <>
+          "relative rounded-lg border p-3 transition-colors cursor-pointer text-left w-full " <>
+            "[&.phx-click-loading]:pointer-events-none [&.phx-click-loading]:opacity-60 " <>
             if(@show_clear, do: "pr-10 ", else: "") <>
             if @selected do
               "border-primary bg-primary/10 ring-2 ring-primary/20"
@@ -144,6 +145,13 @@ defmodule PhoenixKitAI.Web.EndpointForm do
             end
         }
       >
+        <%!-- Spinner overlay during in-flight click. Hidden by default;
+             revealed when Phoenix's `.phx-click-loading` class lands on
+             the parent button. Pointer-events-none on the parent stops
+             repeat clicks while it's spinning. --%>
+        <span class="hidden [.phx-click-loading_&]:flex absolute inset-0 items-center justify-center bg-base-100/40 rounded-lg z-10">
+          <span class="loading loading-spinner loading-sm"></span>
+        </span>
         <div class="min-w-0">
           <div class="font-semibold truncate">
             {@model.name || @model.id}
@@ -183,7 +191,8 @@ defmodule PhoenixKitAI.Web.EndpointForm do
         :if={@show_clear}
         type="button"
         phx-click="clear_model"
-        class="btn btn-ghost btn-sm btn-square absolute top-2 right-2"
+        phx-disable-with={gettext("…")}
+        class="btn btn-ghost btn-sm btn-square absolute top-2 right-2 [&.phx-click-loading]:pointer-events-none"
         aria-label={gettext("Clear model")}
         title={gettext("Clear model")}
       >
@@ -382,6 +391,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
       socket =
         socket
         |> assign(:project_title, Settings.get_project_title())
+        |> assign(:site_url, Settings.get_setting("site_url"))
         |> assign(:provider_connections, connections)
         |> load_endpoint(params["id"])
         |> refresh_provider_options(connections)
@@ -947,21 +957,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
   # Captures the current admin/user's UUID so the Activity feed can
   # attribute the mutation to the right actor. Returns an empty list
   # when the scope isn't available (e.g. in isolated test sockets).
-  defp actor_opts(socket) do
-    role = if admin?(socket), do: "admin", else: "user"
-
-    case socket.assigns[:phoenix_kit_current_user] do
-      %{uuid: uuid} when is_binary(uuid) -> [actor_uuid: uuid, actor_role: role]
-      _ -> [actor_role: role]
-    end
-  end
-
-  defp admin?(socket) do
-    case socket.assigns[:phoenix_kit_current_scope] do
-      nil -> false
-      scope -> Scope.admin?(scope)
-    end
-  end
+  defp actor_opts(socket), do: AuthHelpers.actor_opts(socket)
 
   # PubSub: reload connections when integrations change
   @impl true

@@ -1,17 +1,17 @@
-<div class="container flex-col mx-auto px-4 py-6">
-    <.admin_page_header back={Routes.ai_path() <> "/endpoints"}>
-      <h1 class="text-xl sm:text-2xl lg:text-3xl font-bold text-base-content">{@page_title}</h1>
-      <p class="text-sm text-base-content/60 mt-0.5">
-        <%= if @endpoint do %>
-          Update your AI endpoint configuration
-        <% else %>
-          Create a new AI endpoint with provider credentials, model selection, and parameters
-        <% end %>
-      </p>
-    </.admin_page_header>
+<div class="flex flex-col w-full px-4 py-6">
+    <% subtitle =
+      if @endpoint,
+        do: gettext("Update your AI endpoint configuration"),
+        else:
+          gettext(
+            "Create a new AI endpoint with provider credentials, model selection, and parameters"
+          ) %>
+    <.admin_page_header title={@page_title} subtitle={subtitle} />
 
-    <%!-- Form Content (constrained width) --%>
-    <div class="max-w-3xl mx-auto">
+    <%!-- Form Content (capped at 5xl: wide enough for the 4-col parameter
+         grid, narrow enough that single-line inputs don't stretch absurdly
+         on ultrawide displays). --%>
+    <div class="max-w-5xl mx-auto w-full">
       <.form
         for={@form}
         phx-change="validate"
@@ -19,54 +19,75 @@
         class="space-y-6"
         autocomplete="off"
       >
-        <%!-- Basic Info Card --%>
-        <div class="card bg-base-100 shadow-lg">
-          <div class="card-body">
-            <h2 class="card-title text-lg">{gettext("Basic Information")}</h2>
+        <%!-- Basic Info --%>
+        <.form_section title={gettext("Basic Information")}>
+          <div class="space-y-4 mt-4">
+            <.input
+              field={@form[:name]}
+              type="text"
+              label={gettext("Name") <> " *"}
+              placeholder={gettext("e.g., Claude Fast")}
+              required
+            />
 
-            <div class="space-y-4 mt-4">
-              <.input
-                field={@form[:name]}
-                type="text"
-                label={gettext("Name") <> " *"}
-                placeholder={gettext("e.g., Claude Fast")}
-                required
-              />
+            <.textarea
+              field={@form[:description]}
+              errors={
+                Enum.map(@form[:description].errors,
+                  &PhoenixKitWeb.Components.Core.Input.translate_error/1)
+              }
+              label={gettext("Description")}
+              placeholder={gettext("Optional description of this endpoint's purpose")}
+              rows="2"
+            />
 
-              <.textarea
-                field={@form[:description]}
-                errors={
-                  Enum.map(@form[:description].errors,
-                    &PhoenixKitWeb.Components.Core.Input.translate_error/1)
-                }
-                label={gettext("Description")}
-                placeholder={gettext("Optional description of this endpoint's purpose")}
-                rows="2"
-              />
+            <%!-- Status toggle. Edit-only — new endpoints inherit the
+                 schema's `enabled: true` default, so a "create + disabled"
+                 dance isn't a real flow we want to expose.
+
+                 Hidden `value="false"` input is required: unchecked checkboxes
+                 don't submit any value, so without this the params would
+                 lack `enabled` after unchecking, the changeset would fall
+                 back to the previous DB value, and the toggle would snap
+                 back to "on" on re-render. Same pattern as core's
+                 <.checkbox> component. --%>
+            <div :if={@endpoint} class="form-control py-2">
+              <label class="flex items-center gap-4 cursor-pointer">
+                <input type="hidden" name="endpoint[enabled]" value="false" />
+                <input
+                  type="checkbox"
+                  name="endpoint[enabled]"
+                  value="true"
+                  checked={
+                    Phoenix.HTML.Form.normalize_value("checkbox", @form[:enabled].value)
+                  }
+                  class="toggle toggle-success"
+                />
+                <div class="select-none">
+                  <div class="font-medium">{gettext("Enabled")}</div>
+                  <div class="text-xs text-base-content/60">
+                    {gettext("Disabled endpoints can't be used for AI requests.")}
+                  </div>
+                </div>
+              </label>
             </div>
           </div>
-        </div>
+        </.form_section>
 
-        <%!-- Provider & API Key Card --%>
-        <div class="card bg-base-100 shadow-lg">
-          <div class="card-body">
-            <h2 class="card-title text-lg">{gettext("Provider Configuration")}</h2>
-
+        <%!-- Provider & API Key --%>
+        <.form_section title={gettext("Provider Configuration")}>
+          <:subtitle>
+            {gettext("Credentials live in")}
+            <.pk_link navigate="/admin/settings/integrations" class="link link-primary">
+              {gettext("Settings → Integrations")}
+            </.pk_link>. {gettext("Add new ones there and they'll appear in the picker.")}
+          </:subtitle>
             <div class="mt-4 max-w-md">
               <.select
                 field={@form[:provider]}
                 label={gettext("Provider")}
                 options={@provider_options}
               />
-              <p class="text-xs text-base-content/60 mt-1">
-                {gettext("Need another integration?")}
-                <.pk_link
-                  navigate="/admin/settings/integrations"
-                  class="link link-primary"
-                >
-                  {gettext("Set one up in Settings → Integrations")}
-                </.pk_link>.
-              </p>
             </div>
 
             <div class="mt-4">
@@ -151,8 +172,7 @@
                 </button>
               </div>
             </div>
-          </div>
-        </div>
+        </.form_section>
 
         <%!-- Model Selection Card.
 
@@ -162,23 +182,13 @@
              picked integration, the model fetch can't run, so the
              card body becomes a short placeholder pointing at the
              picker above. --%>
-        <div class={[
-          "card bg-base-100 shadow-lg",
-          if(!@active_connection, do: "opacity-60")
-        ]}>
-          <div class="card-body">
-            <h2 class={
-              "card-title text-lg " <>
-                if(@active_connection, do: "", else: "text-base-content/50")
-            }>
-              {gettext("Model Selection")}
-            </h2>
-
-            <%= unless @active_connection do %>
-              <p class="text-base-content/50 text-sm">
-                {gettext("Pick an integration above to load available models.")}
-              </p>
-            <% end %>
+        <.form_section
+          title={gettext("Model Selection")}
+          class={if !@active_connection, do: "opacity-60"}
+        >
+          <p :if={!@active_connection} class="text-base-content/50 text-sm">
+            {gettext("Pick an integration above to load available models.")}
+          </p>
 
             <% current_model_id = @form.params["model"] || (@endpoint && @endpoint.model)
             has_model = current_model_id && current_model_id != "" %>
@@ -235,7 +245,8 @@
                     <button
                       type="button"
                       phx-click="clear_model"
-                      class="btn btn-ghost btn-sm btn-square shrink-0"
+                      phx-disable-with={gettext("…")}
+                      class="btn btn-ghost btn-sm btn-square shrink-0 [&.phx-click-loading]:pointer-events-none"
                       aria-label={gettext("Clear model")}
                       title={gettext("Clear model")}
                     >
@@ -331,9 +342,10 @@
                     <button
                       type="button"
                       phx-click="set_manual_model"
+                      phx-disable-with={gettext("Setting…")}
                       data-manual-model-submit
                       disabled={!@integration_connected}
-                      class="btn btn-primary join-item"
+                      class="btn btn-primary join-item [&.phx-click-loading]:pointer-events-none"
                     >
                       {gettext("Set Model")}
                     </button>
@@ -353,8 +365,14 @@
                        auto-selects the sole group so the operator
                        lands on the model grid directly instead of
                        clicking through a one-option dropdown. --%>
-                  <div :if={length(@models_grouped) > 1}>
-                    <label class="select w-full">
+                  <%!-- `group` wraps select + loading hint together; the
+                       hint reveals itself via `group-has-[select.phx-change-loading]`
+                       (Tailwind 3.4+ has-selector modifier). When LV adds
+                       .phx-change-loading to the <select> during the
+                       round-trip, the wrapper "has" that descendant, so
+                       descendants with the variant flip on. --%>
+                  <div :if={length(@models_grouped) > 1} class="group">
+                    <label class="select w-full group-has-[select.phx-change-loading]:opacity-60 transition-opacity">
                       <select
                         id="provider_picker"
                         name="provider"
@@ -373,6 +391,10 @@
                         <% end %>
                       </select>
                     </label>
+                    <div class="hidden group-has-[select.phx-change-loading]:flex items-center gap-2 mt-2 text-sm text-base-content/70">
+                      <span class="loading loading-spinner loading-xs"></span>
+                      {gettext("Loading models…")}
+                    </div>
                   </div>
 
                   <%!-- Model Cards (shown after provider selected) --%>
@@ -393,7 +415,8 @@
                           type="button"
                           phx-click="select_provider"
                           phx-value-provider=""
-                          class="btn btn-ghost btn-xs"
+                          phx-disable-with={gettext("…")}
+                          class="btn btn-ghost btn-xs [&.phx-click-loading]:pointer-events-none"
                         >
                           <.icon name="hero-x-mark" class="w-3 h-3" /> {gettext("Clear")}
                         </button>
@@ -430,15 +453,14 @@
                     </div>
                   <% else %>
                     <p class="text-sm text-base-content/50 mt-2">
-                      Select a provider to see available models with pricing details
+                      {gettext("Select a provider to see available models with pricing details")}
                     </p>
                   <% end %>
                 <% end %>
               <% end %>
             </div>
             <% end %>
-          </div>
-        </div>
+        </.form_section>
 
         <%!-- Parameters Card - Only shown when model is selected --%>
         <% supported_params =
@@ -451,22 +473,17 @@
             (@endpoint && @endpoint.model) %>
 
         <%= if has_model_for_params && @active_connection do %>
-          <div class="card bg-base-100 shadow-lg">
-            <div class="card-body">
-              <h2 class="card-title text-lg">{gettext("Generation Parameters")}</h2>
-
+          <.form_section title={gettext("Generation Parameters")}>
               <%!-- Model Info Banner --%>
               <%= if @selected_model do %>
                 <div class="alert alert-info py-2 mt-2">
                   <.icon name="hero-information-circle" class="w-4 h-4" />
                   <span class="text-sm">
-                    Context: {PhoenixKitAI.Web.EndpointForm.format_number(
-                      @selected_model.context_length
-                    )} tokens
+                    {gettext("Context: %{tokens} tokens",
+                      tokens: PhoenixKitAI.Web.EndpointForm.format_number(@selected_model.context_length))}
                     <%= if @selected_model.max_completion_tokens do %>
-                      • Max output: {PhoenixKitAI.Web.EndpointForm.format_number(
-                        @selected_model.max_completion_tokens
-                      )} tokens
+                      • {gettext("Max output: %{tokens} tokens",
+                        tokens: PhoenixKitAI.Web.EndpointForm.format_number(@selected_model.max_completion_tokens))}
                     <% end %>
                   </span>
                 </div>
@@ -507,10 +524,10 @@
                     <div>
                       <span class="label-text font-medium">
                         <.icon name="hero-light-bulb" class="w-4 h-4 inline mr-1" />
-                        Enable Thinking
+                        {gettext("Enable Thinking")}
                       </span>
                       <span class="block text-xs text-base-content/50">
-                        For models like DeepSeek R1, Qwen QwQ that support chain-of-thought reasoning
+                        {gettext("For models like DeepSeek R1, Qwen QwQ that support chain-of-thought reasoning")}
                       </span>
                     </div>
                   </label>
@@ -544,7 +561,7 @@
                       <%!-- Hide Reasoning Toggle --%>
                       <div class="form-control">
                         <label class="label py-1">
-                          <span class="label-text text-sm">Visibility</span>
+                          <span class="label-text text-sm">{gettext("Visibility")}</span>
                         </label>
                         <label class="label cursor-pointer justify-start gap-2 py-0">
                           <input
@@ -558,7 +575,7 @@
                             }
                             class="checkbox checkbox-sm"
                           />
-                          <span class="label-text text-sm">Hide from response</span>
+                          <span class="label-text text-sm">{gettext("Hide from response")}</span>
                         </label>
                       </div>
                     </div>
@@ -592,25 +609,21 @@
                   </div>
                 </div>
               <% end %>
-            </div>
-          </div>
+          </.form_section>
         <% else %>
           <%!-- Placeholder for two states:
                  * No integration picked yet — operator can't reach
                    the model picker until they do.
                  * Integration picked but no model selected. --%>
-          <div class="card bg-base-100 shadow-lg opacity-60">
-            <div class="card-body">
-              <h2 class="card-title text-lg text-base-content/50">{gettext("Generation Parameters")}</h2>
-              <p class="text-base-content/50 text-sm">
-                <%= if @active_connection do %>
-                  {gettext("Select a model above to configure generation parameters. Available parameters depend on the selected model.")}
-                <% else %>
-                  {gettext("Pick an integration above, then a model, to configure generation parameters.")}
-                <% end %>
-              </p>
-            </div>
-          </div>
+          <.form_section title={gettext("Generation Parameters")} class="opacity-60">
+            <p class="text-base-content/50 text-sm">
+              <%= if @active_connection do %>
+                {gettext("Select a model above to configure generation parameters. Available parameters depend on the selected model.")}
+              <% else %>
+                {gettext("Pick an integration above, then a model, to configure generation parameters.")}
+              <% end %>
+            </p>
+          </.form_section>
         <% end %>
 
         <%!-- Optional Settings Card —
@@ -624,139 +637,79 @@
              Body shows only when the operator has picked an
              OpenRouter integration. --%>
         <% show_optional_body = @active_connection && @current_provider == "openrouter" %>
-        <div class={[
-          "card bg-base-100 shadow-lg",
-          if(!show_optional_body, do: "opacity-60")
-        ]}>
-          <div class="card-body">
-            <h2 class={
-              "card-title text-lg " <>
-                if(show_optional_body, do: "", else: "text-base-content/50")
-            }>
-              {gettext("Optional Provider Settings")}
-            </h2>
-
-            <%= unless show_optional_body do %>
-              <p class="text-base-content/50 text-sm">
-                <%= cond do %>
-                  <% is_nil(@active_connection) -> %>
-                    {gettext("Pick an integration above to see optional provider-specific settings.")}
-                  <% @current_provider != "openrouter" -> %>
-                    {gettext("These settings apply only to OpenRouter.")}
-                  <% true -> %>
-                    {gettext("No optional settings for this provider.")}
-                <% end %>
-              </p>
+        <.form_section
+          title={gettext("Optional Provider Settings")}
+          class={if !show_optional_body, do: "opacity-60"}
+        >
+          <p :if={!show_optional_body} class="text-base-content/50 text-sm">
+            <%= cond do %>
+              <% is_nil(@active_connection) -> %>
+                {gettext("Pick an integration above to see optional provider-specific settings.")}
+              <% @current_provider != "openrouter" -> %>
+                {gettext("These settings apply only to OpenRouter.")}
+              <% true -> %>
+                {gettext("No optional settings for this provider.")}
             <% end %>
+          </p>
 
-            <%= if show_optional_body do %>
-
+          <%= if show_optional_body do %>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-              <div class="form-control">
-                <label class="label">
-                  <span class="label-text font-medium">{gettext("HTTP Referer")}</span>
-                </label>
-                <input
+              <div>
+                <.input
                   type="url"
                   name="endpoint[provider_settings][http_referer]"
+                  label={gettext("HTTP Referer")}
                   value={
                     get_in(@form.params, ["provider_settings", "http_referer"]) ||
                       (@endpoint && get_in(@endpoint.provider_settings || %{}, ["http_referer"])) ||
                       ""
                   }
-                  class="input input-bordered"
-                  placeholder="https://yourapp.com"
+                  placeholder={@site_url || "https://yourapp.com"}
                 />
-                <label class="label">
-                  <span class="label-text-alt text-base-content/50">{gettext("For OpenRouter rankings")}</span>
-                </label>
+                <p class="label-text-alt text-base-content/50 mt-1">
+                  <%= if @site_url do %>
+                    {gettext("Defaults to site_url from")}
+                    <.pk_link navigate="/admin/settings" class="link link-primary">
+                      {gettext("Settings")}
+                    </.pk_link>. {gettext("Leave blank to inherit.")}
+                  <% else %>
+                    {gettext("For OpenRouter rankings. Set site_url in")}
+                    <.pk_link navigate="/admin/settings" class="link link-primary">
+                      {gettext("Settings")}
+                    </.pk_link> {gettext("to use it as the default.")}
+                  <% end %>
+                </p>
               </div>
 
-              <div class="form-control">
-                <label class="label">
-                  <span class="label-text font-medium">{gettext("X-Title")}</span>
-                </label>
-                <input
+              <div>
+                <.input
                   type="text"
                   name="endpoint[provider_settings][x_title]"
+                  label={gettext("X-Title")}
                   value={
                     get_in(@form.params, ["provider_settings", "x_title"]) ||
                       (@endpoint && get_in(@endpoint.provider_settings || %{}, ["x_title"])) || ""
                   }
-                  class="input input-bordered"
-                  placeholder="My Application"
+                  placeholder={@project_title || "My Application"}
                 />
-                <label class="label">
-                  <span class="label-text-alt text-base-content/50">{gettext("App name for OpenRouter")}</span>
-                </label>
+                <p class="label-text-alt text-base-content/50 mt-1">
+                  {gettext("Defaults to project_title (%{title}) from", title: @project_title)}
+                  <.pk_link navigate="/admin/settings" class="link link-primary">
+                    {gettext("Settings")}
+                  </.pk_link>. {gettext("Leave blank to inherit.")}
+                </p>
               </div>
             </div>
-            <% end %>
+          <% end %>
+        </.form_section>
 
-            <%!-- Enabled Toggle. Always rendered — applies to every
-                 endpoint regardless of provider, so it stays visible
-                 even when the rest of this card is greyed out. --%>
-            <div class="form-control mt-4">
-              <label class="label cursor-pointer justify-start gap-4">
-                <input
-                  type="checkbox"
-                  name="endpoint[enabled]"
-                  value="true"
-                  checked={
-                    @form.params["enabled"] == "true" || (@endpoint && @endpoint.enabled) ||
-                      !@endpoint
-                  }
-                  class="checkbox checkbox-primary"
-                />
-                <span class="label-text font-medium">{gettext("Endpoint Enabled")}</span>
-              </label>
-            </div>
-          </div>
-        </div>
-
-        <%!-- Actions --%>
-        <div class="flex justify-end gap-3">
-          <.link navigate={Routes.ai_path()} class="btn btn-ghost">
-            {gettext("Cancel")}
-          </.link>
-          <button
-            type="submit"
-            class="btn btn-primary"
-            phx-disable-with={gettext("Saving…")}
-          >
-            {if @endpoint, do: gettext("Update Endpoint"), else: gettext("Create Endpoint")}
-          </button>
-        </div>
+        <.form_actions
+          cancel_to={Routes.ai_path()}
+          submit_label={
+            if @endpoint, do: gettext("Update Endpoint"), else: gettext("Create Endpoint")
+          }
+        />
       </.form>
-
-      <%!-- Help Section (only for new endpoints).
-           Used to be a 4-step OpenRouter-specific "go to openrouter.ai
-           and copy a key" tutorial — both wrong-provider and wrong-flow
-           after the integrations migration. Now a generic pointer to
-           the integrations admin where keys are added. --%>
-      <%= unless @endpoint do %>
-        <div class="card bg-base-100 shadow-lg mt-6">
-          <div class="card-body">
-            <h3 class="card-title text-lg">
-              <.icon name="hero-question-mark-circle" class="w-5 h-5" />
-              {gettext("Need to add a credential?")}
-            </h3>
-            <p class="text-base-content/70 mt-2">
-              {gettext(
-                "Provider credentials live in Settings → Integrations. Add or connect an integration there for your chosen provider, then come back and pick it from the list above."
-              )}
-            </p>
-            <div class="mt-3">
-              <.pk_link
-                navigate="/admin/settings/integrations"
-                class="link link-primary"
-              >
-                {gettext("Open Integrations")}
-              </.pk_link>
-            </div>
-          </div>
-        </div>
-      <% end %>
     </div>
   </div>
 

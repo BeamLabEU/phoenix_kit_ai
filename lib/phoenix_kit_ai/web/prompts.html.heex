@@ -1,196 +1,223 @@
-<div class="container flex-col mx-auto px-4 py-6">
+<div class="flex flex-col w-full px-4 py-6">
     <.admin_page_header
-      back={PhoenixKit.Utils.Routes.path("/admin")}
-      title="AI Prompts"
-      subtitle="Reusable prompt templates with variable substitution"
+      title={gettext("AI Prompts")}
+      subtitle={gettext("Reusable prompt templates with variable substitution")}
     />
-
-    <%!-- Controls --%>
-    <div class="bg-base-200 rounded-lg p-6 mb-6">
-      <div class="flex flex-col lg:flex-row gap-4 items-center justify-between">
-        <%!-- Tabs --%>
-        <div class="tabs tabs-boxed">
-          <.link
-            navigate={PhoenixKit.Utils.Routes.ai_path() <> "/endpoints"}
-            class="tab"
-          >
-            <.icon name="hero-server-stack" class="w-4 h-4 mr-2" /> Endpoints
-          </.link>
-          <.link
-            navigate={PhoenixKit.Utils.Routes.ai_path() <> "/prompts"}
-            class="tab tab-active"
-          >
-            <.icon name="hero-document-text" class="w-4 h-4 mr-2" /> Prompts
-          </.link>
-          <.link
-            navigate={PhoenixKit.Utils.Routes.ai_path() <> "/playground"}
-            class="tab"
-          >
-            <.icon name="hero-beaker" class="w-4 h-4 mr-2" /> Playground
-          </.link>
-          <.link
-            navigate={PhoenixKit.Utils.Routes.ai_path() <> "/usage"}
-            class="tab"
-          >
-            <.icon name="hero-chart-bar" class="w-4 h-4 mr-2" /> Usage
-          </.link>
-        </div>
-
-        <%!-- Quick Actions --%>
-        <.link
-          navigate={PhoenixKit.Utils.Routes.ai_path() <> "/prompts/new"}
-          class="btn btn-primary"
-        >
-          <.icon name="hero-plus" class="w-5 h-5 mr-2" /> New Prompt
-        </.link>
-      </div>
-    </div>
 
     <%!-- Content --%>
     <%= if Enum.empty?(@prompts) do %>
-      <%!-- Empty State --%>
-      <div class="card bg-base-200 p-8 text-center">
-        <div class="flex flex-col items-center gap-4">
-          <.icon name="hero-document-text" class="w-16 h-16 text-base-content/30" />
-          <h2 class="text-xl font-semibold">{gettext("No Prompts Yet")}</h2>
-          <p class="text-base-content/70 max-w-md">
-            {gettext("Create reusable prompt templates with variable substitution.")}
-            {gettext("Use the {{VariableName}} syntax for dynamic content.")}
-          </p>
+      <.empty_state
+        variant="featured"
+        icon="hero-document-text"
+        title={gettext("No Prompts Yet")}
+        description={
+          gettext("Create reusable prompt templates with variable substitution.") <>
+            " " <> gettext("Use the {{VariableName}} syntax for dynamic content.")
+        }
+      >
+        <.link
+          navigate={PhoenixKit.Utils.Routes.ai_path() <> "/prompts/new"}
+          class="btn btn-primary btn-lg"
+        >
+          <.icon name="hero-plus" class="w-5 h-5 mr-2" /> {gettext("Create First Prompt")}
+        </.link>
+      </.empty_state>
+    <% else %>
+      <.table_default
+        id="ai-prompts"
+        toggleable
+        items={@prompts}
+        item_id={& &1.uuid}
+        card_class={fn p -> "card bg-base-200 #{if !p.enabled, do: "opacity-60"}" end}
+        variant="zebra"
+        size="sm"
+      >
+        <:above_cards>
+          <%!-- Sort selector visible in card view only — table view uses
+               the column headers' built-in sort affordance instead. --%>
+          <.sort_selector
+            sort_by={@sort_by}
+            sort_dir={@sort_dir}
+            options={@sort_options}
+          />
+        </:above_cards>
+
+        <:toolbar_actions>
           <.link
             navigate={PhoenixKit.Utils.Routes.ai_path() <> "/prompts/new"}
-            class="btn btn-primary mt-4"
+            class="btn btn-primary btn-sm"
           >
-            <.icon name="hero-plus" class="w-5 h-5 mr-2" /> {gettext("Create First Prompt")}
+            <.icon name="hero-plus" class="w-4 h-4 mr-2" /> {gettext("New Prompt")}
           </.link>
-        </div>
-      </div>
-    <% else %>
-      <%!-- Sort Controls --%>
-      <div class="flex items-center gap-2 mb-4 flex-wrap">
-        <span class="text-sm text-base-content/70">{gettext("Sort by:")}</span>
-        <%= for {field, label} <- @sort_options do %>
-          <button
-            phx-click="sort"
-            phx-value-by={field}
-            class={"btn btn-xs #{if @sort_by == field, do: "btn-primary", else: "btn-ghost"}"}
-          >
-            {label}
-            <%= if @sort_by == field do %>
-              <.icon
-                name={if @sort_dir == :asc, do: "hero-chevron-up", else: "hero-chevron-down"}
-                class="w-3 h-3 ml-1"
-              />
-            <% end %>
-          </button>
-        <% end %>
-      </div>
+        </:toolbar_actions>
 
-      <%!-- Prompts Grid --%>
-      <div class="grid gap-4">
-        <%= for prompt <- @prompts do %>
-          <div class={"card bg-base-200 #{if !prompt.enabled, do: "opacity-60"}"}>
-            <div class="card-body p-4">
-              <div class="flex items-start justify-between">
-                <div class="flex-1">
-                  <div class="flex items-center gap-3 flex-wrap">
+        <:card_body :let={prompt}>
+          <div class="flex items-start justify-between">
+            <div class="flex-1">
+              <div class="flex items-center gap-3 flex-wrap">
+                <.link
+                  navigate={PhoenixKit.Utils.Routes.ai_path() <> "/prompts/#{prompt.uuid}/edit"}
+                  class="font-semibold text-lg hover:text-primary hover:underline"
+                >
+                  {prompt.name}
+                </.link>
+                <.enabled_badge enabled={prompt.enabled} />
+                <span class="badge badge-outline font-mono text-xs">{prompt.slug}</span>
+              </div>
+
+              <%= if prompt.variables && length(prompt.variables) > 0 do %>
+                <div class="mt-2 flex flex-wrap gap-2">
+                  <span class="text-sm text-base-content/70">Variables:</span>
+                  <%= for var <- prompt.variables do %>
+                    <span class="badge badge-sm badge-primary badge-outline font-mono">
+                      {"{{#{var}}}"}
+                    </span>
+                  <% end %>
+                </div>
+              <% end %>
+
+              <div class="mt-2 text-sm text-base-content/70 line-clamp-2">
+                {PhoenixKitAI.Prompt.content_preview(prompt.content)}
+              </div>
+
+              <div class="mt-2 flex flex-wrap gap-4 text-sm">
+                <div class="flex items-center gap-1 text-base-content/70" title="Usage count">
+                  <.icon name="hero-arrow-path" class="w-4 h-4" />
+                  <span>{prompt.usage_count} uses</span>
+                </div>
+                <div class="flex items-center gap-1 text-base-content/70" title="Last used">
+                  <.icon name="hero-clock" class="w-4 h-4" />
+                  <span>
+                    <%= if prompt.last_used_at do %>
+                      <.time_ago datetime={prompt.last_used_at} />
+                    <% else %>
+                      {gettext("Never used")}
+                    <% end %>
+                  </span>
+                </div>
+                <div class="flex items-center gap-1 text-base-content/70" title="Created">
+                  <.icon name="hero-calendar" class="w-4 h-4" />
+                  <span><.time_ago datetime={prompt.inserted_at} /></span>
+                </div>
+              </div>
+
+              <%= if prompt.description do %>
+                <p class="mt-2 text-sm text-base-content/60">{prompt.description}</p>
+              <% end %>
+            </div>
+
+            <div class="flex-shrink-0">
+              <.table_row_menu mode="auto" id={"prompt-menu-#{prompt.uuid}"}>
+                <.table_row_menu_link
+                  navigate={PhoenixKit.Utils.Routes.ai_path() <> "/prompts/#{prompt.uuid}/edit"}
+                  icon="hero-pencil"
+                  label={gettext("Edit")}
+                />
+                <.table_row_menu_button
+                  phx-click="toggle_prompt"
+                  phx-value-uuid={prompt.uuid}
+                  phx-disable-with={gettext("Updating…")}
+                  icon={if prompt.enabled, do: "hero-pause", else: "hero-play"}
+                  label={if prompt.enabled, do: gettext("Disable"), else: gettext("Enable")}
+                />
+                <.table_row_menu_divider />
+                <.table_row_menu_button
+                  phx-click="delete_prompt"
+                  phx-value-uuid={prompt.uuid}
+                  phx-disable-with={gettext("Deleting…")}
+                  data-confirm={gettext("Are you sure you want to delete this prompt?")}
+                  icon="hero-trash"
+                  label={gettext("Delete")}
+                  variant="error"
+                />
+              </.table_row_menu>
+            </div>
+          </div>
+        </:card_body>
+
+        <%!-- Table view content (inner_block) — md+ only via table_default's data-table-view wrapper --%>
+        <.table_default_header>
+              <.table_default_row>
+                <.sort_header_cell field={:name} sort={%{by: @sort_by, dir: @sort_dir}} event="sort">
+                  {gettext("Name")}
+                </.sort_header_cell>
+                <.table_default_header_cell>{gettext("Status")}</.table_default_header_cell>
+                <.table_default_header_cell class="hidden lg:table-cell">{gettext("Variables")}</.table_default_header_cell>
+                <.sort_header_cell field={:usage_count} sort={%{by: @sort_by, dir: @sort_dir}} event="sort" align={:right}>
+                  {gettext("Uses")}
+                </.sort_header_cell>
+                <.sort_header_cell field={:last_used_at} sort={%{by: @sort_by, dir: @sort_dir}} event="sort" class="hidden lg:table-cell">
+                  {gettext("Last Used")}
+                </.sort_header_cell>
+                <.sort_header_cell field={:inserted_at} sort={%{by: @sort_by, dir: @sort_dir}} event="sort" class="hidden xl:table-cell">
+                  {gettext("Created")}
+                </.sort_header_cell>
+                <.table_default_header_cell class="w-px whitespace-nowrap text-right">
+                  {gettext("Actions")}
+                </.table_default_header_cell>
+              </.table_default_row>
+            </.table_default_header>
+            <.table_default_body>
+              <%= for prompt <- @prompts do %>
+                <.table_default_row class={if !prompt.enabled, do: "opacity-60"}>
+                  <.table_default_cell>
                     <.link
                       navigate={PhoenixKit.Utils.Routes.ai_path() <> "/prompts/#{prompt.uuid}/edit"}
-                      class="font-semibold text-lg hover:text-primary hover:underline"
+                      class="link link-hover font-medium"
                     >
                       {prompt.name}
                     </.link>
+                    <div class="text-xs text-base-content/50 font-mono">{prompt.slug}</div>
+                  </.table_default_cell>
+                  <.table_default_cell>
                     <.enabled_badge enabled={prompt.enabled} />
-                    <span class="badge badge-outline font-mono text-xs">{prompt.slug}</span>
-                  </div>
-
-                  <%!-- Variables --%>
-                  <%= if prompt.variables && length(prompt.variables) > 0 do %>
-                    <div class="mt-2 flex flex-wrap gap-2">
-                      <span class="text-sm text-base-content/70">Variables:</span>
-                      <%= for var <- prompt.variables do %>
-                        <span class="badge badge-sm badge-primary badge-outline font-mono">
-                          {"{{#{var}}}"}
-                        </span>
-                      <% end %>
-                    </div>
-                  <% end %>
-
-                  <%!-- Content Preview --%>
-                  <div class="mt-2 text-sm text-base-content/70 line-clamp-2">
-                    {PhoenixKitAI.Prompt.content_preview(prompt.content)}
-                  </div>
-
-                  <%!-- Usage Stats --%>
-                  <div class="mt-2 flex flex-wrap gap-4 text-sm">
-                    <div class="flex items-center gap-1 text-base-content/70" title="Usage count">
-                      <.icon name="hero-arrow-path" class="w-4 h-4" />
-                      <span>{prompt.usage_count} uses</span>
-                    </div>
-                    <div class="flex items-center gap-1 text-base-content/70" title="Last used">
-                      <.icon name="hero-clock" class="w-4 h-4" />
-                      <span>
-                        <%= if prompt.last_used_at do %>
-                          <.time_ago datetime={prompt.last_used_at} />
-                        <% else %>
-                          {gettext("Never used")}
-                        <% end %>
-                      </span>
-                    </div>
-                    <div class="flex items-center gap-1 text-base-content/70" title="Created">
-                      <.icon name="hero-calendar" class="w-4 h-4" />
-                      <span>
-                        <.time_ago datetime={prompt.inserted_at} />
-                      </span>
-                    </div>
-                  </div>
-
-                  <%= if prompt.description do %>
-                    <p class="mt-2 text-sm text-base-content/60">{prompt.description}</p>
-                  <% end %>
-                </div>
-
-                <%!-- Actions --%>
-                <div class="flex gap-1">
-                  <.link
-                    navigate={PhoenixKit.Utils.Routes.ai_path() <> "/prompts/#{prompt.uuid}/edit"}
-                    class="btn btn-xs btn-outline btn-info tooltip tooltip-bottom"
-                    data-tip={gettext("Edit")}
-                  >
-                    <.icon name="hero-pencil" class="w-4 h-4 hidden sm:inline" />
-                    <span class="sm:hidden whitespace-nowrap">{gettext("Edit")}</span>
-                  </.link>
-                  <button
-                    phx-click="toggle_prompt"
-                    phx-value-uuid={prompt.uuid}
-                    class="btn btn-xs btn-outline btn-info tooltip tooltip-bottom"
-                    data-tip={if prompt.enabled, do: gettext("Disable"), else: gettext("Enable")}
-                  >
-                    <.icon
-                      name={if prompt.enabled, do: "hero-pause", else: "hero-play"}
-                      class="w-4 h-4 hidden sm:inline"
-                    />
-                    <span class="sm:hidden whitespace-nowrap">
-                      {if prompt.enabled, do: gettext("Disable"), else: gettext("Enable")}
-                    </span>
-                  </button>
-                  <button
-                    phx-click="delete_prompt"
-                    phx-value-uuid={prompt.uuid}
-                    phx-disable-with={gettext("Deleting…")}
-                    data-confirm={gettext("Are you sure you want to delete this prompt?")}
-                    class="btn btn-xs btn-outline btn-error tooltip tooltip-bottom"
-                    data-tip={gettext("Delete")}
-                  >
-                    <.icon name="hero-trash" class="w-4 h-4 hidden sm:inline" />
-                    <span class="sm:hidden whitespace-nowrap">{gettext("Delete")}</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        <% end %>
-      </div>
+                  </.table_default_cell>
+                  <.table_default_cell class="hidden lg:table-cell">
+                    {length(prompt.variables || [])}
+                  </.table_default_cell>
+                  <.table_default_cell class="text-right">
+                    {prompt.usage_count}
+                  </.table_default_cell>
+                  <.table_default_cell class="hidden lg:table-cell">
+                    <%= if prompt.last_used_at do %>
+                      <.time_ago datetime={prompt.last_used_at} />
+                    <% else %>
+                      <span class="text-base-content/40">{gettext("Never")}</span>
+                    <% end %>
+                  </.table_default_cell>
+                  <.table_default_cell class="hidden xl:table-cell">
+                    <.time_ago datetime={prompt.inserted_at} />
+                  </.table_default_cell>
+                  <.table_default_cell class="text-right whitespace-nowrap">
+                    <.table_row_menu mode="auto" id={"prompt-tbl-menu-#{prompt.uuid}"}>
+                      <.table_row_menu_link
+                        navigate={PhoenixKit.Utils.Routes.ai_path() <> "/prompts/#{prompt.uuid}/edit"}
+                        icon="hero-pencil"
+                        label={gettext("Edit")}
+                      />
+                      <.table_row_menu_button
+                        phx-click="toggle_prompt"
+                        phx-value-uuid={prompt.uuid}
+                        phx-disable-with={gettext("Updating…")}
+                        icon={if prompt.enabled, do: "hero-pause", else: "hero-play"}
+                        label={if prompt.enabled, do: gettext("Disable"), else: gettext("Enable")}
+                      />
+                      <.table_row_menu_divider />
+                      <.table_row_menu_button
+                        phx-click="delete_prompt"
+                        phx-value-uuid={prompt.uuid}
+                        phx-disable-with={gettext("Deleting…")}
+                        data-confirm={gettext("Are you sure you want to delete this prompt?")}
+                        icon="hero-trash"
+                        label={gettext("Delete")}
+                        variant="error"
+                      />
+                    </.table_row_menu>
+                  </.table_default_cell>
+                </.table_default_row>
+              <% end %>
+            </.table_default_body>
+          </.table_default>
 
       <%!-- Pagination --%>
       <% total_pages = ceil(@total_prompts / @page_size) %>
