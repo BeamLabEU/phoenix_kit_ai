@@ -1,13 +1,13 @@
-<div class="container flex-col mx-auto px-4 py-6">
-    <.admin_page_header back={PhoenixKit.Utils.Routes.ai_path() <> "/prompts"}>
-      <h1 class="text-xl sm:text-2xl lg:text-3xl font-bold text-base-content">{@page_title}</h1>
-      <p class="text-sm text-base-content/60 mt-0.5">
-        {gettext("Create reusable prompts with variable substitution")}
-      </p>
-    </.admin_page_header>
+<div class="flex flex-col w-full px-4 py-6">
+    <.admin_page_header
+      title={@page_title}
+      subtitle={gettext("Create reusable prompts with variable substitution")}
+    />
 
-    <%!-- Form Content (constrained width) --%>
-    <div class="max-w-4xl mx-auto">
+    <%!-- Form Content (capped at 5xl — wide enough for prompt content
+         textareas to be readable, narrow enough that single-line inputs
+         don't stretch absurdly on ultrawide displays). --%>
+    <div class="max-w-5xl mx-auto w-full">
       <%!-- Form --%>
       <div class="card bg-base-200">
         <div class="card-body">
@@ -114,23 +114,14 @@
               </p>
             </div>
 
-            <%!-- Actions --%>
-            <div class="flex justify-end gap-2 pt-4">
-              <.link
-                navigate={PhoenixKit.Utils.Routes.ai_path() <> "/prompts"}
-                class="btn btn-ghost"
-              >
-                {gettext("Cancel")}
-              </.link>
-              <button
-                type="submit"
-                class="btn btn-primary"
-                phx-disable-with={gettext("Saving…")}
-              >
-                <.icon name="hero-check" class="w-4 h-4 mr-2" />
-                {if @prompt, do: gettext("Update Prompt"), else: gettext("Create Prompt")}
-              </button>
-            </div>
+            <.form_actions
+              class="pt-4 gap-2"
+              cancel_to={PhoenixKit.Utils.Routes.ai_path() <> "/prompts"}
+              submit_icon="hero-check"
+              submit_label={
+                if @prompt, do: gettext("Update Prompt"), else: gettext("Create Prompt")
+              }
+            />
           </.form>
         </div>
       </div>

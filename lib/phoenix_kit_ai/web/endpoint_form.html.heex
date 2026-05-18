@@ -1,17 +1,17 @@
-<div class="container flex-col mx-auto px-4 py-6">
-    <.admin_page_header back={Routes.ai_path() <> "/endpoints"}>
-      <h1 class="text-xl sm:text-2xl lg:text-3xl font-bold text-base-content">{@page_title}</h1>
-      <p class="text-sm text-base-content/60 mt-0.5">
-        <%= if @endpoint do %>
-          Update your AI endpoint configuration
-        <% else %>
-          Create a new AI endpoint with provider credentials, model selection, and parameters
-        <% end %>
-      </p>
-    </.admin_page_header>
+<div class="flex flex-col w-full px-4 py-6">
+    <% subtitle =
+      if @endpoint,
+        do: gettext("Update your AI endpoint configuration"),
+        else:
+          gettext(
+            "Create a new AI endpoint with provider credentials, model selection, and parameters"
+          ) %>
+    <.admin_page_header title={@page_title} subtitle={subtitle} />
 
-    <%!-- Form Content (constrained width) --%>
-    <div class="max-w-3xl mx-auto">
+    <%!-- Form Content (capped at 5xl: wide enough for the 4-col parameter
+         grid, narrow enough that single-line inputs don't stretch absurdly
+         on ultrawide displays). --%>
+    <div class="max-w-5xl mx-auto w-full">
       <.form
         for={@form}
         phx-change="validate"
@@ -19,39 +19,32 @@
         class="space-y-6"
         autocomplete="off"
       >
-        <%!-- Basic Info Card --%>
-        <div class="card bg-base-100 shadow-lg">
-          <div class="card-body">
-            <h2 class="card-title text-lg">{gettext("Basic Information")}</h2>
+        <%!-- Basic Info --%>
+        <.form_section title={gettext("Basic Information")}>
+          <div class="space-y-4 mt-4">
+            <.input
+              field={@form[:name]}
+              type="text"
+              label={gettext("Name") <> " *"}
+              placeholder={gettext("e.g., Claude Fast")}
+              required
+            />
 
-            <div class="space-y-4 mt-4">
-              <.input
-                field={@form[:name]}
-                type="text"
-                label={gettext("Name") <> " *"}
-                placeholder={gettext("e.g., Claude Fast")}
-                required
-              />
-
-              <.textarea
-                field={@form[:description]}
-                errors={
-                  Enum.map(@form[:description].errors,
-                    &PhoenixKitWeb.Components.Core.Input.translate_error/1)
-                }
-                label={gettext("Description")}
-                placeholder={gettext("Optional description of this endpoint's purpose")}
-                rows="2"
-              />
-            </div>
+            <.textarea
+              field={@form[:description]}
+              errors={
+                Enum.map(@form[:description].errors,
+                  &PhoenixKitWeb.Components.Core.Input.translate_error/1)
+              }
+              label={gettext("Description")}
+              placeholder={gettext("Optional description of this endpoint's purpose")}
+              rows="2"
+            />
           </div>
-        </div>
+        </.form_section>
 
-        <%!-- Provider & API Key Card --%>
-        <div class="card bg-base-100 shadow-lg">
-          <div class="card-body">
-            <h2 class="card-title text-lg">{gettext("Provider Configuration")}</h2>
-
+        <%!-- Provider & API Key --%>
+        <.form_section title={gettext("Provider Configuration")}>
             <div class="mt-4 max-w-md">
               <.select
                 field={@form[:provider]}
@@ -151,8 +144,7 @@
                 </button>
               </div>
             </div>
-          </div>
-        </div>
+        </.form_section>
 
         <%!-- Model Selection Card.
 
@@ -451,10 +443,7 @@
             (@endpoint && @endpoint.model) %>
 
         <%= if has_model_for_params && @active_connection do %>
-          <div class="card bg-base-100 shadow-lg">
-            <div class="card-body">
-              <h2 class="card-title text-lg">{gettext("Generation Parameters")}</h2>
-
+          <.form_section title={gettext("Generation Parameters")}>
               <%!-- Model Info Banner --%>
               <%= if @selected_model do %>
                 <div class="alert alert-info py-2 mt-2">
@@ -592,8 +581,7 @@
                   </div>
                 </div>
               <% end %>
-            </div>
-          </div>
+          </.form_section>
         <% else %>
           <%!-- Placeholder for two states:
                  * No integration picked yet — operator can't reach
@@ -714,19 +702,12 @@
           </div>
         </div>
 
-        <%!-- Actions --%>
-        <div class="flex justify-end gap-3">
-          <.link navigate={Routes.ai_path()} class="btn btn-ghost">
-            {gettext("Cancel")}
-          </.link>
-          <button
-            type="submit"
-            class="btn btn-primary"
-            phx-disable-with={gettext("Saving…")}
-          >
-            {if @endpoint, do: gettext("Update Endpoint"), else: gettext("Create Endpoint")}
-          </button>
-        </div>
+        <.form_actions
+          cancel_to={Routes.ai_path()}
+          submit_label={
+            if @endpoint, do: gettext("Update Endpoint"), else: gettext("Create Endpoint")
+          }
+        />
       </.form>
 
       <%!-- Help Section (only for new endpoints).
@@ -735,27 +716,25 @@
            after the integrations migration. Now a generic pointer to
            the integrations admin where keys are added. --%>
       <%= unless @endpoint do %>
-        <div class="card bg-base-100 shadow-lg mt-6">
-          <div class="card-body">
-            <h3 class="card-title text-lg">
-              <.icon name="hero-question-mark-circle" class="w-5 h-5" />
-              {gettext("Need to add a credential?")}
-            </h3>
-            <p class="text-base-content/70 mt-2">
-              {gettext(
-                "Provider credentials live in Settings → Integrations. Add or connect an integration there for your chosen provider, then come back and pick it from the list above."
-              )}
-            </p>
-            <div class="mt-3">
-              <.pk_link
-                navigate="/admin/settings/integrations"
-                class="link link-primary"
-              >
-                {gettext("Open Integrations")}
-              </.pk_link>
-            </div>
+        <.form_section
+          title={gettext("Need to add a credential?")}
+          icon="hero-question-mark-circle"
+          class="mt-6"
+        >
+          <p class="text-base-content/70 mt-2">
+            {gettext(
+              "Provider credentials live in Settings → Integrations. Add or connect an integration there for your chosen provider, then come back and pick it from the list above."
+            )}
+          </p>
+          <div class="mt-3">
+            <.pk_link
+              navigate="/admin/settings/integrations"
+              class="link link-primary"
+            >
+              {gettext("Open Integrations")}
+            </.pk_link>
           </div>
-        </div>
+        </.form_section>
       <% end %>
     </div>
   </div>
