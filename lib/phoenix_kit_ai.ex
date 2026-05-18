@@ -1823,36 +1823,43 @@ defmodule PhoenixKitAI do
   end
 
   @doc """
-  Updates the sort order for multiple prompts.
+  Reorders prompts based on a list of UUIDs in their new display order.
 
-  Accepts prompt UUIDs.
+  Delegates to `PhoenixKit.Utils.Reorder.reorder/4` — the same shared
+  two-phase index-rewrite primitive `reorder_endpoints/2` uses, so the
+  two reorder paths share the malformed-uuid filtering, dedup, and
+  payload-cap guard. Returns `:ok` on success or
+  `{:error, :too_many_uuids}` when the payload exceeds the cap.
 
-  Logs one `prompt.reordered` activity row when the order list isn't
-  empty, with the count + first uuid in metadata so the audit feed
-  captures the drag-to-reorder action without per-row noise.
+  On success, logs one `prompt.reordered` activity row with the actual
+  updated count + first uuid so the audit feed records the
+  drag-to-reorder action without per-row noise. `opts` is forwarded to
+  `log_activity/5` so callers can thread `actor_uuid` / `actor_role`.
   """
-  def reorder_prompts(order_list, opts \\ []) when is_list(order_list) do
-    repo().transaction(fn ->
-      Enum.each(order_list, fn {id, sort_order} ->
-        build_prompt_uuid_query(id)
-        |> repo().update_all(set: [sort_order: sort_order])
-      end)
-    end)
-
-    case order_list do
-      [] ->
+  @spec reorder_prompts([String.t()], keyword()) :: :ok | {:error, :too_many_uuids}
+  def reorder_prompts(ordered_ids, opts \\ []) when is_list(ordered_ids) do
+    case PhoenixKit.Utils.Reorder.reorder(Prompt, ordered_ids, :sort_order, repo: repo()) do
+      {:ok, 0} ->
         :ok
 
-      [{first_uuid, _} | _] ->
+      {:ok, count} ->
+        first_uuid = Enum.find(ordered_ids, &is_binary/1)
+
         log_activity(
           "prompt.reordered",
           "prompt",
           first_uuid,
           opts,
-          %{"count" => length(order_list)}
+          %{"count" => count}
         )
 
         :ok
+
+      # See `reorder_endpoints/2` — `:too_many_uuids` is the only error
+      # `Reorder.reorder/4` emits; match it explicitly to stay in sync
+      # with @spec.
+      {:error, :too_many_uuids} = err ->
+        err
     end
   end
 
@@ -1895,16 +1902,6 @@ defmodule PhoenixKitAI do
         err
     end
   end
-
-  defp build_prompt_uuid_query(id) when is_binary(id) do
-    if textual_uuid?(id) do
-      from(p in Prompt, where: p.uuid == ^id)
-    else
-      from(p in Prompt, where: false)
-    end
-  end
-
-  defp build_prompt_uuid_query(_), do: from(p in Prompt, where: false)
 
   # ===========================================
   # USAGE TRACKING (REQUESTS)

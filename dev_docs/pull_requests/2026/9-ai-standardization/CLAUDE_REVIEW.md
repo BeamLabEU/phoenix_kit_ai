@@ -80,6 +80,8 @@ This is partly defensible — `reorder_prompts/2` has **no UI caller** (grep con
 
 **Recommendation:** Either migrate `reorder_prompts/2` onto the same shared helper for consistency, or note explicitly (in a follow-up doc) that prompt drag-to-reorder is deliberately deferred and `reorder_prompts/2`'s audit logging is not yet exercised by any UI.
 
+> **✅ Addressed in follow-up (2026-05-18).** `reorder_prompts/2` now delegates to `PhoenixKit.Utils.Reorder.reorder/4` (`phoenix_kit_ai.ex`), structurally identical to `reorder_endpoints/2` — same `[uuid]` argument shape, same `:ok | {:error, :too_many_uuids}` contract, same two-phase write / dedup / payload-cap. The old inline single-phase `Enum.each` transaction and the now-unused `build_prompt_uuid_query/1` were removed. The API changed from `[{uuid, sort_order}]` to `[uuid]` (writes `1..N` by list position) — safe, since `reorder_prompts/2` has no UI caller; the three affected tests (`activity_logging_test.exs`, `coverage_test.exs` ×2) were updated to the new shape. **M2 closed.**
+
 ### M3 — `<.table_default_row class={[…]}>` triggers a compile warning (surfaced on recheck against 1.7.112)
 
 Now that the build compiles, `mix compile` emits:
@@ -145,8 +147,8 @@ In practice `update_all` raises rather than returning `{:error, …}`, so a fail
 | Performance       | Improved — cached settings on the AI hot path; stable index sorts |
 | Test coverage     | Good — new reorder paths pinned at 3 layers; prompt DnD path untested (no caller) |
 | Migration safety  | No schema change; `sort_order` rewrite is transactional + two-phase |
-| Consistency       | Mostly — `reorder_prompts` left on the old inline path (M2) |
-| **Build / release** | **OK on `phoenix_kit` 1.7.112 — C1 resolved; one compile warning remains (M3)** |
+| Consistency       | Good — both reorder paths now share `Reorder.reorder/4` (M2 fixed) |
+| **Build / release** | **OK on `phoenix_kit` 1.7.112 — C1/M1/M2/M3 all closed; compile clean** |
 
 ### Strengths
 
@@ -158,13 +160,13 @@ In practice `update_all` raises rather than returning `{:error, …}`, so a fail
 
 - ~~**C1 (blocker):** ship core PR #548 to Hex and bump `phoenix_kit`.~~ **Done** — 1.7.112.
 - ~~**M1:** reconcile `reorder_endpoints/2`'s `@spec`/error contract with the LV handler's `case`.~~ **Fixed** — catch-all tightened to `{:error, :too_many_uuids}`.
-- **M2:** migrate `reorder_prompts/2` to the shared `Reorder` helper, or document the deferral.
+- ~~**M2:** migrate `reorder_prompts/2` to the shared `Reorder` helper, or document the deferral.~~ **Fixed** — migrated to `Reorder.reorder/4`.
 - ~~**M3:** pass a string (not a list) to `<.table_default_row class=…>` to clear the compile warning.~~ **Fixed** — list joined to a string.
-- **L1–L4:** minor — transaction-result handling, mount/param default mismatch, audit `resource_uuid` edge case, brittle test assertion.
+- **L1–L4:** minor — transaction-result handling, mount/param default mismatch, audit `resource_uuid` edge case, brittle test assertion. (L1 is now moot — `reorder_prompts/2` no longer has its own transaction.)
 
 ### Verdict
 
-The PR's own diff is **APPROVE-quality** — well-reasoned, well-tested, no logic defects above Medium. With `phoenix_kit` 1.7.112 the original blocker (C1) is closed and `main` compiles. M1/M2/M3 + the Low findings can be folded into the next sweep.
+The PR's own diff is **APPROVE-quality** — well-reasoned, well-tested, no logic defects above Medium. With `phoenix_kit` 1.7.112 the original blocker (C1) is closed and `main` compiles. C1/M1/M2/M3 are all resolved; only the minor L2–L4 remain for a future sweep.
 
 ---
 
@@ -174,9 +176,10 @@ The PR's own diff is **APPROVE-quality** — well-reasoned, well-tested, no logi
 |------|--------|----------|
 | C1 — core dep missing | **Closed** | `phoenix_kit` 1.7.111 → 1.7.112 in `mix.lock`; `reorder.ex` / `values.ex` / `format.ex` present in `deps/phoenix_kit/lib/phoenix_kit/utils/`; `mix compile` → `Generated phoenix_kit_ai app` |
 | M1 — spec/contract mismatch | **Fixed** | `phoenix_kit_ai.ex:1890` catch-all tightened to `{:error, :too_many_uuids}`; body now matches `@spec`, LV handler is exhaustive |
+| M2 — `reorder_prompts` divergence | **Fixed** | `reorder_prompts/2` migrated to `Reorder.reorder/4`; old inline transaction + `build_prompt_uuid_query/1` removed; 3 tests updated to `[uuid]` shape |
 | M3 — `class={[…]}` warning | **Fixed** | `endpoints.html.heex:240` list joined to a string; `mix compile --force` clean |
-| Test suite | **Not run** | The review environment has no Postgres (`tcp connect localhost:5432: connection refused`); all 92 tests excluded. The `reorder_endpoints` / activity-logging / LV tests still need to be run against a DB before merge confidence — recommend Max confirm `mix test` green locally / in CI |
+| Test suite | **Not run** | The review environment has no Postgres (`tcp connect localhost:5432: connection refused`); all 92 tests excluded. The `reorder_endpoints` / `reorder_prompts` / activity-logging / LV tests still need to be run against a DB before merge confidence — recommend Max confirm `mix test` green locally / in CI |
 
-Files touched by the follow-up fixes: `lib/phoenix_kit_ai.ex` (M1), `lib/phoenix_kit_ai/web/endpoints.html.heex` (M3). `mix.lock` was bumped by the user. M2 and L1–L4 remain open for a follow-up sweep.
+Files touched by the follow-up fixes: `lib/phoenix_kit_ai.ex` (M1, M2), `lib/phoenix_kit_ai/web/endpoints.html.heex` (M3), `test/phoenix_kit_ai/{activity_logging_test,coverage_test}.exs` (M2 test updates). `mix.lock` was bumped by the user. L2–L4 remain open for a follow-up sweep.
 
-**Updated verdict: APPROVE.** Build is green on 1.7.112 and warning-free; C1/M1/M3 closed. Outstanding: run the test suite against a database, and address M2 + L1–L4 in the next pass.
+**Updated verdict: APPROVE.** Build is green on 1.7.112 and warning-free; C1/M1/M2/M3 closed. Outstanding: run the test suite against a database, and address L2–L4 in the next pass.

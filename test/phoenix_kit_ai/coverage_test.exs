@@ -584,20 +584,20 @@ defmodule PhoenixKitAI.CoverageTest do
       assert {:error, {:prompt_error, :not_found}} = PhoenixKitAI.reset_prompt_usage(uuid)
     end
 
-    test "reorder_prompts/1 updates sort_order via UUID" do
+    test "reorder_prompts/2 rewrites sort_order to 1..N matching UUID order" do
       p1 = prompt_fixture(%{sort_order: 0})
       p2 = prompt_fixture(%{sort_order: 1})
 
-      assert :ok = PhoenixKitAI.reorder_prompts([{p1.uuid, 99}, {p2.uuid, 100}])
+      assert :ok = PhoenixKitAI.reorder_prompts([p2.uuid, p1.uuid])
 
-      assert PhoenixKitAI.get_prompt(p1.uuid).sort_order == 99
-      assert PhoenixKitAI.get_prompt(p2.uuid).sort_order == 100
+      assert PhoenixKitAI.get_prompt(p2.uuid).sort_order == 1
+      assert PhoenixKitAI.get_prompt(p1.uuid).sort_order == 2
     end
 
-    test "reorder_prompts/1 silently no-ops on a non-UUID id" do
+    test "reorder_prompts/2 filters out a non-UUID id and reorders the rest" do
       p = prompt_fixture(%{sort_order: 5})
-      assert :ok = PhoenixKitAI.reorder_prompts([{"not-a-uuid", 99}, {p.uuid, 7}])
-      assert PhoenixKitAI.get_prompt(p.uuid).sort_order == 7
+      assert :ok = PhoenixKitAI.reorder_prompts(["not-a-uuid", p.uuid])
+      assert PhoenixKitAI.get_prompt(p.uuid).sort_order == 1
     end
   end
 

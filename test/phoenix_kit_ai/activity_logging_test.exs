@@ -363,7 +363,7 @@ defmodule PhoenixKitAI.ActivityLoggingTest do
       actor = Ecto.UUID.generate()
 
       :ok =
-        PhoenixKitAI.reorder_prompts([{p2.uuid, 1}, {p1.uuid, 2}],
+        PhoenixKitAI.reorder_prompts([p2.uuid, p1.uuid],
           actor_uuid: actor,
           actor_role: "admin"
         )
