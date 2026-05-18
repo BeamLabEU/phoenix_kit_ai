@@ -126,52 +126,49 @@
         </div>
       </div>
 
-      <%!-- Help Section --%>
-      <div class="card bg-base-200 mt-6">
-        <div class="card-body">
-          <h3 class="card-title text-lg">
-            <.icon name="hero-question-mark-circle" class="w-5 h-5" />
-            {gettext("Variable Syntax")}
-          </h3>
-          <div class="text-sm space-y-4">
-            <div>
-              <p class="mb-2">{gettext("Use double curly braces for variables:")}</p>
-              <div class="bg-base-300 p-3 rounded font-mono text-xs">
-                Translate to {"{{Language}}"}:<br />
-                {"{{Text}}"}
-              </div>
-            </div>
-
-            <div>
-              <p class="font-medium mb-1">{gettext("Naming rules:")}</p>
-              <ul class="list-disc list-inside text-base-content/70 space-y-1">
-                <li>
-                  {gettext("Use letters, numbers, and underscores only —")}
-                  <span class="text-error">{gettext("no spaces")}</span>
-                </li>
-                <li>
-                  <code class="bg-base-300 px-1 rounded">{"{{UserLanguage}}"}</code>
-                  {gettext("or")}
-                  <code class="bg-base-300 px-1 rounded">{"{{user_language}}"}</code>
-                  {gettext("— both work")}
-                </li>
-                <li>
-                  <code class="bg-base-300 px-1 rounded">{"{{User Language}}"}</code>
-                  {gettext("— won't be detected as a variable")}
-                </li>
-              </ul>
-            </div>
-
-            <div>
-              <p class="font-medium mb-1">{gettext("Missing variables:")}</p>
-              <p class="text-base-content/70">
-                {gettext("If a variable isn't provided when the prompt is used, it stays as-is in the output (e.g.,")}
-                <code class="bg-base-300 px-1 rounded">{"{{Language}}"}</code>
-                {gettext("remains unchanged).")}
-              </p>
+      <.form_section
+        title={gettext("Variable Syntax")}
+        icon="hero-question-mark-circle"
+        class="bg-base-200 mt-6"
+      >
+        <div class="text-sm space-y-4">
+          <div>
+            <p class="mb-2">{gettext("Use double curly braces for variables:")}</p>
+            <div class="bg-base-300 p-3 rounded font-mono text-xs">
+              Translate to {"{{Language}}"}:<br />
+              {"{{Text}}"}
             </div>
           </div>
+
+          <div>
+            <p class="font-medium mb-1">{gettext("Naming rules:")}</p>
+            <ul class="list-disc list-inside text-base-content/70 space-y-1">
+              <li>
+                {gettext("Use letters, numbers, and underscores only —")}
+                <span class="text-error">{gettext("no spaces")}</span>
+              </li>
+              <li>
+                <code class="bg-base-300 px-1 rounded">{"{{UserLanguage}}"}</code>
+                {gettext("or")}
+                <code class="bg-base-300 px-1 rounded">{"{{user_language}}"}</code>
+                {gettext("— both work")}
+              </li>
+              <li>
+                <code class="bg-base-300 px-1 rounded">{"{{User Language}}"}</code>
+                {gettext("— won't be detected as a variable")}
+              </li>
+            </ul>
+          </div>
+
+          <div>
+            <p class="font-medium mb-1">{gettext("Missing variables:")}</p>
+            <p class="text-base-content/70">
+              {gettext("If a variable isn't provided when the prompt is used, it stays as-is in the output (e.g.,")}
+              <code class="bg-base-300 px-1 rounded">{"{{Language}}"}</code>
+              {gettext("remains unchanged).")}
+            </p>
+          </div>
         </div>
-      </div>
+      </.form_section>
     </div>
   </div>

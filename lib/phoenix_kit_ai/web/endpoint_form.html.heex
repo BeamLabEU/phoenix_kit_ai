@@ -182,23 +182,13 @@
              picked integration, the model fetch can't run, so the
              card body becomes a short placeholder pointing at the
              picker above. --%>
-        <div class={[
-          "card bg-base-100 shadow-lg",
-          if(!@active_connection, do: "opacity-60")
-        ]}>
-          <div class="card-body">
-            <h2 class={
-              "card-title text-lg " <>
-                if(@active_connection, do: "", else: "text-base-content/50")
-            }>
-              {gettext("Model Selection")}
-            </h2>
-
-            <%= unless @active_connection do %>
-              <p class="text-base-content/50 text-sm">
-                {gettext("Pick an integration above to load available models.")}
-              </p>
-            <% end %>
+        <.form_section
+          title={gettext("Model Selection")}
+          class={if !@active_connection, do: "opacity-60"}
+        >
+          <p :if={!@active_connection} class="text-base-content/50 text-sm">
+            {gettext("Pick an integration above to load available models.")}
+          </p>
 
             <% current_model_id = @form.params["model"] || (@endpoint && @endpoint.model)
             has_model = current_model_id && current_model_id != "" %>
@@ -470,8 +460,7 @@
               <% end %>
             </div>
             <% end %>
-          </div>
-        </div>
+        </.form_section>
 
         <%!-- Parameters Card - Only shown when model is selected --%>
         <% supported_params =
@@ -628,18 +617,15 @@
                  * No integration picked yet — operator can't reach
                    the model picker until they do.
                  * Integration picked but no model selected. --%>
-          <div class="card bg-base-100 shadow-lg opacity-60">
-            <div class="card-body">
-              <h2 class="card-title text-lg text-base-content/50">{gettext("Generation Parameters")}</h2>
-              <p class="text-base-content/50 text-sm">
-                <%= if @active_connection do %>
-                  {gettext("Select a model above to configure generation parameters. Available parameters depend on the selected model.")}
-                <% else %>
-                  {gettext("Pick an integration above, then a model, to configure generation parameters.")}
-                <% end %>
-              </p>
-            </div>
-          </div>
+          <.form_section title={gettext("Generation Parameters")} class="opacity-60">
+            <p class="text-base-content/50 text-sm">
+              <%= if @active_connection do %>
+                {gettext("Select a model above to configure generation parameters. Available parameters depend on the selected model.")}
+              <% else %>
+                {gettext("Pick an integration above, then a model, to configure generation parameters.")}
+              <% end %>
+            </p>
+          </.form_section>
         <% end %>
 
         <%!-- Optional Settings Card —
@@ -653,77 +639,58 @@
              Body shows only when the operator has picked an
              OpenRouter integration. --%>
         <% show_optional_body = @active_connection && @current_provider == "openrouter" %>
-        <div class={[
-          "card bg-base-100 shadow-lg",
-          if(!show_optional_body, do: "opacity-60")
-        ]}>
-          <div class="card-body">
-            <h2 class={
-              "card-title text-lg " <>
-                if(show_optional_body, do: "", else: "text-base-content/50")
-            }>
-              {gettext("Optional Provider Settings")}
-            </h2>
-
-            <%= unless show_optional_body do %>
-              <p class="text-base-content/50 text-sm">
-                <%= cond do %>
-                  <% is_nil(@active_connection) -> %>
-                    {gettext("Pick an integration above to see optional provider-specific settings.")}
-                  <% @current_provider != "openrouter" -> %>
-                    {gettext("These settings apply only to OpenRouter.")}
-                  <% true -> %>
-                    {gettext("No optional settings for this provider.")}
-                <% end %>
-              </p>
+        <.form_section
+          title={gettext("Optional Provider Settings")}
+          class={if !show_optional_body, do: "opacity-60"}
+        >
+          <p :if={!show_optional_body} class="text-base-content/50 text-sm">
+            <%= cond do %>
+              <% is_nil(@active_connection) -> %>
+                {gettext("Pick an integration above to see optional provider-specific settings.")}
+              <% @current_provider != "openrouter" -> %>
+                {gettext("These settings apply only to OpenRouter.")}
+              <% true -> %>
+                {gettext("No optional settings for this provider.")}
             <% end %>
+          </p>
 
-            <%= if show_optional_body do %>
-
+          <%= if show_optional_body do %>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-              <div class="form-control">
-                <label class="label">
-                  <span class="label-text font-medium">{gettext("HTTP Referer")}</span>
-                </label>
-                <input
+              <div>
+                <.input
                   type="url"
                   name="endpoint[provider_settings][http_referer]"
+                  label={gettext("HTTP Referer")}
                   value={
                     get_in(@form.params, ["provider_settings", "http_referer"]) ||
                       (@endpoint && get_in(@endpoint.provider_settings || %{}, ["http_referer"])) ||
                       ""
                   }
-                  class="input input-bordered"
                   placeholder="https://yourapp.com"
                 />
-                <label class="label">
-                  <span class="label-text-alt text-base-content/50">{gettext("For OpenRouter rankings")}</span>
-                </label>
+                <p class="label-text-alt text-base-content/50 mt-1">
+                  {gettext("For OpenRouter rankings")}
+                </p>
               </div>
 
-              <div class="form-control">
-                <label class="label">
-                  <span class="label-text font-medium">{gettext("X-Title")}</span>
-                </label>
-                <input
+              <div>
+                <.input
                   type="text"
                   name="endpoint[provider_settings][x_title]"
+                  label={gettext("X-Title")}
                   value={
                     get_in(@form.params, ["provider_settings", "x_title"]) ||
                       (@endpoint && get_in(@endpoint.provider_settings || %{}, ["x_title"])) || ""
                   }
-                  class="input input-bordered"
                   placeholder="My Application"
                 />
-                <label class="label">
-                  <span class="label-text-alt text-base-content/50">{gettext("App name for OpenRouter")}</span>
-                </label>
+                <p class="label-text-alt text-base-content/50 mt-1">
+                  {gettext("App name for OpenRouter")}
+                </p>
               </div>
             </div>
-            <% end %>
-
-          </div>
-        </div>
+          <% end %>
+        </.form_section>
 
         <.form_actions
           cancel_to={Routes.ai_path()}
