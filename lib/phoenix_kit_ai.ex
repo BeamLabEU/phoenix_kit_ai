@@ -1887,7 +1887,11 @@ defmodule PhoenixKitAI do
 
         :ok
 
-      {:error, _} = err ->
+      # `Reorder.reorder/4`'s @type result only ever errors with
+      # `:too_many_uuids` — match it explicitly so this body stays in
+      # sync with @spec. A future error tag from the helper would fail
+      # here loudly rather than leak an undocumented value to callers.
+      {:error, :too_many_uuids} = err ->
         err
     end
   end

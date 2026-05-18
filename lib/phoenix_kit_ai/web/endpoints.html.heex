@@ -238,10 +238,14 @@
                   <% integration = Map.get(@integrations_by_uuid, endpoint.integration_uuid) %>
                   <% integration_status = integration && integration.data["status"] %>
                   <.table_default_row
-                    class={[
-                      if(!endpoint.enabled, do: "opacity-60"),
-                      if(manual_sort?, do: "sortable-item")
-                    ]}
+                    class={
+                      [
+                        if(!endpoint.enabled, do: "opacity-60"),
+                        if(manual_sort?, do: "sortable-item")
+                      ]
+                      |> Enum.filter(& &1)
+                      |> Enum.join(" ")
+                    }
                     data-id={if manual_sort?, do: endpoint.uuid}
                   >
                     <.table_default_cell
