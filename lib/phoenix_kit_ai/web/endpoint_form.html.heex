@@ -40,26 +40,54 @@
               placeholder={gettext("Optional description of this endpoint's purpose")}
               rows="2"
             />
+
+            <%!-- Status toggle. Edit-only — new endpoints inherit the
+                 schema's `enabled: true` default, so a "create + disabled"
+                 dance isn't a real flow we want to expose.
+
+                 Hidden `value="false"` input is required: unchecked checkboxes
+                 don't submit any value, so without this the params would
+                 lack `enabled` after unchecking, the changeset would fall
+                 back to the previous DB value, and the toggle would snap
+                 back to "on" on re-render. Same pattern as core's
+                 <.checkbox> component. --%>
+            <div :if={@endpoint} class="form-control py-2">
+              <label class="flex items-center gap-4 cursor-pointer">
+                <input type="hidden" name="endpoint[enabled]" value="false" />
+                <input
+                  type="checkbox"
+                  name="endpoint[enabled]"
+                  value="true"
+                  checked={
+                    Phoenix.HTML.Form.normalize_value("checkbox", @form[:enabled].value)
+                  }
+                  class="toggle toggle-success"
+                />
+                <div class="select-none">
+                  <div class="font-medium">{gettext("Enabled")}</div>
+                  <div class="text-xs text-base-content/60">
+                    {gettext("Disabled endpoints can't be used for AI requests.")}
+                  </div>
+                </div>
+              </label>
+            </div>
           </div>
         </.form_section>
 
         <%!-- Provider & API Key --%>
         <.form_section title={gettext("Provider Configuration")}>
+          <:subtitle>
+            {gettext("Credentials live in")}
+            <.pk_link navigate="/admin/settings/integrations" class="link link-primary">
+              {gettext("Settings → Integrations")}
+            </.pk_link>. {gettext("Add new ones there and they'll appear in the picker.")}
+          </:subtitle>
             <div class="mt-4 max-w-md">
               <.select
                 field={@form[:provider]}
                 label={gettext("Provider")}
                 options={@provider_options}
               />
-              <p class="text-xs text-base-content/60 mt-1">
-                {gettext("Need another integration?")}
-                <.pk_link
-                  navigate="/admin/settings/integrations"
-                  class="link link-primary"
-                >
-                  {gettext("Set one up in Settings → Integrations")}
-                </.pk_link>.
-              </p>
             </div>
 
             <div class="mt-4">
@@ -227,7 +255,8 @@
                     <button
                       type="button"
                       phx-click="clear_model"
-                      class="btn btn-ghost btn-sm btn-square shrink-0"
+                      phx-disable-with={gettext("…")}
+                      class="btn btn-ghost btn-sm btn-square shrink-0 [&.phx-click-loading]:pointer-events-none"
                       aria-label={gettext("Clear model")}
                       title={gettext("Clear model")}
                     >
@@ -323,9 +352,10 @@
                     <button
                       type="button"
                       phx-click="set_manual_model"
+                      phx-disable-with={gettext("Setting…")}
                       data-manual-model-submit
                       disabled={!@integration_connected}
-                      class="btn btn-primary join-item"
+                      class="btn btn-primary join-item [&.phx-click-loading]:pointer-events-none"
                     >
                       {gettext("Set Model")}
                     </button>
@@ -345,8 +375,14 @@
                        auto-selects the sole group so the operator
                        lands on the model grid directly instead of
                        clicking through a one-option dropdown. --%>
-                  <div :if={length(@models_grouped) > 1}>
-                    <label class="select w-full">
+                  <%!-- `group` wraps select + loading hint together; the
+                       hint reveals itself via `group-has-[select.phx-change-loading]`
+                       (Tailwind 3.4+ has-selector modifier). When LV adds
+                       .phx-change-loading to the <select> during the
+                       round-trip, the wrapper "has" that descendant, so
+                       descendants with the variant flip on. --%>
+                  <div :if={length(@models_grouped) > 1} class="group">
+                    <label class="select w-full group-has-[select.phx-change-loading]:opacity-60 transition-opacity">
                       <select
                         id="provider_picker"
                         name="provider"
@@ -365,6 +401,10 @@
                         <% end %>
                       </select>
                     </label>
+                    <div class="hidden group-has-[select.phx-change-loading]:flex items-center gap-2 mt-2 text-sm text-base-content/70">
+                      <span class="loading loading-spinner loading-xs"></span>
+                      {gettext("Loading models…")}
+                    </div>
                   </div>
 
                   <%!-- Model Cards (shown after provider selected) --%>
@@ -385,7 +425,8 @@
                           type="button"
                           phx-click="select_provider"
                           phx-value-provider=""
-                          class="btn btn-ghost btn-xs"
+                          phx-disable-with={gettext("…")}
+                          class="btn btn-ghost btn-xs [&.phx-click-loading]:pointer-events-none"
                         >
                           <.icon name="hero-x-mark" class="w-3 h-3" /> {gettext("Clear")}
                         </button>
@@ -681,24 +722,6 @@
             </div>
             <% end %>
 
-            <%!-- Enabled Toggle. Always rendered — applies to every
-                 endpoint regardless of provider, so it stays visible
-                 even when the rest of this card is greyed out. --%>
-            <div class="form-control mt-4">
-              <label class="label cursor-pointer justify-start gap-4">
-                <input
-                  type="checkbox"
-                  name="endpoint[enabled]"
-                  value="true"
-                  checked={
-                    @form.params["enabled"] == "true" || (@endpoint && @endpoint.enabled) ||
-                      !@endpoint
-                  }
-                  class="checkbox checkbox-primary"
-                />
-                <span class="label-text font-medium">{gettext("Endpoint Enabled")}</span>
-              </label>
-            </div>
           </div>
         </div>
 
@@ -709,33 +732,6 @@
           }
         />
       </.form>
-
-      <%!-- Help Section (only for new endpoints).
-           Used to be a 4-step OpenRouter-specific "go to openrouter.ai
-           and copy a key" tutorial — both wrong-provider and wrong-flow
-           after the integrations migration. Now a generic pointer to
-           the integrations admin where keys are added. --%>
-      <%= unless @endpoint do %>
-        <.form_section
-          title={gettext("Need to add a credential?")}
-          icon="hero-question-mark-circle"
-          class="mt-6"
-        >
-          <p class="text-base-content/70 mt-2">
-            {gettext(
-              "Provider credentials live in Settings → Integrations. Add or connect an integration there for your chosen provider, then come back and pick it from the list above."
-            )}
-          </p>
-          <div class="mt-3">
-            <.pk_link
-              navigate="/admin/settings/integrations"
-              class="link link-primary"
-            >
-              {gettext("Open Integrations")}
-            </.pk_link>
-          </div>
-        </.form_section>
-      <% end %>
     </div>
   </div>
 

@@ -135,7 +135,8 @@ defmodule PhoenixKitAI.Web.EndpointForm do
         phx-value-model={@model.id}
         data-search-text={String.downcase("#{@model.name || ""} #{@model.id}")}
         class={
-          "rounded-lg border p-3 transition-colors cursor-pointer text-left w-full " <>
+          "relative rounded-lg border p-3 transition-colors cursor-pointer text-left w-full " <>
+            "[&.phx-click-loading]:pointer-events-none [&.phx-click-loading]:opacity-60 " <>
             if(@show_clear, do: "pr-10 ", else: "") <>
             if @selected do
               "border-primary bg-primary/10 ring-2 ring-primary/20"
@@ -144,6 +145,13 @@ defmodule PhoenixKitAI.Web.EndpointForm do
             end
         }
       >
+        <%!-- Spinner overlay during in-flight click. Hidden by default;
+             revealed when Phoenix's `.phx-click-loading` class lands on
+             the parent button. Pointer-events-none on the parent stops
+             repeat clicks while it's spinning. --%>
+        <span class="hidden [.phx-click-loading_&]:flex absolute inset-0 items-center justify-center bg-base-100/40 rounded-lg z-10">
+          <span class="loading loading-spinner loading-sm"></span>
+        </span>
         <div class="min-w-0">
           <div class="font-semibold truncate">
             {@model.name || @model.id}
@@ -183,7 +191,8 @@ defmodule PhoenixKitAI.Web.EndpointForm do
         :if={@show_clear}
         type="button"
         phx-click="clear_model"
-        class="btn btn-ghost btn-sm btn-square absolute top-2 right-2"
+        phx-disable-with={gettext("…")}
+        class="btn btn-ghost btn-sm btn-square absolute top-2 right-2 [&.phx-click-loading]:pointer-events-none"
         aria-label={gettext("Clear model")}
         title={gettext("Clear model")}
       >
