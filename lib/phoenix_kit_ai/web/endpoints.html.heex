@@ -548,12 +548,14 @@
                 title={gettext("No requests match the current filters")}
               />
             <% else %>
-              <%!-- Table chrome via core <.table_default>. All columns
-                   always render — `overflow-x-auto` on the wrapper
-                   handles narrow viewports so the user can scroll right
-                   to reach off-screen columns. Previous `hidden lg:` /
-                   `hidden xl:` classes hid most columns on common
-                   1366/1440 monitors once the admin sidebar took 256px. --%>
+              <%!-- Table chrome via core <.table_default>. Secondary
+                   columns (Prompt / Tokens / Price / Source) hide below
+                   lg (1024px) so the essential signal — Time / Endpoint
+                   / Model / Latency / Status / Actions — stays readable
+                   on narrow viewports. lg threshold (not xl) so the
+                   sidebar-eaten 1366/1440 desktop monitors still get
+                   the full grid. `overflow-x-auto` on the wrapper
+                   handles anything narrower. --%>
               <% sort = %{by: @usage_sort_by, dir: @usage_sort_dir} %>
               <.table_default size="sm">
                 <.table_default_header>
@@ -564,23 +566,37 @@
                     <.sort_header_cell field={:endpoint_name} sort={sort} event="usage_sort">
                       {gettext("Endpoint")}
                     </.sort_header_cell>
-                    <.table_default_header_cell>{gettext("Prompt")}</.table_default_header_cell>
+                    <.table_default_header_cell class="hidden lg:table-cell">
+                      {gettext("Prompt")}
+                    </.table_default_header_cell>
                     <.sort_header_cell field={:model} sort={sort} event="usage_sort">
                       {gettext("Model")}
                     </.sort_header_cell>
-                    <.sort_header_cell field={:total_tokens} sort={sort} event="usage_sort">
+                    <.sort_header_cell
+                      field={:total_tokens}
+                      sort={sort}
+                      event="usage_sort"
+                      class="hidden lg:table-cell"
+                    >
                       {gettext("Tokens")}
                     </.sort_header_cell>
                     <.sort_header_cell field={:latency_ms} sort={sort} event="usage_sort">
                       {gettext("Latency")}
                     </.sort_header_cell>
-                    <.sort_header_cell field={:cost_cents} sort={sort} event="usage_sort">
+                    <.sort_header_cell
+                      field={:cost_cents}
+                      sort={sort}
+                      event="usage_sort"
+                      class="hidden lg:table-cell"
+                    >
                       {gettext("Price")}
                     </.sort_header_cell>
                     <.sort_header_cell field={:status} sort={sort} event="usage_sort">
                       {gettext("Status")}
                     </.sort_header_cell>
-                    <.table_default_header_cell>{gettext("Source")}</.table_default_header_cell>
+                    <.table_default_header_cell class="hidden lg:table-cell">
+                      {gettext("Source")}
+                    </.table_default_header_cell>
                     <.table_default_header_cell class="w-px whitespace-nowrap text-right">
                       {gettext("Actions")}
                     </.table_default_header_cell>
@@ -595,7 +611,7 @@
                       <.table_default_cell class="text-sm">
                         {request.endpoint_name || "-"}
                       </.table_default_cell>
-                      <.table_default_cell class="text-sm">
+                      <.table_default_cell class="hidden lg:table-cell text-sm">
                         <%= if request.prompt do %>
                           <.link
                             navigate={PhoenixKit.Utils.Routes.ai_path() <> "/prompts/#{request.prompt.uuid}/edit"}
@@ -610,13 +626,13 @@
                       <.table_default_cell class="text-sm font-mono">
                         {PhoenixKitAI.Request.short_model_name(request.model)}
                       </.table_default_cell>
-                      <.table_default_cell class="text-sm">
+                      <.table_default_cell class="hidden lg:table-cell text-sm">
                         {PhoenixKitAI.Request.format_tokens(request.total_tokens)}
                       </.table_default_cell>
                       <.table_default_cell class="text-sm">
                         {PhoenixKitAI.Request.format_latency(request.latency_ms)}
                       </.table_default_cell>
-                      <.table_default_cell class="text-sm">
+                      <.table_default_cell class="hidden lg:table-cell text-sm">
                         {PhoenixKitAI.Request.format_cost(request.cost_cents)}
                       </.table_default_cell>
                       <.table_default_cell>
@@ -633,7 +649,7 @@
                         <% end %>
                       </.table_default_cell>
                       <.table_default_cell
-                        class="text-sm font-mono text-base-content/70 max-w-[150px] truncate"
+                        class="hidden lg:table-cell text-sm font-mono text-base-content/70 max-w-[150px] truncate"
                         title={request.metadata["source"]}
                       >
                         {request.metadata["source"] || "-"}
