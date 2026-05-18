@@ -1847,7 +1847,10 @@ defmodule PhoenixKitAI do
   """
   @spec reorder_endpoints([String.t()]) :: :ok | {:error, :too_many_uuids}
   def reorder_endpoints(ordered_ids) when is_list(ordered_ids) do
-    PhoenixKit.Utils.Reorder.reorder(Endpoint, ordered_ids, :sort_order, repo: repo())
+    case PhoenixKit.Utils.Reorder.reorder(Endpoint, ordered_ids, :sort_order, repo: repo()) do
+      {:ok, _count} -> :ok
+      {:error, _} = err -> err
+    end
   end
 
   defp build_prompt_uuid_query(id) when is_binary(id) do
