@@ -304,68 +304,68 @@ defmodule PhoenixKitAI.Web.EndpointForm do
         changeset = AI.change_endpoint(endpoint)
         connections = socket.assigns.provider_connections
 
-        # Resolve the picker's `active_connection` from the endpoint's
-        # `integration_uuid`. Fall back to the legacy `provider` field
-        # (which carried the uuid before the dedicated column existed)
-        # so endpoints that pre-date V107's backfill still light up the
-        # right picker entry.
-        #
-        # The picker reflects the endpoint's actual stored state — it
-        # never auto-picks a connection the endpoint isn't pinned to.
-        # When `integration_uuid` is set but unresolvable, the orphan
-        # uuid flows through `selected_uuids` so the picker renders its
-        # "Integration deleted" warning card. When nothing is pinned,
-        # `active` stays nil and the picker shows no selection — the
-        # operator picks one explicitly.
-        {active, orphaned_integration_uuid} =
-          cond do
-            endpoint.integration_uuid &&
-                Enum.any?(connections, &(&1.uuid == endpoint.integration_uuid)) ->
-              {endpoint.integration_uuid, nil}
-
-            endpoint.integration_uuid ->
-              # Set but unresolvable — surface the orphan.
-              {nil, endpoint.integration_uuid}
-
-            endpoint.provider && Enum.any?(connections, &(&1.uuid == endpoint.provider)) ->
-              {endpoint.provider, nil}
-
-            true ->
-              {nil, nil}
-          end
-
+        {active, orphaned_integration_uuid} = resolve_active_connection(endpoint, connections)
         connected = active && Integrations.connected?(active)
+        selected_uuids = picker_selected_uuids(active, orphaned_integration_uuid)
 
-        # `selected_uuids` is what the picker renders as selected.
-        # When `active` resolves cleanly, it's just `[active]`. When
-        # the original integration is deleted, we pass the orphan uuid
-        # so the picker can render its "Integration deleted" warning
-        # alongside the other connection cards.
-        selected_uuids =
-          cond do
-            active -> [active]
-            orphaned_integration_uuid -> [orphaned_integration_uuid]
-            true -> []
-          end
-
-        socket =
-          socket
-          |> assign(:page_title, "Edit AI Endpoint")
-          |> assign(:endpoint, endpoint)
-          |> assign(:form, to_form(changeset))
-          |> assign(:active_connection, active)
-          |> assign(:selected_uuids, selected_uuids)
-          |> assign(:integration_connected, connected)
-          |> assign(:current_provider, endpoint.provider)
-
-        # Load models if integration is connected
-        if connected do
-          send(self(), :fetch_models_from_integration)
-          start_model_fetch_indicators(socket)
-        else
-          socket
-        end
+        socket
+        |> assign(:page_title, "Edit AI Endpoint")
+        |> assign(:endpoint, endpoint)
+        |> assign(:form, to_form(changeset))
+        |> assign(:active_connection, active)
+        |> assign(:selected_uuids, selected_uuids)
+        |> assign(:integration_connected, connected)
+        |> assign(:current_provider, endpoint.provider)
+        |> maybe_fetch_models_on_load(connected)
     end
+  end
+
+  # Resolves the picker's `active_connection` from the endpoint's
+  # `integration_uuid`. Falls back to the legacy `provider` field (which
+  # carried the uuid before the dedicated column existed) so endpoints
+  # that pre-date V107's backfill still light up the right picker entry.
+  #
+  # The picker reflects the endpoint's actual stored state — it never
+  # auto-picks a connection the endpoint isn't pinned to. When
+  # `integration_uuid` is set but unresolvable, the orphan uuid is
+  # returned so the picker renders its "Integration deleted" warning.
+  defp resolve_active_connection(endpoint, connections) do
+    cond do
+      endpoint.integration_uuid &&
+          Enum.any?(connections, &(&1.uuid == endpoint.integration_uuid)) ->
+        {endpoint.integration_uuid, nil}
+
+      endpoint.integration_uuid ->
+        # Set but unresolvable — surface the orphan.
+        {nil, endpoint.integration_uuid}
+
+      endpoint.provider && Enum.any?(connections, &(&1.uuid == endpoint.provider)) ->
+        {endpoint.provider, nil}
+
+      true ->
+        {nil, nil}
+    end
+  end
+
+  # `selected_uuids` is what the picker renders as selected. When
+  # `active` resolves cleanly it's just `[active]`. When the original
+  # integration is deleted, the orphan uuid is passed so the picker can
+  # render its "Integration deleted" warning alongside the other cards.
+  defp picker_selected_uuids(active, orphaned_integration_uuid) do
+    cond do
+      active -> [active]
+      orphaned_integration_uuid -> [orphaned_integration_uuid]
+      true -> []
+    end
+  end
+
+  # Kicks off the model fetch when the endpoint's integration is
+  # connected; otherwise returns the socket unchanged.
+  defp maybe_fetch_models_on_load(socket, connected) when connected in [nil, false], do: socket
+
+  defp maybe_fetch_models_on_load(socket, _connected) do
+    send(self(), :fetch_models_from_integration)
+    start_model_fetch_indicators(socket)
   end
 
   @impl true
@@ -721,29 +721,8 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     current_active = socket.assigns[:active_connection]
     endpoint_uuid = socket.assigns[:endpoint] && socket.assigns.endpoint.integration_uuid
 
-    {active, orphaned} =
-      cond do
-        # Current selection still exists in the list — keep it.
-        current_active && Enum.any?(connections, &(&1.uuid == current_active)) ->
-          {current_active, nil}
-
-        # Endpoint was originally pinned to a now-deleted integration.
-        # Keep `active` nil so we don't silently switch the endpoint
-        # to a different connection; surface the orphan to the picker.
-        endpoint_uuid && not Enum.any?(connections, &(&1.uuid == endpoint_uuid)) ->
-          {nil, endpoint_uuid}
-
-        true ->
-          {nil, nil}
-      end
-
-    selected_uuids =
-      cond do
-        active -> [active]
-        orphaned -> [orphaned]
-        true -> []
-      end
-
+    {active, orphaned} = resolve_reloaded_connection(connections, current_active, endpoint_uuid)
+    selected_uuids = picker_selected_uuids(active, orphaned)
     connected = active && Integrations.connected?(active)
 
     socket
@@ -752,6 +731,23 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     |> assign(:selected_uuids, selected_uuids)
     |> assign(:integration_connected, connected)
     |> refresh_provider_options(connections)
+  end
+
+  # Re-resolves the active connection after the connection list reloads.
+  # Keeps the current selection if it still exists; otherwise surfaces a
+  # now-deleted pinned integration as an orphan rather than silently
+  # switching the endpoint to a different connection.
+  defp resolve_reloaded_connection(connections, current_active, endpoint_uuid) do
+    cond do
+      current_active && Enum.any?(connections, &(&1.uuid == current_active)) ->
+        {current_active, nil}
+
+      endpoint_uuid && not Enum.any?(connections, &(&1.uuid == endpoint_uuid)) ->
+        {nil, endpoint_uuid}
+
+      true ->
+        {nil, nil}
+    end
   end
 
   defp refresh_provider_options(socket, connections) do
@@ -920,16 +916,15 @@ defmodule PhoenixKitAI.Web.EndpointForm do
       # Endpoint pinned via integration_uuid — that specific row is
       # the source of truth, regardless of what the legacy `provider`
       # column still says.
-      is_binary(integration_uuid) and integration_uuid != "" and
-          Integrations.connected?(integration_uuid) ->
+      present?(integration_uuid) and Integrations.connected?(integration_uuid) ->
         nil
 
       # Legacy endpoint with a stored api_key — fallback path still works.
-      is_binary(api_key) and api_key != "" ->
+      present?(api_key) ->
         nil
 
       # Pinned to an integration that isn't reachable — surface that.
-      is_binary(integration_uuid) and integration_uuid != "" ->
+      present?(integration_uuid) ->
         gettext(
           "The selected integration is not connected — requests will fail until you connect it in Settings → Integrations."
         )
@@ -937,15 +932,8 @@ defmodule PhoenixKitAI.Web.EndpointForm do
       # No integration_uuid, but the legacy `provider` column may
       # carry a uuid (pre-V107) or a `provider:name` string. The
       # dual-input shim handles both shapes.
-      is_binary(provider) and provider != "" ->
-        if Integrations.connected?(provider) do
-          nil
-        else
-          gettext(
-            "The %{provider} integration is not connected — requests will fail until you connect it in Settings → Integrations.",
-            provider: "\"#{provider}\""
-          )
-        end
+      present?(provider) ->
+        provider_connection_warning(provider)
 
       true ->
         gettext(
@@ -953,6 +941,22 @@ defmodule PhoenixKitAI.Web.EndpointForm do
         )
     end
   end
+
+  # Soft warning for an endpoint resolved via the legacy `provider`
+  # column — nil when that provider's integration is reachable.
+  defp provider_connection_warning(provider) do
+    if Integrations.connected?(provider) do
+      nil
+    else
+      gettext(
+        "The %{provider} integration is not connected — requests will fail until you connect it in Settings → Integrations.",
+        provider: "\"#{provider}\""
+      )
+    end
+  end
+
+  # True when `value` is a non-empty binary.
+  defp present?(value), do: is_binary(value) and value != ""
 
   # Captures the current admin/user's UUID so the Activity feed can
   # attribute the mutation to the right actor. Returns an empty list

@@ -85,6 +85,7 @@ defmodule PhoenixKitAI do
   alias PhoenixKit.PubSub.Manager, as: PubSub
   alias PhoenixKit.Settings
   alias PhoenixKit.Utils.Date, as: UtilsDate
+  alias PhoenixKit.Utils.Reorder
   alias PhoenixKit.Utils.UUID, as: UUIDUtils
   alias PhoenixKitAI.Endpoint
   alias PhoenixKitAI.Prompt
@@ -606,33 +607,42 @@ defmodule PhoenixKitAI do
 
       0
     else
-      case PhoenixKit.Integrations.save_setup(integration_uuid, %{"api_key" => api_key}) do
-        {:ok, _saved} ->
-          count = update_endpoints_provider(endpoints, full_key, integration_uuid)
-
-          if count > 0 do
-            log_migration_activity(:credentials_migrated, %{
-              "endpoint_count" => count,
-              "integration_uuid" => integration_uuid,
-              "connection_name" => name
-            })
-          end
-
-          count
-
-        {:error, _reason} ->
-          require Logger
-
-          Logger.warning(
-            "[PhoenixKitAI] Skipping legacy api_key group (#{length(endpoints)} endpoints) — " <>
-              "save_setup failed"
-          )
-
-          0
-      end
+      persist_migrated_credentials(integration_uuid, api_key, endpoints, full_key, name)
     end
   rescue
     _ -> 0
+  end
+
+  # Stores the legacy api_key against the resolved integration uuid and
+  # re-points the endpoint group at it. Returns the count of endpoints
+  # updated (0 on save failure).
+  defp persist_migrated_credentials(integration_uuid, api_key, endpoints, full_provider, name) do
+    case PhoenixKit.Integrations.save_setup(integration_uuid, %{"api_key" => api_key}) do
+      {:ok, _saved} ->
+        count = update_endpoints_provider(endpoints, full_provider, integration_uuid)
+        maybe_log_credentials_migrated(count, integration_uuid, name)
+        count
+
+      {:error, _reason} ->
+        require Logger
+
+        Logger.warning(
+          "[PhoenixKitAI] Skipping legacy api_key group (#{length(endpoints)} endpoints) — " <>
+            "save_setup failed"
+        )
+
+        0
+    end
+  end
+
+  defp maybe_log_credentials_migrated(count, _integration_uuid, _name) when count <= 0, do: :ok
+
+  defp maybe_log_credentials_migrated(count, integration_uuid, name) do
+    log_migration_activity(:credentials_migrated, %{
+      "endpoint_count" => count,
+      "integration_uuid" => integration_uuid,
+      "connection_name" => name
+    })
   end
 
   defp update_endpoints_provider(endpoints, new_provider, integration_uuid) do
@@ -752,21 +762,8 @@ defmodule PhoenixKitAI do
     if Enum.empty?(endpoints) do
       :nothing_to_migrate
     else
-      migrated =
-        Enum.reduce(endpoints, 0, fn endpoint, acc ->
-          case promote_provider_to_integration_uuid(endpoint) do
-            :ok -> acc + 1
-            _ -> acc
-          end
-        end)
-
-      if migrated > 0 do
-        log_migration_activity(:reference_migrated, %{
-          "endpoint_count" => migrated,
-          "source" => "boot_sweep"
-        })
-      end
-
+      migrated = count_promoted_endpoints(endpoints)
+      maybe_log_reference_migrated(migrated)
       {:migrated, migrated}
     end
   rescue
@@ -780,6 +777,26 @@ defmodule PhoenixKitAI do
       end)
 
       :error
+  end
+
+  # Promotes each endpoint's provider string to an integration uuid,
+  # returning the count that succeeded.
+  defp count_promoted_endpoints(endpoints) do
+    Enum.reduce(endpoints, 0, fn endpoint, acc ->
+      case promote_provider_to_integration_uuid(endpoint) do
+        :ok -> acc + 1
+        _ -> acc
+      end
+    end)
+  end
+
+  defp maybe_log_reference_migrated(migrated) when migrated <= 0, do: :ok
+
+  defp maybe_log_reference_migrated(migrated) do
+    log_migration_activity(:reference_migrated, %{
+      "endpoint_count" => migrated,
+      "source" => "boot_sweep"
+    })
   end
 
   defp list_endpoints_needing_uuid_promotion do
@@ -1838,7 +1855,7 @@ defmodule PhoenixKitAI do
   """
   @spec reorder_prompts([String.t()], keyword()) :: :ok | {:error, :too_many_uuids}
   def reorder_prompts(ordered_ids, opts \\ []) when is_list(ordered_ids) do
-    case PhoenixKit.Utils.Reorder.reorder(Prompt, ordered_ids, :sort_order, repo: repo()) do
+    case Reorder.reorder(Prompt, ordered_ids, :sort_order, repo: repo()) do
       {:ok, 0} ->
         :ok
 
@@ -1877,7 +1894,7 @@ defmodule PhoenixKitAI do
   """
   @spec reorder_endpoints([String.t()], keyword()) :: :ok | {:error, :too_many_uuids}
   def reorder_endpoints(ordered_ids, opts \\ []) when is_list(ordered_ids) do
-    case PhoenixKit.Utils.Reorder.reorder(Endpoint, ordered_ids, :sort_order, repo: repo()) do
+    case Reorder.reorder(Endpoint, ordered_ids, :sort_order, repo: repo()) do
       {:ok, 0} ->
         :ok
 
