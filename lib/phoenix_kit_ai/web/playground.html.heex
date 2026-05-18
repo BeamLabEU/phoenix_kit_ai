@@ -1,11 +1,13 @@
-<div class="container flex flex-col mx-auto px-4 py-6">
+<div class="flex flex-col w-full px-4 py-6">
     <.admin_page_header
       title={gettext("AI Playground")}
       subtitle={gettext("Test endpoints and prompts interactively")}
     />
 
-
-    <div class="max-w-4xl mx-auto space-y-6">
+    <%!-- Inner form capped at 7xl: wider response/messages area on large
+         monitors, but single-line inputs don't stretch absurdly on
+         ultrawide displays. --%>
+    <div class="max-w-7xl mx-auto space-y-6 w-full">
       <form phx-change="change" phx-submit="send" class="space-y-6">
         <%!-- Configuration Card --%>
         <div class="card bg-base-200">
