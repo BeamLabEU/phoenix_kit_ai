@@ -359,8 +359,6 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     end
   end
 
-  # Kicks off the model fetch when the endpoint's integration is
-  # connected; otherwise returns the socket unchanged.
   defp maybe_fetch_models_on_load(socket, connected) when connected in [nil, false], do: socket
 
   defp maybe_fetch_models_on_load(socket, _connected) do
@@ -1283,8 +1281,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
       # Use `&&` throughout: strict `and` raises BadBooleanError on
       # `nil` (which is what `endpoint && endpoint.provider == ...`
       # returns when `endpoint` is nil on the new-endpoint flow).
-      endpoint && endpoint.provider == current_provider && is_binary(endpoint_url) &&
-          endpoint_url != "" ->
+      endpoint && endpoint.provider == current_provider && present?(endpoint_url) ->
         endpoint_url
 
       is_binary(current_provider) ->

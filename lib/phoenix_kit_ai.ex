@@ -583,8 +583,6 @@ defmodule PhoenixKitAI do
   defp legacy_connection_name(_total, index), do: "imported-#{index}"
 
   defp migrate_endpoint_group(name, api_key, endpoints, existing_uuids) do
-    full_key = "openrouter:#{name}"
-
     # Two-step write under core's strict-UUID Integrations API:
     # add_connection/3 creates (or surfaces) the row and returns its
     # uuid; save_setup/3 then stores the legacy api_key against that
@@ -607,19 +605,18 @@ defmodule PhoenixKitAI do
 
       0
     else
-      persist_migrated_credentials(integration_uuid, api_key, endpoints, full_key, name)
+      persist_migrated_credentials(integration_uuid, api_key, endpoints, name)
     end
   rescue
     _ -> 0
   end
 
-  # Stores the legacy api_key against the resolved integration uuid and
-  # re-points the endpoint group at it. Returns the count of endpoints
-  # updated (0 on save failure).
-  defp persist_migrated_credentials(integration_uuid, api_key, endpoints, full_provider, name) do
+  # Re-points the endpoint group at the resolved integration uuid.
+  # Returns the count of endpoints updated (0 if the credential save fails).
+  defp persist_migrated_credentials(integration_uuid, api_key, endpoints, name) do
     case PhoenixKit.Integrations.save_setup(integration_uuid, %{"api_key" => api_key}) do
       {:ok, _saved} ->
-        count = update_endpoints_provider(endpoints, full_provider, integration_uuid)
+        count = update_endpoints_provider(endpoints, "openrouter:#{name}", integration_uuid)
         maybe_log_credentials_migrated(count, integration_uuid, name)
         count
 
