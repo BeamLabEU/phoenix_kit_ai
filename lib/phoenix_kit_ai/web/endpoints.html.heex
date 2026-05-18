@@ -194,20 +194,20 @@
                   <.sort_header_cell field={:enabled} sort={%{by: @sort_by, dir: @sort_dir}} event="sort">
                     {gettext("Status")}
                   </.sort_header_cell>
-                  <.table_default_header_cell class="hidden lg:table-cell">{gettext("Provider")}</.table_default_header_cell>
+                  <.table_default_header_cell>{gettext("Provider")}</.table_default_header_cell>
                   <.sort_header_cell field={:model} sort={%{by: @sort_by, dir: @sort_dir}} event="sort">
                     {gettext("Model")}
                   </.sort_header_cell>
                   <.sort_header_cell field={:usage} sort={%{by: @sort_by, dir: @sort_dir}} event="sort" align={:right}>
                     {gettext("Requests")}
                   </.sort_header_cell>
-                  <.sort_header_cell field={:tokens} sort={%{by: @sort_by, dir: @sort_dir}} event="sort" align={:right} class="hidden lg:table-cell">
+                  <.sort_header_cell field={:tokens} sort={%{by: @sort_by, dir: @sort_dir}} event="sort" align={:right}>
                     {gettext("Tokens")}
                   </.sort_header_cell>
-                  <.sort_header_cell field={:cost} sort={%{by: @sort_by, dir: @sort_dir}} event="sort" align={:right} class="hidden lg:table-cell">
+                  <.sort_header_cell field={:cost} sort={%{by: @sort_by, dir: @sort_dir}} event="sort" align={:right}>
                     {gettext("Cost")}
                   </.sort_header_cell>
-                  <.sort_header_cell field={:last_used} sort={%{by: @sort_by, dir: @sort_dir}} event="sort" class="hidden xl:table-cell">
+                  <.sort_header_cell field={:last_used} sort={%{by: @sort_by, dir: @sort_dir}} event="sort">
                     {gettext("Last Used")}
                   </.sort_header_cell>
                   <.table_default_header_cell class="w-px whitespace-nowrap text-right">
@@ -248,7 +248,7 @@
                     <.table_default_cell>
                       <.enabled_badge enabled={endpoint.enabled} />
                     </.table_default_cell>
-                    <.table_default_cell class="hidden lg:table-cell">
+                    <.table_default_cell>
                       <span class="badge badge-outline badge-sm">{endpoint.provider}</span>
                     </.table_default_cell>
                     <.table_default_cell class="font-mono text-xs">
@@ -257,13 +257,13 @@
                     <.table_default_cell class="text-right">
                       {stats.request_count}
                     </.table_default_cell>
-                    <.table_default_cell class="text-right hidden lg:table-cell">
+                    <.table_default_cell class="text-right">
                       {PhoenixKitAI.Request.format_tokens(stats.total_tokens)}
                     </.table_default_cell>
-                    <.table_default_cell class="text-right hidden lg:table-cell">
+                    <.table_default_cell class="text-right">
                       {PhoenixKitAI.Request.format_cost(stats.total_cost)}
                     </.table_default_cell>
-                    <.table_default_cell class="hidden xl:table-cell">
+                    <.table_default_cell>
                       <%= if stats[:last_used_at] do %>
                         <.time_ago datetime={stats.last_used_at} />
                       <% else %>
@@ -433,17 +433,17 @@
         <%!-- Recent Requests --%>
         <div class="card bg-base-200">
           <div class="card-body">
-            <h3 class="card-title text-lg mb-4">Recent Requests</h3>
+            <h3 class="card-title text-lg mb-4">{gettext("Recent Requests")}</h3>
 
             <%!-- Filters --%>
             <form phx-change="usage_filter" class="flex flex-wrap items-center gap-2 mb-4">
               <%!-- Date filter (always visible) --%>
               <label class="select select-sm">
                 <select name="date">
-                  <option value="today" selected={@usage_filter_date == "today"}>Today</option>
-                  <option value="7d" selected={@usage_filter_date == "7d"}>Last 7 Days</option>
-                  <option value="30d" selected={@usage_filter_date == "30d"}>Last 30 Days</option>
-                  <option value="all" selected={@usage_filter_date == "all"}>All Time</option>
+                  <option value="today" selected={@usage_filter_date == "today"}>{gettext("Today")}</option>
+                  <option value="7d" selected={@usage_filter_date == "7d"}>{gettext("Last 7 Days")}</option>
+                  <option value="30d" selected={@usage_filter_date == "30d"}>{gettext("Last 30 Days")}</option>
+                  <option value="all" selected={@usage_filter_date == "all"}>{gettext("All Time")}</option>
                 </select>
               </label>
 
@@ -451,7 +451,7 @@
               <%= if length(@usage_filter_options.endpoints) > 1 do %>
                 <label class="select select-sm">
                   <select name="endpoint">
-                    <option value="">All Endpoints</option>
+                    <option value="">{gettext("All Endpoints")}</option>
                     <%= for {id, name} <- @usage_filter_options.endpoints do %>
                       <option value={id} selected={@usage_filter_endpoint == id}>{name}</option>
                     <% end %>
@@ -462,7 +462,7 @@
               <%= if length(@usage_filter_options.models) > 1 do %>
                 <label class="select select-sm">
                   <select name="model">
-                    <option value="">All Models</option>
+                    <option value="">{gettext("All Models")}</option>
                     <%= for model <- @usage_filter_options.models do %>
                       <option value={model} selected={@usage_filter_model == model}>
                         {PhoenixKitAI.Request.short_model_name(model)}
@@ -475,7 +475,7 @@
               <%= if length(@usage_filter_options.statuses) > 1 do %>
                 <label class="select select-sm">
                   <select name="status">
-                    <option value="">All Statuses</option>
+                    <option value="">{gettext("All Statuses")}</option>
                     <%= for status <- @usage_filter_options.statuses do %>
                       <option value={status} selected={@usage_filter_status == status}>
                         {PhoenixKitAI.Request.status_label(status)}
@@ -488,7 +488,7 @@
               <%= if length(@usage_filter_options.sources) > 1 do %>
                 <label class="select select-sm">
                   <select name="source">
-                    <option value="">All Sources</option>
+                    <option value="">{gettext("All Sources")}</option>
                     <%= for source <- @usage_filter_options.sources do %>
                       <option value={source} selected={@usage_filter_source == source}>
                         {source}
@@ -511,260 +511,128 @@
 
             <%!-- Results count --%>
             <div class="text-sm text-base-content/70 mb-2">
-              Showing {length(@usage_requests)} of {@usage_total_requests} requests
+              {gettext("Showing %{shown} of %{total} requests",
+                shown: length(@usage_requests),
+                total: @usage_total_requests
+              )}
             </div>
 
             <%= if Enum.empty?(@usage_requests) do %>
-              <p class="text-base-content/70 py-4">
-                {gettext("No requests match the current filters")}
-              </p>
+              <.empty_state
+                icon="hero-magnifying-glass"
+                title={gettext("No requests match the current filters")}
+              />
             <% else %>
-              <div class="overflow-x-auto">
-                <table class="table table-sm">
-                  <thead>
-                    <tr>
-                      <%!-- Always visible --%>
-                      <th>
-                        <button
-                          phx-click="usage_sort"
-                          phx-value-by="inserted_at"
-                          class="flex items-center gap-1 hover:text-primary"
-                        >
-                          Time
-                          <%= if @usage_sort_by == :inserted_at do %>
-                            <.icon
-                              name={
-                                if @usage_sort_dir == :asc,
-                                  do: "hero-chevron-up",
-                                  else: "hero-chevron-down"
-                              }
-                              class="w-3 h-3"
-                            />
-                          <% end %>
-                        </button>
-                      </th>
-                      <%!-- Hidden until lg (accounts for sidebar) --%>
-                      <th class="hidden lg:table-cell">
-                        <button
-                          phx-click="usage_sort"
-                          phx-value-by="endpoint_name"
-                          class="flex items-center gap-1 hover:text-primary"
-                        >
-                          Endpoint
-                          <%= if @usage_sort_by == :endpoint_name do %>
-                            <.icon
-                              name={
-                                if @usage_sort_dir == :asc,
-                                  do: "hero-chevron-up",
-                                  else: "hero-chevron-down"
-                              }
-                              class="w-3 h-3"
-                            />
-                          <% end %>
-                        </button>
-                      </th>
-                      <%!-- Hidden until lg - Prompt column --%>
-                      <th class="hidden lg:table-cell">Prompt</th>
-                      <%!-- Always visible --%>
-                      <th>
-                        <button
-                          phx-click="usage_sort"
-                          phx-value-by="model"
-                          class="flex items-center gap-1 hover:text-primary"
-                        >
-                          Model
-                          <%= if @usage_sort_by == :model do %>
-                            <.icon
-                              name={
-                                if @usage_sort_dir == :asc,
-                                  do: "hero-chevron-up",
-                                  else: "hero-chevron-down"
-                              }
-                              class="w-3 h-3"
-                            />
-                          <% end %>
-                        </button>
-                      </th>
-                      <%!-- Hidden until xl (accounts for sidebar) --%>
-                      <th class="hidden xl:table-cell">
-                        <button
-                          phx-click="usage_sort"
-                          phx-value-by="total_tokens"
-                          class="flex items-center gap-1 hover:text-primary"
-                        >
-                          Tokens
-                          <%= if @usage_sort_by == :total_tokens do %>
-                            <.icon
-                              name={
-                                if @usage_sort_dir == :asc,
-                                  do: "hero-chevron-up",
-                                  else: "hero-chevron-down"
-                              }
-                              class="w-3 h-3"
-                            />
-                          <% end %>
-                        </button>
-                      </th>
-                      <%!-- Hidden until xl (accounts for sidebar) --%>
-                      <th class="hidden xl:table-cell">
-                        <button
-                          phx-click="usage_sort"
-                          phx-value-by="latency_ms"
-                          class="flex items-center gap-1 hover:text-primary"
-                        >
-                          Latency
-                          <%= if @usage_sort_by == :latency_ms do %>
-                            <.icon
-                              name={
-                                if @usage_sort_dir == :asc,
-                                  do: "hero-chevron-up",
-                                  else: "hero-chevron-down"
-                              }
-                              class="w-3 h-3"
-                            />
-                          <% end %>
-                        </button>
-                      </th>
-                      <%!-- Hidden until lg (accounts for sidebar) --%>
-                      <th class="hidden lg:table-cell">
-                        <button
-                          phx-click="usage_sort"
-                          phx-value-by="cost_cents"
-                          class="flex items-center gap-1 hover:text-primary"
-                        >
-                          Price
-                          <%= if @usage_sort_by == :cost_cents do %>
-                            <.icon
-                              name={
-                                if @usage_sort_dir == :asc,
-                                  do: "hero-chevron-up",
-                                  else: "hero-chevron-down"
-                              }
-                              class="w-3 h-3"
-                            />
-                          <% end %>
-                        </button>
-                      </th>
-                      <%!-- Always visible --%>
-                      <th>
-                        <button
-                          phx-click="usage_sort"
-                          phx-value-by="status"
-                          class="flex items-center gap-1 hover:text-primary"
-                        >
-                          Status
-                          <%= if @usage_sort_by == :status do %>
-                            <.icon
-                              name={
-                                if @usage_sort_dir == :asc,
-                                  do: "hero-chevron-up",
-                                  else: "hero-chevron-down"
-                              }
-                              class="w-3 h-3"
-                            />
-                          <% end %>
-                        </button>
-                      </th>
-                      <%!-- Hidden until xl (accounts for sidebar) --%>
-                      <th class="hidden xl:table-cell">Source</th>
-                      <%!-- Always visible --%>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <%= for request <- @usage_requests do %>
-                      <tr>
-                        <%!-- Always visible --%>
-                        <td class="text-sm">
-                          <.time_ago datetime={request.inserted_at} />
-                        </td>
-                        <%!-- Hidden until lg (accounts for sidebar) --%>
-                        <td class="hidden lg:table-cell text-sm">
-                          {request.endpoint_name || "-"}
-                        </td>
-                        <%!-- Hidden until lg - Prompt column --%>
-                        <td class="hidden lg:table-cell text-sm">
-                          <%= if request.prompt do %>
-                            <.link
-                              navigate={PhoenixKit.Utils.Routes.ai_path() <> "/prompts/#{request.prompt.uuid}/edit"}
-                              class="link link-hover link-primary"
-                            >
-                              {request.prompt_name}
-                            </.link>
-                          <% else %>
-                            <span class="text-base-content/50">{request.prompt_name || "-"}</span>
-                          <% end %>
-                        </td>
-                        <%!-- Always visible --%>
-                        <td class="text-sm font-mono">
-                          {PhoenixKitAI.Request.short_model_name(request.model)}
-                        </td>
-                        <%!-- Hidden until xl (accounts for sidebar) --%>
-                        <td class="hidden xl:table-cell text-sm">
-                          {PhoenixKitAI.Request.format_tokens(request.total_tokens)}
-                        </td>
-                        <%!-- Hidden until xl (accounts for sidebar) --%>
-                        <td class="hidden xl:table-cell text-sm">
-                          {PhoenixKitAI.Request.format_latency(request.latency_ms)}
-                        </td>
-                        <%!-- Hidden until lg (accounts for sidebar) --%>
-                        <td class="hidden lg:table-cell text-sm">
-                          {PhoenixKitAI.Request.format_cost(request.cost_cents)}
-                        </td>
-                        <%!-- Always visible --%>
-                        <td>
-                          <span class={"badge badge-sm #{PhoenixKitAI.Request.status_color(request.status)}"}>
-                            {PhoenixKitAI.Request.status_label(request.status)}
-                          </span>
-                          <%= if request.error_message do %>
-                            <span title={request.error_message} class="inline-block align-middle">
-                              <.icon
-                                name="hero-information-circle"
-                                class="w-4 h-4 text-error ml-1"
-                              />
-                            </span>
-                          <% end %>
-                        </td>
-                        <%!-- Hidden until xl (accounts for sidebar) --%>
-                        <td
-                          class="hidden xl:table-cell text-sm font-mono text-base-content/70 max-w-[150px] truncate"
-                          title={request.metadata["source"]}
-                        >
-                          {request.metadata["source"] || "-"}
-                        </td>
-                        <%!-- Always visible. No daisyUI tooltip — its
-                             absolutely-positioned pseudo-element extends
-                             below the row in layout space and, because
-                             the wrapper uses overflow-x-auto (which the
-                             CSS spec coerces overflow-y to auto from
-                             visible), the row's scrollHeight grows by
-                             ~19px per row and a vertical scrollbar
-                             appears even on a 2-row table. The eye icon
-                             at ≥sm and the "View" text at <sm are
-                             self-documenting; an HTML title attribute
-                             keeps the hover affordance for icon-only
-                             viewports without contributing to layout. --%>
-                        <td>
-                          <button
-                            phx-click="show_request_details"
-                            phx-value-uuid={request.uuid}
-                            title={gettext("View")}
-                            class="btn btn-xs btn-outline btn-info"
+              <%!-- Table chrome via core <.table_default>. All columns
+                   always render — `overflow-x-auto` on the wrapper
+                   handles narrow viewports so the user can scroll right
+                   to reach off-screen columns. Previous `hidden lg:` /
+                   `hidden xl:` classes hid most columns on common
+                   1366/1440 monitors once the admin sidebar took 256px. --%>
+              <% sort = %{by: @usage_sort_by, dir: @usage_sort_dir} %>
+              <.table_default size="sm">
+                <.table_default_header>
+                  <.table_default_row>
+                    <.sort_header_cell field={:inserted_at} sort={sort} event="usage_sort">
+                      {gettext("Time")}
+                    </.sort_header_cell>
+                    <.sort_header_cell field={:endpoint_name} sort={sort} event="usage_sort">
+                      {gettext("Endpoint")}
+                    </.sort_header_cell>
+                    <.table_default_header_cell>{gettext("Prompt")}</.table_default_header_cell>
+                    <.sort_header_cell field={:model} sort={sort} event="usage_sort">
+                      {gettext("Model")}
+                    </.sort_header_cell>
+                    <.sort_header_cell field={:total_tokens} sort={sort} event="usage_sort">
+                      {gettext("Tokens")}
+                    </.sort_header_cell>
+                    <.sort_header_cell field={:latency_ms} sort={sort} event="usage_sort">
+                      {gettext("Latency")}
+                    </.sort_header_cell>
+                    <.sort_header_cell field={:cost_cents} sort={sort} event="usage_sort">
+                      {gettext("Price")}
+                    </.sort_header_cell>
+                    <.sort_header_cell field={:status} sort={sort} event="usage_sort">
+                      {gettext("Status")}
+                    </.sort_header_cell>
+                    <.table_default_header_cell>{gettext("Source")}</.table_default_header_cell>
+                    <.table_default_header_cell class="w-px whitespace-nowrap text-right">
+                      {gettext("Actions")}
+                    </.table_default_header_cell>
+                  </.table_default_row>
+                </.table_default_header>
+                <.table_default_body>
+                  <%= for request <- @usage_requests do %>
+                    <.table_default_row>
+                      <.table_default_cell class="text-sm">
+                        <.time_ago datetime={request.inserted_at} />
+                      </.table_default_cell>
+                      <.table_default_cell class="text-sm">
+                        {request.endpoint_name || "-"}
+                      </.table_default_cell>
+                      <.table_default_cell class="text-sm">
+                        <%= if request.prompt do %>
+                          <.link
+                            navigate={PhoenixKit.Utils.Routes.ai_path() <> "/prompts/#{request.prompt.uuid}/edit"}
+                            class="link link-hover link-primary"
                           >
-                            <.icon name="hero-eye" class="w-4 h-4 hidden sm:inline" />
-                            <span class="sm:hidden whitespace-nowrap">{gettext("View")}</span>
-                          </button>
-                        </td>
-                      </tr>
-                    <% end %>
-                  </tbody>
-                </table>
-              </div>
+                            {request.prompt_name}
+                          </.link>
+                        <% else %>
+                          <span class="text-base-content/50">{request.prompt_name || "-"}</span>
+                        <% end %>
+                      </.table_default_cell>
+                      <.table_default_cell class="text-sm font-mono">
+                        {PhoenixKitAI.Request.short_model_name(request.model)}
+                      </.table_default_cell>
+                      <.table_default_cell class="text-sm">
+                        {PhoenixKitAI.Request.format_tokens(request.total_tokens)}
+                      </.table_default_cell>
+                      <.table_default_cell class="text-sm">
+                        {PhoenixKitAI.Request.format_latency(request.latency_ms)}
+                      </.table_default_cell>
+                      <.table_default_cell class="text-sm">
+                        {PhoenixKitAI.Request.format_cost(request.cost_cents)}
+                      </.table_default_cell>
+                      <.table_default_cell>
+                        <span class={"badge badge-sm #{PhoenixKitAI.Request.status_color(request.status)}"}>
+                          {PhoenixKitAI.Request.status_label(request.status)}
+                        </span>
+                        <%= if request.error_message do %>
+                          <span title={request.error_message} class="inline-block align-middle">
+                            <.icon
+                              name="hero-information-circle"
+                              class="w-4 h-4 text-error ml-1"
+                            />
+                          </span>
+                        <% end %>
+                      </.table_default_cell>
+                      <.table_default_cell
+                        class="text-sm font-mono text-base-content/70 max-w-[150px] truncate"
+                        title={request.metadata["source"]}
+                      >
+                        {request.metadata["source"] || "-"}
+                      </.table_default_cell>
+                      <.table_default_cell class="text-right whitespace-nowrap">
+                        <button
+                          phx-click="show_request_details"
+                          phx-value-uuid={request.uuid}
+                          title={gettext("View")}
+                          class="btn btn-xs btn-outline btn-info"
+                        >
+                          <.icon name="hero-eye" class="w-4 h-4" />
+                          <span class="sr-only">{gettext("View")}</span>
+                        </button>
+                      </.table_default_cell>
+                    </.table_default_row>
+                  <% end %>
+                </.table_default_body>
+              </.table_default>
 
               <%= if length(@usage_requests) < @usage_total_requests do %>
                 <div class="mt-4 text-center">
                   <button phx-click="load_more_requests" class="btn btn-outline btn-sm">
-                    Load More
+                    {gettext("Load More")}
                   </button>
                 </div>
               <% end %>
