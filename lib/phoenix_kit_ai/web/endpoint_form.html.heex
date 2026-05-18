@@ -666,10 +666,14 @@
                       (@endpoint && get_in(@endpoint.provider_settings || %{}, ["http_referer"])) ||
                       ""
                   }
-                  placeholder="https://yourapp.com"
+                  placeholder={@site_url || "https://yourapp.com"}
                 />
                 <p class="label-text-alt text-base-content/50 mt-1">
-                  {gettext("For OpenRouter rankings")}
+                  <%= if @site_url do %>
+                    {gettext("Defaults to site_url from Settings. Leave blank to inherit.")}
+                  <% else %>
+                    {gettext("For OpenRouter rankings. Set site_url in Settings to use it as the default.")}
+                  <% end %>
                 </p>
               </div>
 
@@ -682,10 +686,11 @@
                     get_in(@form.params, ["provider_settings", "x_title"]) ||
                       (@endpoint && get_in(@endpoint.provider_settings || %{}, ["x_title"])) || ""
                   }
-                  placeholder="My Application"
+                  placeholder={@project_title || "My Application"}
                 />
                 <p class="label-text-alt text-base-content/50 mt-1">
-                  {gettext("App name for OpenRouter")}
+                  {gettext("Defaults to project_title (%{title}) from Settings. Leave blank to inherit.",
+                    title: @project_title)}
                 </p>
               </div>
             </div>

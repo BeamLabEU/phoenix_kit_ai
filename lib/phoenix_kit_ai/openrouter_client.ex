@@ -372,19 +372,37 @@ defmodule PhoenixKitAI.OpenRouterClient do
   Resolves the API key by uuid lookup against `PhoenixKit.Integrations`,
   falling back to the legacy `endpoint.api_key` column when the
   integration row is missing or has no key.
+
+  HTTP-Referer and X-Title fall back to PhoenixKit.Settings (`site_url`
+  and `project_title`) when the endpoint's `provider_settings` don't
+  carry a non-blank override — the endpoint form treats those settings
+  as the source of defaults, and the per-endpoint fields as overrides.
   """
   def build_headers_from_endpoint(%{provider_settings: settings} = endpoint) do
     settings = settings || %{}
 
     api_key = resolve_api_key(endpoint)
 
+    http_referer =
+      blank_to_nil(settings["http_referer"]) ||
+        blank_to_nil(PhoenixKit.Settings.get_setting("site_url"))
+
+    x_title =
+      blank_to_nil(settings["x_title"]) ||
+        blank_to_nil(PhoenixKit.Settings.get_project_title())
+
     opts =
       []
-      |> maybe_add_opt(:http_referer, settings["http_referer"])
-      |> maybe_add_opt(:x_title, settings["x_title"])
+      |> maybe_add_opt(:http_referer, http_referer)
+      |> maybe_add_opt(:x_title, x_title)
 
     build_headers(api_key, opts)
   end
+
+  defp blank_to_nil(nil), do: nil
+  defp blank_to_nil(""), do: nil
+  defp blank_to_nil(v) when is_binary(v), do: v
+  defp blank_to_nil(_), do: nil
 
   defp resolve_api_key(endpoint) do
     # Prefer the explicit `integration_uuid` reference. Fall back to the

@@ -391,6 +391,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
       socket =
         socket
         |> assign(:project_title, Settings.get_project_title())
+        |> assign(:site_url, Settings.get_setting("site_url"))
         |> assign(:provider_connections, connections)
         |> load_endpoint(params["id"])
         |> refresh_provider_options(connections)
