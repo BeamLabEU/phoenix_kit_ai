@@ -1,45 +1,9 @@
-<div class="container flex-col mx-auto px-4 py-6">
-    <.admin_page_header back={PhoenixKit.Utils.Routes.path("/admin")}>
-      <h1 class="text-xl sm:text-2xl lg:text-3xl font-bold text-base-content">
-        {gettext("AI Playground")}
-      </h1>
-      <p class="text-sm text-base-content/60 mt-0.5">
-        {gettext("Test endpoints and prompts interactively")}
-      </p>
-    </.admin_page_header>
+<div class="container flex flex-col mx-auto px-4 py-6">
+    <.admin_page_header
+      title={gettext("AI Playground")}
+      subtitle={gettext("Test endpoints and prompts interactively")}
+    />
 
-    <%!-- Controls --%>
-    <div class="bg-base-200 rounded-lg p-6 mb-6">
-      <div class="flex flex-col lg:flex-row gap-4 items-center justify-between">
-        <%!-- Tabs --%>
-        <div class="tabs tabs-boxed">
-          <.link
-            navigate={PhoenixKit.Utils.Routes.ai_path() <> "/endpoints"}
-            class="tab"
-          >
-            <.icon name="hero-server-stack" class="w-4 h-4 mr-2" /> {gettext("Endpoints")}
-          </.link>
-          <.link
-            navigate={PhoenixKit.Utils.Routes.ai_path() <> "/prompts"}
-            class="tab"
-          >
-            <.icon name="hero-document-text" class="w-4 h-4 mr-2" /> {gettext("Prompts")}
-          </.link>
-          <.link
-            navigate={PhoenixKit.Utils.Routes.ai_path() <> "/playground"}
-            class="tab tab-active"
-          >
-            <.icon name="hero-beaker" class="w-4 h-4 mr-2" /> {gettext("Playground")}
-          </.link>
-          <.link
-            navigate={PhoenixKit.Utils.Routes.ai_path() <> "/usage"}
-            class="tab"
-          >
-            <.icon name="hero-chart-bar" class="w-4 h-4 mr-2" /> {gettext("Usage")}
-          </.link>
-        </div>
-      </div>
-    </div>
 
     <div class="max-w-4xl mx-auto space-y-6">
       <form phx-change="change" phx-submit="send" class="space-y-6">

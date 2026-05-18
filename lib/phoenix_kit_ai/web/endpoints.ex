@@ -30,7 +30,7 @@ defmodule PhoenixKitAI.Web.Endpoints do
   alias PhoenixKitAI.Endpoint
 
   @sort_options [
-    {:id, "ID"},
+    {:inserted_at, "Created"},
     {:name, "Name"},
     {:enabled, "Status"},
     {:model, "Model"},
@@ -64,8 +64,8 @@ defmodule PhoenixKitAI.Web.Endpoints do
       |> assign(:endpoint_stats, %{})
       |> assign(:integrations_by_uuid, %{})
       |> assign(:has_endpoints, false)
-      |> assign(:sort_by, :id)
-      |> assign(:sort_dir, :asc)
+      |> assign(:sort_by, :inserted_at)
+      |> assign(:sort_dir, :desc)
       |> assign(:sort_options, @sort_options)
       |> assign(:page, 1)
       |> assign(:page_size, @page_size)
@@ -153,7 +153,7 @@ defmodule PhoenixKitAI.Web.Endpoints do
 
   defp parse_sort_params(params) do
     {
-      parse_sort_field(params["sort"], @valid_sort_fields, :id),
+      parse_sort_field(params["sort"], @valid_sort_fields, :inserted_at),
       parse_sort_dir(params["dir"]),
       parse_page(params["page"])
     }
@@ -320,6 +320,20 @@ defmodule PhoenixKitAI.Web.Endpoints do
 
     # Reset to page 1 when sorting changes, update URL with sort params
     path = Routes.ai_path() <> "/endpoints?sort=#{field}&dir=#{sort_dir}"
+    {:noreply, push_patch(socket, to: path)}
+  end
+
+  # `<.sort_selector>` event. The field select sends `sort_by` only; the
+  # direction button sends `sort_dir` only. Each missing param is read
+  # from `socket.assigns` so two events in flight can't clobber each
+  # other (race-free by construction). See sort_selector moduledoc.
+  @impl true
+  def handle_event("sort_form", params, socket) do
+    field_str = params["sort_by"] || Atom.to_string(socket.assigns.sort_by)
+    dir_str = params["sort_dir"] || Atom.to_string(socket.assigns.sort_dir)
+    field = parse_sort_field(field_str, @valid_sort_fields, socket.assigns.sort_by)
+    dir = parse_sort_dir(dir_str)
+    path = Routes.ai_path() <> "/endpoints?sort=#{field}&dir=#{dir}"
     {:noreply, push_patch(socket, to: path)}
   end
 

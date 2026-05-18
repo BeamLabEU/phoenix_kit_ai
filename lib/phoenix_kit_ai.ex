@@ -1055,6 +1055,11 @@ defmodule PhoenixKitAI do
     {endpoints, total}
   end
 
+  # Stable secondary key applied to every sort branch so tied values get
+  # deterministic ordering (without it, `ORDER BY enabled` with all-true rows
+  # returns whatever physical order PostgreSQL feels like — page/refresh can
+  # subtly shift positions). `:uuid` is UUIDv7 → time-sortable + always unique.
+
   defp apply_endpoint_sorting(query, :usage, dir) do
     # Sort by total request count using a subquery to avoid GROUP BY issues
     stats_subquery =
@@ -1067,7 +1072,7 @@ defmodule PhoenixKitAI do
     from(e in query,
       left_join: s in subquery(stats_subquery),
       on: s.endpoint_uuid == e.uuid,
-      order_by: [{^dir, coalesce(s.count, 0)}]
+      order_by: [{^dir, coalesce(s.count, 0)}, asc: e.uuid]
     )
   end
 
@@ -1083,7 +1088,7 @@ defmodule PhoenixKitAI do
     from(e in query,
       left_join: s in subquery(stats_subquery),
       on: s.endpoint_uuid == e.uuid,
-      order_by: [{^dir, coalesce(s.total, 0)}]
+      order_by: [{^dir, coalesce(s.total, 0)}, asc: e.uuid]
     )
   end
 
@@ -1099,7 +1104,7 @@ defmodule PhoenixKitAI do
     from(e in query,
       left_join: s in subquery(stats_subquery),
       on: s.endpoint_uuid == e.uuid,
-      order_by: [{^dir, coalesce(s.total, 0)}]
+      order_by: [{^dir, coalesce(s.total, 0)}, asc: e.uuid]
     )
   end
 
@@ -1115,18 +1120,18 @@ defmodule PhoenixKitAI do
     from(e in query,
       left_join: s in subquery(stats_subquery),
       on: s.endpoint_uuid == e.uuid,
-      order_by: [{^dir, s.last_used}]
+      order_by: [{^dir, s.last_used}, asc: e.uuid]
     )
   end
 
   defp apply_endpoint_sorting(query, field, dir)
-       when field in [:name, :enabled, :model, :sort_order] do
-    order_by(query, [e], [{^dir, field(e, ^field)}])
+       when field in [:name, :enabled, :model, :sort_order, :inserted_at] do
+    order_by(query, [e], [{^dir, field(e, ^field)}, asc: e.uuid])
   end
 
   defp apply_endpoint_sorting(query, _field, _dir) do
     # Default sorting
-    order_by(query, [e], asc: e.sort_order, desc: e.inserted_at)
+    order_by(query, [e], asc: e.sort_order, desc: e.inserted_at, asc: e.uuid)
   end
 
   @doc """
@@ -1344,7 +1349,9 @@ defmodule PhoenixKitAI do
         enabled -> where(query, [p], p.enabled == ^enabled)
       end
 
-    query = order_by(query, [p], [{^sort_dir, field(p, ^sort_by)}])
+    # Stable tiebreaker on :uuid so tied sort-field values get deterministic
+    # ordering (otherwise pagination + refresh can subtly reshuffle rows).
+    query = order_by(query, [p], [{^sort_dir, field(p, ^sort_by)}, asc: p.uuid])
 
     # If page is provided, return paginated results with total count
     if page do

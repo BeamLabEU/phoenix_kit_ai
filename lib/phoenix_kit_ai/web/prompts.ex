@@ -176,6 +176,20 @@ defmodule PhoenixKitAI.Web.Prompts do
     {:noreply, push_patch(socket, to: path)}
   end
 
+  # `<.sort_selector>` event. The field select sends `sort_by` only; the
+  # direction button sends `sort_dir` only. Each missing param is read
+  # from `socket.assigns` so two events in flight can't clobber each
+  # other (race-free by construction). See sort_selector moduledoc.
+  @impl true
+  def handle_event("sort_form", params, socket) do
+    field_str = params["sort_by"] || Atom.to_string(socket.assigns.sort_by)
+    dir_str = params["sort_dir"] || Atom.to_string(socket.assigns.sort_dir)
+    field = parse_sort_field(field_str, @valid_sort_fields, socket.assigns.sort_by)
+    dir = parse_sort_dir(dir_str)
+    path = Routes.ai_path() <> "/prompts?sort=#{field}&dir=#{dir}"
+    {:noreply, push_patch(socket, to: path)}
+  end
+
   @impl true
   def handle_event("goto_page", %{"page" => page_str}, socket) do
     case Integer.parse(page_str) do
