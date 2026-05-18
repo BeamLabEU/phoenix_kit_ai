@@ -177,4 +177,11 @@ defmodule PhoenixKitAI.Web.PromptForm do
       scope -> Scope.admin?(scope)
     end
   end
+
+  # Catch-all so an unexpected PubSub message or deferred-task reply
+  # from a future code path can't crash the form silently. The LV
+  # doesn't subscribe today, but the catch-all matches the endpoints
+  # LV's defensive coverage.
+  @impl true
+  def handle_info(_msg, socket), do: {:noreply, socket}
 end

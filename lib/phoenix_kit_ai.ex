@@ -1826,8 +1826,12 @@ defmodule PhoenixKitAI do
   Updates the sort order for multiple prompts.
 
   Accepts prompt UUIDs.
+
+  Logs one `prompt.reordered` activity row when the order list isn't
+  empty, with the count + first uuid in metadata so the audit feed
+  captures the drag-to-reorder action without per-row noise.
   """
-  def reorder_prompts(order_list) when is_list(order_list) do
+  def reorder_prompts(order_list, opts \\ []) when is_list(order_list) do
     repo().transaction(fn ->
       Enum.each(order_list, fn {id, sort_order} ->
         build_prompt_uuid_query(id)
@@ -1835,7 +1839,21 @@ defmodule PhoenixKitAI do
       end)
     end)
 
-    :ok
+    case order_list do
+      [] ->
+        :ok
+
+      [{first_uuid, _} | _] ->
+        log_activity(
+          "prompt.reordered",
+          "prompt",
+          first_uuid,
+          opts,
+          %{"count" => length(order_list)}
+        )
+
+        :ok
+    end
   end
 
   @doc """
@@ -1844,12 +1862,33 @@ defmodule PhoenixKitAI do
   Delegates to `PhoenixKit.Utils.Reorder.reorder/4` for the shared
   two-phase index-rewrite primitive. Returns `:ok` on success or
   `{:error, :too_many_uuids}` when the payload exceeds the cap.
+
+  On success, logs one `endpoint.reordered` activity row with the
+  actual updated count + first uuid so the audit feed records the
+  drag-to-reorder action without per-row noise. `opts` is forwarded
+  to `log_activity/5` so callers can thread `actor_uuid` / `mode`.
   """
-  @spec reorder_endpoints([String.t()]) :: :ok | {:error, :too_many_uuids}
-  def reorder_endpoints(ordered_ids) when is_list(ordered_ids) do
+  @spec reorder_endpoints([String.t()], keyword()) :: :ok | {:error, :too_many_uuids}
+  def reorder_endpoints(ordered_ids, opts \\ []) when is_list(ordered_ids) do
     case PhoenixKit.Utils.Reorder.reorder(Endpoint, ordered_ids, :sort_order, repo: repo()) do
-      {:ok, _count} -> :ok
-      {:error, _} = err -> err
+      {:ok, 0} ->
+        :ok
+
+      {:ok, count} ->
+        first_uuid = Enum.find(ordered_ids, &is_binary/1)
+
+        log_activity(
+          "endpoint.reordered",
+          "endpoint",
+          first_uuid,
+          opts,
+          %{"count" => count}
+        )
+
+        :ok
+
+      {:error, _} = err ->
+        err
     end
   end
 

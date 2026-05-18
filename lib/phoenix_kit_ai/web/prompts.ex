@@ -27,13 +27,20 @@ defmodule PhoenixKitAI.Web.Prompts do
   alias PhoenixKit.Utils.Routes
   alias PhoenixKitAI, as: AI
 
-  @sort_options [
-    {:sort_order, "Order"},
-    {:name, "Name"},
-    {:usage_count, "Usage"},
-    {:last_used_at, "Last Used"},
-    {:inserted_at, "Created"}
-  ]
+  # Static field list (atoms) for compile-time `?sort=…` validation.
+  # Labels live in `sort_options/0` so `gettext/1` sees a literal at
+  # extract time.
+  @sort_field_keys [:sort_order, :name, :usage_count, :last_used_at, :inserted_at]
+
+  defp sort_options do
+    [
+      {:sort_order, gettext("Order")},
+      {:name, gettext("Name")},
+      {:usage_count, gettext("Usage")},
+      {:last_used_at, gettext("Last Used")},
+      {:inserted_at, gettext("Created")}
+    ]
+  end
 
   @page_size 20
 
@@ -55,7 +62,7 @@ defmodule PhoenixKitAI.Web.Prompts do
       |> assign(:prompts, [])
       |> assign(:sort_by, :sort_order)
       |> assign(:sort_dir, :asc)
-      |> assign(:sort_options, @sort_options)
+      |> assign(:sort_options, sort_options())
       |> assign(:page, 1)
       |> assign(:page_size, @page_size)
       |> assign(:total_prompts, 0)
@@ -79,7 +86,7 @@ defmodule PhoenixKitAI.Web.Prompts do
     {:noreply, socket}
   end
 
-  @valid_sort_fields Enum.map(@sort_options, fn {field, _} -> Atom.to_string(field) end)
+  @valid_sort_fields Enum.map(@sort_field_keys, &Atom.to_string/1)
 
   defp parse_sort_params(params) do
     {

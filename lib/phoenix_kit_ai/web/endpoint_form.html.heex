@@ -453,7 +453,7 @@
                     </div>
                   <% else %>
                     <p class="text-sm text-base-content/50 mt-2">
-                      Select a provider to see available models with pricing details
+                      {gettext("Select a provider to see available models with pricing details")}
                     </p>
                   <% end %>
                 <% end %>
@@ -479,13 +479,11 @@
                 <div class="alert alert-info py-2 mt-2">
                   <.icon name="hero-information-circle" class="w-4 h-4" />
                   <span class="text-sm">
-                    Context: {PhoenixKitAI.Web.EndpointForm.format_number(
-                      @selected_model.context_length
-                    )} tokens
+                    {gettext("Context: %{tokens} tokens",
+                      tokens: PhoenixKitAI.Web.EndpointForm.format_number(@selected_model.context_length))}
                     <%= if @selected_model.max_completion_tokens do %>
-                      • Max output: {PhoenixKitAI.Web.EndpointForm.format_number(
-                        @selected_model.max_completion_tokens
-                      )} tokens
+                      • {gettext("Max output: %{tokens} tokens",
+                        tokens: PhoenixKitAI.Web.EndpointForm.format_number(@selected_model.max_completion_tokens))}
                     <% end %>
                   </span>
                 </div>
@@ -526,10 +524,10 @@
                     <div>
                       <span class="label-text font-medium">
                         <.icon name="hero-light-bulb" class="w-4 h-4 inline mr-1" />
-                        Enable Thinking
+                        {gettext("Enable Thinking")}
                       </span>
                       <span class="block text-xs text-base-content/50">
-                        For models like DeepSeek R1, Qwen QwQ that support chain-of-thought reasoning
+                        {gettext("For models like DeepSeek R1, Qwen QwQ that support chain-of-thought reasoning")}
                       </span>
                     </div>
                   </label>
@@ -563,7 +561,7 @@
                       <%!-- Hide Reasoning Toggle --%>
                       <div class="form-control">
                         <label class="label py-1">
-                          <span class="label-text text-sm">Visibility</span>
+                          <span class="label-text text-sm">{gettext("Visibility")}</span>
                         </label>
                         <label class="label cursor-pointer justify-start gap-2 py-0">
                           <input
@@ -577,7 +575,7 @@
                             }
                             class="checkbox checkbox-sm"
                           />
-                          <span class="label-text text-sm">Hide from response</span>
+                          <span class="label-text text-sm">{gettext("Hide from response")}</span>
                         </label>
                       </div>
                     </div>

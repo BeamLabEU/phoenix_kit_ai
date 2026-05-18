@@ -30,17 +30,34 @@ defmodule PhoenixKitAI.Web.Endpoints do
   alias PhoenixKitAI, as: AI
   alias PhoenixKitAI.Endpoint
 
-  @sort_options [
-    {:sort_order, "Manual"},
-    {:inserted_at, "Created"},
-    {:name, "Name"},
-    {:enabled, "Status"},
-    {:model, "Model"},
-    {:usage, "Requests"},
-    {:tokens, "Tokens"},
-    {:cost, "Cost"},
-    {:last_used, "Last Used"}
+  # Static field list (atoms only) — used for compile-time validation
+  # of incoming `?sort=…` params. Labels live in `sort_options/0` below
+  # so `gettext/1` sees a literal string at extract time.
+  @sort_field_keys [
+    :sort_order,
+    :inserted_at,
+    :name,
+    :enabled,
+    :model,
+    :usage,
+    :tokens,
+    :cost,
+    :last_used
   ]
+
+  defp sort_options do
+    [
+      {:sort_order, gettext("Manual")},
+      {:inserted_at, gettext("Created")},
+      {:name, gettext("Name")},
+      {:enabled, gettext("Status")},
+      {:model, gettext("Model")},
+      {:usage, gettext("Requests")},
+      {:tokens, gettext("Tokens")},
+      {:cost, gettext("Cost")},
+      {:last_used, gettext("Last Used")}
+    ]
+  end
 
   @page_size 20
 
@@ -68,7 +85,7 @@ defmodule PhoenixKitAI.Web.Endpoints do
       |> assign(:has_endpoints, false)
       |> assign(:sort_by, :inserted_at)
       |> assign(:sort_dir, :desc)
-      |> assign(:sort_options, @sort_options)
+      |> assign(:sort_options, sort_options())
       |> assign(:page, 1)
       |> assign(:page_size, @page_size)
       |> assign(:total_endpoints, 0)
@@ -151,7 +168,7 @@ defmodule PhoenixKitAI.Web.Endpoints do
     end
   end
 
-  @valid_sort_fields Enum.map(@sort_options, fn {field, _} -> Atom.to_string(field) end)
+  @valid_sort_fields Enum.map(@sort_field_keys, &Atom.to_string/1)
 
   defp parse_sort_params(params) do
     {
@@ -359,7 +376,7 @@ defmodule PhoenixKitAI.Web.Endpoints do
       when is_list(ordered_ids) do
     moved_id = params["moved_id"]
 
-    case AI.reorder_endpoints(ordered_ids) do
+    case AI.reorder_endpoints(ordered_ids, actor_opts(socket)) do
       :ok ->
         {:noreply,
          socket
