@@ -14,6 +14,7 @@
     <%= if @active_tab == "endpoints" do %>
       <%!-- Endpoints List --%>
       <%= if @has_endpoints do %>
+        <% manual_sort? = @sort_by == :sort_order %>
         <.table_default
           id="ai-endpoints"
           toggleable
@@ -22,16 +23,19 @@
           card_class={fn ep -> "card bg-base-200 #{if !ep.enabled, do: "opacity-60"}" end}
           variant="zebra"
           size="sm"
+          on_reorder={if manual_sort?, do: "reorder_endpoints"}
         >
-          <:above_cards>
-            <%!-- Sort selector visible in card view only — table view uses
-                 the column headers' built-in sort affordance instead. --%>
+          <:sort_bar>
+            <%!-- Always-visible sort UI. Picking "Manual" swaps the
+                 direction toggle for a drag-handle hint and enables
+                 drag-to-reorder on rows + cards. --%>
             <.sort_selector
               sort_by={@sort_by}
               sort_dir={@sort_dir}
               options={@sort_options}
+              manual_field={:sort_order}
             />
-          </:above_cards>
+          </:sort_bar>
 
           <:toolbar_actions>
             <.link
@@ -188,6 +192,7 @@
           <%!-- Table view content (inner_block) — md+ only via table_default's data-table-view wrapper --%>
           <.table_default_header>
                 <.table_default_row>
+                  <.table_default_header_cell :if={manual_sort?} class="w-8" />
                   <.sort_header_cell field={:name} sort={%{by: @sort_by, dir: @sort_dir}} event="sort">
                     {gettext("Name")}
                   </.sort_header_cell>
@@ -215,7 +220,14 @@
                   </.table_default_header_cell>
                 </.table_default_row>
               </.table_default_header>
-              <.table_default_body>
+              <.table_default_body
+                id={if manual_sort?, do: "ai-endpoints-tbody"}
+                phx-hook={if manual_sort?, do: "SortableGrid"}
+                data-sortable={if manual_sort?, do: "true"}
+                data-sortable-event={if manual_sort?, do: "reorder_endpoints"}
+                data-sortable-items={if manual_sort?, do: ".sortable-item"}
+                data-sortable-handle={if manual_sort?, do: ".pk-drag-handle"}
+              >
                 <%= for endpoint <- @endpoints do %>
                   <% stats =
                     Map.get(@endpoint_stats, endpoint.uuid, %{
@@ -225,7 +237,20 @@
                     }) %>
                   <% integration = Map.get(@integrations_by_uuid, endpoint.integration_uuid) %>
                   <% integration_status = integration && integration.data["status"] %>
-                  <.table_default_row class={if !endpoint.enabled, do: "opacity-60"}>
+                  <.table_default_row
+                    class={[
+                      if(!endpoint.enabled, do: "opacity-60"),
+                      if(manual_sort?, do: "sortable-item")
+                    ]}
+                    data-id={if manual_sort?, do: endpoint.uuid}
+                  >
+                    <.table_default_cell
+                      :if={manual_sort?}
+                      class="pk-drag-handle cursor-grab align-middle text-base-content/40 hover:text-base-content w-8"
+                      title={gettext("Drag to reorder")}
+                    >
+                      <.icon name="hero-bars-3" class="w-4 h-4" />
+                    </.table_default_cell>
                     <.table_default_cell>
                       <.link
                         navigate={PhoenixKit.Utils.Routes.ai_path() <> "/endpoints/#{endpoint.uuid}/edit"}

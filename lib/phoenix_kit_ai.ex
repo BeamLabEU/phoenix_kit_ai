@@ -1838,6 +1838,47 @@ defmodule PhoenixKitAI do
     :ok
   end
 
+  @doc """
+  Reorders endpoints based on a list of UUIDs in their new display order.
+
+  Mirrors the projects pattern: writes new `sort_order` values 1..N matching
+  the position of each UUID in `ordered_ids`. Done in a transaction with a
+  two-phase write (first negative indices, then positive) so a unique index
+  on `sort_order` (should one be added) wouldn't trip mid-update.
+
+  Unknown / malformed UUIDs are silently dropped via `dedupe_uuids/1` so a
+  stale drop payload can't poison the rewrite.
+  """
+  def reorder_endpoints(ordered_ids) when is_list(ordered_ids) do
+    case dedupe_endpoint_uuids(ordered_ids) do
+      [] ->
+        :ok
+
+      uuids ->
+        repo().transaction(fn ->
+          pairs = Enum.with_index(uuids, 1)
+
+          Enum.each(pairs, fn {uuid, idx} ->
+            from(e in Endpoint, where: e.uuid == ^uuid)
+            |> repo().update_all(set: [sort_order: -idx])
+          end)
+
+          Enum.each(pairs, fn {uuid, idx} ->
+            from(e in Endpoint, where: e.uuid == ^uuid)
+            |> repo().update_all(set: [sort_order: idx])
+          end)
+        end)
+
+        :ok
+    end
+  end
+
+  defp dedupe_endpoint_uuids(ids) do
+    ids
+    |> Enum.filter(&(is_binary(&1) and textual_uuid?(&1)))
+    |> Enum.uniq()
+  end
+
   defp build_prompt_uuid_query(id) when is_binary(id) do
     if textual_uuid?(id) do
       from(p in Prompt, where: p.uuid == ^id)

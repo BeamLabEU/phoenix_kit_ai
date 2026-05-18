@@ -30,6 +30,7 @@ defmodule PhoenixKitAI.Web.Endpoints do
   alias PhoenixKitAI.Endpoint
 
   @sort_options [
+    {:sort_order, "Manual"},
     {:inserted_at, "Created"},
     {:name, "Name"},
     {:enabled, "Status"},
@@ -350,6 +351,18 @@ defmodule PhoenixKitAI.Web.Endpoints do
       _ ->
         {:noreply, socket}
     end
+  end
+
+  @impl true
+  def handle_event("reorder_endpoints", %{"ordered_ids" => ordered_ids} = params, socket)
+      when is_list(ordered_ids) do
+    moved_id = params["moved_id"]
+    :ok = AI.reorder_endpoints(ordered_ids)
+
+    {:noreply,
+     socket
+     |> push_event("sortable:flash", %{uuid: moved_id, status: "ok"})
+     |> reload_endpoints()}
   end
 
   # ===========================================
