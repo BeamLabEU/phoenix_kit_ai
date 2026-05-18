@@ -1,7 +1,7 @@
 defmodule PhoenixKitAI.MixProject do
   use Mix.Project
 
-  @version "0.2.1"
+  @version "0.3.0"
   @source_url "https://github.com/BeamLabEU/phoenix_kit_ai"
 
   def project do
@@ -69,7 +69,9 @@ defmodule PhoenixKitAI.MixProject do
   defp deps do
     [
       # PhoenixKit provides the Module behaviour and Settings API.
-      {:phoenix_kit, "~> 1.7"},
+      # 1.7.112+ required: this release uses PhoenixKit.Utils.{Reorder,
+      # Values,Format} and the <.form_section> / :sort_bar core components.
+      {:phoenix_kit, "~> 1.7.112"},
 
       # LiveView is needed for the admin pages.
       {:phoenix_live_view, "~> 1.1"},
