@@ -551,17 +551,25 @@
               <%!-- Columns are tiered by importance so the highest-signal
                    info survives as the viewport narrows:
 
-                     Always (mobile +):  Time, Endpoint, Status, Actions
-                     md+ (768px):        + Price
-                     lg+ (1024px):       + Tokens, Latency
+                     Always:             Time, Endpoint, Status, Actions
+                     sm+ (640px):        + Price
+                     md+ (768px):        + Tokens, Latency
                      xl+ (1280px):       + Source, Model, Prompt
+
+                   The breakpoints account for the admin layout — the
+                   sidebar folds into a burger below lg (1024px), so a
+                   tablet viewport at md (768px) has the FULL 768px to
+                   itself. From lg onward the sidebar reclaims 256px,
+                   which is why Source/Model/Prompt wait for xl (1280px,
+                   content ~1024px) before appearing — at lg viewport
+                   the content area drops back to ~768px and there's no
+                   room for them.
 
                    Model lives at xl rather than always — the Endpoint
                    already identifies the configuration (including its
                    model), so Model is duplicate signal worth dropping
-                   first. Price is promoted to md because cost is the
-                   primary operational metric. `overflow-x-auto` on the
-                   wrapper handles anything narrower than mobile. --%>
+                   first. `overflow-x-auto` on the wrapper handles
+                   anything narrower than mobile. --%>
               <% sort = %{by: @usage_sort_by, dir: @usage_sort_dir} %>
               <.table_default size="sm">
                 <.table_default_header>
@@ -587,7 +595,7 @@
                       field={:total_tokens}
                       sort={sort}
                       event="usage_sort"
-                      class="hidden lg:table-cell"
+                      class="hidden md:table-cell"
                     >
                       {gettext("Tokens")}
                     </.sort_header_cell>
@@ -595,7 +603,7 @@
                       field={:latency_ms}
                       sort={sort}
                       event="usage_sort"
-                      class="hidden lg:table-cell"
+                      class="hidden md:table-cell"
                     >
                       {gettext("Latency")}
                     </.sort_header_cell>
@@ -603,7 +611,7 @@
                       field={:cost_cents}
                       sort={sort}
                       event="usage_sort"
-                      class="hidden md:table-cell"
+                      class="hidden sm:table-cell"
                     >
                       {gettext("Price")}
                     </.sort_header_cell>
@@ -642,13 +650,13 @@
                       <.table_default_cell class="hidden xl:table-cell text-sm font-mono">
                         {PhoenixKitAI.Request.short_model_name(request.model)}
                       </.table_default_cell>
-                      <.table_default_cell class="hidden lg:table-cell text-sm">
+                      <.table_default_cell class="hidden md:table-cell text-sm">
                         {PhoenixKitAI.Request.format_tokens(request.total_tokens)}
                       </.table_default_cell>
-                      <.table_default_cell class="hidden lg:table-cell text-sm">
+                      <.table_default_cell class="hidden md:table-cell text-sm">
                         {PhoenixKitAI.Request.format_latency(request.latency_ms)}
                       </.table_default_cell>
-                      <.table_default_cell class="hidden md:table-cell text-sm">
+                      <.table_default_cell class="hidden sm:table-cell text-sm">
                         {PhoenixKitAI.Request.format_cost(request.cost_cents)}
                       </.table_default_cell>
                       <.table_default_cell>
