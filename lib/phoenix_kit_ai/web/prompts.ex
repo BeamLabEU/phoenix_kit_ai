@@ -23,7 +23,6 @@ defmodule PhoenixKitAI.Web.Prompts do
   require Logger
 
   alias PhoenixKit.Settings
-  alias PhoenixKit.Utils.Routes
   alias PhoenixKitAI, as: AI
   alias PhoenixKitAI.Web.AuthHelpers
   alias PhoenixKitAI.Web.SortHelpers
@@ -158,7 +157,7 @@ defmodule PhoenixKitAI.Web.Prompts do
       end
 
     # Reset to page 1 when sorting changes
-    path = Routes.ai_path() <> "/prompts?sort=#{field}&dir=#{sort_dir}"
+    path = PhoenixKitAI.Routes.ai_path() <> "/prompts?sort=#{field}&dir=#{sort_dir}"
     {:noreply, push_patch(socket, to: path)}
   end
 
@@ -172,7 +171,7 @@ defmodule PhoenixKitAI.Web.Prompts do
     dir_str = params["sort_dir"] || Atom.to_string(socket.assigns.sort_dir)
     field = SortHelpers.parse_sort_field(field_str, @valid_sort_fields, socket.assigns.sort_by)
     dir = SortHelpers.parse_sort_dir(dir_str, socket.assigns.sort_dir)
-    path = Routes.ai_path() <> "/prompts?sort=#{field}&dir=#{dir}"
+    path = PhoenixKitAI.Routes.ai_path() <> "/prompts?sort=#{field}&dir=#{dir}"
     {:noreply, push_patch(socket, to: path)}
   end
 
@@ -238,7 +237,7 @@ defmodule PhoenixKitAI.Web.Prompts do
   end
 
   defp build_prompts_url(sort_by, sort_dir, page) do
-    base = Routes.ai_path() <> "/prompts?sort=#{sort_by}&dir=#{sort_dir}"
+    base = PhoenixKitAI.Routes.ai_path() <> "/prompts?sort=#{sort_by}&dir=#{sort_dir}"
 
     if page > 1 do
       base <> "&page=#{page}"
@@ -250,7 +249,7 @@ defmodule PhoenixKitAI.Web.Prompts do
   defp get_current_path(socket, session) do
     case socket.assigns do
       %{__changed__: _, current_path: path} when is_binary(path) -> path
-      _ -> session["current_path"] || Routes.ai_path() <> "/prompts"
+      _ -> session["current_path"] || PhoenixKitAI.Routes.ai_path() <> "/prompts"
     end
   end
 

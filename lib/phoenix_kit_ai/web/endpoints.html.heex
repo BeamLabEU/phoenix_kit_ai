@@ -39,7 +39,7 @@
 
           <:toolbar_actions>
             <.link
-              navigate={PhoenixKit.Utils.Routes.ai_path() <> "/endpoints/new"}
+              navigate={PhoenixKitAI.Routes.ai_path() <> "/endpoints/new"}
               class="btn btn-primary btn-sm"
             >
               <.icon name="hero-plus" class="w-4 h-4 mr-2" /> {gettext("New Endpoint")}
@@ -59,7 +59,7 @@
               <div class="flex-1">
                 <div class="flex items-center gap-3 flex-wrap">
                   <.link
-                    navigate={PhoenixKit.Utils.Routes.ai_path() <> "/endpoints/#{endpoint.uuid}/edit"}
+                    navigate={PhoenixKitAI.Routes.ai_path() <> "/endpoints/#{endpoint.uuid}/edit"}
                     class="font-semibold text-lg hover:text-primary hover:underline"
                   >
                     {endpoint.name}
@@ -163,7 +163,7 @@
               <div class="flex-shrink-0">
                 <.table_row_menu mode="auto" id={"endpoint-menu-#{endpoint.uuid}"}>
                   <.table_row_menu_link
-                    navigate={PhoenixKit.Utils.Routes.ai_path() <> "/endpoints/#{endpoint.uuid}/edit"}
+                    navigate={PhoenixKitAI.Routes.ai_path() <> "/endpoints/#{endpoint.uuid}/edit"}
                     icon="hero-pencil"
                     label={gettext("Edit")}
                   />
@@ -257,7 +257,7 @@
                     </.table_default_cell>
                     <.table_default_cell>
                       <.link
-                        navigate={PhoenixKit.Utils.Routes.ai_path() <> "/endpoints/#{endpoint.uuid}/edit"}
+                        navigate={PhoenixKitAI.Routes.ai_path() <> "/endpoints/#{endpoint.uuid}/edit"}
                         class="link link-hover font-medium"
                       >
                         {endpoint.name}
@@ -302,7 +302,7 @@
                     <.table_default_cell class="text-right whitespace-nowrap">
                       <.table_row_menu mode="auto" id={"endpoint-tbl-menu-#{endpoint.uuid}"}>
                         <.table_row_menu_link
-                          navigate={PhoenixKit.Utils.Routes.ai_path() <> "/endpoints/#{endpoint.uuid}/edit"}
+                          navigate={PhoenixKitAI.Routes.ai_path() <> "/endpoints/#{endpoint.uuid}/edit"}
                           icon="hero-pencil"
                           label={gettext("Edit")}
                         />
@@ -356,7 +356,7 @@
           description={gettext("Create your first AI endpoint to get started.")}
         >
           <.link
-            navigate={PhoenixKit.Utils.Routes.ai_path() <> "/endpoints/new"}
+            navigate={PhoenixKitAI.Routes.ai_path() <> "/endpoints/new"}
             class="btn btn-primary btn-lg"
           >
             <.icon name="hero-plus" class="w-5 h-5 mr-2" /> {gettext("Create First Endpoint")}
@@ -626,7 +626,7 @@
                       <.table_default_cell class="hidden xl:table-cell text-sm">
                         <%= if request.prompt do %>
                           <.link
-                            navigate={PhoenixKit.Utils.Routes.ai_path() <> "/prompts/#{request.prompt.uuid}/edit"}
+                            navigate={PhoenixKitAI.Routes.ai_path() <> "/prompts/#{request.prompt.uuid}/edit"}
                             class="link link-hover link-primary"
                           >
                             {request.prompt_name}
@@ -748,7 +748,7 @@
             <div class="text-sm">
               <%= if @selected_request.prompt && @selected_request.prompt_name do %>
                 <.link
-                  navigate={PhoenixKit.Utils.Routes.ai_path() <> "/prompts/#{@selected_request.prompt.uuid}/edit"}
+                  navigate={PhoenixKitAI.Routes.ai_path() <> "/prompts/#{@selected_request.prompt.uuid}/edit"}
                   class="link link-hover link-primary"
                 >
                   {@selected_request.prompt_name}
