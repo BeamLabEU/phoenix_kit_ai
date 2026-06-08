@@ -167,7 +167,9 @@ defmodule PhoenixKitAI.Translation do
   end
 
   defp ensure_available do
-    if function_exported?(PhoenixKitAI, :ask_with_prompt, 4), do: :ok, else: {:error, :ai_not_installed}
+    if function_exported?(PhoenixKitAI, :ask_with_prompt, 4),
+      do: :ok,
+      else: {:error, :ai_not_installed}
   end
 
   defp do_translate(endpoint_uuid, prompt_uuid, source_lang, target_lang, fields, opts) do
@@ -284,7 +286,7 @@ defmodule PhoenixKitAI.Translation do
           {:ok, field_map()} | {:error, {:parse_error, term()}}
   def parse_response(response, field_names) when is_binary(response) and is_list(field_names) do
     upcased = Enum.map(field_names, &{&1, marker(&1)})
-    body = String.trim(response)
+    body = response |> strip_reasoning() |> String.trim()
 
     parsed =
       Enum.reduce(upcased, %{}, fn {name, marker}, acc ->
@@ -306,6 +308,22 @@ defmodule PhoenixKitAI.Translation do
   defp marker(field) when is_binary(field) do
     field |> String.upcase() |> String.replace(~r/[^A-Z0-9]+/, "_")
   end
+
+  # Reasoning / "thinking" models (DeepSeek-R1, QwQ, etc.) wrap their
+  # chain-of-thought in `<think>…</think>` (also `<thinking>`/`<reasoning>`/
+  # `<thought>`) before the real answer. That prose routinely *mentions* the
+  # field markers inline ("…so skip ---TITLE---…"), which the extractor would
+  # otherwise capture as a field value — overflowing the consumer's column on
+  # persist. Strip balanced reasoning blocks before parsing.
+  #
+  # Only *balanced* blocks are removed: a truncated/unclosed `<think>` is left
+  # alone (deleting to end-of-string could discard the real answer), and the
+  # start-of-line marker anchor in `extract_section/3` + the `:no_markers`
+  # guard handle whatever survives. Pairing the strip with the line anchor is
+  # what turns a silent persist failure into a clean `:no_markers` parse error.
+  @reasoning_block ~r{<\s*(think|thinking|reasoning|thought)\s*>.*?<\s*/\s*\1\s*>}is
+
+  defp strip_reasoning(text), do: Regex.replace(@reasoning_block, text, "")
 
   # Pulls the text between `---MARKER---` and the next `---OTHER---`
   # marker (or end-of-string). Returns nil when the marker isn't
@@ -341,7 +359,13 @@ defmodule PhoenixKitAI.Translation do
     # preserved. The empty match only succeeds at `\z` (greedy `\s*`
     # always eats the newline before an inter-marker boundary), so a
     # mid-document field with real content is never falsely emptied.
-    pattern = ~r/---#{Regex.escape(marker)}---\s*\n?(.*?)(?=\n---[A-Z0-9_]+---|\z)/si
+    # The opening marker must START A LINE (`\A` or right after a `\n`), not
+    # appear mid-sentence. Reasoning models narrate the markers inline
+    # ("…so skip ---TITLE---…"); without this anchor that mention matches as a
+    # section opener and swallows the surrounding prose into the field. Real
+    # prompt-emitted markers always sit on their own line, so anchoring is safe
+    # and mirrors the boundary lookahead, which already requires a leading `\n`.
+    pattern = ~r/(?:\A|\n)---#{Regex.escape(marker)}---\s*\n?(.*?)(?=\n---[A-Z0-9_]+---|\z)/si
 
     case Regex.run(pattern, body) do
       [_, value] ->

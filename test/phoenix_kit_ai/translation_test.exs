@@ -360,4 +360,73 @@ defmodule PhoenixKitAI.TranslationTest do
                Translation.parse_response(response, ["description"])
     end
   end
+
+  describe "parse_response/2 — reasoning-model hardening" do
+    test "strips a <think> block whose prose mentions the markers inline" do
+      # Real-world failure: a reasoning endpoint narrated the markers in its
+      # chain-of-thought ("…so skip ---TITLE---…"). The blob landed in the
+      # title field and overflowed the column on persist. The <think> strip +
+      # line anchor must yield the real answer that follows.
+      response = """
+      <think>
+      The user wants a translation. So skip ---TITLE--- if it's a placeholder.
+      For ---CONTENT--- I should translate it. Let me produce the output now.
+      </think>
+      ---TITLE---
+      Hola Mundo
+      ---CONTENT---
+      Bienvenido a la aplicación.
+      """
+
+      assert {:ok, fields} = Translation.parse_response(response, ["title", "content"])
+      assert fields["title"] == "Hola Mundo"
+      assert fields["content"] == "Bienvenido a la aplicación."
+    end
+
+    test "handles <thinking>/<reasoning>/<thought> tag variants too" do
+      for tag <- ["thinking", "reasoning", "thought"] do
+        response =
+          "<#{tag}>noise ---TITLE--- noise</#{tag}>\n---TITLE---\nHola\n---BODY---\nMundo"
+
+        assert {:ok, %{"title" => "Hola", "body" => "Mundo"}} =
+                 Translation.parse_response(response, ["title", "body"]),
+               "tag #{tag} should be stripped"
+      end
+    end
+
+    test "a mid-sentence marker mention is not treated as a section opener" do
+      # No think tags here — just bare reasoning before the real answer. The
+      # mid-line `---TITLE---` ("skip ---TITLE--- now.") must not open a section;
+      # only the line-start marker counts.
+      response = "Reasoning: skip ---TITLE--- now.\n---TITLE---\nHola\n---BODY---\nMundo"
+
+      assert {:ok, %{"title" => "Hola", "body" => "Mundo"}} =
+               Translation.parse_response(response, ["title", "body"])
+    end
+
+    test "pure reasoning with no real markers fails cleanly as :no_markers" do
+      # The production discard case: the model only ever talked about the
+      # markers and never emitted real ones. Must be a clean parse error, NOT
+      # a giant blob that overflows a field on persist.
+      response = """
+      <think>
+      So for title: "Hello!" is a placeholder, so skip ---TITLE---. For content:
+      {{content}} is a placeholder, so skip ---CONTENT---. My output would be empty.
+      </think>
+      """
+
+      assert {:error, {:parse_error, :no_markers}} =
+               Translation.parse_response(response, ["title", "content"])
+    end
+
+    test "an unclosed <think> block is left intact (no real markers → :no_markers)" do
+      # Truncated reasoning: stripping to EOS could delete a real answer, so we
+      # only remove balanced blocks. With no line-start markers surviving, the
+      # parser still fails cleanly rather than misattributing content.
+      response = "<think>\nrambling about ---TITLE--- with no closing tag and no answer"
+
+      assert {:error, {:parse_error, :no_markers}} =
+               Translation.parse_response(response, ["title", "body"])
+    end
+  end
 end
