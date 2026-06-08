@@ -187,18 +187,19 @@ defmodule PhoenixKitAI.TranslateWorker do
   # failure signal).
   defp safe_source_fields(ctx) do
     case ctx.adapter.source_fields(ctx.resource, ctx.source) do
-      map when is_map(map) ->
-        if Enum.all?(map, fn {k, v} -> is_binary(k) and is_binary(v) end) do
-          map
-        else
-          {:error, :non_string_fields}
-        end
-
-      other ->
-        {:error, {:bad_source_fields, other}}
+      map when is_map(map) -> validate_source_map(map)
+      other -> {:error, {:bad_source_fields, other}}
     end
   rescue
     e -> {:error, {:exception, Exception.message(e)}}
+  end
+
+  defp validate_source_map(map) do
+    if Enum.all?(map, fn {k, v} -> is_binary(k) and is_binary(v) end) do
+      map
+    else
+      {:error, :non_string_fields}
+    end
   end
 
   defp safe_put_translation(ctx, translated) do

@@ -45,8 +45,8 @@ defmodule PhoenixKitAI.Components.AITranslate.FormGlue do
 
   use Gettext, backend: PhoenixKitWeb.Gettext
 
-  alias PhoenixKitAI.Translations
   alias PhoenixKit.Utils.Multilang
+  alias PhoenixKitAI.Translations
 
   # How long the progress bar may STALL — no language completing — before the
   # "taking a while, runs in the background" hint shows. About the bar hanging,
@@ -502,12 +502,22 @@ defmodule PhoenixKitAI.Components.AITranslate.FormGlue do
 
   def handle_ai_translation_event(socket, _event, _payload, _assign_cs), do: socket
 
+  # Only merge a result THIS session dispatched — `lang` is still in
+  # `ai_in_flight` here (this runs before `mark_lang_done/2` drops it). The
+  # per-resource topic is shared by every session editing the resource, so a
+  # completion for a job started in another tab/session lands here too; applying
+  # it would silently clobber this session's unsaved edits to that language's
+  # fields. Its progress is already scoped to in-flight; scope the apply the same.
   defp maybe_apply_translation(socket, lang, fields, assign_cs)
        when is_binary(lang) and map_size(fields) > 0 do
-    binding = socket.assigns.ai_form_binding
-    cs = socket.assigns.form.source
-    new_cs = binding.apply_translation(socket.assigns.ai_resource_type, cs, lang, fields)
-    assign_cs.(socket, new_cs)
+    if lang in socket.assigns.ai_in_flight do
+      binding = socket.assigns.ai_form_binding
+      cs = socket.assigns.form.source
+      new_cs = binding.apply_translation(socket.assigns.ai_resource_type, cs, lang, fields)
+      assign_cs.(socket, new_cs)
+    else
+      socket
+    end
   end
 
   defp maybe_apply_translation(socket, _lang, _fields, _assign_cs), do: socket

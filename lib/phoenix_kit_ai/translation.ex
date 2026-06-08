@@ -184,12 +184,13 @@ defmodule PhoenixKitAI.Translation do
 
     log_request(source_lang, target_lang, Map.keys(fields), opts)
 
-    # Wrap the plugin call so unexpected return shapes, raised
-    # exceptions, GenServer.call exits, and throws all come out as
-    # `{:error, {:ai_error, _}}` — matching the documented contract.
-    # The plugin uses `GenServer.call/3` internally for streaming
-    # endpoints; that exits the caller process by default on timeout,
-    # which `rescue` alone wouldn't catch.
+    # Wrap the plugin call so raised exceptions, GenServer.call exits, throws,
+    # and any off-contract return all come out as `{:error, {:ai_error, _}}` —
+    # matching the documented contract. The plugin uses `GenServer.call/3`
+    # internally for streaming endpoints; that exits the caller process by
+    # default on timeout, which `rescue` alone wouldn't catch. A return that's
+    # neither `{:ok, _}` nor `{:error, _}` (off-spec plugin) raises
+    # `CaseClauseError` here and is caught by the `rescue` below.
     try do
       case PhoenixKitAI.ask_with_prompt(endpoint_uuid, prompt_uuid, variables, ai_opts) do
         {:ok, response} ->
@@ -197,9 +198,6 @@ defmodule PhoenixKitAI.Translation do
 
         {:error, reason} ->
           {:error, {:ai_error, reason}}
-
-        other ->
-          {:error, {:ai_error, {:unexpected_return, other}}}
       end
     rescue
       e -> {:error, {:ai_error, {:exception, Exception.message(e)}}}
@@ -282,7 +280,7 @@ defmodule PhoenixKitAI.Translation do
 
     parsed =
       Enum.reduce(upcased, %{}, fn {name, marker}, acc ->
-        case extract_section(body, marker, upcased) do
+        case extract_section(body, marker) do
           nil -> acc
           value -> Map.put(acc, name, value)
         end
@@ -320,7 +318,7 @@ defmodule PhoenixKitAI.Translation do
   # Pulls the text between `---MARKER---` and the next `---OTHER---`
   # marker (or end-of-string). Returns nil when the marker isn't
   # present.
-  defp extract_section(body, marker, _all_markers) do
+  defp extract_section(body, marker) do
     # Boundary matches ANY `---<NAME>---` marker, not just the
     # requested-field markers. Without that, an AI that emits a
     # marker the caller didn't ask for (e.g. an extra `---TITLE---`

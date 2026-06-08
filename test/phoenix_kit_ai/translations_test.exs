@@ -18,8 +18,8 @@ defmodule PhoenixKitAI.TranslationsTest do
   # serial runs keep one test's broadcast out of another's mailbox.
   use ExUnit.Case, async: false
 
-  alias PhoenixKitAI.Translations
   alias PhoenixKit.PubSub.Manager, as: PubSubManager
+  alias PhoenixKitAI.Translations
 
   describe "missing_languages/3" do
     test "returns enabled non-primary codes that have no translation yet" do

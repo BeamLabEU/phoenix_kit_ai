@@ -33,9 +33,9 @@ defmodule PhoenixKitAI.Translations do
   """
 
   import Ecto.Query
-  alias PhoenixKitAI.TranslateWorker
   alias PhoenixKit.PubSub.Manager, as: PubSubManager
   alias PhoenixKit.Settings
+  alias PhoenixKitAI.TranslateWorker
 
   # Job states that mean "already covered" for de-dup. Deliberately excludes
   # `:suspended` — it's missing from the `oban_job_state` enum on some hosts
@@ -96,19 +96,14 @@ defmodule PhoenixKitAI.Translations do
   @doc "Configured AI prompts as `[{uuid, name}]`. Empty when unavailable."
   @spec list_prompts() :: [{String.t(), String.t()}]
   def list_prompts do
-    safe_ai(
-      fn ->
-        if PhoenixKitAI.enabled?() do
-          case PhoenixKitAI.list_prompts(enabled: true) do
-            {prompts, _} -> Enum.map(prompts, &{&1.uuid, &1.name})
-            prompts when is_list(prompts) -> Enum.map(prompts, &{&1.uuid, &1.name})
-          end
-        else
-          []
-        end
-      end,
-      []
-    )
+    safe_ai(fn -> if PhoenixKitAI.enabled?(), do: prompt_options(), else: [] end, [])
+  end
+
+  defp prompt_options do
+    case PhoenixKitAI.list_prompts(enabled: true) do
+      {prompts, _} -> Enum.map(prompts, &{&1.uuid, &1.name})
+      prompts when is_list(prompts) -> Enum.map(prompts, &{&1.uuid, &1.name})
+    end
   end
 
   @doc "Default endpoint UUID: the `#{@endpoint_setting_key}` setting, else the first enabled endpoint, else nil."
@@ -169,23 +164,25 @@ defmodule PhoenixKitAI.Translations do
 
   defp do_ensure_prompt do
     case PhoenixKitAI.get_prompt_by_slug(@prompt_slug) do
-      nil ->
-        case PhoenixKitAI.create_prompt(default_prompt_attrs()) do
-          {:ok, prompt} ->
-            {:ok, prompt}
+      nil -> create_or_reread_prompt()
+      prompt -> {:ok, prompt}
+    end
+  end
 
-          # Lost a create race (or the slug/name was taken concurrently) —
-          # re-read by slug. Since @prompt_slug == slugify(@prompt_name), the
-          # row the racing caller inserted is now findable.
-          {:error, %Ecto.Changeset{}} ->
-            case PhoenixKitAI.get_prompt_by_slug(@prompt_slug) do
-              nil -> {:error, :prompt_unavailable}
-              prompt -> {:ok, prompt}
-            end
-        end
+  defp create_or_reread_prompt do
+    case PhoenixKitAI.create_prompt(default_prompt_attrs()) do
+      {:ok, prompt} -> {:ok, prompt}
+      # Lost a create race (or the slug/name was taken concurrently) — re-read by
+      # slug. Since @prompt_slug == slugify(@prompt_name), the row the racing
+      # caller inserted is now findable.
+      {:error, %Ecto.Changeset{}} -> reread_prompt_by_slug()
+    end
+  end
 
-      prompt ->
-        {:ok, prompt}
+  defp reread_prompt_by_slug do
+    case PhoenixKitAI.get_prompt_by_slug(@prompt_slug) do
+      nil -> {:error, :prompt_unavailable}
+      prompt -> {:ok, prompt}
     end
   end
 
@@ -333,18 +330,18 @@ defmodule PhoenixKitAI.Translations do
   @spec enqueue(map()) :: {:ok, %{conflict?: boolean()}} | {:error, term()}
   def enqueue(%{} = params) do
     with :ok <- validate(params, full_required()) do
-      if job_in_flight?(params) do
-        {:ok, %{conflict?: true}}
-      else
-        case params |> to_args() |> TranslateWorker.new() |> Oban.insert() do
-          {:ok, _job} -> {:ok, %{conflict?: false}}
-          {:error, reason} -> {:error, reason}
-        end
-      end
+      if job_in_flight?(params), do: {:ok, %{conflict?: true}}, else: insert_job(params)
     end
   end
 
   def enqueue(_other), do: {:error, {:invalid, :not_a_map}}
+
+  defp insert_job(params) do
+    case params |> to_args() |> TranslateWorker.new() |> Oban.insert() do
+      {:ok, _job} -> {:ok, %{conflict?: false}}
+      {:error, reason} -> {:error, reason}
+    end
+  end
 
   # App-level uniqueness: is there already a non-terminal TranslateWorker job
   # for this (resource_type, resource_uuid, resource_scope, target_lang)? Fails

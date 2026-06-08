@@ -9,6 +9,8 @@ defmodule PhoenixKitAI.Routes do
   Called by PhoenixKit's integration via the `route_module/0` callback.
   """
 
+  alias PhoenixKit.Utils.Routes
+
   @doc """
   Admin routes for localized paths (with /:locale prefix).
   """
@@ -76,5 +78,5 @@ defmodule PhoenixKitAI.Routes do
   Used by the AI admin LiveViews to build sort/navigation links.
   """
   @spec ai_path() :: String.t()
-  def ai_path, do: PhoenixKit.Utils.Routes.path("/admin/ai")
+  def ai_path, do: Routes.path("/admin/ai")
 end
