@@ -49,7 +49,7 @@ defmodule PhoenixKitAI.Web.PromptForm do
       nil ->
         socket
         |> put_flash(:error, gettext("Prompt not found"))
-        |> push_navigate(to: Routes.ai_path() <> "/prompts")
+        |> push_navigate(to: PhoenixKitAI.Routes.ai_path() <> "/prompts")
 
       prompt ->
         changeset = AI.change_prompt(prompt)
@@ -145,7 +145,7 @@ defmodule PhoenixKitAI.Web.PromptForm do
         {:noreply,
          socket
          |> put_flash(:info, message)
-         |> push_navigate(to: Routes.ai_path() <> "/prompts")}
+         |> push_navigate(to: PhoenixKitAI.Routes.ai_path() <> "/prompts")}
 
       {:error, changeset} ->
         {:noreply, assign(socket, :form, to_form(changeset))}

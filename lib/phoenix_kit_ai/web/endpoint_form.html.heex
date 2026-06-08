@@ -704,7 +704,7 @@
         </.form_section>
 
         <.form_actions
-          cancel_to={Routes.ai_path()}
+          cancel_to={PhoenixKitAI.Routes.ai_path()}
           submit_label={
             if @endpoint, do: gettext("Update Endpoint"), else: gettext("Create Endpoint")
           }

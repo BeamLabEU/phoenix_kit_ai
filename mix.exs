@@ -66,12 +66,26 @@ defmodule PhoenixKitAI.MixProject do
     ]
   end
 
+  # phoenix_kit deps resolve from Hex by default. For cross-repo work against a
+  # local checkout, export <APP>_PATH — e.g. PHOENIX_KIT_PATH=../phoenix_kit or
+  # PHOENIX_KIT_AI_PATH=../phoenix_kit_ai. Unset => the published pin, so
+  # mix hex.publish is unaffected.
+  defp pk_dep(app, requirement, opts \\ []) do
+    env_var = String.upcase(Atom.to_string(app)) <> "_PATH"
+
+    case System.get_env(env_var) do
+      nil when opts == [] -> {app, requirement}
+      nil -> {app, requirement, opts}
+      path -> {app, [path: path, override: true] ++ opts}
+    end
+  end
+
   defp deps do
     [
       # PhoenixKit provides the Module behaviour and Settings API.
       # 1.7.112+ required: this release uses PhoenixKit.Utils.{Reorder,
       # Values,Format} and the <.form_section> / :sort_bar core components.
-      {:phoenix_kit, "~> 1.7.112"},
+      pk_dep(:phoenix_kit, "~> 1.7.112"),
 
       # LiveView is needed for the admin pages.
       {:phoenix_live_view, "~> 1.1"},

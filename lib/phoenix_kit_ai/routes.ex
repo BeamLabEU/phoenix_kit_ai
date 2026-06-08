@@ -67,4 +67,14 @@ defmodule PhoenixKitAI.Routes do
       live("/admin/ai/usage", PhoenixKitAI.Web.Endpoints, :usage, as: :ai_usage)
     end
   end
+
+  @doc """
+  Prefix-aware path to the AI admin section (`/admin/ai`).
+
+  Wraps core's generic `PhoenixKit.Utils.Routes.path/1` so the plugin owns its
+  own admin URL instead of a module-specific helper living in core's Routes util.
+  Used by the AI admin LiveViews to build sort/navigation links.
+  """
+  @spec ai_path() :: String.t()
+  def ai_path, do: PhoenixKit.Utils.Routes.path("/admin/ai")
 end

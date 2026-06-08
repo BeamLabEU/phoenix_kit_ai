@@ -16,7 +16,7 @@
         }
       >
         <.link
-          navigate={PhoenixKit.Utils.Routes.ai_path() <> "/prompts/new"}
+          navigate={PhoenixKitAI.Routes.ai_path() <> "/prompts/new"}
           class="btn btn-primary btn-lg"
         >
           <.icon name="hero-plus" class="w-5 h-5 mr-2" /> {gettext("Create First Prompt")}
@@ -44,7 +44,7 @@
 
         <:toolbar_actions>
           <.link
-            navigate={PhoenixKit.Utils.Routes.ai_path() <> "/prompts/new"}
+            navigate={PhoenixKitAI.Routes.ai_path() <> "/prompts/new"}
             class="btn btn-primary btn-sm"
           >
             <.icon name="hero-plus" class="w-4 h-4 mr-2" /> {gettext("New Prompt")}
@@ -56,7 +56,7 @@
             <div class="flex-1">
               <div class="flex items-center gap-3 flex-wrap">
                 <.link
-                  navigate={PhoenixKit.Utils.Routes.ai_path() <> "/prompts/#{prompt.uuid}/edit"}
+                  navigate={PhoenixKitAI.Routes.ai_path() <> "/prompts/#{prompt.uuid}/edit"}
                   class="font-semibold text-lg hover:text-primary hover:underline"
                 >
                   {prompt.name}
@@ -109,7 +109,7 @@
             <div class="flex-shrink-0">
               <.table_row_menu mode="auto" id={"prompt-menu-#{prompt.uuid}"}>
                 <.table_row_menu_link
-                  navigate={PhoenixKit.Utils.Routes.ai_path() <> "/prompts/#{prompt.uuid}/edit"}
+                  navigate={PhoenixKitAI.Routes.ai_path() <> "/prompts/#{prompt.uuid}/edit"}
                   icon="hero-pencil"
                   label={gettext("Edit")}
                 />
@@ -162,7 +162,7 @@
                 <.table_default_row class={if !prompt.enabled, do: "opacity-60"}>
                   <.table_default_cell>
                     <.link
-                      navigate={PhoenixKit.Utils.Routes.ai_path() <> "/prompts/#{prompt.uuid}/edit"}
+                      navigate={PhoenixKitAI.Routes.ai_path() <> "/prompts/#{prompt.uuid}/edit"}
                       class="link link-hover font-medium"
                     >
                       {prompt.name}
@@ -191,7 +191,7 @@
                   <.table_default_cell class="text-right whitespace-nowrap">
                     <.table_row_menu mode="auto" id={"prompt-tbl-menu-#{prompt.uuid}"}>
                       <.table_row_menu_link
-                        navigate={PhoenixKit.Utils.Routes.ai_path() <> "/prompts/#{prompt.uuid}/edit"}
+                        navigate={PhoenixKitAI.Routes.ai_path() <> "/prompts/#{prompt.uuid}/edit"}
                         icon="hero-pencil"
                         label={gettext("Edit")}
                       />

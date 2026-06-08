@@ -116,7 +116,7 @@
 
             <.form_actions
               class="pt-4 gap-2"
-              cancel_to={PhoenixKit.Utils.Routes.ai_path() <> "/prompts"}
+              cancel_to={PhoenixKitAI.Routes.ai_path() <> "/prompts"}
               submit_icon="hero-check"
               submit_label={
                 if @prompt, do: gettext("Update Prompt"), else: gettext("Create Prompt")

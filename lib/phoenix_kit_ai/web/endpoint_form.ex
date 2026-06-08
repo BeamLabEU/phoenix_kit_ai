@@ -298,7 +298,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
       nil ->
         socket
         |> put_flash(:error, gettext("Endpoint not found"))
-        |> push_navigate(to: Routes.ai_path())
+        |> push_navigate(to: PhoenixKitAI.Routes.ai_path())
 
       endpoint ->
         changeset = AI.change_endpoint(endpoint)
@@ -870,7 +870,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
         {:noreply,
          socket
          |> put_flash(:info, message)
-         |> push_navigate(to: Routes.ai_path())}
+         |> push_navigate(to: PhoenixKitAI.Routes.ai_path())}
 
       {:error, changeset} ->
         {:noreply, assign(socket, :form, to_form(changeset))}

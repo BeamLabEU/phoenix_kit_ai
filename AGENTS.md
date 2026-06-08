@@ -61,6 +61,25 @@ This is a **library** (not a standalone Phoenix app) — in production the host 
 - `jason` (via phoenix_kit) — JSON encoding/decoding
 - `lazy_html` (`:test` only) — HTML assertions in `Phoenix.LiveViewTest`
 
+## Local cross-repo development
+
+`phoenix_kit` (and any sibling `phoenix_kit_*` dep) resolves from Hex by
+default. To build or test this module against a **local checkout** of a
+dependency — e.g. an unpublished core change — export `<APP>_PATH` and Mix
+swaps the Hex pin for a `path:` + `override: true` dep at resolve time:
+
+```bash
+PHOENIX_KIT_PATH=../phoenix_kit mix test     # this module against local core
+```
+
+The variable name is the dep's app name upper-cased with `_PATH` appended
+(`:phoenix_kit` -> `PHOENIX_KIT_PATH`, `:phoenix_kit_ai` ->
+`PHOENIX_KIT_AI_PATH`). Set several at once to override multiple deps. **Unset = the
+published pin**, so `mix hex.publish` and CI resolve exactly as before.
+Implemented via `pk_dep/3` in `mix.exs` — never hand-edit a `phoenix_kit*`
+dep into a `path:` tuple (a committed path dep ships a broken package); set
+the env var instead.
+
 ## Architecture
 
 This is a **PhoenixKit module** that implements the `PhoenixKit.Module` behaviour. It depends on the host PhoenixKit app for Repo, Endpoint, and Settings.
@@ -638,3 +657,28 @@ metadata: %{error_reason: reason}
 **Why deferred**: no consumer currently filters on `error_reason`. The string form is workable for the only current reader (the activity log UI). A consumer-driven refactor is the right time — the structured shape should match the consumer's filter needs (split kind/data vs. raw list, atoms-as-strings vs. coerced).
 
 **When you do refactor**: also update the assertion in `test/phoenix_kit_ai/completion_coverage_test.exs:~240` that currently pins the inspect-string literal `"{:connection_error, :nxdomain}"`.
+
+### AI translation protocol — DONE (the generic pipeline now lives in this plugin)
+
+The shared AI-translation protocol was extracted (originally proposed 2026-05-22 after the PR #13 retro) and, in the 2026-06 AI move, the **entire pipeline was relocated out of core into this plugin** (`phoenix_kit_ai`). Core keeps only the `phoenix_kit_ai_endpoints` / `_prompts` table migrations. The "rule of three" was satisfied by publishing + catalogue + projects all consuming it.
+
+**What shipped (all in `PhoenixKitAI.*`):**
+
+| Concern | Module |
+| --- | --- |
+| Adapter behaviour | `PhoenixKitAI.Translatable` — `fetch/2` + optional scoped `fetch/3(type, uuid, scope)`, `source_fields/2`, `put_translation/4` (FOR-UPDATE merge so concurrent per-language jobs don't drop siblings), optional `pubsub_topics/1` |
+| AI call + `---FIELD---` parser | `PhoenixKitAI.Translation` (moved from core) |
+| Enqueue / dedup / broadcast / lang resolution | `PhoenixKitAI.Translations` — `enqueue/1`, `enqueue_all_missing/2`, `missing_languages/3`, scope-aware in-flight dedup, default endpoint/prompt |
+| Generic Oban worker | `PhoenixKitAI.TranslateWorker` — threads `resource_scope` to `fetch/3` when the adapter exports it |
+| Adapter discovery | `PhoenixKitAI.Translatables` — duck-typed scan over `PhoenixKit.ModuleRegistry.all_modules/0` for an `ai_translatables/0` function |
+| UI + LV glue | `PhoenixKitAI.Components.AITranslate{,.Embed,.FormBinding,.FormGlue}` |
+
+**How a consumer plugs in:** depend on `phoenix_kit_ai`; implement `PhoenixKitAI.Translatable`; expose a plain `ai_translatables/0` function (duck-typed — **not** a `PhoenixKit.Module` callback, so no `@impl`); delegate the form LV to `FormGlue` + a small `FormBinding`. The per-module workers (`TranslatePostWorker`, `TranslateResourceWorker`) were retired.
+
+**Design decisions that got settled (the open questions in the old proposal):**
+- **Broadcast shape:** `{:ai_translation, :translation_started | :translation_completed | :translation_failed, payload}`; payload carries `resource_type` / `resource_uuid` / `resource_scope` / `source_lang` / `target_lang`.
+- **Version / partition dimension:** optional `resource_scope` (a JSON-safe string) threaded through `fetch/3`, the in-flight dedup key, and the broadcast payload — lets a consumer translate a specific slice (publishing uses it per post version). `nil` scope = default slice = legacy behavior.
+- **Discovery:** duck-typed `ai_translatables/0` (so consumers declare AI-translatability without core knowing anything about AI).
+- **Activity log:** the worker emits `ai.translation_added` with `resource_scope` in metadata.
+
+**Reference adapters:** `phoenix_kit_catalogue` (multilang `data` JSONB, `_`-prefixed keys) · `phoenix_kit_projects` (`translations[lang]` plain keys) · `phoenix_kit_publishing` (versioned posts, lowercase prompt keys, local slug generation).
