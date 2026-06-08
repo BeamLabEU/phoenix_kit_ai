@@ -140,6 +140,14 @@ defmodule PhoenixKitAI.Components.AITranslate do
                   </select>
                 </label>
               </form>
+              <p class="flex items-start gap-1 text-xs text-base-content/60">
+                <Icon.icon name="hero-information-circle" class="w-3.5 h-3.5 shrink-0 mt-px" />
+                <span>
+                  {gettext(
+                    "Reasoning (\"thinking\") models are slower and may return unstructured output — a standard model is recommended for translation."
+                  )}
+                </span>
+              </p>
             </div>
 
             <div class="space-y-1">
