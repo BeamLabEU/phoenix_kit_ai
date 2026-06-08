@@ -1,9 +1,9 @@
 defmodule PhoenixKitAI.Translation do
   @moduledoc """
   Generic AI translation helper. Translates a `%{field_name => text}`
-  map from `source_lang` to `target_lang` using the optional
-  `PhoenixKitAI` plugin, and parses the structured response back into
-  the same shape.
+  map from `source_lang` to `target_lang` using PhoenixKitAI's endpoint
+  and prompt system, and parses the structured response back into the
+  same shape.
 
   Designed to be the single orchestration layer shared by every
   feature module that wants AI translation — `phoenix_kit_publishing`,
@@ -16,9 +16,8 @@ defmodule PhoenixKitAI.Translation do
 
   - Prompt rendering with `{{SourceLanguage}}` / `{{TargetLanguage}}`
     / arbitrary field-name variables.
-  - The `PhoenixKitAI.ask_with_prompt/4` call, guarded so absence of
-    the plugin returns `{:error, :ai_not_installed}` instead of
-    raising.
+  - The `PhoenixKitAI.ask_with_prompt/4` call, wrapped so provider
+    errors and unexpected response shapes normalize to tagged errors.
   - A structured-response parser for the `---FIELD_NAME---` shape
     that publishing's prompt template ships with. Generalised — any
     list of field names is accepted, ordering follows the input.
@@ -61,12 +60,8 @@ defmodule PhoenixKitAI.Translation do
       # |  {:error, {:parse_error, reason}}
   """
 
-  # `PhoenixKitAI` is an optional plugin — present at compile time only
-  # when the host depends on `:phoenix_kit_ai`. Silence the unknown-MFA
-  # warning for the specific call below so core compiles cleanly on hosts
-  # that don't have it. Targeting the 3-tuple (instead of the whole
-  # module) keeps real typos visible — a misspelled `PhoenixKitAI.asx_with_prompt`
-  # still warns.
+  # Keep the availability check unit-testable in environments that compile this
+  # module before the top-level PhoenixKitAI facade is loaded.
   @compile {:no_warn_undefined, [{PhoenixKitAI, :ask_with_prompt, 4}]}
 
   @core_activity_action "core.ai_translation.requested"
@@ -117,9 +112,8 @@ defmodule PhoenixKitAI.Translation do
   def translate_fields(endpoint_uuid, prompt_uuid, source_lang, target_lang, fields, opts \\ [])
       when is_map(fields) and is_binary(source_lang) and is_binary(target_lang) do
     # Order matters: validate inputs first so callers can unit-test the
-    # argument-validation contract without needing the optional plugin
-    # loaded. The plugin-availability check is a system-state question,
-    # not an input-shape question — fail fast on bad args either way.
+    # argument-validation contract before checking runtime AI availability. The
+    # availability check is a system-state question, not an input-shape question.
     with :ok <- validate_uuid(endpoint_uuid, :no_endpoint),
          :ok <- validate_uuid(prompt_uuid, :missing_prompt),
          :ok <- validate_non_empty(fields),
@@ -219,10 +213,8 @@ defmodule PhoenixKitAI.Translation do
   # response map (`%{"choices" => [%{"message" => %{"content" => "..."}}]}`),
   # not a raw string. We extract the assistant's content inline rather
   # than via `PhoenixKitAI.Completion.extract_content/1` so the helper
-  # has no cross-module dep on the optional plugin — works in core's
-  # test env (plugin absent) and any host (plugin present, any
-  # version). The shape is OpenAI-standard so the inline match is
-  # stable.
+  # does not depend on provider-specific internals. The shape is OpenAI-standard
+  # so the inline match is stable.
   #
   # KEEP IN SYNC with `PhoenixKitAI.Completion.extract_content/1`: this
   # is a deliberate second source of truth for "pull the assistant text

@@ -1,6 +1,6 @@
 defmodule PhoenixKitAI.Translations do
   @moduledoc """
-  Core orchestration for AI-driven translation — the shared layer every
+  Orchestration for AI-driven translation — the shared layer every
   feature module enqueues against instead of re-implementing its own
   context + worker.
 
@@ -52,8 +52,8 @@ defmodule PhoenixKitAI.Translations do
   @prompt_slug "phoenixkit-translate-content"
   @topic "phoenix_kit:ai_translation"
 
-  # `PhoenixKitAI` is an optional plugin — guard MFAs so core compiles +
-  # runs on hosts without it.
+  # Keep these calls guarded so an unavailable or partially-started AI runtime
+  # degrades to "translation unavailable" instead of crashing host UI code.
   @compile {:no_warn_undefined,
             [
               {PhoenixKitAI, :enabled?, 0},
@@ -489,9 +489,8 @@ defmodule PhoenixKitAI.Translations do
   defp normalize_scope(value) when is_integer(value), do: Integer.to_string(value)
   defp normalize_scope(_), do: nil
 
-  # Plugin-boundary fuse: an absent/broken optional plugin must not crash
-  # the caller. Narrow rescue for the shapes a missing/incompatible plugin
-  # raises; broad catch for the arbitrary GenServer tree underneath.
+  # Runtime-boundary fuse: a stopped or misconfigured AI runtime must not crash
+  # callers that only need to decide whether translation is available.
   defp safe_ai(fun, default) do
     fun.()
   rescue
