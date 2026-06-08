@@ -639,56 +639,27 @@ metadata: %{error_reason: reason}
 
 **When you do refactor**: also update the assertion in `test/phoenix_kit_ai/completion_coverage_test.exs:~240` that currently pins the inspect-string literal `"{:connection_error, :nxdomain}"`.
 
-### AI translation protocol — extract from `phoenix_kit_projects` + `phoenix_kit_publishing`
+### AI translation protocol — DONE (the generic pipeline now lives in this plugin)
 
-Each module that wants AI-driven translation currently rolls its own Oban worker, enqueue facade, broadcast event shape, progress UI, and host integration. Only the raw AI call + structured `---FIELD---` parser is shared (`PhoenixKit.Modules.AI.Translation` in core); everything around that is duplicated. Surfaced 2026-05-22 during the PR #13 retrospective.
+The shared AI-translation protocol was extracted (originally proposed 2026-05-22 after the PR #13 retro) and, in the 2026-06 AI move, the **entire pipeline was relocated out of core into this plugin** (`phoenix_kit_ai`). Core keeps only the `phoenix_kit_ai_endpoints` / `_prompts` table migrations. The "rule of three" was satisfied by publishing + catalogue + projects all consuming it.
 
-**Duplication today** (N=2 consumers — `phoenix_kit_publishing` and `phoenix_kit_projects`):
+**What shipped (all in `PhoenixKitAI.*`):**
 
-| Concern | Shared today | Duplicated |
-| --- | --- | --- |
-| AI call + structured parser | ✅ core `Modules.AI.Translation` | — |
-| Oban worker (load → translate → persist → broadcast → retry) | — | `TranslatePostWorker` (publishing) + `TranslateResourceWorker` (projects) |
-| Enqueue facade | — | `TranslatePostWorker.enqueue/3` vs `PhoenixKitProjects.Translations.enqueue/1` |
-| Progress UI state | — | inline in publishing's `editor.ex` vs projects' `AITranslateFormHelpers` |
-| UI components (button/modal/progress bar) | — | both hand-rolled, different shapes |
-| Broadcast event shape | — | publishing `{:translation_progress, ...}` ≠ projects `{:projects, :translation_completed, %{...}}` |
+| Concern | Module |
+| --- | --- |
+| Adapter behaviour | `PhoenixKitAI.Translatable` — `fetch/2` + optional scoped `fetch/3(type, uuid, scope)`, `source_fields/2`, `put_translation/4` (FOR-UPDATE merge so concurrent per-language jobs don't drop siblings), optional `pubsub_topics/1` |
+| AI call + `---FIELD---` parser | `PhoenixKitAI.Translation` (moved from core) |
+| Enqueue / dedup / broadcast / lang resolution | `PhoenixKitAI.Translations` — `enqueue/1`, `enqueue_all_missing/2`, `missing_languages/3`, scope-aware in-flight dedup, default endpoint/prompt |
+| Generic Oban worker | `PhoenixKitAI.TranslateWorker` — threads `resource_scope` to `fetch/3` when the adapter exports it |
+| Adapter discovery | `PhoenixKitAI.Translatables` — duck-typed scan over `PhoenixKit.ModuleRegistry.all_modules/0` for an `ai_translatables/0` function |
+| UI + LV glue | `PhoenixKitAI.Components.AITranslate{,.Embed,.FormBinding,.FormGlue}` |
 
-**Proposed shape** — lives in core's `Modules.AI.*` namespace alongside the existing `Translation`:
+**How a consumer plugs in:** depend on `phoenix_kit_ai`; implement `PhoenixKitAI.Translatable`; expose a plain `ai_translatables/0` function (duck-typed — **not** a `PhoenixKit.Module` callback, so no `@impl`); delegate the form LV to `FormGlue` + a small `FormBinding`. The per-module workers (`TranslatePostWorker`, `TranslateResourceWorker`) were retired.
 
-```text
-PhoenixKit.Modules.AI.TranslatableResource     # @callback load/persist/translatable_fields/pubsub_topics
-PhoenixKit.Modules.AI.TranslationWorker        # generic Oban worker; takes :resource_module in args
-PhoenixKit.Modules.AI.Translations             # enqueue/1, enqueue_all_missing/2, list endpoints/prompts
-PhoenixKit.Modules.AI.TranslationLive          # `use`-able mixin: assigns + handle_info + bumpers
-PhoenixKitWeb.Components.AITranslate.{Button, Modal, Progress}
-```
+**Design decisions that got settled (the open questions in the old proposal):**
+- **Broadcast shape:** `{:ai_translation, :translation_started | :translation_completed | :translation_failed, payload}`; payload carries `resource_type` / `resource_uuid` / `resource_scope` / `source_lang` / `target_lang`.
+- **Version / partition dimension:** optional `resource_scope` (a JSON-safe string) threaded through `fetch/3`, the in-flight dedup key, and the broadcast payload — lets a consumer translate a specific slice (publishing uses it per post version). `nil` scope = default slice = legacy behavior.
+- **Discovery:** duck-typed `ai_translatables/0` (so consumers declare AI-translatability without core knowing anything about AI).
+- **Activity log:** the worker emits `ai.translation_added` with `resource_scope` in metadata.
 
-A consumer would implement the behaviour for its resource schema(s); the worker, UI, and broadcasts come for free.
-
-**Why deferred**:
-- N=2 implementations is thin evidence — "rule of three" applies. Designing the abstraction from only publishing + projects risks codifying coincidental shape (their broadcast contracts already differ in non-trivial ways).
-- Publishing's translate worker is ~1000 lines and stable; migrating it is its own multi-session project with release coordination across phoenix_kit + phoenix_kit_publishing.
-- Projects' translation infra was stabilized in PR #13 (2026-05-22 — race fix + atomic merge + UI lock + progress UI). Refactoring it to fit a shared abstraction immediately afterward would risk regressing those fixes for no immediate user-visible win.
-
-**When you do refactor** — natural triggers:
-- A third consumer appears (entities, newsletters, hello-world-as-template, a future "translate help articles") that would force the abstraction. Three concrete impls is enough to design from.
-- A protocol-level bug that needs fixing in both places (e.g. another race like the projects FOR UPDATE one) — at that point the cost of fixing twice outweighs the cost of extracting.
-
-**Path forward** when triggered (suggested, not committed):
-1. **Phase 1 — core**: introduce the behaviour + generic worker + facade + LV mixin + UI components. Tests against a synthetic in-memory `TestResource`. Ship as a phoenix_kit release.
-2. **Phase 2 — projects**: implement the behaviour for `Project` / `Task` / `Assignment`. Delete `TranslateResourceWorker`, `PhoenixKitProjects.Translations`, `AITranslateFormHelpers`, `ai_translate_bar.ex`. Form LVs become thin shells over the mixin.
-3. **Phase 3 — publishing**: implement the behaviour for `PublishingPost`. Bigger change; broadcast contract changes; needs its own planning + host-side coordination because publishing's existing `{:translation_progress, ...}` broadcasts are consumed by the editor LV.
-
-**Design questions to settle before any code lands**:
-- **Broadcast namespace.** `{PhoenixKitAI.Translation, :started|:completed|:failed, payload}` or `{:ai_translation, :verb, payload}` or something else? Pattern-match-able and set-in-stone once shipped.
-- **Worker concurrency knob.** Hard-code `period: :infinity` + per-resource-uuid uniqueness, or let the resource module override? Projects always wants `:infinity`; publishing may want a window.
-- **UI components — single per-module or shared?** Default opinionated components in core, OR primitive building blocks that hosts compose into their own shape? Projects' compact-button + slim-progress design works well; whether that's the universal default is a judgment call.
-- **Activity log shape.** Generic worker emits `core.ai_translation.<verb>` with `module: <consumer>` metadata. Loses per-module action names (`projects.translation_added`, `publishing.translation.added`) but unifies the audit trail. Worth deciding which convention wins.
-
-**Anchors** — current code to study when picking this up:
-- `phoenix_kit/lib/modules/ai/translation.ex` — the existing shared piece + the optional-plugin guard pattern to copy
-- `phoenix_kit_projects/lib/phoenix_kit_projects/workers/translate_resource_worker.ex` — the cleaner worker shape post-PR #13 (Repo.transaction + FOR UPDATE, retry classification, atomic JSONB merge)
-- `phoenix_kit_projects/lib/phoenix_kit_projects/web/ai_translate_form_helpers.ex` — the LV-mixin shape (mount assigns + start/completed bumpers + duplicate-event guard)
-- `phoenix_kit_projects/lib/phoenix_kit_projects/web/components/ai_translate_bar.ex` — the UI components (button/modal/progress, daisyUI-themed, theme-safe contrast)
-- `phoenix_kit_publishing/lib/phoenix_kit_publishing/workers/translate_post_worker.ex` — the older shape (different broadcast contract, inline progress UI in editor.ex, retry attempt counter)
+**Reference adapters:** `phoenix_kit_catalogue` (multilang `data` JSONB, `_`-prefixed keys) · `phoenix_kit_projects` (`translations[lang]` plain keys) · `phoenix_kit_publishing` (versioned posts, lowercase prompt keys, local slug generation).
