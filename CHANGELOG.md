@@ -1,3 +1,25 @@
+## 0.4.0 - 2026-06-08
+
+### Added
+- **AI translation pipeline + UI (moved from core).** A generic, multi-consumer AI-translation layer now lives in the plugin; consumers (publishing/catalogue/projects) wire in a tiny adapter + form binding and get the rest for free:
+  - `PhoenixKitAI.Translatable` — adapter behaviour: `fetch/2`, optional scoped `fetch/3`, `source_fields/2`, `put_translation/4`, optional `pubsub_topics/1`
+  - `PhoenixKitAI.Translation` — the `ask_with_prompt/4` call + structured `---FIELD---` response parser, with every failure path normalized to `{:error, atom_or_tuple}`
+  - `PhoenixKitAI.Translations` — enqueue, scope-aware in-flight dedup, payload-minimal PubSub broadcasts, `missing_languages/3`, and idempotent default endpoint/prompt provisioning
+  - `PhoenixKitAI.TranslateWorker` — the generic Oban worker (threads `resource_scope` to `fetch/3` when the adapter exports it; transient-vs-deterministic retry/snooze/discard classification)
+  - `PhoenixKitAI.Translatables` — duck-typed adapter discovery scanning `PhoenixKit.ModuleRegistry` for `ai_translatables/0`
+  - `PhoenixKitAI.Components.AITranslate{,.Embed,.FormBinding,.FormGlue}` — the shared AI-translate modal UI + LiveView state/progress/stall glue
+- **Reasoning-model parser hardening** (`PhoenixKitAI.Translation.parse_response/2`): strips balanced `<think>`/`<thinking>`/`<reasoning>`/`<thought>` blocks before parsing (an unclosed block is left intact so a real answer is never deleted) and anchors opening `---MARKER---` to start-of-line, so chain-of-thought that mentions a marker inline can't open a section. Reasoning output degrades to a clean `:no_markers` parse error instead of a mis-parsed blob that overflowed a consumer's column on persist.
+- `PhoenixKitAI.Routes.ai_path/0` — plugin-owned `/admin/ai` path helper (was a module-specific helper in core's `PhoenixKit.Utils.Routes`)
+- Reasoning-model UX hint under the endpoint selector in the AI-translate modal: reasoning models are slower and may return unstructured output — prefer a standard model for translation
+- Env-gated local-path dep override in `mix.exs` (`<APP>_PATH`, e.g. `PHOENIX_KIT_PATH=../phoenix_kit`) for cross-repo development; unset resolves to the published Hex pin, so `mix deps.get` / `mix hex.publish` / CI are unaffected
+
+### Changed
+- Dependency refresh (`mix.lock`)
+
+### Fixed
+- AI-translate form applies a completed translation to the live changeset only for languages this session dispatched — a translation triggered in another session/tab on the same resource no longer clobbers unsaved edits
+- `mix precommit` green end to end (credo `--strict` 0 issues, dialyzer 0 errors): closed pre-existing alias-order / nesting / alias-usage findings via behavior-preserving extraction, and removed a dialyzer-dead clause in `Translation`
+
 ## 0.3.0 - 2026-05-18
 
 ### Added
