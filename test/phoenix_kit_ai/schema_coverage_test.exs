@@ -50,6 +50,23 @@ defmodule PhoenixKitAI.SchemaCoverageTest do
       assert Endpoint.short_model_name("bare") == "bare"
     end
 
+    test "kind/1 — classifies model id (tts / embedding / chat)" do
+      assert Endpoint.kind("voxtral-mini-tts-2603") == :tts
+      assert Endpoint.kind("mistralai/Voxtral-4B-TTS") == :tts
+      assert Endpoint.kind("openai/text-embedding-3-small") == :embedding
+      assert Endpoint.kind("mistral-embed") == :embedding
+      assert Endpoint.kind("anthropic/claude-3-haiku") == :chat
+      # struct + nil/blank fall back to chat
+      assert Endpoint.kind(%Endpoint{model: "voxtral-mini-tts-2603"}) == :tts
+      assert Endpoint.kind(nil) == :chat
+    end
+
+    test "kind_icon/1 — one heroicon per kind" do
+      assert Endpoint.kind_icon(:tts) == "hero-speaker-wave"
+      assert Endpoint.kind_icon(:embedding) == "hero-rectangle-stack"
+      assert Endpoint.kind_icon(:chat) == "hero-chat-bubble-left-right"
+    end
+
     test "image_size_options + image_quality_options + reasoning_effort_options" do
       assert is_list(Endpoint.image_size_options())
       assert is_list(Endpoint.image_quality_options())

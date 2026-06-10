@@ -1,3 +1,13 @@
+## 0.7.0 - 2026-06-10
+
+### Added
+- **Model-kind icon column on the AI Usage endpoints list.** A leading icon column (before the endpoint name, in both the table and card views) shows at a glance what kind of model each endpoint points at:
+  - Text-to-Speech → `hero-speaker-wave`, Embedding → `hero-rectangle-stack`, Chat/Completion → `hero-chat-bubble-left-right`, each with a tooltip.
+  - Classification is inferred from the model id via the new pure helpers `PhoenixKitAI.Endpoint.kind/1` (`:chat | :tts | :embedding`) and `kind_icon/1`, reusing the same `tts`/`embed` substring heuristic as the model picker (endpoints store no explicit type).
+
+### Changed
+- **Compacter endpoints toolbar.** The sort/filter UI now shares one row with the New Endpoint button + card/list toggle (moved from the `:sort_bar` slot into the core table's `:toolbar_title` slot) instead of stacking a second row beneath them. No core/`phoenix_kit` change required.
+
 ## 0.6.0 - 2026-06-10
 
 ### Added

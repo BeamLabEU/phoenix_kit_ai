@@ -364,6 +364,38 @@ defmodule PhoenixKitAI.Endpoint do
   end
 
   @doc """
+  Classifies an endpoint by the kind of model it points at.
+
+  Endpoints don't store a model type, so this infers it from the model
+  id using the same heuristic the model picker uses (see
+  `PhoenixKitAI.OpenRouterClient` `:tts` filter): a `tts` substring
+  marks text-to-speech, `embed` marks an embedding model, and everything
+  else is treated as chat/completion. Used to badge rows in the admin UI.
+  """
+  @spec kind(t() | String.t() | nil) :: :chat | :tts | :embedding
+  def kind(%__MODULE__{model: model}), do: kind(model)
+
+  def kind(model) when is_binary(model) do
+    downcased = String.downcase(model)
+
+    cond do
+      String.contains?(downcased, "tts") -> :tts
+      String.contains?(downcased, "embed") -> :embedding
+      true -> :chat
+    end
+  end
+
+  def kind(_), do: :chat
+
+  @doc """
+  Heroicon name representing an endpoint `kind/1`.
+  """
+  @spec kind_icon(:chat | :tts | :embedding) :: String.t()
+  def kind_icon(:tts), do: "hero-speaker-wave"
+  def kind_icon(:embedding), do: "hero-rectangle-stack"
+  def kind_icon(:chat), do: "hero-chat-bubble-left-right"
+
+  @doc """
   Returns image size options for form selects.
   """
   def image_size_options do

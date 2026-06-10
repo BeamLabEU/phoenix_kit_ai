@@ -25,17 +25,19 @@
           size="sm"
           on_reorder={if manual_sort?, do: "reorder_endpoints"}
         >
-          <:sort_bar>
-            <%!-- Always-visible sort UI. Picking "Manual" swaps the
-                 direction toggle for a drag-handle hint and enables
-                 drag-to-reorder on rows + cards. --%>
+          <%!-- Sort UI rides the toolbar row (left side) via :toolbar_title
+               rather than the :sort_bar slot, so it shares one compact row
+               with the New Endpoint button + view toggle instead of stacking
+               a second row beneath them. Picking "Manual" swaps the direction
+               toggle for a drag-handle hint and enables drag-to-reorder. --%>
+          <:toolbar_title>
             <.sort_selector
               sort_by={@sort_by}
               sort_dir={@sort_dir}
               options={@sort_options}
               manual_field={:sort_order}
             />
-          </:sort_bar>
+          </:toolbar_title>
 
           <:toolbar_actions>
             <.link
@@ -58,6 +60,21 @@
             <div class="flex items-start justify-between">
               <div class="flex-1">
                 <div class="flex items-center gap-3 flex-wrap">
+                  <span
+                    class="text-base-content/50 shrink-0"
+                    title={
+                      case PhoenixKitAI.Endpoint.kind(endpoint.model) do
+                        :tts -> gettext("Text-to-Speech model")
+                        :embedding -> gettext("Embedding model")
+                        _ -> gettext("Chat / completion model")
+                      end
+                    }
+                  >
+                    <.icon
+                      name={PhoenixKitAI.Endpoint.kind_icon(PhoenixKitAI.Endpoint.kind(endpoint.model))}
+                      class="w-5 h-5"
+                    />
+                  </span>
                   <.link
                     navigate={PhoenixKitAI.Routes.ai_path() <> "/endpoints/#{endpoint.uuid}/edit"}
                     class="font-semibold text-lg hover:text-primary hover:underline"
@@ -193,6 +210,9 @@
           <.table_default_header>
                 <.table_default_row>
                   <.table_default_header_cell :if={manual_sort?} class="w-8" />
+                  <.table_default_header_cell class="w-px">
+                    <span class="sr-only">{gettext("Type")}</span>
+                  </.table_default_header_cell>
                   <.sort_header_cell field={:name} sort={%{by: @sort_by, dir: @sort_dir}} event="sort">
                     {gettext("Name")}
                   </.sort_header_cell>
@@ -237,6 +257,7 @@
                     }) %>
                   <% integration = Map.get(@integrations_by_uuid, endpoint.integration_uuid) %>
                   <% integration_status = integration && integration.data["status"] %>
+                  <% endpoint_kind = PhoenixKitAI.Endpoint.kind(endpoint.model) %>
                   <.table_default_row
                     class={
                       [
@@ -254,6 +275,18 @@
                       title={gettext("Drag to reorder")}
                     >
                       <.icon name="hero-bars-3" class="w-4 h-4" />
+                    </.table_default_cell>
+                    <.table_default_cell
+                      class="w-px text-center align-middle text-base-content/60"
+                      title={
+                        case endpoint_kind do
+                          :tts -> gettext("Text-to-Speech model")
+                          :embedding -> gettext("Embedding model")
+                          _ -> gettext("Chat / completion model")
+                        end
+                      }
+                    >
+                      <.icon name={PhoenixKitAI.Endpoint.kind_icon(endpoint_kind)} class="w-4 h-4" />
                     </.table_default_cell>
                     <.table_default_cell>
                       <.link

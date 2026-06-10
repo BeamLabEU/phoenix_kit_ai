@@ -1,7 +1,7 @@
 defmodule PhoenixKitAI.MixProject do
   use Mix.Project
 
-  @version "0.6.0"
+  @version "0.7.0"
   @source_url "https://github.com/BeamLabEU/phoenix_kit_ai"
 
   def project do
@@ -61,6 +61,10 @@ defmodule PhoenixKitAI.MixProject do
       precommit: [
         "compile --force --warnings-as-errors",
         "deps.unlock --check-unused",
+        # Scan for retired Hex deps. Run via `cmd` so Hex bootstraps in a fresh
+        # process — the hex.* archive tasks aren't resolvable via Mix.Task.run
+        # inside an alias.
+        "cmd mix hex.audit",
         "quality.ci"
       ]
     ]
