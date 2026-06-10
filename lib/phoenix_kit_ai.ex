@@ -2433,6 +2433,61 @@ defmodule PhoenixKitAI do
   end
 
   @doc """
+  Synthesizes speech from text through a configured AI endpoint.
+
+  Returns the raw audio bytes alongside the format so the caller knows
+  the file extension / MIME type without re-deriving it. Mirrors the
+  `embed/3` path: endpoint resolution, credential validation, error
+  mapping, and request logging are all shared.
+
+  ## Options
+
+  - `:voice` - Preset voice identifier (e.g. `"casual_male"`)
+  - `:voice_id` - Saved/cloned voice id (Mistral hosted)
+  - `:response_format` - Audio format (default `"mp3"`)
+  - `:source` - Request-tracking label (defaults to auto-detected caller)
+
+  Only the voice option that is present is sent to the provider.
+
+  ## Examples
+
+      {:ok, %{audio: bytes, format: "mp3"}} =
+        PhoenixKitAI.speak(endpoint_uuid, "Bonjour, comment ça va ?",
+          voice: "casual_male",
+          source: "SentenceAudio"
+        )
+
+  ## Returns
+
+  - `{:ok, %{audio: binary(), format: String.t()}}`
+  - `{:error, reason}` - Error atom or tagged tuple.
+  """
+  @spec speak(String.t() | Endpoint.t(), String.t(), keyword()) ::
+          {:ok, %{audio: binary(), format: String.t()}} | {:error, term()}
+  def speak(endpoint_uuid, text, opts \\ []) when is_binary(text) do
+    with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
+         {:ok, _} <- validate_endpoint(endpoint) do
+      # Capture caller info (source + stacktrace + context)
+      {auto_source, stacktrace, caller_context} = capture_caller_info()
+      # Allow manual override of source, but all debug info is always captured
+      source = Keyword.get(opts, :source) || auto_source
+
+      # No endpoint-default merging: TTS has no temperature/dimensions
+      # analog. If a per-endpoint default voice is stored later (in
+      # provider_settings), merge it into opts here.
+      case Completion.text_to_speech(endpoint, text, opts) do
+        {:ok, result} ->
+          log_tts_request(endpoint, text, result, source, stacktrace, caller_context)
+          {:ok, Map.take(result, [:audio, :format])}
+
+        {:error, reason} ->
+          log_failed_tts_request(endpoint, text, reason, source, stacktrace, caller_context)
+          {:error, reason}
+      end
+    end
+  end
+
+  @doc """
   Extracts the text content from a completion response.
 
   ## Examples
@@ -2823,6 +2878,57 @@ defmodule PhoenixKitAI do
         stacktrace: stacktrace,
         caller_context: caller_context
       }
+    })
+  end
+
+  # TTS responses carry no token usage — billing is per-character — so
+  # input_tokens/output_tokens/total_tokens/cost_cents stay unset. The
+  # host can derive cost from input_chars app-side if needed. The input
+  # text is gated by `capture_request_content?/0` like chat/embedding.
+  defp log_tts_request(endpoint, text, result, source, stacktrace, caller_context) do
+    capture_content = capture_request_content?()
+
+    base_metadata = %{
+      input_chars: String.length(text),
+      audio_format: result[:format],
+      audio_bytes: byte_size(result[:audio]),
+      # Debug context (source tracking)
+      source: source,
+      stacktrace: stacktrace,
+      caller_context: caller_context
+    }
+
+    create_request(%{
+      endpoint_uuid: endpoint.uuid,
+      endpoint_name: endpoint.name,
+      model: endpoint.model,
+      request_type: "tts",
+      latency_ms: result[:latency_ms],
+      status: "success",
+      metadata: maybe_add_content(base_metadata, :input, capture_content, fn -> text end)
+    })
+  end
+
+  defp log_failed_tts_request(endpoint, text, reason, source, stacktrace, caller_context) do
+    capture_content = capture_request_content?()
+
+    base_metadata = %{
+      error_reason: inspect(reason),
+      input_chars: String.length(text),
+      # Debug context (source tracking)
+      source: source,
+      stacktrace: stacktrace,
+      caller_context: caller_context
+    }
+
+    create_request(%{
+      endpoint_uuid: endpoint.uuid,
+      endpoint_name: endpoint.name,
+      model: endpoint.model,
+      request_type: "tts",
+      status: "error",
+      error_message: error_reason_to_string(reason),
+      metadata: maybe_add_content(base_metadata, :input, capture_content, fn -> text end)
     })
   end
 end

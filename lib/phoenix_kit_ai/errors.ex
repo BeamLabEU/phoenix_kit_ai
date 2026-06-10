@@ -45,6 +45,11 @@ defmodule PhoenixKitAI.Errors do
   def message(:invalid_json_response), do: gettext("Invalid JSON response")
   def message(:no_choices_in_response), do: gettext("No choices in response")
   def message(:invalid_response_format), do: gettext("Invalid response format")
+
+  def message(:invalid_audio_response) do
+    gettext("The TTS provider returned an unreadable audio response.")
+  end
+
   def message(:empty_input), do: gettext("Input cannot be empty")
   def message(:endpoint_no_model), do: gettext("Endpoint has no model configured")
 

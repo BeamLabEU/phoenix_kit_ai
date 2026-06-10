@@ -1,3 +1,12 @@
+## 0.5.0 - 2026-06-10
+
+### Added
+- **Text-to-speech support** (`PhoenixKitAI.speak/3`). Synthesizes speech from text through a configured AI endpoint and returns the raw audio bytes, mirroring the `embed/3` path (shared endpoint resolution, credential validation, error mapping, and request logging):
+  - `PhoenixKitAI.speak(endpoint_uuid, text, opts)` → `{:ok, %{audio: binary(), format: String.t()}}`. Options: `:voice` (preset id) / `:voice_id` (saved/cloned id) — only the present one is sent, keeping the package provider-neutral — plus `:response_format` (default `"mp3"`) and `:source`.
+  - `PhoenixKitAI.Completion.text_to_speech/3` posts to `/audio/speech` and decodes both response shapes: Mistral hosted base64-JSON (`{"audio_data": "<base64>"}`) and the raw binary audio body used by OpenRouter / OSS vLLM.
+  - Request log gains a `"tts"` `request_type`. TTS carries no token usage (per-character billing), so rows record `input_chars`, `audio_format`, and `audio_bytes` instead; the input text honours the existing `capture_request_content` PII gate.
+  - New `:invalid_audio_response` error reason in `PhoenixKitAI.Errors` for an unreadable/empty audio response.
+
 ## 0.4.0 - 2026-06-08
 
 ### Added

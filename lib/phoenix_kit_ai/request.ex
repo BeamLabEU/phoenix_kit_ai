@@ -79,7 +79,7 @@ defmodule PhoenixKitAI.Request do
 
   @primary_key {:uuid, UUIDv7, autogenerate: true}
   @valid_statuses ~w(success error timeout)
-  @valid_request_types ~w(text_completion chat embedding)
+  @valid_request_types ~w(text_completion chat embedding tts)
 
   @derive {Jason.Encoder,
            only: [

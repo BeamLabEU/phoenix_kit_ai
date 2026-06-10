@@ -178,6 +178,88 @@ defmodule PhoenixKitAI.Completion do
   end
 
   @doc """
+  Synthesizes speech from text via the provider's `/audio/speech` endpoint.
+
+  ## Parameters
+
+  - `endpoint` - The AI endpoint struct with API key and model
+  - `text` - The text to synthesize
+  - `opts` - Additional options
+
+  ## Options
+
+  - `:response_format` - Audio container/codec (default `"mp3"`)
+  - `:voice` - Preset voice identifier (OpenRouter / OSS vLLM shape)
+  - `:voice_id` - Saved/cloned voice id (Mistral hosted shape)
+
+  Only the voice option that is present is sent; the module stays
+  provider-neutral and does not assume a field name.
+
+  ## Returns
+
+  - `{:ok, %{audio: binary(), format: String.t(), latency_ms: integer()}}`
+  - `{:error, reason}` - Error atom or tagged tuple. See
+    `PhoenixKitAI.Errors` for the full reason vocabulary and translation.
+  """
+  def text_to_speech(endpoint, text, opts \\ []) do
+    url = build_url(endpoint, "/audio/speech")
+    headers = OpenRouterClient.build_headers_from_endpoint(endpoint)
+    format = Keyword.get(opts, :response_format, "mp3")
+
+    body =
+      %{"model" => endpoint.model, "input" => text, "response_format" => format}
+      |> maybe_add("voice", Keyword.get(opts, :voice))
+      |> maybe_add("voice_id", Keyword.get(opts, :voice_id))
+
+    start_time = System.monotonic_time(:millisecond)
+
+    case http_post(url, headers, body) do
+      {:ok, %{status_code: 200, body: response_body}} ->
+        decode_audio(response_body, format, start_time)
+
+      {:ok, %{status_code: status, body: response_body}} ->
+        handle_error_status(status, response_body)
+
+      {:error, :timeout} ->
+        {:error, :request_timeout}
+
+      {:error, reason} ->
+        Logger.warning("TTS transport error: #{inspect(reason)}")
+        {:error, {:connection_error, reason}}
+    end
+  end
+
+  # The provider may return either base64 JSON (`{"audio_data": "..."}`,
+  # Mistral hosted) or a raw binary audio body (OpenRouter / OSS vLLM).
+  # `http_post/3` re-encodes a decoded JSON map back to a string and
+  # passes a binary body through `to_string/1` unchanged, so try the
+  # JSON-with-base64 shape first and fall back to raw bytes.
+  defp decode_audio(response_body, format, start_time) do
+    latency_ms = System.monotonic_time(:millisecond) - start_time
+
+    audio =
+      case Jason.decode(response_body) do
+        {:ok, %{"audio_data" => b64}} when is_binary(b64) ->
+          case Base.decode64(b64) do
+            {:ok, bytes} -> bytes
+            :error -> nil
+          end
+
+        _ ->
+          # Not JSON (or no audio_data) → assume raw binary audio body.
+          response_body
+      end
+
+    case audio do
+      bytes when is_binary(bytes) and byte_size(bytes) > 0 ->
+        {:ok, %{audio: bytes, format: format, latency_ms: latency_ms}}
+
+      _ ->
+        {:error, :invalid_audio_response}
+    end
+  end
+
+  @doc """
   Extracts the text content from a chat completion response.
   """
   def extract_content(response) do
