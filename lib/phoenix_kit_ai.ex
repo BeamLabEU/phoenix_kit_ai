@@ -2922,13 +2922,23 @@ defmodule PhoenixKitAI do
     else
       case endpoint.provider_settings || %{} do
         %{"voice" => voice} when is_binary(voice) and voice != "" ->
-          Keyword.put(opts, :voice, voice)
+          Keyword.put(opts, voice_field_for(endpoint), voice)
 
         _ ->
           opts
       end
     end
   end
+
+  # Which request field carries the stored default voice. Mistral's
+  # /audio/speech documents `voice_id`, and the voices catalogue the
+  # picker reads is Mistral-specific, so a stored voice is always a
+  # Mistral slug → send `voice_id`. OpenRouter / OSS vLLM use `voice`
+  # (e.g. "casual_male"), so every other provider stays on `voice`. An
+  # explicit caller-supplied :voice / :voice_id is never overridden —
+  # this only governs the endpoint's stored default.
+  defp voice_field_for(%{provider: "mistral"}), do: :voice_id
+  defp voice_field_for(_), do: :voice
 
   defp log_failed_tts_request(endpoint, text, reason, source, stacktrace, caller_context) do
     capture_content = capture_request_content?()

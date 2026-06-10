@@ -225,17 +225,43 @@ defmodule PhoenixKitAI.TTSTest do
   end
 
   describe "PhoenixKitAI.speak/3 — default voice from provider_settings" do
-    test "falls back to the endpoint's stored voice when caller passes none" do
+    test "Mistral endpoint sends the stored default as voice_id (documented field)" do
       Req.Test.stub(__MODULE__, fn conn ->
         {:ok, raw, conn} = Plug.Conn.read_body(conn)
-        assert %{"voice" => "stored_voice"} = Jason.decode!(raw)
+        body = Jason.decode!(raw)
+        # Mistral documents `voice_id`; the stored slug goes there, not `voice`.
+        assert body["voice_id"] == "stored_voice"
+        refute Map.has_key?(body, "voice")
 
         conn
         |> Plug.Conn.put_resp_content_type("application/json")
         |> Plug.Conn.send_resp(200, Jason.encode!(%{"audio_data" => Base.encode64(@audio_bytes)}))
       end)
 
+      # endpoint_fixture defaults to provider "mistral".
       ep = endpoint_fixture(%{provider_settings: %{"voice" => "stored_voice"}})
+
+      assert {:ok, %{audio: @audio_bytes}} = PhoenixKitAI.speak(ep.uuid, "Bonjour")
+    end
+
+    test "non-Mistral (OpenRouter) endpoint sends the stored default as voice" do
+      Req.Test.stub(__MODULE__, fn conn ->
+        {:ok, raw, conn} = Plug.Conn.read_body(conn)
+        body = Jason.decode!(raw)
+        # OpenRouter / OSS vLLM use `voice` (e.g. preset names), not voice_id.
+        assert body["voice"] == "casual_male"
+        refute Map.has_key?(body, "voice_id")
+
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(200, Jason.encode!(%{"audio_data" => Base.encode64(@audio_bytes)}))
+      end)
+
+      ep =
+        endpoint_fixture(%{
+          provider: "openrouter",
+          provider_settings: %{"voice" => "casual_male"}
+        })
 
       assert {:ok, %{audio: @audio_bytes}} = PhoenixKitAI.speak(ep.uuid, "Bonjour")
     end

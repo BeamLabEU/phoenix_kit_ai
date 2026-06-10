@@ -268,6 +268,8 @@ defmodule PhoenixKitAI.Web.EndpointForm do
       |> assign(:selected_provider, nil)
       |> assign(:provider_models, [])
       |> assign(:model_type, :text)
+      |> assign(:voices, [])
+      |> assign(:selected_speaker, nil)
       |> assign(:endpoint, nil)
       |> assign(:active_connection, nil)
       |> assign(:selected_uuids, [])
@@ -615,6 +617,8 @@ defmodule PhoenixKitAI.Web.EndpointForm do
       |> assign(:selected_provider, nil)
       |> assign(:provider_models, [])
       |> assign(:selected_model, nil)
+      |> assign(:voices, [])
+      |> assign(:selected_speaker, nil)
 
     # Reload models with new connection
     if connected do
@@ -656,6 +660,8 @@ defmodule PhoenixKitAI.Web.EndpointForm do
       |> assign(:provider_models, [])
       |> assign(:models, [])
       |> assign(:models_grouped, [])
+      |> assign(:voices, [])
+      |> assign(:selected_speaker, nil)
 
     if socket.assigns[:integration_connected] do
       send(self(), :fetch_models_from_integration)
@@ -663,6 +669,20 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     else
       {:noreply, socket}
     end
+  end
+
+  @impl true
+  def handle_event("select_voice_speaker", %{"voice_speaker" => speaker_key}, socket) do
+    # Picking a speaker defaults the voice to that speaker's Neutral mood
+    # (so the stored slug stays valid) and lets the operator refine the
+    # mood in the dependent dropdown. The speaker control isn't an
+    # endpoint field — only the resolved slug is submitted.
+    slug = default_voice_slug(socket.assigns.voices, speaker_key)
+
+    {:noreply,
+     socket
+     |> assign(:selected_speaker, speaker_key)
+     |> put_voice_param(slug)}
   end
 
   @impl true
@@ -1163,6 +1183,23 @@ defmodule PhoenixKitAI.Web.EndpointForm do
 
   # Private helpers
 
+  # For TTS endpoints, also fetch the provider's voice catalogue so the
+  # form can render a picker instead of a free-text field. Mistral-only
+  # (`/audio/voices`); any non-200 (e.g. OpenRouter has no such endpoint)
+  # falls back to an empty list, which the template renders as the
+  # free-text voice input. Runs inline after the model fetch — it reuses
+  # the already-validated api_key + base_url and only fires for `:tts`.
+  defp maybe_fetch_voices(socket, api_key, base_url) do
+    if socket.assigns.model_type == :tts do
+      case OpenRouterClient.fetch_voices(api_key, base_url: base_url) do
+        {:ok, voices} -> assign(socket, :voices, voices)
+        {:error, _reason} -> assign(socket, :voices, [])
+      end
+    else
+      assign(socket, :voices, [])
+    end
+  end
+
   defp do_fetch_models(socket, api_key) do
     base_url = current_models_base_url(socket)
     fallback_provider = socket.assigns[:current_provider]
@@ -1221,6 +1258,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
           |> assign(:selected_model, selected_model)
           |> assign(:selected_provider, selected_provider)
           |> assign(:provider_models, provider_models)
+          |> maybe_fetch_voices(api_key, base_url)
 
         {:noreply, socket}
 
@@ -1269,6 +1307,104 @@ defmodule PhoenixKitAI.Web.EndpointForm do
   end
 
   defp model_type_for(_), do: :text
+
+  # --- TTS voice cascade (speaker → mood) -------------------------------
+  #
+  # Mistral's voice catalogue is a flat list where each entry's `name` is
+  # "Speaker - Mood" (e.g. "Paul - Neutral", "Jane - Sarcasm"). The form
+  # presents it as Mistral Studio does — pick a speaker, then a mood —
+  # while the stored value stays the full voice slug. These helpers are
+  # public so the colocated HEEx can call them (same convention as
+  # `format_number/1` etc.).
+
+  @doc false
+  # Groups voices by {speaker, language} into ordered speaker entries,
+  # each carrying its moods (sorted). One entry per speaker the form
+  # renders in the first dropdown.
+  def voice_speakers(voices) do
+    voices
+    |> Enum.map(&decompose_voice/1)
+    |> Enum.group_by(&{&1.speaker, &1.language})
+    |> Enum.map(fn {{speaker, language}, moods} ->
+      %{
+        key: "#{language}:#{speaker}",
+        speaker: speaker,
+        language: language,
+        label: speaker_label(speaker, language),
+        voices: Enum.sort_by(moods, & &1.mood)
+      }
+    end)
+    |> Enum.sort_by(& &1.label)
+  end
+
+  @doc false
+  # The speaker-group key that owns `slug` — used to preselect the
+  # speaker dropdown when editing an endpoint that already has a voice.
+  def speaker_for_voice(speakers, slug) when is_binary(slug) and slug != "" do
+    Enum.find_value(speakers, fn sp ->
+      if Enum.any?(sp.voices, &(&1.slug == slug)), do: sp.key
+    end)
+  end
+
+  def speaker_for_voice(_speakers, _slug), do: nil
+
+  @doc false
+  def humanize_language(nil), do: nil
+  def humanize_language(code) when is_binary(code), do: Map.get(language_names(), code, code)
+
+  defp decompose_voice(voice) do
+    {speaker, mood} =
+      case String.split(voice.name, " - ", parts: 2) do
+        [speaker, mood] -> {String.trim(speaker), String.trim(mood)}
+        [single] -> {String.trim(single), String.trim(single)}
+      end
+
+    %{slug: voice.slug, speaker: speaker, mood: mood, language: voice.language}
+  end
+
+  defp speaker_label(speaker, language) do
+    case humanize_language(language) do
+      nil -> speaker
+      lang -> "#{speaker} — #{lang}"
+    end
+  end
+
+  defp language_names do
+    %{
+      "en_us" => "English (US)",
+      "en_gb" => "English (UK)",
+      "fr_fr" => "French",
+      "es_es" => "Spanish",
+      "de_de" => "German",
+      "it_it" => "Italian",
+      "pt_pt" => "Portuguese",
+      "nl_nl" => "Dutch"
+    }
+  end
+
+  # Default voice slug when the operator switches speaker: the speaker's
+  # "Neutral" mood if present, else its first mood.
+  defp default_voice_slug(voices, speaker_key) do
+    case Enum.find(voice_speakers(voices), &(&1.key == speaker_key)) do
+      %{voices: moods} ->
+        neutral = Enum.find(moods, &(String.downcase(&1.mood) == "neutral"))
+        (neutral || List.first(moods)).slug
+
+      _ ->
+        ""
+    end
+  end
+
+  # Writes `provider_settings.voice` into the form params (merging, so
+  # other in-progress edits survive) and rebuilds the form. No `:action`
+  # is stamped — same as `validate`, so this doesn't surface errors.
+  defp put_voice_param(socket, value) do
+    params = socket.assigns.form.params || %{}
+    provider_settings = Map.put(Map.get(params, "provider_settings", %{}), "voice", value)
+    params = Map.put(params, "provider_settings", provider_settings)
+    changeset = AI.change_endpoint(socket.assigns.endpoint || %Endpoint{}, params)
+    assign(socket, :form, to_form(changeset))
+  end
 
   # Sets the loading indicator and schedules a 10s "still loading"
   # timer. The timer ref is stashed on the socket so the completion

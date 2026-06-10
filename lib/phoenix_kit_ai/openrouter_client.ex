@@ -187,6 +187,68 @@ defmodule PhoenixKitAI.OpenRouterClient do
   end
 
   @doc """
+  Fetches available TTS voices from a Mistral-compatible `/audio/voices`
+  endpoint.
+
+  This is **Mistral-specific** — other providers (OpenRouter, DeepSeek)
+  don't expose `/audio/voices` and will return a non-200, in which case
+  the caller should fall back to a free-text voice field. Mistral returns
+  the full catalogue (~30 presets) well within a single `limit=100` page,
+  so no pagination loop is needed.
+
+  Returns `{:ok, [%{slug, name, language, gender, tags}]}` (the `slug` is
+  what `/audio/speech` accepts as its `voice`) or `{:error, reason}`.
+
+  ## Options
+  - `:base_url` - Provider base URL (defaults to OpenRouter's, which has
+    no voices endpoint — pass the endpoint's Mistral base_url).
+  """
+  def fetch_voices(api_key, opts \\ []) do
+    base = Keyword.get(opts, :base_url, @base_url)
+    url = "#{String.trim_trailing(base, "/")}/audio/voices?limit=100&offset=0"
+    headers = build_headers(api_key, opts)
+
+    case http_get(url, headers) do
+      {:ok, %{status_code: 200, body: body}} ->
+        case Jason.decode(body) do
+          {:ok, %{"items" => items}} when is_list(items) ->
+            {:ok, normalize_voices(items)}
+
+          {:ok, _} ->
+            {:error, :invalid_response_format}
+
+          {:error, _} ->
+            {:error, :invalid_json_response}
+        end
+
+      {:ok, %{status_code: 401}} ->
+        {:error, :invalid_api_key}
+
+      {:ok, %{status_code: status}} ->
+        Logger.warning("Voices fetch failed: #{status}")
+        {:error, {:api_error, status}}
+
+      {:error, reason} ->
+        Logger.warning("Voices fetch transport error: #{inspect(reason)}")
+        {:error, {:connection_error, reason}}
+    end
+  end
+
+  defp normalize_voices(items) do
+    items
+    |> Enum.map(fn voice ->
+      %{
+        slug: voice["slug"],
+        name: voice["name"] || voice["slug"],
+        language: voice["languages"] |> List.wrap() |> List.first(),
+        gender: voice["gender"],
+        tags: voice["tags"] || []
+      }
+    end)
+    |> Enum.filter(&is_binary(&1.slug))
+  end
+
+  @doc """
   Fetches embedding models from OpenRouter.
 
   Note: Embedding models are not returned by `/models`, so this function

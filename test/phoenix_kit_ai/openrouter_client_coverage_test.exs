@@ -351,6 +351,83 @@ defmodule PhoenixKitAI.OpenRouterClientCoverageTest do
     end
   end
 
+  describe "fetch_voices/2" do
+    # Shape mirrors a live Mistral GET /v1/audio/voices response.
+    defp voices_payload do
+      %{
+        "items" => [
+          %{
+            "slug" => "en_paul_neutral",
+            "name" => "Paul - Neutral",
+            "languages" => ["en_us"],
+            "gender" => "male",
+            "tags" => ["relaxed", "neutral"]
+          },
+          %{
+            "slug" => "gb_jane_sarcasm",
+            "name" => "Jane - Sarcasm",
+            "languages" => ["en_gb"],
+            "gender" => "female",
+            "tags" => ["dry"]
+          }
+        ],
+        "total" => 2
+      }
+    end
+
+    test "200 returns a normalized voice list (slug/name/language/gender)" do
+      stub_response(200, voices_payload())
+
+      assert {:ok, voices} =
+               OpenRouterClient.fetch_voices("sk-x", base_url: "https://api.mistral.ai/v1")
+
+      assert [
+               %{
+                 slug: "en_paul_neutral",
+                 name: "Paul - Neutral",
+                 language: "en_us",
+                 gender: "male"
+               },
+               %{
+                 slug: "gb_jane_sarcasm",
+                 name: "Jane - Sarcasm",
+                 language: "en_gb",
+                 gender: "female"
+               }
+             ] = voices
+    end
+
+    test "drops items without a slug" do
+      stub_response(200, %{"items" => [%{"name" => "no slug"}, %{"slug" => "ok"}]})
+      assert {:ok, [%{slug: "ok"}]} = OpenRouterClient.fetch_voices("sk-x")
+    end
+
+    test "200 without items key returns :invalid_response_format" do
+      stub_response(200, %{"foo" => "bar"})
+      assert {:error, :invalid_response_format} = OpenRouterClient.fetch_voices("sk-x")
+    end
+
+    test "200 with non-JSON body returns :invalid_json_response" do
+      stub_raw(200, "<html>")
+      assert {:error, :invalid_json_response} = OpenRouterClient.fetch_voices("sk-x")
+    end
+
+    test "401 returns :invalid_api_key" do
+      stub_response(401, %{})
+      assert {:error, :invalid_api_key} = OpenRouterClient.fetch_voices("sk-x")
+    end
+
+    test "404 (provider has no voices endpoint) returns {:api_error, 404}" do
+      stub_response(404, %{})
+      assert {:error, {:api_error, 404}} = OpenRouterClient.fetch_voices("sk-x")
+    end
+
+    test "transport error returns {:connection_error, reason}" do
+      stub_transport_error(:nxdomain)
+      assert {:error, {:connection_error, :nxdomain}} = OpenRouterClient.fetch_voices("sk-x")
+    end
+  end
+
   describe "humanize_provider / extract_provider / extract_model_name" do
     test "humanize_provider — covers explicit clauses + dash-split fallback" do
       assert OpenRouterClient.humanize_provider("openai") == "OpenAI"

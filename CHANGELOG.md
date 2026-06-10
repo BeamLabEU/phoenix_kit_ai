@@ -1,3 +1,12 @@
+## 0.8.0 - 2026-06-10
+
+### Added
+- **Voice picker for TTS endpoints.** When a TTS endpoint's provider exposes a voice catalogue, the endpoint form's "Default Voice" field becomes a two-level **speaker → mood** picker (Mistral Studio style) instead of a free-text box — pick a speaker (grouped/labelled by language), then its mood; the resolved voice slug is what's stored:
+  - `PhoenixKitAI.OpenRouterClient.fetch_voices/2` — fetches `GET /audio/voices` (Mistral-specific; ~30 presets in a single `limit=100` page) and returns a normalized `[%{slug, name, language, gender, tags}]`. The `slug` (e.g. `en_paul_neutral`) is what `/audio/speech` accepts as `voice`, so it stores/sends straight through `speak/3`.
+  - The picker fetches inline after the model fetch (reusing the validated key + base_url), only for the TTS type. Providers without a voices endpoint (e.g. OpenRouter) return non-200 and the form falls back to the free-text field — kept provider-neutral.
+  - Required-voice hint: when the voice picker is shown (Mistral) and no voice is selected, the form warns that a voice is required — Mistral's `/audio/speech` returns `400` without a `voice`/`ref_audio`.
+  - The endpoint's stored default voice is sent on the provider's documented field: `voice_id` for Mistral (matches its OpenAPI schema; the voices catalogue is Mistral-specific so a stored voice is always a Mistral slug), `voice` for everything else (OpenRouter / OSS vLLM presets). An explicit caller-supplied `:voice`/`:voice_id` is never overridden.
+
 ## 0.7.0 - 2026-06-10
 
 ### Added

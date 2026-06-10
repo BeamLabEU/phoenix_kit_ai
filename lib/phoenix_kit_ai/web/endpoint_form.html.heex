@@ -238,24 +238,84 @@
               </p>
             </div>
 
-            <%!-- Default voice — TTS only. Stored in provider_settings
-                 and used by speak/3 when the caller passes no voice. --%>
+            <%!-- Default voice — TTS only. Stored in provider_settings and
+                 used by speak/3 when the caller passes no voice. When the
+                 provider exposes a voice catalogue (Mistral /audio/voices,
+                 fetched into @voices) we render a picker; otherwise we fall
+                 back to a free-text field (e.g. OpenRouter preset names). --%>
             <div :if={@model_type == :tts} class="form-control mt-4">
-              <.input
-                type="text"
-                name="endpoint[provider_settings][voice]"
-                label={gettext("Default Voice")}
-                value={
-                  get_in(@form.params, ["provider_settings", "voice"]) ||
-                    (@endpoint && get_in(@endpoint.provider_settings || %{}, ["voice"])) || ""
-                }
-                placeholder={gettext("e.g. casual_male")}
-              />
-              <p class="label-text-alt text-base-content/50 mt-1">
-                {gettext(
-                  "Optional provider-specific voice id. Used when speak/3 is called without an explicit voice."
-                )}
-              </p>
+              <% current_voice =
+                get_in(@form.params, ["provider_settings", "voice"]) ||
+                  (@endpoint && get_in(@endpoint.provider_settings || %{}, ["voice"])) || "" %>
+              <label class="label">
+                <span class="label-text font-medium">{gettext("Default Voice")}</span>
+              </label>
+              <%= if @voices != [] do %>
+                <%!-- Two-level picker (Mistral Studio style): choose a
+                     speaker, then a mood. Each "name" is "Speaker - Mood";
+                     the resolved slug is what gets submitted/stored. The
+                     speaker <select> drives @selected_speaker via its own
+                     phx-change; the mood <select> is the endpoint field. --%>
+                <% speakers = PhoenixKitAI.Web.EndpointForm.voice_speakers(@voices) %>
+                <% selected_speaker_key =
+                  @selected_speaker ||
+                    PhoenixKitAI.Web.EndpointForm.speaker_for_voice(speakers, current_voice) ||
+                    (List.first(speakers) && List.first(speakers).key) %>
+                <% active_speaker = Enum.find(speakers, &(&1.key == selected_speaker_key)) %>
+                <div class="flex flex-wrap items-end gap-3">
+                  <div>
+                    <label class="label py-1">
+                      <span class="label-text text-sm">{gettext("Speaker")}</span>
+                    </label>
+                    <select
+                      name="voice_speaker"
+                      phx-change="select_voice_speaker"
+                      class="select select-bordered"
+                    >
+                      <%= for sp <- speakers do %>
+                        <option value={sp.key} selected={sp.key == selected_speaker_key}>
+                          {sp.label}
+                        </option>
+                      <% end %>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="label py-1">
+                      <span class="label-text text-sm">{gettext("Mood")}</span>
+                    </label>
+                    <select name="endpoint[provider_settings][voice]" class="select select-bordered">
+                      <option value="" selected={current_voice == ""}>{gettext("— Select —")}</option>
+                      <%= for voice <- (active_speaker && active_speaker.voices) || [] do %>
+                        <option value={voice.slug} selected={current_voice == voice.slug}>
+                          {voice.mood}
+                        </option>
+                      <% end %>
+                    </select>
+                  </div>
+                </div>
+                <%!-- Mistral requires a voice (or ref_audio) — /audio/speech
+                     returns 400 without one. The picker only renders for
+                     Mistral, so this required-hint is scoped correctly. --%>
+                <p :if={current_voice == ""} class="label-text-alt text-warning mt-1">
+                  {gettext("Pick a mood — this provider can't generate speech without a voice.")}
+                </p>
+                <p :if={current_voice != ""} class="label-text-alt text-base-content/50 mt-1">
+                  {gettext("Used when speak/3 is called without an explicit voice.")}
+                </p>
+              <% else %>
+                <input
+                  type="text"
+                  name="endpoint[provider_settings][voice]"
+                  value={current_voice}
+                  class="input input-bordered w-full max-w-md"
+                  placeholder={gettext("e.g. casual_male")}
+                />
+                <p class="label-text-alt text-base-content/50 mt-1">
+                  {gettext(
+                    "Optional provider-specific voice id. Used when speak/3 is called without an explicit voice."
+                  )}
+                </p>
+              <% end %>
             </div>
 
             <div class="form-control mt-4">
