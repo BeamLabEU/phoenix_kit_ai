@@ -147,7 +147,7 @@ defmodule PhoenixKitAI.OpenRouterClient do
   Fetches models and groups them by provider.
 
   ## Options
-  - `:model_type` - Filter by model type: `:text`, `:vision`, `:image_gen`, `:all` (default: `:text`)
+  - `:model_type` - Filter by model type: `:text`, `:vision`, `:image_gen`, `:tts`, `:all` (default: `:text`)
 
   Returns a map where keys are provider names and values are lists of models.
   """
@@ -170,9 +170,10 @@ defmodule PhoenixKitAI.OpenRouterClient do
   Fetches models by type and groups them by provider.
 
   ## Model Types
-  - `:text` - Text/chat completion models (text->text)
+  - `:text` - Text/chat completion models (text->text), excluding TTS
   - `:vision` - Vision/multimodal models (text+image->text)
   - `:image_gen` - Image generation models (text+image->text+image)
+  - `:tts` - Text-to-speech models (matched by `tts` in the id/name)
   - `:all` - All models without filtering
 
   ## Examples
@@ -180,7 +181,7 @@ defmodule PhoenixKitAI.OpenRouterClient do
       {:ok, grouped} = fetch_models_by_type(api_key, :vision)
   """
   def fetch_models_by_type(api_key, model_type, opts \\ [])
-      when model_type in [:text, :vision, :image_gen, :all] do
+      when model_type in [:text, :vision, :image_gen, :tts, :all] do
     opts = Keyword.put(opts, :model_type, model_type)
     fetch_models_grouped(api_key, opts)
   end
@@ -737,17 +738,21 @@ defmodule PhoenixKitAI.OpenRouterClient do
   defp model_matches_type?(_model, :all), do: true
 
   defp model_matches_type?(model, :text) do
-    case get_modality(model) do
-      # OpenRouter: explicit "text->text" modality
-      "text->text" -> true
-      # No modality field at all (Mistral, DeepSeek — OpenAI-compatible
-      # /models endpoints don't return architecture metadata). Treat as
-      # text by default since callers asking for `:text` against an
-      # endpoint that doesn't expose modality just want "show all the
-      # chat models the API listed".
-      "" -> true
-      _ -> false
-    end
+    # A TTS model would otherwise slip into the chat list — Mistral's
+    # Voxtral TTS models carry no modality and would match the "" branch
+    # below — so exclude them explicitly to keep the chat picker clean.
+    not tts_model?(model) and
+      case get_modality(model) do
+        # OpenRouter: explicit "text->text" modality
+        "text->text" -> true
+        # No modality field at all (Mistral, DeepSeek — OpenAI-compatible
+        # /models endpoints don't return architecture metadata). Treat as
+        # text by default since callers asking for `:text` against an
+        # endpoint that doesn't expose modality just want "show all the
+        # chat models the API listed".
+        "" -> true
+        _ -> false
+      end
   end
 
   defp model_matches_type?(model, :vision) do
@@ -758,6 +763,21 @@ defmodule PhoenixKitAI.OpenRouterClient do
     modality = get_modality(model)
     # Include both pure text-to-image and multimodal image generation
     modality == "text->text+image" or modality == "text+image->text+image"
+  end
+
+  # Neither Mistral's nor OpenRouter's `/models` exposes a reliable
+  # audio/TTS modality flag, so classify by the model id/name instead:
+  # Mistral's TTS models are `voxtral-*-tts-*`, and the convention of
+  # putting "tts" in the identifier is consistent across providers.
+  # (Speech-to-text / transcription models — `*-transcribe-*` — are NOT
+  # matched here; they have no dedicated type yet and stay out of the
+  # TTS picker.)
+  defp model_matches_type?(model, :tts), do: tts_model?(model)
+
+  defp tts_model?(model) do
+    "#{model["id"]} #{model["name"]}"
+    |> String.downcase()
+    |> String.contains?("tts")
   end
 
   defp get_modality(model) do

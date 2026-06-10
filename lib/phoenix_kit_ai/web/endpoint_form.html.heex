@@ -211,6 +211,53 @@
                     drift-warning row.
 
                  3. **No model selected** — friendly empty state. --%>
+
+            <%!-- Model-type filter. Drives which `model_type` the model
+                 fetch uses (Chat vs Text-to-Speech). Has its own
+                 phx-change so it doesn't ride the form's "validate". --%>
+            <div class="form-control mt-4">
+              <label class="label">
+                <span class="label-text font-medium">{gettext("Model Type")}</span>
+              </label>
+              <select
+                name="model_type"
+                phx-change="select_model_type"
+                class="select select-bordered w-full max-w-xs"
+              >
+                <option value="text" selected={@model_type == :text}>
+                  {gettext("Chat / Completion")}
+                </option>
+                <option value="tts" selected={@model_type == :tts}>
+                  {gettext("Text-to-Speech")}
+                </option>
+              </select>
+              <p class="label-text-alt text-base-content/50 mt-1">
+                {gettext(
+                  "Filters the model list below. Text-to-Speech endpoints are called via PhoenixKitAI.speak/3."
+                )}
+              </p>
+            </div>
+
+            <%!-- Default voice — TTS only. Stored in provider_settings
+                 and used by speak/3 when the caller passes no voice. --%>
+            <div :if={@model_type == :tts} class="form-control mt-4">
+              <.input
+                type="text"
+                name="endpoint[provider_settings][voice]"
+                label={gettext("Default Voice")}
+                value={
+                  get_in(@form.params, ["provider_settings", "voice"]) ||
+                    (@endpoint && get_in(@endpoint.provider_settings || %{}, ["voice"])) || ""
+                }
+                placeholder={gettext("e.g. casual_male")}
+              />
+              <p class="label-text-alt text-base-content/50 mt-1">
+                {gettext(
+                  "Optional provider-specific voice id. Used when speak/3 is called without an explicit voice."
+                )}
+              </p>
+            </div>
+
             <div class="form-control mt-4">
               <label class="label">
                 <span class="label-text font-medium">{gettext("Current Model")} *</span>

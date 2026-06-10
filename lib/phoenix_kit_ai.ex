@@ -2472,9 +2472,12 @@ defmodule PhoenixKitAI do
       # Allow manual override of source, but all debug info is always captured
       source = Keyword.get(opts, :source) || auto_source
 
-      # No endpoint-default merging: TTS has no temperature/dimensions
-      # analog. If a per-endpoint default voice is stored later (in
-      # provider_settings), merge it into opts here.
+      # Fall back to the endpoint's default voice (stored in
+      # provider_settings by the endpoint form) when the caller didn't
+      # pass one. TTS has no temperature/dimensions analog, so this is
+      # the only endpoint-default merge.
+      opts = maybe_put_default_voice(endpoint, opts)
+
       case Completion.text_to_speech(endpoint, text, opts) do
         {:ok, result} ->
           log_tts_request(endpoint, text, result, source, stacktrace, caller_context)
@@ -2907,6 +2910,24 @@ defmodule PhoenixKitAI do
       status: "success",
       metadata: maybe_add_content(base_metadata, :input, capture_content, fn -> text end)
     })
+  end
+
+  # When the caller passed neither :voice nor :voice_id, fall back to a
+  # per-endpoint default voice persisted in provider_settings["voice"].
+  # An explicit caller value always wins, and a blank/absent default is
+  # a no-op (Completion sends no voice field at all in that case).
+  defp maybe_put_default_voice(endpoint, opts) do
+    if Keyword.has_key?(opts, :voice) or Keyword.has_key?(opts, :voice_id) do
+      opts
+    else
+      case endpoint.provider_settings || %{} do
+        %{"voice" => voice} when is_binary(voice) and voice != "" ->
+          Keyword.put(opts, :voice, voice)
+
+        _ ->
+          opts
+      end
+    end
   end
 
   defp log_failed_tts_request(endpoint, text, reason, source, stacktrace, caller_context) do

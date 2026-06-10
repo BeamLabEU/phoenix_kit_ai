@@ -154,6 +154,36 @@ defmodule PhoenixKitAI.OpenRouterClientCoverageTest do
       assert ids == ["img1", "img2"]
     end
 
+    test ":tts filter accepts models with `tts` in the id/name" do
+      stub_response(200, %{
+        "data" => [
+          # Mistral hosted shape: no modality, identified by id.
+          %{"id" => "voxtral-mini-tts-2603"},
+          # OpenRouter shape: tts model with a modality that isn't text->text.
+          %{"id" => "mistralai/Voxtral-4B-TTS", "name" => "Voxtral 4B TTS"},
+          %{"id" => "anthropic/claude-3-haiku", "architecture" => %{"modality" => "text->text"}}
+        ]
+      })
+
+      {:ok, models} = OpenRouterClient.fetch_models("sk-x", model_type: :tts)
+      ids = Enum.map(models, & &1.id) |> Enum.sort()
+      assert ids == ["mistralai/Voxtral-4B-TTS", "voxtral-mini-tts-2603"]
+    end
+
+    test ":text filter excludes TTS models even when they carry no modality" do
+      # A no-modality model normally matches :text (Mistral chat models),
+      # but a TTS model must not leak into the chat picker.
+      stub_response(200, %{
+        "data" => [
+          %{"id" => "mistral-large-latest"},
+          %{"id" => "voxtral-mini-tts-2603"}
+        ]
+      })
+
+      {:ok, models} = OpenRouterClient.fetch_models("sk-x", model_type: :text)
+      assert Enum.map(models, & &1.id) == ["mistral-large-latest"]
+    end
+
     test "200 with non-list data returns :invalid_response_format" do
       stub_response(200, %{"data" => "weird"})
       assert {:error, :invalid_response_format} = OpenRouterClient.fetch_models("sk-x")

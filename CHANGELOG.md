@@ -1,3 +1,11 @@
+## 0.6.0 - 2026-06-10
+
+### Added
+- **Model-type selector on the endpoint form** (Chat / Text-to-Speech). Picking a type filters the fetched model list so TTS models no longer sit undifferentiated in the chat dropdown:
+  - New `:tts` model type in `PhoenixKitAI.OpenRouterClient` (`fetch_models_by_type/3`, `model_matches_type?/2`). Since neither Mistral nor OpenRouter expose an audio modality flag, TTS models are matched by `tts` in the model id/name (e.g. `voxtral-mini-tts-2603`); the `:text`/Chat filter now excludes them so the chat picker stays clean. Speech-to-text/transcription models are intentionally not matched (no dedicated type yet).
+  - The form re-runs its existing fetch with the selected `model_type`; editing an endpoint infers the type from its saved model id (TTS endpoints open on the TTS filter).
+- **Per-endpoint default TTS voice.** A "Default Voice" field (shown only for the TTS type) is stored in `provider_settings["voice"]`; `PhoenixKitAI.speak/3` falls back to it when the caller passes no `:voice`/`:voice_id`. No migration — `provider_settings` is already a map.
+
 ## 0.5.0 - 2026-06-10
 
 ### Added

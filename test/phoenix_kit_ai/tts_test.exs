@@ -224,6 +224,39 @@ defmodule PhoenixKitAI.TTSTest do
     end
   end
 
+  describe "PhoenixKitAI.speak/3 — default voice from provider_settings" do
+    test "falls back to the endpoint's stored voice when caller passes none" do
+      Req.Test.stub(__MODULE__, fn conn ->
+        {:ok, raw, conn} = Plug.Conn.read_body(conn)
+        assert %{"voice" => "stored_voice"} = Jason.decode!(raw)
+
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(200, Jason.encode!(%{"audio_data" => Base.encode64(@audio_bytes)}))
+      end)
+
+      ep = endpoint_fixture(%{provider_settings: %{"voice" => "stored_voice"}})
+
+      assert {:ok, %{audio: @audio_bytes}} = PhoenixKitAI.speak(ep.uuid, "Bonjour")
+    end
+
+    test "an explicit caller voice overrides the stored default" do
+      Req.Test.stub(__MODULE__, fn conn ->
+        {:ok, raw, conn} = Plug.Conn.read_body(conn)
+        body = Jason.decode!(raw)
+        assert body["voice"] == "caller_voice"
+
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(200, Jason.encode!(%{"audio_data" => Base.encode64(@audio_bytes)}))
+      end)
+
+      ep = endpoint_fixture(%{provider_settings: %{"voice" => "stored_voice"}})
+
+      assert {:ok, _} = PhoenixKitAI.speak(ep.uuid, "Bonjour", voice: "caller_voice")
+    end
+  end
+
   describe "Completion.text_to_speech/3 — request body" do
     test "sends model, input, response_format and only the present voice field" do
       Req.Test.stub(__MODULE__, fn conn ->

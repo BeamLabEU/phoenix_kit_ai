@@ -267,6 +267,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
       |> assign(:selected_model, nil)
       |> assign(:selected_provider, nil)
       |> assign(:provider_models, [])
+      |> assign(:model_type, :text)
       |> assign(:endpoint, nil)
       |> assign(:active_connection, nil)
       |> assign(:selected_uuids, [])
@@ -316,6 +317,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
         |> assign(:selected_uuids, selected_uuids)
         |> assign(:integration_connected, connected)
         |> assign(:current_provider, endpoint.provider)
+        |> assign(:model_type, model_type_for(endpoint.model))
         |> maybe_fetch_models_on_load(connected)
     end
   end
@@ -640,11 +642,39 @@ defmodule PhoenixKitAI.Web.EndpointForm do
   end
 
   @impl true
+  def handle_event("select_model_type", %{"model_type" => type}, socket) do
+    # Switching the type re-runs the same fetch flow with a different
+    # `model_type` filter. The model picker is the only thing that
+    # changes shape, so clear the current model/provider selection (a
+    # chat model isn't valid under the TTS filter and vice-versa) and
+    # let the post-fetch block re-derive them from the filtered list.
+    socket =
+      socket
+      |> assign(:model_type, parse_model_type(type))
+      |> assign(:selected_model, nil)
+      |> assign(:selected_provider, nil)
+      |> assign(:provider_models, [])
+      |> assign(:models, [])
+      |> assign(:models_grouped, [])
+
+    if socket.assigns[:integration_connected] do
+      send(self(), :fetch_models_from_integration)
+      {:noreply, start_model_fetch_indicators(socket)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
   def handle_event("save", %{"endpoint" => params}, socket) do
     # Merge provider_settings from nested params
     provider_settings = %{
       "http_referer" => get_in(params, ["provider_settings", "http_referer"]) || "",
-      "x_title" => get_in(params, ["provider_settings", "x_title"]) || ""
+      "x_title" => get_in(params, ["provider_settings", "x_title"]) || "",
+      # Per-endpoint default TTS voice (used by PhoenixKitAI.speak/3 when
+      # the caller passes no voice). Only the TTS type renders this input,
+      # so for other types it submits as "" — a harmless no-op.
+      "voice" => get_in(params, ["provider_settings", "voice"]) || ""
     }
 
     params = Map.put(params, "provider_settings", provider_settings)
@@ -1138,7 +1168,8 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     fallback_provider = socket.assigns[:current_provider]
 
     fetch_opts = [
-      model_type: :all,
+      # Always assigned in mount (defaults to :text), so no fallback needed.
+      model_type: socket.assigns.model_type,
       base_url: base_url,
       fallback_provider: fallback_provider
     ]
@@ -1224,6 +1255,20 @@ defmodule PhoenixKitAI.Web.EndpointForm do
   defp find_model(models, model_id) do
     Enum.find(models, fn m -> m.id == model_id end)
   end
+
+  # The model-type picker drives which `model_type` filter the fetch
+  # uses. Only Chat and TTS are wired today (embedding/image come from
+  # other sources); anything unrecognised falls back to chat.
+  defp parse_model_type("tts"), do: :tts
+  defp parse_model_type(_), do: :text
+
+  # Infer an existing endpoint's type from its saved model id so editing
+  # a TTS endpoint opens on the TTS filter (and shows the voice field).
+  defp model_type_for(model) when is_binary(model) do
+    if String.contains?(String.downcase(model), "tts"), do: :tts, else: :text
+  end
+
+  defp model_type_for(_), do: :text
 
   # Sets the loading indicator and schedules a 10s "still loading"
   # timer. The timer ref is stashed on the socket so the completion
