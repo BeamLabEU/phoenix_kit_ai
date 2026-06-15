@@ -75,12 +75,17 @@ defmodule PhoenixKitAI.Endpoint do
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias PhoenixKit.Integrations.Providers
   alias PhoenixKit.Utils.Date, as: UtilsDate
 
   @type t :: %__MODULE__{}
 
   @primary_key {:uuid, UUIDv7, autogenerate: true}
-  @valid_providers ~w(openrouter mistral deepseek)
+
+  # Providers are discovered from the Integrations registry by capability,
+  # not hardcoded: any provider declaring this capability (built-in or
+  # contributed by an external module) is a valid AI endpoint provider.
+  @ai_capability :ai_completions
 
   @derive {Jason.Encoder,
            only: [
@@ -263,34 +268,43 @@ defmodule PhoenixKitAI.Endpoint do
   end
 
   @doc """
-  Returns the list of valid provider types.
+  Returns the list of valid provider keys.
+
+  Discovered from the Integrations registry — every provider declaring the
+  `:ai_completions` capability (built-in, or contributed by an external
+  module via `integration_providers/0`). Adding a chat provider to the
+  registry makes it valid here automatically; nothing is hardcoded.
   """
   @spec valid_providers() :: [String.t()]
-  def valid_providers, do: @valid_providers
-
-  @doc """
-  Returns provider options for form selects.
-  """
-  @spec provider_options() :: [{String.t(), String.t()}]
-  def provider_options do
-    [
-      {"OpenRouter", "openrouter"},
-      {"Mistral", "mistral"},
-      {"DeepSeek", "deepseek"}
-    ]
+  def valid_providers do
+    Enum.map(Providers.with_capability(@ai_capability), & &1.key)
   end
 
   @doc """
-  Returns the default base URL for a provider.
+  Returns provider options (`{label, key}`) for form selects.
 
-  All three current providers expose an OpenAI-compatible chat
-  completions endpoint at `<base>/chat/completions`, so the same
-  Completion HTTP layer works for them.
+  Built from the same capability-discovered list as `valid_providers/0`;
+  labels come from each provider's registry name.
+  """
+  @spec provider_options() :: [{String.t(), String.t()}]
+  def provider_options do
+    Enum.map(Providers.with_capability(@ai_capability), fn provider ->
+      {provider.name, provider.key}
+    end)
+  end
+
+  @doc """
+  Returns the default base URL for a provider, read from the Integrations
+  registry (`PhoenixKit.Integrations.Providers.base_url/1`).
+
+  All `:ai_completions` providers expose an OpenAI-compatible chat
+  completions endpoint at `<base>/chat/completions`, so the same Completion
+  HTTP layer works for them. Returns `nil` when the registry has no base URL
+  for the key (e.g. a legacy integration-uuid provider value) — the operator
+  can still set `base_url` manually on the endpoint.
   """
   @spec default_base_url(String.t()) :: String.t() | nil
-  def default_base_url("openrouter"), do: "https://openrouter.ai/api/v1"
-  def default_base_url("mistral"), do: "https://api.mistral.ai/v1"
-  def default_base_url("deepseek"), do: "https://api.deepseek.com/v1"
+  def default_base_url(provider) when is_binary(provider), do: Providers.base_url(provider)
   def default_base_url(_), do: nil
 
   @doc """
@@ -321,21 +335,23 @@ defmodule PhoenixKitAI.Endpoint do
   def masked_api_key(_), do: "Not set"
 
   @doc """
-  Returns a display label for the provider.
+  Returns a display label for the provider, read from the Integrations
+  registry (the provider's `name`).
 
-  Brand names stay un-translated by design — `"OpenRouter"`,
-  `"Mistral"`, `"DeepSeek"` are product trademarks, not user-facing
-  prose. Translating them would produce `"OpenRouter Соединение"` /
-  `"OpenRouter Verbindung"` style mixed strings that read worse
-  than the bilingual label they replace. The surrounding word
-  (`"Connection"` in the form's section header) IS gettext-wrapped
-  separately so the operator's locale picks up the localised
-  connector word; the brand stays the brand.
+  Unknown providers — e.g. a legacy integration uuid stored in the column —
+  fall back to the raw string. Brand names stay effectively un-translated:
+  registry names are gettext strings, but product trademarks like
+  `"OpenRouter"` / `"Mistral"` have no translations, so gettext returns them
+  verbatim rather than producing mixed `"OpenRouter Соединение"` strings.
   """
   @spec provider_label(String.t()) :: String.t()
-  def provider_label("openrouter"), do: "OpenRouter"
-  def provider_label("mistral"), do: "Mistral"
-  def provider_label("deepseek"), do: "DeepSeek"
+  def provider_label(provider) when is_binary(provider) do
+    case Providers.get(provider) do
+      %{name: name} -> name
+      _ -> provider
+    end
+  end
+
   def provider_label(provider), do: provider
 
   @doc """

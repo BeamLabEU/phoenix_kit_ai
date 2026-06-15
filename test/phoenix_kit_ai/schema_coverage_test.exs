@@ -10,25 +10,33 @@ defmodule PhoenixKitAI.SchemaCoverageTest do
   alias PhoenixKitAI.{Endpoint, Prompt, Request}
 
   describe "Endpoint helpers" do
-    test "valid_providers/0" do
-      assert is_list(Endpoint.valid_providers())
-      assert "openrouter" in Endpoint.valid_providers()
+    # Providers are discovered from the Integrations registry by the
+    # `:ai_completions` capability, not a hardcoded list — so OpenAI (added
+    # to core 1.7.155) is expected to appear alongside the original three.
+    test "valid_providers/0 is discovered from the registry" do
+      providers = Endpoint.valid_providers()
+      assert is_list(providers)
+      assert "openrouter" in providers
+      assert "openai" in providers
     end
 
     test "provider_options/0" do
       opts = Endpoint.provider_options()
       assert is_list(opts)
+      assert {"OpenAI", "openai"} in opts
       assert {"OpenRouter", "openrouter"} in opts
       assert {"Mistral", "mistral"} in opts
       assert {"DeepSeek", "deepseek"} in opts
     end
 
     test "default_base_url/1 — known + unknown provider" do
+      assert Endpoint.default_base_url("openai") == "https://api.openai.com/v1"
       assert Endpoint.default_base_url("openrouter") == "https://openrouter.ai/api/v1"
       assert Endpoint.default_base_url("unknown") == nil
     end
 
     test "provider_label/1 — known + fallback" do
+      assert Endpoint.provider_label("openai") == "OpenAI"
       assert Endpoint.provider_label("openrouter") == "OpenRouter"
       assert Endpoint.provider_label("custom") == "custom"
     end

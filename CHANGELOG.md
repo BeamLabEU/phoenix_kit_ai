@@ -1,3 +1,12 @@
+## 0.9.0 - 2026-06-15
+
+### Changed
+- **Provider list is now discovered dynamically from the Integrations registry** instead of a hardcoded `~w(openrouter mistral deepseek)` whitelist. `Endpoint.valid_providers/0` and `Endpoint.provider_options/0` are built from `PhoenixKit.Integrations.Providers.with_capability(:ai_completions)`, and `Endpoint.default_base_url/1` / `Endpoint.provider_label/1` read each provider's `base_url` / `name` from the registry. Any provider that declares the `:ai_completions` capability — built-in (OpenAI, OpenRouter, Mistral, DeepSeek) or contributed by an external module via `integration_providers/0` — now appears in the AI Endpoint provider picker automatically, with no code change here. In particular, **OpenAI endpoints are now configurable** out of the box.
+- Requires **`phoenix_kit ~> 1.7.155`** (adds `Providers.with_capability/1` and `Providers.base_url/1`).
+
+### Fixed
+- **Version sync.** `version/0` (and its compliance test) were stranded at `0.1.5` while `mix.exs` had moved to `0.8.0`; all three version sources are realigned to `0.9.0` per the AGENTS.md release checklist.
+
 ## 0.8.0 - 2026-06-10
 
 ### Added
