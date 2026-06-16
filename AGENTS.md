@@ -4,9 +4,9 @@ This file provides guidance to AI agents when working with code in this reposito
 
 ## Project Overview
 
-PhoenixKit AI module — provides AI endpoint management, prompt templates, completions, and usage tracking via three OpenAI-compatible providers (OpenRouter, Mistral, DeepSeek). Implements the `PhoenixKit.Module` behaviour for auto-discovery by a parent Phoenix application.
+PhoenixKit AI module — provides AI endpoint management, prompt templates, chat completions, text-to-speech, embeddings, and usage tracking via OpenAI-compatible providers discovered from the `PhoenixKit.Integrations` registry. Implements the `PhoenixKit.Module` behaviour for auto-discovery by a parent Phoenix application.
 
-The provider list lives in `Endpoint.provider_options/0` (form dropdown), `Endpoint.default_base_url/1` (per-provider URL defaults), and `Endpoint.@valid_providers` (changeset's `validate_inclusion`). Adding a fourth provider is a 4-line edit + a core providers.ex entry. See "Multi-provider support" below for the current shape.
+Valid providers, their display labels, and default base URLs are all read from the Integrations registry at runtime (`PhoenixKit.Integrations.Providers.with_capability(:ai_completions)`). Any provider declaring that capability — built-in or contributed by an external module — appears in the endpoint form automatically. Adding a new AI provider is a single entry in the core providers registry; no hardcoded whitelist remains in this module. See "Multi-provider support" below.
 
 ## What This Module Does NOT Have (by design)
 
@@ -16,7 +16,7 @@ The omissions below are deliberate so consumers and future contributors don't ex
 - **No per-completion activity logging** — `PhoenixKit.Activity.log/1` is invoked only on endpoint/prompt CRUD + enable/disable toggles. Per-request usage already lives in `phoenix_kit_ai_requests` with token/cost/latency columns; mirroring it into `phoenix_kit_activities` would double-write the same audit trail.
 - **No forced data migration for legacy `endpoint.api_key`** — `OpenRouterClient.resolve_api_key/1` keeps pre-Integrations endpoints working via a 3-tier fallback chain (`integration_uuid` → legacy `provider` string → raw `api_key` column) with a per-call `Logger.warning` only when it actually falls all the way through to the column. Operators can migrate at their own pace through the UI (an explicit save with an integration picked atomically clears the legacy column), OR opt in to the orchestrated migrators by calling `PhoenixKit.ModuleRegistry.run_all_legacy_migrations/0` from `Application.start/2`. The orchestrator invokes `migrate_legacy/0` on every registered module — for AI that runs both the api_key→Integration credentials migration (atomic clear of the legacy column on success) AND the provider-string→integration_uuid reference sweep, with activity-log emissions per migrated record. See "Migrating from legacy `endpoint.api_key`" below.
 - **No public HTTP / API surface** — AI is admin-only. No JSON endpoints, no webhook receivers, no socket forwards. Consumers wire AI completions into their own host code via the `PhoenixKitAI` context module.
-- **No background jobs (Oban)** — completions run synchronously from the calling LiveView (`Playground.handle_info(:do_send, …)`) so the user sees the response inline. Long-running batch generation belongs in the consumer app, not here.
+- **No background jobs for completions (Oban)** — chat/TTS/embed completions run synchronously from the calling process / LiveView so the caller sees the response inline. Long-running batch generation belongs in the consumer app, not here. The module *does* use Oban for the AI-translation pipeline (`PhoenixKitAI.TranslateWorker`).
 - **No streaming responses** — `Completion` returns the full `{:ok, response}` shape; OpenRouter's SSE streaming endpoint isn't surfaced. The Playground UI is request/response, not chat-stream.
 - **No Errors-module truncation helper** — error messages from the OpenRouter API come back as short JSON strings, so `Errors.message/1` doesn't include a `truncate_for_log/2` style cap. The few Logger calls that take API response bodies (`completion.ex`, `openrouter_client.ex`) format them inline; if a future provider returns multi-KB error blobs, add a truncation helper then.
 
@@ -176,7 +176,7 @@ Application env (not Settings table):
 | `config :phoenix_kit_ai, :capture_request_memory` | `false` | Opt-in `:memory` capture per request. Keep off unless actively debugging memory issues; every request otherwise carries the memory snapshot in its JSONB metadata. |
 | `config :phoenix_kit_ai, :allow_internal_endpoint_urls` | `false` | Bypass the SSRF guard on `Endpoint.base_url` (which rejects loopback / RFC1918 / link-local / `*.local` / non-http(s)). Required for self-hosted Ollama / intranet inference; off in production by default. |
 | `config :phoenix_kit_ai, :embedding_models` | `[]` | User-contributed embedding models appended to the built-in list in `OpenRouterClient.fetch_embedding_models/2`. Non-list values log a warning and are ignored. |
-| `config :phoenix_kit_ai, :req_options` | `[]` | Optional `Req` opts appended to every HTTP call site (`OpenRouterClient.http_get/2`, `Completion.http_post/3`). Used by tests to route HTTP through `Req.Test` plug stubs (`plug: {Req.Test, MyStub}`); production default is `[]`, behaviour unchanged. |
+| `config :phoenix_kit_ai, :req_options` | `[]` | Optional `Req` opts appended to every HTTP call site (`OpenRouterClient.http_get/2`, `Completion.http_post/3`, `Completion.text_to_speech/3`). Used by tests to route HTTP through `Req.Test` plug stubs (`plug: {Req.Test, MyStub}`); production default is `[]`, behaviour unchanged. |
 
 ### File Layout
 
@@ -184,19 +184,25 @@ Application env (not Settings table):
 lib/phoenix_kit_ai.ex                    # Main module (behaviour + context)
 lib/phoenix_kit_ai/
 ├── ai_model.ex                          # Normalised OpenRouter model struct
-├── completion.ex                        # OpenRouter HTTP client
+├── completion.ex                        # OpenRouter / OpenAI-compatible HTTP client (chat, embeddings, TTS)
 ├── endpoint.ex                          # Endpoint schema
 ├── errors.ex                            # Atom → translated error string
-├── openrouter_client.ex                 # API key + model discovery
+├── openrouter_client.ex                 # API key + model + voice discovery
 ├── prompt.ex                            # Prompt template schema
 ├── request.ex                           # Request logging schema
 ├── routes.ex                            # Admin sub-routes
+├── translatable.ex                      # AI-translation adapter behaviour
+├── translatables.ex                     # Adapter discovery
+├── translation.ex                       # AI call + ---FIELD--- parser
+├── translations.ex                      # Enqueue / dedup / broadcast helpers
+├── translate_worker.ex                  # Generic Oban worker for AI translation
 └── web/
     ├── endpoint_form.ex / .heex         # Create/edit endpoint
     ├── endpoints.ex / .heex             # List + usage dashboard
     ├── playground.ex / .heex            # Live testing
     ├── prompt_form.ex / .heex           # Create/edit prompt
-    └── prompts.ex / .heex               # Prompt list
+    ├── prompts.ex / .heex               # Prompt list
+    └── components/ai_translate/*        # Shared AI-translation UI glue
 ```
 
 ## Critical Conventions
@@ -250,49 +256,56 @@ Tables owned by this module:
 
 ## Multi-provider support
 
-Three OpenAI-compatible providers wired into the endpoint form:
+AI providers are discovered at runtime from the `PhoenixKit.Integrations`
+registry. Any provider declaring the `:ai_completions` capability
+(built-in or contributed by an external module) appears in the endpoint
+form automatically:
 
-| Provider key | Default base URL | `provider_label/1` | Notes |
-|---|---|---|---|
-| `"openrouter"` | `https://openrouter.ai/api/v1` | "OpenRouter" | Aggregator; ~100 chat models with rich pricing/modality metadata. `/models` does NOT include embeddings — see curated list in `OpenRouterClient.builtin_embedding_models/0` |
-| `"mistral"` | `https://api.mistral.ai/v1` | "Mistral" | Native Mistral API. `/v1/models` returns chat AND embedding models in one list (`mistral-embed`, `codestral-embed`); operators pick the right id manually |
-| `"deepseek"` | `https://api.deepseek.com/v1` | "DeepSeek" | Native DeepSeek API. `/models` returns chat models (`deepseek-chat`, `deepseek-reasoner`). Reasoner emits chain-of-thought — see "Reasoning capture" below |
+- `Endpoint.valid_providers/0` returns the provider keys.
+- `Endpoint.provider_options/0` returns `{display_name, key}` tuples for the form dropdown.
+- `Endpoint.default_base_url/1` and `Endpoint.provider_label/1` read from the registry entry.
 
-**Provider definitions** live in core's `PhoenixKit.Integrations.Providers`
-registry (built-in: `google`, `microsoft`, `openrouter`, `mistral`,
-`deepseek`). Each entry declares its auth_type (all three AI providers
-are `:api_key`), validation URL (used by Settings → Integrations'
-"Test Connection" button), setup_fields, and instruction copy for the
-collapsible "Setup Instructions" panel.
+Built-in providers that ship with `:ai_completions` today include
+`openrouter`, `mistral`, `deepseek`, and `openai`. The registry also
+contains non-AI providers (`google`, `microsoft`, etc.) that do **not**
+appear in the AI dropdown unless they declare the capability.
 
-**Adding a fourth AI provider** requires four edits in this module
-(plus a core providers.ex entry):
+**Adding a new AI provider** requires one change: a registry entry in
+core's `PhoenixKit.Integrations.Providers` with `capabilities:
+[:ai_completions]` and a `base_url` pointing at an OpenAI-compatible API.
+No edits are required in this module. The form picker, model fetcher,
+base_url resolution, and chat/TTS completion paths are all
+provider-agnostic, provided the API exposes `<base_url>/chat/completions`
+and `<base_url>/models`.
 
-1. `Endpoint.@valid_providers ~w(openrouter mistral deepseek <new>)`
-2. `Endpoint.provider_options/0` — append `{"<Display>", "<key>"}` tuple
-3. `Endpoint.default_base_url/1` — clause returning the provider's
-   `<base>/v1` URL
-4. `Endpoint.provider_label/1` — clause returning brand name (kept
-   un-translated by design — see the doc on that function)
+### Provider-specific notes
 
-The form's picker filter, model fetcher, base_url resolution, and
-chat completion path are all already provider-agnostic. The fourth
-provider works without further code changes provided its API is
-OpenAI-compatible at `<base_url>/chat/completions` and `/models`.
+| Provider key | Default base URL | Notes |
+|---|---|---|
+| `"openrouter"` | `https://openrouter.ai/api/v1` | Aggregator; ~100 chat models with rich pricing/modality metadata. `/models` does NOT include embeddings — see curated list in `OpenRouterClient.builtin_embedding_models/0`. |
+| `"mistral"` | `https://api.mistral.ai/v1` | Native Mistral API. `/v1/models` returns chat AND embedding models in one list (`mistral-embed`, `codestral-embed`). `/audio/voices` provides the voice catalogue used by the TTS picker. |
+| `"deepseek"` | `https://api.deepseek.com/v1` | Native DeepSeek API. `/models` returns chat models (`deepseek-chat`, `deepseek-reasoner`). Reasoner emits chain-of-thought — see "Reasoning capture" below. |
+| `"openai"` | `https://api.openai.com/v1` | Native OpenAI API; configured out of the box once the registry entry is present. |
+
+The changeset does **not** enforce `validate_inclusion(:provider, …)`.
+`provider` is a legacy column that may hold integration UUIDs or
+`provider:name` strings from pre-V107 rows; strict inclusion would break
+those legacy values. The UI dropdown is the enforcement surface.
 
 ### Form picker — reflects current provider, never auto-picks
 
 The picker filters connections to whichever provider is currently
 selected on the dropdown. Switching providers (e.g. OpenRouter →
 Mistral) clears any selected integration, the model list, the
-`selected_model` assign, the `model` form param, AND empties
-`base_url` so the changeset's `maybe_set_default_base_url/1` picks up
-the new provider's default URL. Both `model` and `base_url` are
-cleared with `""` rather than `nil` because the form template's
-fallback (`@form.params["model"] || @endpoint.model`) treats `nil`
-as "no intent" and falls through to the saved value — `""` is truthy
-in Elixir, so the `||` short-circuits there and the display reflects
-the cleared state. The picker NEVER auto-selects a single available
+`selected_model` assign, the `model` form param, the stored default
+TTS voice (`provider_settings["voice"]`), AND empties `base_url` so
+the changeset's `maybe_set_default_base_url/1` picks up the new
+provider's default URL. `model`, `base_url`, and `voice` are cleared
+with `""` rather than `nil` because the form template's fallback
+(`@form.params["model"] || @endpoint.model`) treats `nil` as "no
+intent" and falls through to the saved value — `""` is truthy in
+Elixir, so the `||` short-circuits there and the display reflects the
+cleared state. The picker NEVER auto-selects a single available
 connection — even when only one exists, the operator must pick
 explicitly so the form's display matches the endpoint's actual
 stored state. See "Picker reflects state, never auto-picks" below
@@ -367,6 +380,37 @@ Subject to the same `capture_request_content?/0` privacy gate as
 `response` content — when content capture is off, reasoning is
 dropped too. Reasoning can mirror prompt content and is
 PII-equivalent.
+
+## Text-to-speech (TTS)
+
+The module exposes `PhoenixKitAI.speak/3` for synchronous speech
+synthesis through a configured endpoint. It mirrors the `embed/3`
+path: endpoint resolution, credential validation, error mapping, and
+request logging are all shared.
+
+- `Completion.text_to_speech/3` posts to `<base_url>/audio/speech` and
+  decodes both the Mistral hosted base64-JSON shape
+  (`{"audio_data": "<base64>"}`) and raw binary audio bodies
+  (OpenRouter / OSS vLLM).
+- `speak/3` returns `{:ok, %{audio: binary, format: String.t}}`.
+- The endpoint form has a "Model Type" selector (`:text` / `:tts`).
+  TTS models are matched by the substring `tts` in the model id/name
+  (a heuristic — neither OpenRouter nor Mistral expose a reliable
+  audio modality flag). Switching model types clears the selected
+  model so a chat model can't be saved against a TTS endpoint.
+- A per-endpoint default voice can be stored in
+  `provider_settings["voice"]`. `speak/3` falls back to it when the
+  caller passes no `:voice` or `:voice_id`. The request field used
+  depends on the provider: `voice_id` for Mistral, `voice` for
+  everyone else.
+- When the selected integration is Mistral, the form fetches
+  `/audio/voices` and renders a two-level speaker → mood picker. The
+  resolved voice slug is stored. Other providers fall back to a
+  free-text voice input.
+- TTS request logs use `request_type: "tts"` and record
+  `input_chars`, `audio_format`, and `audio_bytes` (no token usage —
+  billing is per-character). Input text is subject to the same
+  `capture_request_content` PII gate as chat requests.
 
 ## Pinning endpoints to a specific integration
 

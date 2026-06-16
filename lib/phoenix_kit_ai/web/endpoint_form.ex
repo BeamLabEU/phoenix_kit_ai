@@ -594,7 +594,16 @@ defmodule PhoenixKitAI.Web.EndpointForm do
 
   def handle_event("select_provider_connection", %{"uuid" => uuid}, socket) do
     # Pin the endpoint to the chosen integration row by uuid.
-    updated_params = Map.put(socket.assigns.form.params, "integration_uuid", uuid)
+    # Clear the stored default voice because a different integration
+    # (possibly a different provider) may have a wholly incompatible
+    # voice catalogue.
+    updated_params =
+      socket.assigns.form.params
+      |> Map.put("integration_uuid", uuid)
+      |> update_in(["provider_settings"], fn settings ->
+        Map.put(settings || %{}, "voice", "")
+      end)
+
     form = %{socket.assigns.form | params: updated_params}
 
     connected = Integrations.connected?(uuid)
@@ -652,8 +661,18 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     # changes shape, so clear the current model/provider selection (a
     # chat model isn't valid under the TTS filter and vice-versa) and
     # let the post-fetch block re-derive them from the filtered list.
+    #
+    # Also clear `form.params["model"]` so the hidden input and the
+    # "Current Model" panel reflect the cleared state immediately. A
+    # stale chat model id left in the form would otherwise survive save
+    # as a TTS endpoint.
+    current_params = socket.assigns.form.params || %{}
+    cleared_params = Map.put(current_params, "model", "")
+    changeset = (socket.assigns.endpoint || %Endpoint{}) |> AI.change_endpoint(cleared_params)
+
     socket =
       socket
+      |> assign(:form, to_form(changeset))
       |> assign(:model_type, parse_model_type(type))
       |> assign(:selected_model, nil)
       |> assign(:selected_provider, nil)
@@ -687,15 +706,21 @@ defmodule PhoenixKitAI.Web.EndpointForm do
 
   @impl true
   def handle_event("save", %{"endpoint" => params}, socket) do
-    # Merge provider_settings from nested params
-    provider_settings = %{
-      "http_referer" => get_in(params, ["provider_settings", "http_referer"]) || "",
-      "x_title" => get_in(params, ["provider_settings", "x_title"]) || "",
-      # Per-endpoint default TTS voice (used by PhoenixKitAI.speak/3 when
-      # the caller passes no voice). Only the TTS type renders this input,
-      # so for other types it submits as "" — a harmless no-op.
-      "voice" => get_in(params, ["provider_settings", "voice"]) || ""
-    }
+    # Merge submitted provider_settings into the endpoint's existing
+    # settings so we don't wipe keys the form doesn't render (current or
+    # future). For a brand-new endpoint the existing map is empty.
+    existing_settings =
+      (socket.assigns.endpoint && socket.assigns.endpoint.provider_settings) || %{}
+
+    provider_settings =
+      Map.merge(existing_settings, %{
+        "http_referer" => get_in(params, ["provider_settings", "http_referer"]) || "",
+        "x_title" => get_in(params, ["provider_settings", "x_title"]) || "",
+        # Per-endpoint default TTS voice (used by PhoenixKitAI.speak/3 when
+        # the caller passes no voice). Only the TTS type renders this input,
+        # so for other types it submits as "" — a harmless no-op.
+        "voice" => get_in(params, ["provider_settings", "voice"]) || ""
+      })
 
     params = Map.put(params, "provider_settings", provider_settings)
 
@@ -740,10 +765,18 @@ defmodule PhoenixKitAI.Web.EndpointForm do
       # Use "" rather than nil — the template's `params["model"] ||
       # @endpoint.model` fallback would otherwise resurface the saved
       # model (nil is falsy in Elixir, "" is truthy).
+      #
+      # Also clear the stored default TTS voice: voice slugs are
+      # provider-specific (Mistral catalogue vs OpenRouter preset names),
+      # so a Mistral voice must not be sent to OpenRouter on the next
+      # save.
+      provider_settings = Map.put(params["provider_settings"] || %{}, "voice", "")
+
       params =
         params
         |> Map.put("base_url", "")
         |> Map.put("model", "")
+        |> Map.put("provider_settings", provider_settings)
 
       socket =
         socket
@@ -755,6 +788,8 @@ defmodule PhoenixKitAI.Web.EndpointForm do
         |> assign(:selected_model, nil)
         |> assign(:selected_provider, nil)
         |> assign(:provider_models, [])
+        |> assign(:voices, [])
+        |> assign(:selected_speaker, nil)
         |> stop_model_fetch_indicators()
         |> assign(:models_error, nil)
 

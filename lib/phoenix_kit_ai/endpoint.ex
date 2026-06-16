@@ -30,6 +30,8 @@ defmodule PhoenixKitAI.Endpoint do
   - `base_url`: Optional custom base URL for the provider
   - `provider_settings`: Provider-specific settings (JSON)
     - For OpenRouter: `http_referer`, `x_title` headers
+    - For TTS: `voice` — default voice / voice id used by `PhoenixKitAI.speak/3`
+      when the caller passes no explicit voice
 
   ### Model Configuration
   - `model`: AI model identifier (e.g., "anthropic/claude-3-haiku")

@@ -9,6 +9,7 @@ defmodule PhoenixKitAI.Completion do
 
   - `/chat/completions` - Text and vision completions
   - `/embeddings` - Text embeddings
+  - `/audio/speech` - Text-to-speech synthesis
   - `/images/generations` - Image generation (planned)
 
   ## Logging conventions

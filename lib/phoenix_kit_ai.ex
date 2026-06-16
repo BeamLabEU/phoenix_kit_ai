@@ -34,6 +34,7 @@ defmodule PhoenixKitAI do
   - `ask/3` - Simple single-turn completion
   - `complete/3` - Multi-turn chat completion
   - `embed/3` - Generate embeddings
+  - `speak/3` - Synthesize speech from text
 
   ### Usage Tracking
   - `list_requests/1` - List requests with pagination/filters
@@ -2937,7 +2938,14 @@ defmodule PhoenixKitAI do
   # (e.g. "casual_male"), so every other provider stays on `voice`. An
   # explicit caller-supplied :voice / :voice_id is never overridden —
   # this only governs the endpoint's stored default.
-  defp voice_field_for(%{provider: "mistral"}), do: :voice_id
+  #
+  # The provider column may hold the bare key ("mistral") or a named
+  # connection string ("mistral:my-key") for legacy / pre-V107 rows,
+  # so match on the prefix rather than an exact string.
+  defp voice_field_for(%{provider: provider}) when is_binary(provider) do
+    if String.starts_with?(provider, "mistral"), do: :voice_id, else: :voice
+  end
+
   defp voice_field_for(_), do: :voice
 
   defp log_failed_tts_request(endpoint, text, reason, source, stacktrace, caller_context) do

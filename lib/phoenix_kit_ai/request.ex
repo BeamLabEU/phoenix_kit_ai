@@ -19,7 +19,7 @@ defmodule PhoenixKitAI.Request do
 
   ### Request Details
   - `model`: Model identifier (e.g., "anthropic/claude-3-haiku")
-  - `request_type`: Type of request (e.g., "text_completion", "chat")
+  - `request_type`: Type of request (e.g., "text_completion", "chat", "embedding", "tts")
 
   ### Token Usage
   - `input_tokens`: Number of tokens in the prompt
