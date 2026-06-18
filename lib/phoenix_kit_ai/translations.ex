@@ -35,6 +35,8 @@ defmodule PhoenixKitAI.Translations do
   import Ecto.Query
   alias PhoenixKit.PubSub.Manager, as: PubSubManager
   alias PhoenixKit.Settings
+  alias PhoenixKitAI.Endpoint
+  alias PhoenixKitAI.Request
   alias PhoenixKitAI.TranslateWorker
 
   # Job states that mean "already covered" for de-dup. Deliberately excludes
@@ -106,20 +108,82 @@ defmodule PhoenixKitAI.Translations do
     end
   end
 
-  @doc "Default endpoint UUID: the `#{@endpoint_setting_key}` setting, else the first enabled endpoint, else nil."
+  @doc """
+  Default endpoint UUID for the translation modal's pre-selection.
+
+  Resolution order:
+  1. The explicit `#{@endpoint_setting_key}` setting (an admin override), if set.
+  2. The endpoint of the most recent **successful chat request** in the AI
+     history (`phoenix_kit_ai_requests`) whose endpoint is still enabled — i.e.
+     "whatever you used last", respected even if it's a reasoning model.
+  3. With no history, a smart pick: the first enabled **non-reasoning chat**
+     endpoint (a standard model is recommended for translation — reasoning
+     models break the `---FIELD---` structured-response parser).
+  4. The first enabled endpoint, else nil.
+  """
   @spec default_endpoint_uuid() :: String.t() | nil
   def default_endpoint_uuid do
-    case blank_to_nil(Settings.get_setting(@endpoint_setting_key)) do
-      nil ->
-        case list_endpoints() do
-          [{uuid, _name} | _] -> uuid
-          [] -> nil
-        end
+    blank_to_nil(Settings.get_setting(@endpoint_setting_key)) ||
+      last_used_endpoint_uuid() ||
+      preferred_endpoint_uuid() ||
+      first_endpoint_uuid()
+  end
 
-      uuid ->
-        uuid
+  defp first_endpoint_uuid do
+    case list_endpoints() do
+      [{uuid, _name} | _] -> uuid
+      [] -> nil
     end
   end
+
+  # Endpoint of the most recent successful chat request whose endpoint is still
+  # enabled. Fails open (nil) so a missing/old AI-requests table never breaks
+  # the modal.
+  defp last_used_endpoint_uuid do
+    safe_ai(
+      fn ->
+        repo = PhoenixKit.RepoHelper.repo()
+
+        from(r in Request,
+          join: e in assoc(r, :endpoint),
+          where: r.status == "success" and r.request_type == "chat" and e.enabled == true,
+          order_by: [desc: r.inserted_at],
+          limit: 1,
+          select: r.endpoint_uuid
+        )
+        |> repo.one()
+        |> case do
+          nil -> nil
+          uuid -> uuid
+        end
+      end,
+      nil
+    )
+  end
+
+  # First enabled chat endpoint that is NOT a reasoning ("thinking") model.
+  defp preferred_endpoint_uuid do
+    safe_ai(
+      fn ->
+        if PhoenixKitAI.enabled?() do
+          {endpoints, _} = PhoenixKitAI.list_endpoints(enabled: true)
+
+          endpoints
+          |> Enum.find(fn e -> Endpoint.kind(e.model) == :chat and not reasoning_model?(e) end)
+          |> case do
+            nil -> nil
+            endpoint -> endpoint.uuid
+          end
+        else
+          nil
+        end
+      end,
+      nil
+    )
+  end
+
+  defp reasoning_model?(%{reasoning_enabled: true}), do: true
+  defp reasoning_model?(_), do: false
 
   @doc "Default prompt UUID: the `#{@prompt_setting_key}` setting, else the shared `#{@prompt_slug}` prompt, else nil."
   @spec default_prompt_uuid() :: String.t() | nil
