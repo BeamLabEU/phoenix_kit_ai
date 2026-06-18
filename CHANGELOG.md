@@ -1,3 +1,13 @@
+## 0.10.0 - 2026-06-18
+
+### Changed
+- **The translation modal pre-selects the endpoint you actually used last.** `Translations.default_endpoint_uuid/0` now resolves in order: (1) the `ai_translation_endpoint_uuid` setting (admin override), (2) the endpoint of the most recent **successful chat request** in the AI history (`phoenix_kit_ai_requests`) whose endpoint is still enabled, (3) the first enabled **non-reasoning** chat endpoint (reasoning/"thinking" models break the `---FIELD---` structured-response parser), then (4) the first enabled endpoint. Because the shared `AITranslate.FormGlue` consumes this, the catalogue / projects / publishing translation modals all benefit. The history lookup is a single indexed `ORDER BY inserted_at DESC LIMIT 1` query at mount, gated on AI being enabled (PR #11).
+- **Dependency refresh.** `phoenix_kit` 1.7.155 → 1.7.162, `leaf` 0.2.24 → 0.3.0 (pulls in `mdex` / `mdex_native`), `phoenix_live_view` 1.2.1 → 1.2.3, `finch` 0.22 → 0.23, `sourceror` 1.12.0 → 1.12.2. The `phoenix_kit ~> 1.7.155` requirement is unchanged. Dropped the orphaned `earmark` lock entry and flattened an internal `Translations` helper to keep `mix precommit` (`credo --strict`, `deps.unlock --check-unused`) green.
+
+### Fixed
+- **`default_endpoint_uuid/0` now actually fails open on a missing AI-requests table.** The new history lookup was wrapped in `safe_ai/2`, which only rescues `UndefinedFunctionError` / `FunctionClauseError` / `ArgumentError` — so a missing or pre-migration `phoenix_kit_ai_requests` table (which raises `Postgrex.Error`) would crash the translation modal at mount instead of degrading to `nil`. The query now carries its own `rescue`, mirroring `job_in_flight?`, so any query error falls through to the next resolution step.
+- **AI endpoint form: TTS voice state bugs.** The Mistral voice field is matched by provider **prefix** (a `mistral`-prefixed integration key still maps to `voice_id`), and the stored default voice is cleared when the integration/provider changes — voice slugs are provider-specific, so a Mistral voice must never be sent to OpenRouter on the next `speak/3`. Submitted `provider_settings` now merge onto the endpoint's existing settings instead of replacing them.
+
 ## 0.9.0 - 2026-06-15
 
 ### Changed

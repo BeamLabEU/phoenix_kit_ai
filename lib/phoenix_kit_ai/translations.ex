@@ -137,50 +137,39 @@ defmodule PhoenixKitAI.Translations do
   end
 
   # Endpoint of the most recent successful chat request whose endpoint is still
-  # enabled. Fails open (nil) so a missing/old AI-requests table never breaks
-  # the modal.
+  # enabled. Fails open (nil) on ANY query error — e.g. a missing/old
+  # `phoenix_kit_ai_requests` table raises `Postgrex.Error`, which `safe_ai`
+  # does NOT rescue — so the rescue lives here and mirrors `job_in_flight?`.
   defp last_used_endpoint_uuid do
-    safe_ai(
-      fn ->
-        repo = PhoenixKit.RepoHelper.repo()
+    repo = PhoenixKit.RepoHelper.repo()
 
-        from(r in Request,
-          join: e in assoc(r, :endpoint),
-          where: r.status == "success" and r.request_type == "chat" and e.enabled == true,
-          order_by: [desc: r.inserted_at],
-          limit: 1,
-          select: r.endpoint_uuid
-        )
-        |> repo.one()
-        |> case do
-          nil -> nil
-          uuid -> uuid
-        end
-      end,
-      nil
+    from(r in Request,
+      join: e in assoc(r, :endpoint),
+      where: r.status == "success" and r.request_type == "chat" and e.enabled == true,
+      order_by: [desc: r.inserted_at],
+      limit: 1,
+      select: r.endpoint_uuid
     )
+    |> repo.one()
+  rescue
+    _ -> nil
   end
 
   # First enabled chat endpoint that is NOT a reasoning ("thinking") model.
   defp preferred_endpoint_uuid do
-    safe_ai(
-      fn ->
-        if PhoenixKitAI.enabled?() do
-          {endpoints, _} = PhoenixKitAI.list_endpoints(enabled: true)
-
-          endpoints
-          |> Enum.find(fn e -> Endpoint.kind(e.model) == :chat and not reasoning_model?(e) end)
-          |> case do
-            nil -> nil
-            endpoint -> endpoint.uuid
-          end
-        else
-          nil
-        end
-      end,
-      nil
-    )
+    safe_ai(fn -> if PhoenixKitAI.enabled?(), do: first_standard_chat_uuid(), else: nil end, nil)
   end
+
+  defp first_standard_chat_uuid do
+    {endpoints, _} = PhoenixKitAI.list_endpoints(enabled: true)
+
+    with %{uuid: uuid} <- Enum.find(endpoints, &standard_chat_endpoint?/1), do: uuid
+  end
+
+  # A standard (non-reasoning) chat endpoint. Reasoning ("thinking") models break
+  # the `---FIELD---` structured-response parser, so they're skipped here.
+  defp standard_chat_endpoint?(endpoint),
+    do: Endpoint.kind(endpoint.model) == :chat and not reasoning_model?(endpoint)
 
   defp reasoning_model?(%{reasoning_enabled: true}), do: true
   defp reasoning_model?(_), do: false
