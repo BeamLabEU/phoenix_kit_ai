@@ -167,6 +167,77 @@ and module docs back in sync with the new architecture, and leave all
 existing tests, credo, and dialyzer passing.
 
 ---
+
+## Additional Findings
+
+### Potential Issues Requiring Verification
+
+#### 1. TTS Request Body Field Name
+
+**File:** `lib/phoenix_kit_ai/completion.ex` (`text_to_speech/3`)
+
+The fix to `voice_field_for/1` ensures the form sends the correct parameter name (`voice_id` for Mistral, `voice` for others). However, `Completion.text_to_speech/3` may hardcode the `:voice` key in the request body. Mistral's `/audio/speech` endpoint **requires** `voice_id`, not `voice`. If the body construction doesn't use `voice_field_for/1`, Mistral TTS calls will fail with HTTP 400.
+
+**Action:** Verify that `text_to_speech/3` dynamically selects the field name based on the endpoint's provider, matching the form's behavior.
+
+#### 2. Empty Provider Registry UX
+
+**File:** `lib/phoenix_kit_ai/web/endpoint_form.ex`
+
+When `Endpoint.provider_options()` returns an empty list (no providers with `:ai_completions` capability), the form renders an empty dropdown with no guidance. Operators may not understand why the list is empty or where to configure providers.
+
+**Suggestion:** Add a notice in the form template: "No AI providers configured. Add integrations via Settings → Integrations." This maintains the dynamic discovery design while improving discoverability.
+
+### Documentation Enhancements
+
+#### 1. Provider-Specific TTS Compatibility
+
+**File:** `AGENTS.md`
+
+Add a provider-specific TTS compatibility table to help operators understand provider differences:
+
+| Provider | TTS Endpoint | Voice Param | Voice Discovery |
+|---|---|---|---|
+| Mistral | `/audio/speech` | `voice_id` | `/audio/voices` |
+| OpenRouter | `/audio/speech` | `voice` | None |
+| DeepSeek | `/audio/speech` | `voice` | None |
+| OpenAI | `/audio/speech` | `voice` | None |
+
+#### 2. Security Configuration
+
+**File:** `AGENTS.md` or `README.md`
+
+The `config :phoenix_kit_ai, :allow_internal_endpoint_urls` flag enables SSRF-bypassing for self-hosted providers (Ollama, local vLLM). This is a **security-critical** setting that should never be enabled in production without explicit need. Document this prominently with:
+- Default value: `false`
+- What it bypasses: loopback, RFC1918, link-local, `*.local`, non-HTTP(S)
+- Warning: Only enable for trusted internal networks
+
+### Legacy Migration Clarification
+
+**Note:** The legacy `api_key` migration is **opt-in by design**, not a gap. The architecture deliberately preserves the fallback path (`OpenRouterClient.resolve_api_key/1` → legacy `api_key` column) to avoid breaking existing deployments. Operators can migrate at their own pace via:
+- UI: Edit endpoint, select integration, save (clears `api_key` atomically)
+- Boot-time: Call `PhoenixKit.ModuleRegistry.run_all_legacy_migrations/0`
+
+This is a design strength that prevents forced breaking changes.
+
+### Enhanced Open Recommendations
+
+In addition to the original recommendations, consider:
+
+6. **Provider-specific error parsing:**
+   Extend `Completion.handle_response/1` to parse provider error bodies (OpenRouter returns `{error: {message, code}}`, Mistral returns specific 4xx codes). Map these to specific error atoms (`:invalid_voice`, `:missing_voice`, `:rate_limited`) instead of generic `{:api_error, status_code}`. This would significantly improve debuggability in the Playground and for API consumers.
+
+7. **Model classification robustness:**
+   The TTS classification heuristic (substring `"tts"`) should be augmented with a provider-specific allowlist. For example, Mistral's embedding models contain `"embed"` not `"tts"`. Consider adding a `provider_settings["model_type"]` override or a curated model metadata map.
+
+8. **Test coverage for provider registry failures:**
+   Add tests for edge cases when `PhoenixKit.Integrations.Providers.with_capability(:ai_completions)` returns `nil` or raises. Verify the form and API handle these gracefully.
+
+9. **TTS cross-provider validation:**
+   Add integration tests verifying TTS works correctly with non-Mistral providers (OpenRouter, DeepSeek, OpenAI) using the `voice` parameter, not `voice_id`.
+
+---
 Review performed: 2026-06-15
 Verification: `mix precommit`, `mix test`
 Status: fixes applied and verified
+Additional contributions: 2026-06-16
