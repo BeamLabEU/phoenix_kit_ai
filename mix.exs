@@ -91,7 +91,9 @@ defmodule PhoenixKitAI.MixProject do
       # PhoenixKit.Integrations.Providers.with_capability/1 and base_url/1
       # (capability-driven discovery). Also relies on PhoenixKit.Utils.{Reorder,
       # Values,Format} and the <.form_section> / :sort_bar core components.
-      pk_dep(:phoenix_kit, "~> 1.7.155"),
+      # 1.7.184+ required: `disabled`/`wrapper_class`/`title`/`:description`
+      # attrs on <.checkbox> (PhoenixKitWeb.Components.Core.Checkbox).
+      pk_dep(:phoenix_kit, ">= 1.7.184"),
 
       # LiveView is needed for the admin pages.
       {:phoenix_live_view, "~> 1.1"},

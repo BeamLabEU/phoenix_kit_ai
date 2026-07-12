@@ -619,25 +619,17 @@
 
               <div class="bg-base-200 rounded-lg p-4 mt-4">
                 <div class="form-control">
-                  <label class="label cursor-pointer justify-start gap-3">
-                    <input
-                      type="checkbox"
-                      name="endpoint[reasoning_enabled]"
-                      value="true"
-                      checked={reasoning_enabled}
-                      class="checkbox checkbox-primary"
-                      phx-click="toggle_reasoning"
-                    />
-                    <div>
-                      <span class="label-text font-medium">
-                        <.icon name="hero-light-bulb" class="w-4 h-4 inline mr-1" />
-                        {gettext("Enable Thinking")}
-                      </span>
-                      <span class="block text-xs text-base-content/50">
-                        {gettext("For models like DeepSeek R1, Qwen QwQ that support chain-of-thought reasoning")}
-                      </span>
-                    </div>
-                  </label>
+                  <.checkbox
+                    name="endpoint[reasoning_enabled]"
+                    checked={reasoning_enabled}
+                    phx-click="toggle_reasoning"
+                  >
+                    <.icon name="hero-light-bulb" class="w-4 h-4 inline mr-1" />
+                    {gettext("Enable Thinking")}
+                    <:description>
+                      {gettext("For models like DeepSeek R1, Qwen QwQ that support chain-of-thought reasoning")}
+                    </:description>
+                  </.checkbox>
                 </div>
 
                 <%!-- Reasoning Options (shown when enabled) --%>
@@ -670,20 +662,16 @@
                         <label class="label py-1">
                           <span class="label-text text-sm">{gettext("Visibility")}</span>
                         </label>
-                        <label class="label cursor-pointer justify-start gap-2 py-0">
-                          <input
-                            type="checkbox"
-                            name="endpoint[reasoning_exclude]"
-                            value="true"
-                            checked={
-                              @form.params["reasoning_exclude"] == "true" ||
-                                @form.params["reasoning_exclude"] == true ||
-                                (@endpoint && @endpoint.reasoning_exclude == true)
-                            }
-                            class="checkbox checkbox-sm"
-                          />
-                          <span class="label-text text-sm">{gettext("Hide from response")}</span>
-                        </label>
+                        <.checkbox
+                          name="endpoint[reasoning_exclude]"
+                          checked={
+                            @form.params["reasoning_exclude"] == "true" ||
+                              @form.params["reasoning_exclude"] == true ||
+                              (@endpoint && @endpoint.reasoning_exclude == true)
+                          }
+                          label={gettext("Hide from response")}
+                          class="checkbox-sm"
+                        />
                       </div>
                     </div>
                   </div>

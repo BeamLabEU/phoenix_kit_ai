@@ -97,22 +97,12 @@
               </div>
             <% end %>
 
-            <%!-- Enabled Toggle — stylised, kept as raw HTML --%>
-            <div>
-              <label class="flex items-center gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  name="prompt[enabled]"
-                  value="true"
-                  checked={@form[:enabled].value != false}
-                  class="checkbox checkbox-primary"
-                />
-                <span class="font-medium">{gettext("Enabled")}</span>
-              </label>
-              <p class="text-sm text-base-content/60 mt-1 ml-8">
-                {gettext("Disabled prompts cannot be used via the API")}
-              </p>
-            </div>
+            <.checkbox
+              field={@form[:enabled]}
+              label={gettext("Enabled")}
+            >
+              <:description>{gettext("Disabled prompts cannot be used via the API")}</:description>
+            </.checkbox>
 
             <.form_actions
               class="pt-4 gap-2"
