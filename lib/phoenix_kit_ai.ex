@@ -1000,7 +1000,7 @@ defmodule PhoenixKitAI do
 
   @impl PhoenixKit.Module
   @spec version() :: String.t()
-  def version, do: "0.10.0"
+  def version, do: "0.11.0"
 
   @impl PhoenixKit.Module
   @spec route_module() :: module()
@@ -2445,6 +2445,9 @@ defmodule PhoenixKitAI do
 
   - `:voice` - Preset voice identifier (e.g. `"casual_male"`)
   - `:voice_id` - Saved/cloned voice id (Mistral hosted)
+  - `:instructions` - Steering text for models that support it (e.g.
+    `gpt-4o-mini-tts`'s accent/tone/pacing/language control); ignored by
+    providers/models that don't use it
   - `:response_format` - Audio format (default `"mp3"`)
   - `:source` - Request-tracking label (defaults to auto-detected caller)
 

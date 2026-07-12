@@ -192,6 +192,9 @@ defmodule PhoenixKitAI.Completion do
   - `:response_format` - Audio container/codec (default `"mp3"`)
   - `:voice` - Preset voice identifier (OpenRouter / OSS vLLM shape)
   - `:voice_id` - Saved/cloned voice id (Mistral hosted shape)
+  - `:instructions` - Steering text for models that support it (e.g.
+    `gpt-4o-mini-tts`'s accent/tone/pacing/language control); ignored by
+    providers and models that don't recognize the field
 
   Only the voice option that is present is sent; the module stays
   provider-neutral and does not assume a field name.
@@ -211,6 +214,7 @@ defmodule PhoenixKitAI.Completion do
       %{"model" => endpoint.model, "input" => text, "response_format" => format}
       |> maybe_add("voice", Keyword.get(opts, :voice))
       |> maybe_add("voice_id", Keyword.get(opts, :voice_id))
+      |> maybe_add("instructions", Keyword.get(opts, :instructions))
 
     start_time = System.monotonic_time(:millisecond)
 

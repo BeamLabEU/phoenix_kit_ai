@@ -1,3 +1,8 @@
+## 0.11.0 - 2026-07-12
+
+### Added
+- **`:instructions` option for `PhoenixKitAI.speak/3` / `Completion.text_to_speech/3`.** Forwards steerable instructions text to `/audio/speech` (accent, tone, pacing, and which language to read ambiguous input as) — needed for `gpt-4o-mini-tts` and similar steerable models. Fixes a real mispronunciation case: without a way to tell the model which language the input is in, a host app's Italian TTS read homographs like "come"/"fine" as English words. Sent only when the caller passes it (same provider-neutral pattern as `:voice`/`:voice_id`); Mistral's `/audio/speech` schema allows unrecognized JSON properties, so the field is safe to send unconditionally rather than gated per-provider.
+
 ## 0.10.0 - 2026-06-18
 
 ### Changed

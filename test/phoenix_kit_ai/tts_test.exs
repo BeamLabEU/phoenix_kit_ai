@@ -308,5 +308,42 @@ defmodule PhoenixKitAI.TTSTest do
       assert {:ok, %{audio: @audio_bytes}} =
                Completion.text_to_speech(ep, "Bonjour", voice: "casual_male")
     end
+
+    test "sends instructions only when the caller passes it" do
+      Req.Test.stub(__MODULE__, fn conn ->
+        {:ok, raw, conn} = Plug.Conn.read_body(conn)
+        body = Jason.decode!(raw)
+
+        assert body["instructions"] == "Read this as Italian; keep a warm, upbeat tone."
+
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(200, Jason.encode!(%{"audio_data" => Base.encode64(@audio_bytes)}))
+      end)
+
+      ep = endpoint_fixture()
+
+      assert {:ok, %{audio: @audio_bytes}} =
+               Completion.text_to_speech(ep, "Come stai?",
+                 instructions: "Read this as Italian; keep a warm, upbeat tone."
+               )
+    end
+
+    test "omits instructions when the caller doesn't pass it" do
+      Req.Test.stub(__MODULE__, fn conn ->
+        {:ok, raw, conn} = Plug.Conn.read_body(conn)
+        body = Jason.decode!(raw)
+
+        refute Map.has_key?(body, "instructions")
+
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(200, Jason.encode!(%{"audio_data" => Base.encode64(@audio_bytes)}))
+      end)
+
+      ep = endpoint_fixture()
+
+      assert {:ok, %{audio: @audio_bytes}} = Completion.text_to_speech(ep, "Bonjour")
+    end
   end
 end
