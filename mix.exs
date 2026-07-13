@@ -1,7 +1,7 @@
 defmodule PhoenixKitAI.MixProject do
   use Mix.Project
 
-  @version "0.11.1"
+  @version "0.11.2"
   @source_url "https://github.com/BeamLabEU/phoenix_kit_ai"
 
   def project do
@@ -97,6 +97,11 @@ defmodule PhoenixKitAI.MixProject do
 
       # LiveView is needed for the admin pages.
       {:phoenix_live_view, "~> 1.1"},
+
+      # Optional rustler pin so the transitive `mdex_native` NIF (via phoenix_kit,
+      # a test dependency) can source-build on hosts where its precompiled variant
+      # doesn't match the local NIF version.
+      {:rustler, ">= 0.0.0", optional: true},
 
       # Optional: add ex_doc for generating documentation
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},

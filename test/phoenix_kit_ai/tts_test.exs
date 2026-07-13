@@ -329,6 +329,29 @@ defmodule PhoenixKitAI.TTSTest do
                )
     end
 
+    test "sends instructions for a dated gpt-4o-mini-tts snapshot" do
+      Req.Test.stub(__MODULE__, fn conn ->
+        {:ok, raw, conn} = Plug.Conn.read_body(conn)
+        body = Jason.decode!(raw)
+
+        assert body["instructions"] == "Read this as Italian; keep a warm, upbeat tone."
+
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(200, Jason.encode!(%{"audio_data" => Base.encode64(@audio_bytes)}))
+      end)
+
+      # OpenAI publishes dated snapshots of this family (e.g. pinned in an
+      # endpoint's model field as "gpt-4o-mini-tts-2025-12-15") — the trailing
+      # date must not defeat the steerable-family match.
+      ep = endpoint_fixture(%{provider: "openai", model: "gpt-4o-mini-tts-2025-12-15"})
+
+      assert {:ok, %{audio: @audio_bytes}} =
+               Completion.text_to_speech(ep, "Come stai?",
+                 instructions: "Read this as Italian; keep a warm, upbeat tone."
+               )
+    end
+
     test "omits instructions when the caller doesn't pass it" do
       Req.Test.stub(__MODULE__, fn conn ->
         {:ok, raw, conn} = Plug.Conn.read_body(conn)

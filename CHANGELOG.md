@@ -1,3 +1,8 @@
+## 0.11.2 - 2026-07-13
+
+### Fixed
+- **`:instructions` steering silently dropped for dated OpenAI TTS snapshots.** `supports_instructions?/1`'s `~r/^gpt-4o.*-tts$/` anchored on the model string ending right at `-tts`, so a pinned dated snapshot (e.g. `gpt-4o-mini-tts-2025-12-15`, as OpenAI publishes for this family) never matched — the exact language-steering hint 0.11.0 added to fix homograph mispronunciation ("come"/"fine" read as English) was being discarded again for any host pinning a dated model. The regex now allows an optional trailing `-YYYY-MM-DD`.
+
 ## 0.11.1 - 2026-07-13
 
 ### Fixed
