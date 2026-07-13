@@ -309,7 +309,7 @@ defmodule PhoenixKitAI.TTSTest do
                Completion.text_to_speech(ep, "Bonjour", voice: "casual_male")
     end
 
-    test "sends instructions only when the caller passes it" do
+    test "sends instructions for a gpt-4o-mini-tts endpoint (steerable OpenAI family)" do
       Req.Test.stub(__MODULE__, fn conn ->
         {:ok, raw, conn} = Plug.Conn.read_body(conn)
         body = Jason.decode!(raw)
@@ -321,7 +321,7 @@ defmodule PhoenixKitAI.TTSTest do
         |> Plug.Conn.send_resp(200, Jason.encode!(%{"audio_data" => Base.encode64(@audio_bytes)}))
       end)
 
-      ep = endpoint_fixture()
+      ep = endpoint_fixture(%{provider: "openai", model: "gpt-4o-mini-tts"})
 
       assert {:ok, %{audio: @audio_bytes}} =
                Completion.text_to_speech(ep, "Come stai?",
@@ -344,6 +344,47 @@ defmodule PhoenixKitAI.TTSTest do
       ep = endpoint_fixture()
 
       assert {:ok, %{audio: @audio_bytes}} = Completion.text_to_speech(ep, "Bonjour")
+    end
+
+    test "drops instructions for a Mistral voxtral endpoint instead of sending them (422 otherwise)" do
+      Req.Test.stub(__MODULE__, fn conn ->
+        {:ok, raw, conn} = Plug.Conn.read_body(conn)
+        body = Jason.decode!(raw)
+
+        refute Map.has_key?(body, "instructions")
+
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(200, Jason.encode!(%{"audio_data" => Base.encode64(@audio_bytes)}))
+      end)
+
+      # Mistral's voxtral-*-tts hard-fails the whole request with HTTP 422
+      # on an unrecognized `instructions` field — dropping it is the only
+      # safe option, not just a nicety.
+      ep = endpoint_fixture(%{provider: "mistral", model: "voxtral-mini-tts-2603"})
+
+      assert {:ok, %{audio: @audio_bytes}} =
+               Completion.text_to_speech(ep, "Bonjour",
+                 instructions: "Read this as French; keep it neutral."
+               )
+    end
+
+    test "drops instructions for OpenAI's older tts-1 (predates steering support)" do
+      Req.Test.stub(__MODULE__, fn conn ->
+        {:ok, raw, conn} = Plug.Conn.read_body(conn)
+        body = Jason.decode!(raw)
+
+        refute Map.has_key?(body, "instructions")
+
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(200, Jason.encode!(%{"audio_data" => Base.encode64(@audio_bytes)}))
+      end)
+
+      ep = endpoint_fixture(%{provider: "openai", model: "tts-1"})
+
+      assert {:ok, %{audio: @audio_bytes}} =
+               Completion.text_to_speech(ep, "Hello", instructions: "Speak warmly.")
     end
   end
 end

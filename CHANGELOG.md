@@ -1,3 +1,8 @@
+## 0.11.1 - 2026-07-13
+
+### Fixed
+- **`:instructions` on TTS no longer breaks Mistral with HTTP 422.** 0.11.0's claim that Mistral's `/audio/speech` schema "allows unrecognized JSON properties" was wrong — `voxtral-*-tts` hard-rejects an unrecognized `instructions` field with a 422 and returns no audio at all. `Completion.text_to_speech/3` now only sends `instructions` to models known to support steering (the `gpt-4o*-tts` family); it's silently dropped for everything else, including older OpenAI `tts-1`/`tts-1-hd` (which predate the field) and Mistral. Dropping the hint degrades pronunciation quality; sending it to an unsupported model destroyed the whole request, so dropping is the only safe default.
+
 ## 0.11.0 - 2026-07-12
 
 ### Added

@@ -193,8 +193,12 @@ defmodule PhoenixKitAI.Completion do
   - `:voice` - Preset voice identifier (OpenRouter / OSS vLLM shape)
   - `:voice_id` - Saved/cloned voice id (Mistral hosted shape)
   - `:instructions` - Steering text for models that support it (e.g.
-    `gpt-4o-mini-tts`'s accent/tone/pacing/language control); ignored by
-    providers and models that don't recognize the field
+    `gpt-4o-mini-tts`'s accent/tone/pacing/language control). Only sent
+    to models known to support it (the `gpt-4o*-tts` family); silently
+    dropped otherwise. This is a real gate, not just documentation —
+    some providers (Mistral's `voxtral-*-tts`) hard-fail the whole
+    request with HTTP 422 on an unrecognized `instructions` field
+    rather than ignoring it, so the module must not send it blindly.
 
   Only the voice option that is present is sent; the module stays
   provider-neutral and does not assume a field name.
@@ -214,7 +218,10 @@ defmodule PhoenixKitAI.Completion do
       %{"model" => endpoint.model, "input" => text, "response_format" => format}
       |> maybe_add("voice", Keyword.get(opts, :voice))
       |> maybe_add("voice_id", Keyword.get(opts, :voice_id))
-      |> maybe_add("instructions", Keyword.get(opts, :instructions))
+      |> maybe_add(
+        "instructions",
+        instructions_for(endpoint.model, Keyword.get(opts, :instructions))
+      )
 
     start_time = System.monotonic_time(:millisecond)
 
@@ -233,6 +240,37 @@ defmodule PhoenixKitAI.Completion do
         {:error, {:connection_error, reason}}
     end
   end
+
+  # Gate `instructions` on the model, not the provider: OpenAI's own
+  # `tts-1` / `tts-1-hd` predate steering and don't accept the field
+  # either, so a provider-level allowlist would still send it to those.
+  # Default to "unsupported" for anything else — sending the field to a
+  # model that rejects it is a hard 422 (Mistral's `voxtral-*-tts`),
+  # while dropping it for a model that would have accepted it just loses
+  # a pronunciation/tone hint. The safer failure mode wins.
+  defp instructions_for(model, instructions)
+       when is_binary(instructions) and instructions != "" do
+    if supports_instructions?(model) do
+      instructions
+    else
+      Logger.debug(
+        "TTS instructions dropped: model #{inspect(model)} is not known to support steering"
+      )
+
+      nil
+    end
+  end
+
+  defp instructions_for(_model, _instructions), do: nil
+
+  defp supports_instructions?(model) when is_binary(model) do
+    model
+    |> String.split("/")
+    |> List.last()
+    |> then(&Regex.match?(~r/^gpt-4o.*-tts$/, &1))
+  end
+
+  defp supports_instructions?(_model), do: false
 
   # The provider may return either base64 JSON (`{"audio_data": "..."}`,
   # Mistral hosted) or a raw binary audio body (OpenRouter / OSS vLLM).
