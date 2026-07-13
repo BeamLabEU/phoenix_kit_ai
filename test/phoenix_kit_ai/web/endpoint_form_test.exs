@@ -681,14 +681,17 @@ defmodule PhoenixKitAI.Web.EndpointFormTest do
       refute html =~ ~s(value="deepseek">DeepSeek)
     end
 
-    test "renders the 'Set one up in Settings → Integrations' hint link",
+    test "renders the 'Add one in Settings → Integrations' hint link",
          %{conn: conn} do
       {:ok, _view, html} = live(conn, "/en/admin/ai/endpoints/new")
 
-      assert html =~ "Need another integration?"
+      # With no integrations, the picker renders its empty state with a
+      # link into Settings → Integrations (copy changed from the old
+      # "Need another integration?" hint).
+      assert html =~ "No integrations configured."
       # The link target — uses prefix path helpers.
       assert html =~ "/admin/settings/integrations"
-      assert html =~ "Set one up in Settings → Integrations"
+      assert html =~ "Add one in Settings → Integrations"
     end
 
     test "new mount with only mistral connection doesn't surface openrouter as a dead-end option",
@@ -876,8 +879,11 @@ defmodule PhoenixKitAI.Web.EndpointFormTest do
 
       # Header visible (we don't hide the section)…
       assert html =~ "Model Selection"
-      # …but greyed via the daisyUI muted text class.
-      assert html =~ ~s|text-base-content/50">\n              Model Selection|
+      # …but greyed — the muted styling now sits on the whole section
+      # (opacity-60) rather than the header text class.
+      assert html =~
+               ~r|<section class="card bg-base-100 shadow-lg opacity-60">.{0,200}Model Selection|s
+
       # And body shows the "pick an integration" placeholder, not
       # the rich grid.
       assert html =~ "Pick an integration above to load available models"
@@ -908,10 +914,11 @@ defmodule PhoenixKitAI.Web.EndpointFormTest do
       # NOT rendered when the gate doesn't open.
       refute html =~ ~s|name="endpoint[provider_settings][http_referer]"|
 
-      # Endpoint Enabled toggle DOES still render — applies to
-      # every endpoint regardless of provider, kept outside the
-      # body gate intentionally.
-      assert html =~ ~s|name="endpoint[enabled]"|
+      # The Enabled toggle is EDIT-only now (`:if={@endpoint}` in the
+      # template — new endpoints inherit the schema's enabled: true
+      # default, so a "create + disabled" flow isn't exposed). On /new
+      # it must NOT render.
+      refute html =~ ~s|name="endpoint[enabled]"|
     end
   end
 
