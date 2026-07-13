@@ -93,7 +93,7 @@ defmodule PhoenixKitAI.MixProject do
       # Values,Format} and the <.form_section> / :sort_bar core components.
       # 1.7.184+ required: `disabled`/`wrapper_class`/`title`/`:description`
       # attrs on <.checkbox> (PhoenixKitWeb.Components.Core.Checkbox).
-      pk_dep(:phoenix_kit, ">= 1.7.184"),
+      pk_dep(:phoenix_kit, ">= 1.7.189"),
 
       # LiveView is needed for the admin pages.
       {:phoenix_live_view, "~> 1.1"},
