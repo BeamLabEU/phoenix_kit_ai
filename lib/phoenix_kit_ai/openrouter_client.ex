@@ -783,7 +783,7 @@ defmodule PhoenixKitAI.OpenRouterClient do
         context_length: model["context_length"],
         max_completion_tokens: top_provider["max_completion_tokens"],
         supported_parameters: model["supported_parameters"] || [],
-        pricing: normalize_pricing(model["pricing"]),
+        pricing: normalize_pricing(model),
         architecture: model["architecture"] || %{},
         top_provider: top_provider
       }
@@ -811,8 +811,11 @@ defmodule PhoenixKitAI.OpenRouterClient do
         # /models endpoints don't return architecture metadata). Treat as
         # text by default since callers asking for `:text` against an
         # endpoint that doesn't expose modality just want "show all the
-        # chat models the API listed".
-        "" -> true
+        # chat models the API listed" — except xAI's `/models` mixes
+        # chat models into the same no-modality response as its
+        # `grok-imagine-*` image/video generation models, so those need
+        # explicit exclusion here.
+        "" -> not generative_media_model?(model)
         _ -> false
       end
   end
@@ -841,6 +844,23 @@ defmodule PhoenixKitAI.OpenRouterClient do
     |> String.downcase()
     |> String.contains?("tts")
   end
+
+  # xAI's `/models` response has no `architecture.modality` field on any
+  # model, so `grok-imagine-image`/`grok-imagine-video` (and their
+  # `-quality`/`-1.5` variants) would otherwise fall through to the
+  # no-modality "assume text" branch above. `image_price` only appears on
+  # image-gen entries; the id substring check catches the video-gen
+  # entries, which carry no pricing fields at all.
+  defp generative_media_model?(model) do
+    Map.has_key?(model, "image_price") or media_gen_id?(model["id"])
+  end
+
+  defp media_gen_id?(id) when is_binary(id) do
+    downcased = String.downcase(id)
+    String.contains?(downcased, "-image") or String.contains?(downcased, "-video")
+  end
+
+  defp media_gen_id?(_), do: false
 
   defp get_modality(model) do
     architecture = model["architecture"] || %{}
@@ -929,12 +949,33 @@ defmodule PhoenixKitAI.OpenRouterClient do
 
   defp normalize_pricing(nil), do: %{"prompt" => 0, "completion" => 0}
 
-  defp normalize_pricing(pricing) when is_map(pricing) do
+  # OpenRouter (and Mistral/DeepSeek, which mirror its shape) nest pricing
+  # under a `pricing` map of dollars-per-token.
+  defp normalize_pricing(%{"pricing" => pricing}) when is_map(pricing) do
     %{
       "prompt" => parse_price(pricing["prompt"]),
       "completion" => parse_price(pricing["completion"])
     }
   end
+
+  # xAI's `/models` has no `pricing` map — it reports flat
+  # `prompt_text_token_price` / `completion_text_token_price` fields in
+  # USD cents per 100,000,000 tokens (confirmed against `image_price`,
+  # which resolves to clean per-image cent amounts under the same
+  # divisor). Convert to the same dollars-per-token shape as the
+  # OpenRouter branch above so downstream formatting doesn't need to
+  # know which provider a model came from.
+  defp normalize_pricing(%{"prompt_text_token_price" => _} = model) do
+    %{
+      "prompt" => flat_token_price_to_dollars(model["prompt_text_token_price"]),
+      "completion" => flat_token_price_to_dollars(model["completion_text_token_price"])
+    }
+  end
+
+  defp normalize_pricing(_model), do: %{"prompt" => 0, "completion" => 0}
+
+  defp flat_token_price_to_dollars(value) when is_number(value), do: value / 10_000_000_000
+  defp flat_token_price_to_dollars(_), do: 0
 
   defp parse_price(nil), do: 0
   defp parse_price(price) when is_number(price), do: price

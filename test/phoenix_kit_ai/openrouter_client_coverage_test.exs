@@ -245,6 +245,45 @@ defmodule PhoenixKitAI.OpenRouterClientCoverageTest do
       {:ok, models} = OpenRouterClient.fetch_models("sk-x", model_type: :vision)
       assert Enum.map(models, & &1.id) == ["v/m"]
     end
+
+    test ":text filter excludes xAI's grok-imagine-* image/video models" do
+      # xAI's `/v1/models` has no `architecture` field on ANY model
+      # (chat or media-gen alike), so `grok-imagine-image`/`-video` would
+      # otherwise slip into the chat picker via the no-modality
+      # "assume text" fallback. `image_price` (image models) and the
+      # `-image`/`-video` id substring (video models, which carry no
+      # pricing fields at all) both need to be excluded.
+      stub_response(200, %{
+        "data" => [
+          %{"id" => "grok-4.3", "object" => "model", "prompt_text_token_price" => 12_500},
+          %{"id" => "grok-imagine-image", "object" => "model", "image_price" => 200_000_000},
+          %{"id" => "grok-imagine-video", "object" => "model"}
+        ]
+      })
+
+      {:ok, models} = OpenRouterClient.fetch_models("sk-x", model_type: :text)
+      assert Enum.map(models, & &1.id) == ["grok-4.3"]
+    end
+
+    test "normalizes xAI's flat token-price fields to dollars-per-token" do
+      # xAI reports `prompt_text_token_price` / `completion_text_token_price`
+      # in USD cents per 100,000,000 tokens instead of OpenRouter's nested
+      # `pricing` map — without a conversion every xAI model showed $0.00/M.
+      stub_response(200, %{
+        "data" => [
+          %{
+            "id" => "grok-4.3",
+            "object" => "model",
+            "prompt_text_token_price" => 12_500,
+            "completion_text_token_price" => 25_000
+          }
+        ]
+      })
+
+      {:ok, [model]} = OpenRouterClient.fetch_models("sk-x", model_type: :text)
+      assert_in_delta model.pricing["prompt"], 0.00000125, 1.0e-12
+      assert_in_delta model.pricing["completion"], 0.0000025, 1.0e-12
+    end
   end
 
   describe "fetch_models_grouped + fetch_models_by_type" do
