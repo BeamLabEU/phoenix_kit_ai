@@ -101,7 +101,7 @@ defmodule PhoenixKitAI.Web.PromptsCoverageTest do
       {:ok, view, _html} = live(conn, "/en/admin/ai/prompts")
 
       view
-      |> element("button[phx-click='delete_prompt'][phx-value-uuid='#{prompt.uuid}']")
+      |> element("#prompt-tbl-menu-#{prompt.uuid} button[phx-click='delete_prompt']")
       |> render_click()
 
       assert PhoenixKitAI.get_prompt(prompt.uuid) == nil

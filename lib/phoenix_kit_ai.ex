@@ -416,7 +416,7 @@ defmodule PhoenixKitAI do
 
   - The `ai_legacy_api_key_migration_completed_at` setting is set →
     already ran, skip.
-  - ANY `integration:openrouter:*` key already exists in
+  - ANY OpenRouter integration already exists in
     `phoenix_kit_settings` (operator already set up Integrations
     manually) → mark completed and skip.
   - NO endpoints have `provider == "openrouter"` with a non-empty
@@ -508,13 +508,25 @@ defmodule PhoenixKitAI do
   end
 
   defp any_openrouter_integration_exists? do
-    query =
+    # Two storage generations: pre-V114 composite keys
+    # (integration:openrouter:<name>) and the current uuid-keyed rows
+    # (module = "integrations", provider in the JSONB). Checking only the
+    # legacy shape made operator-created integrations invisible on modern
+    # cores — the migration then ran instead of skipping.
+    legacy =
       from(s in "phoenix_kit_settings",
         where: like(s.key, "integration:openrouter:%"),
         select: count(s.uuid)
       )
 
-    repo().one(query) > 0
+    modern =
+      from(s in "phoenix_kit_settings",
+        where: s.module == "integrations",
+        where: fragment("?->>'provider' = ?", s.value_json, "openrouter"),
+        select: count(s.uuid)
+      )
+
+    repo().one(legacy) > 0 or repo().one(modern) > 0
   rescue
     # If the settings table or column shape isn't what we expect, fall
     # through to "yes, skip" — safer than risking a partial migration

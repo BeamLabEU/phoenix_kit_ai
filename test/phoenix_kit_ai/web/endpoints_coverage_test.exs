@@ -198,7 +198,7 @@ defmodule PhoenixKitAI.Web.EndpointsCoverageTest do
       {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints")
 
       view
-      |> element("button[phx-click='delete_endpoint'][phx-value-uuid='#{ep.uuid}']")
+      |> element("#endpoint-tbl-menu-#{ep.uuid} button[phx-click='delete_endpoint']")
       |> render_click()
 
       assert PhoenixKitAI.get_endpoint(ep.uuid) == nil

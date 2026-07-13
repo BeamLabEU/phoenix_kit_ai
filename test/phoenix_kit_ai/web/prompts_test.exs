@@ -27,7 +27,7 @@ defmodule PhoenixKitAI.Web.PromptsTest do
 
       html =
         view
-        |> element("button[phx-click='toggle_prompt'][phx-value-uuid='#{prompt.uuid}']")
+        |> element("#prompt-tbl-menu-#{prompt.uuid} button[phx-click='toggle_prompt']")
         |> render_click()
 
       reloaded = PhoenixKitAI.get_prompt!(prompt.uuid)
@@ -57,7 +57,7 @@ defmodule PhoenixKitAI.Web.PromptsTest do
 
       html =
         view
-        |> element("button[phx-click='delete_prompt'][phx-value-uuid='#{prompt.uuid}']")
+        |> element("#prompt-tbl-menu-#{prompt.uuid} button[phx-click='delete_prompt']")
         |> render_click()
 
       assert PhoenixKitAI.get_prompt(prompt.uuid) == nil

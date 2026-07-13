@@ -145,7 +145,7 @@ defmodule PhoenixKitAI.Web.EndpointsTest do
 
       html =
         view
-        |> element("button[phx-click='toggle_endpoint'][phx-value-uuid='#{endpoint.uuid}']")
+        |> element("#endpoint-tbl-menu-#{endpoint.uuid} button[phx-click='toggle_endpoint']")
         |> render_click()
 
       reloaded = PhoenixKitAI.get_endpoint!(endpoint.uuid)
@@ -179,7 +179,7 @@ defmodule PhoenixKitAI.Web.EndpointsTest do
 
       html =
         view
-        |> element("button[phx-click='delete_endpoint'][phx-value-uuid='#{endpoint.uuid}']")
+        |> element("#endpoint-tbl-menu-#{endpoint.uuid} button[phx-click='delete_endpoint']")
         |> render_click()
 
       assert PhoenixKitAI.get_endpoint(endpoint.uuid) == nil

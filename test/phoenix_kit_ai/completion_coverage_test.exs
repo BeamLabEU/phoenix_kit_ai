@@ -676,7 +676,13 @@ defmodule PhoenixKitAI.CompletionCoverageTest do
   # fallback (removed in local core post strict-UUID flip) so the
   # tests exercise identical logic in both worlds.
   defp clear_all_openrouter_connections do
+    # Both storage generations: legacy composite keys and the current
+    # uuid-keyed rows (module = "integrations", provider in the JSONB).
     TestRepo.query!("DELETE FROM phoenix_kit_settings WHERE key LIKE 'integration:openrouter:%'")
+
+    TestRepo.query!(
+      "DELETE FROM phoenix_kit_settings WHERE module = 'integrations' AND value_json->>'provider' = 'openrouter'"
+    )
 
     :ok
   end
@@ -684,14 +690,20 @@ defmodule PhoenixKitAI.CompletionCoverageTest do
   defp seed_openrouter(name) do
     key = "integration:openrouter:#{name}"
 
+    # module: "integrations" is what makes the row visible to the
+    # uuid-keyed Integrations API (core V114+) — a bare setting isn't.
     {:ok, _} =
-      PhoenixKit.Settings.update_json_setting(key, %{
-        "api_key" => "sk-test-prod-key",
-        "status" => "connected",
-        "provider" => "openrouter",
-        "name" => name,
-        "auth_type" => "api_key"
-      })
+      PhoenixKit.Settings.update_json_setting_with_module(
+        key,
+        %{
+          "api_key" => "sk-test-prod-key",
+          "status" => "connected",
+          "provider" => "openrouter",
+          "name" => name,
+          "auth_type" => "api_key"
+        },
+        "integrations"
+      )
 
     %{uuid: uuid} =
       PhoenixKit.Integrations.list_connections("openrouter")

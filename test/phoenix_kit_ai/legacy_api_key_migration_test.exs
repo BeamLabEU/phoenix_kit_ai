@@ -33,7 +33,7 @@ defmodule PhoenixKitAI.LegacyApiKeyMigrationTest do
   defp clear_integration_keys do
     SQL.query!(
       TestRepo,
-      "DELETE FROM phoenix_kit_settings WHERE key LIKE 'integration:openrouter:%'"
+      "DELETE FROM phoenix_kit_settings WHERE key LIKE 'integration:openrouter:%' OR (module = 'integrations' AND value_json->>'provider' = 'openrouter')"
     )
 
     :ok
@@ -186,16 +186,13 @@ defmodule PhoenixKitAI.LegacyApiKeyMigrationTest do
         assert is_binary(reloaded.integration_uuid)
       end
 
-      # Only ONE integration created (dedup by api_key value).
-      keys =
-        SQL.query!(
-          TestRepo,
-          "SELECT key FROM phoenix_kit_settings WHERE key LIKE 'integration:openrouter:%'"
-        ).rows
-        |> List.flatten()
+      # Only ONE integration created (dedup by api_key value). Storage is
+      # uuid-keyed since core V114 — assert through the Integrations API,
+      # not raw composite keys.
+      connections = PhoenixKit.Integrations.list_connections("openrouter")
 
-      assert length(keys) == 1
-      assert "integration:openrouter:default" in keys
+      assert length(connections) == 1
+      assert hd(connections).name == "default"
     end
   end
 
@@ -245,15 +242,9 @@ defmodule PhoenixKitAI.LegacyApiKeyMigrationTest do
 
       assert MapSet.size(uuids) == 3
 
-      # Three integration connections created in storage.
-      keys =
-        SQL.query!(
-          TestRepo,
-          "SELECT key FROM phoenix_kit_settings WHERE key LIKE 'integration:openrouter:%'"
-        ).rows
-        |> List.flatten()
-
-      assert length(keys) == 3
+      # Three integration connections created in storage (uuid-keyed
+      # since core V114 — count through the Integrations API).
+      assert length(PhoenixKit.Integrations.list_connections("openrouter")) == 3
     end
   end
 
