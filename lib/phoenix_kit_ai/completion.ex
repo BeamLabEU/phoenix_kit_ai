@@ -263,11 +263,14 @@ defmodule PhoenixKitAI.Completion do
 
   defp instructions_for(_model, _instructions), do: nil
 
+  # OpenAI publishes dated snapshots of this family too (e.g.
+  # `gpt-4o-mini-tts-2025-12-15`) — the trailing `-YYYY-MM-DD` is optional so a
+  # pinned snapshot still matches, not just the bare model name.
   defp supports_instructions?(model) when is_binary(model) do
     model
     |> String.split("/")
     |> List.last()
-    |> then(&Regex.match?(~r/^gpt-4o.*-tts$/, &1))
+    |> then(&Regex.match?(~r/^gpt-4o.*-tts(-\d{4}-\d{2}-\d{2})?$/, &1))
   end
 
   defp supports_instructions?(_model), do: false

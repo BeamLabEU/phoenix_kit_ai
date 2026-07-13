@@ -669,6 +669,7 @@ PR review files go in `dev_docs/pull_requests/{year}/{pr_number}-{slug}/` direct
 - **Req** (via PhoenixKit) — HTTP client for OpenRouter API calls
 - **Jason** (via PhoenixKit) — JSON encoding/decoding
 - **lazy_html** (`:test` only) — Rendered-HTML assertions in LiveView tests
+- **rustler** (optional) — lets the transitive `mdex_native` NIF (pulled in via `phoenix_kit`, a test dependency) source-build on hosts whose precompiled variant doesn't match the local NIF version
 
 ## Two Module Types
 
