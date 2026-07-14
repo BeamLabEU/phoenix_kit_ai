@@ -41,7 +41,16 @@ window.PhoenixKitAIHooks = (function () {
       // error, no console warning, just silence. `this.el` is this
       // hook's own div, not the Connect/Speak buttons elsewhere in the
       // form, so listen document-wide for the first click instead.
-      this._unlockAudio = () => this.ensureContext().resume();
+      //
+      // iOS Safari specifically has historically needed more than
+      // `resume()` — actually playing a sound synchronously within the
+      // gesture is the standard WebKit unlock technique (same trick
+      // Howler.js/Tone.js use). Harmless no-op everywhere else.
+      this._unlockAudio = () => {
+        const context = this.ensureContext();
+        context.resume();
+        this.playSilentBuffer(context);
+      };
       document.addEventListener("click", this._unlockAudio, { once: true });
 
       this.handleEvent("xai-audio-chunk", ({ data }) => {
@@ -104,6 +113,18 @@ window.PhoenixKitAIHooks = (function () {
       this.chunksScheduled += 1;
 
       source.onended = () => this.renderStatus();
+    },
+
+    // The actual WebKit/iOS unlock: a zero-length buffer played
+    // synchronously within the user gesture. `resume()` alone has
+    // historically not been reliable on iOS Safari for unlocking audio
+    // that gets scheduled later, asynchronously.
+    playSilentBuffer(context) {
+      const buffer = context.createBuffer(1, 1, context.sampleRate);
+      const source = context.createBufferSource();
+      source.buffer = buffer;
+      source.connect(context.destination);
+      source.start(0);
     },
 
     // Plays a short 440Hz tone directly via Web Audio, with no dependency
