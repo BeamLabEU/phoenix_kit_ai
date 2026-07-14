@@ -1,3 +1,14 @@
+## 0.13.0 - 2026-07-14
+
+### Fixed
+- **Streaming voice played nothing at all, with zero errors.** The `XaiVoiceStream` JS hook only created its `AudioContext` reactively when the first audio chunk arrived via `push_event` — not a synchronous user gesture, so browser autoplay policy silently created it `suspended` and nothing ever played. Now unlocked on the first click after the panel mounts (covers the "Connect" click), plus a defensive `resume()` before scheduling each chunk.
+- **Silent on iOS Safari specifically**, even after the fix above — WebKit has historically needed a sound actually *played* synchronously within the gesture, not just `resume()` alone. Now plays a zero-length silent buffer in the same click handler (the same technique Howler.js/Tone.js use); a no-op everywhere else.
+- `PhoenixKitAI.Realtime.Session` discarded the return value of `send_text`/`send_text_done`, and the Playground silently dropped every realtime event except `"error"` — both now log, which is how the two bugs above were actually found and confirmed fixed (real audio chunks were arriving from xAI the whole time; the bug was entirely client-side).
+
+### Added
+- **Visual status feedback in the streaming voice panel.** Audio played via the Web Audio API has no visible player at all, so there was previously no way to tell "silently not working" apart from "actually playing" short of trusting your ears. The panel now shows a live `AudioContext` state, a chunks received/scheduled counter, and a "Test speaker" button that plays a tone independent of xAI entirely — isolates broken audio output (wrong device, muted/silent-switch, OS-level block) from a broken xAI pipeline.
+- **Live voice picker.** `OpenRouterClient.fetch_xai_voices/2` hits xAI's `GET /v1/tts/voices` (a different endpoint/shape from `fetch_voices/2`'s Mistral `/audio/voices`) and populates a "Voice" dropdown — includes any custom/cloned voices on the account, not just the 5 built-ins (Ara/Eve/Leo/Rex/Sal), which is why this fetches live instead of hardcoding the list. Falls back to the 5 built-ins if the fetch fails. Disabled once connected — the voice is fixed at connect time, baked into the WebSocket URL by `Xai.Realtime.connect_tts/1`.
+
 ## 0.12.2 - 2026-07-14
 
 ### Fixed
