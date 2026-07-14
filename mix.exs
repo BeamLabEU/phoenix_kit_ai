@@ -1,7 +1,7 @@
 defmodule PhoenixKitAI.MixProject do
   use Mix.Project
 
-  @version "0.12.1"
+  @version "0.12.2"
   @source_url "https://github.com/BeamLabEU/phoenix_kit_ai"
 
   def project do
@@ -103,8 +103,13 @@ defmodule PhoenixKitAI.MixProject do
       {:phoenix_live_view, "~> 1.1"},
 
       # xAI realtime voice (WebSocket streaming TTS) — the one xAI capability
-      # unreachable through the shared REST completions path.
-      {:xai, "~> 0.1"},
+      # unreachable through the shared REST completions path. Only uses
+      # Xai.Realtime, so we deliberately do NOT add {:gun, ...} or
+      # {:mint, ...} here — xai >= 0.2 makes both optional adapters for
+      # its gRPC parts (Xai.Chat/Xai.Video, which we never call), so
+      # neither gun nor its cowlib CVE exposure end up in this dependency
+      # tree at all.
+      {:xai, "~> 0.2"},
 
       # Optional rustler pin so the transitive `mdex_native` NIF (via phoenix_kit,
       # a test dependency) can source-build on hosts where its precompiled variant

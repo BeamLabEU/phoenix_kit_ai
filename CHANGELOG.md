@@ -1,3 +1,9 @@
+## 0.12.2 - 2026-07-14
+
+### Fixed
+- **The `cowlib`/`gun` advisory noted in 0.12.0 no longer applies.** `xai` 0.2.0 made `gun` (and `mint`) optional adapters for its gRPC transport (`Xai.Chat`/`Xai.Video`, which this module never calls) instead of a hard dependency. Bumping to `xai ~> 0.2` and not separately depending on `gun` drops `gun`/`cowlib` out of this module's dependency tree entirely — confirmed via `mix deps.get`/`mix.lock` — rather than merely not exercising the vulnerable code path at runtime.
+- Depends on `xai ~> 0.2` (was `~> 0.1`).
+
 ## 0.12.1 - 2026-07-14
 
 ### Fixed
