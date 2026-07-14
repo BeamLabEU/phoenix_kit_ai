@@ -23,12 +23,27 @@ window.PhoenixKitAIHooks = (function () {
       this.audioContext = null;
       this.nextStartTime = 0;
 
+      // Browser autoplay policy requires the AudioContext to be created
+      // (or at least resumed) synchronously inside a real user-gesture
+      // handler — audio chunks arrive later, asynchronously, via
+      // push_event over the LiveView socket, which does NOT count as a
+      // gesture. Without this, the context is silently created
+      // `suspended` on first chunk arrival and nothing ever plays: no
+      // error, no console warning, just silence. `this.el` is this
+      // hook's own (otherwise empty) div, not the Connect/Speak buttons
+      // elsewhere in the form, so listen document-wide for the first
+      // click instead.
+      this._unlockAudio = () => this.ensureContext().resume();
+      document.addEventListener("click", this._unlockAudio, { once: true });
+
       this.handleEvent("xai-audio-chunk", ({ data }) => {
         this.enqueueChunk(data);
       });
     },
 
     destroyed() {
+      document.removeEventListener("click", this._unlockAudio);
+
       if (this.audioContext) {
         this.audioContext.close();
       }
@@ -46,6 +61,14 @@ window.PhoenixKitAIHooks = (function () {
 
     enqueueChunk(base64Data) {
       const context = this.ensureContext();
+
+      // Defensive resume — covers e.g. a browser re-suspending the
+      // context after the tab was backgrounded between chunks. A no-op
+      // (resolved immediately) when already running.
+      if (context.state !== "running") {
+        context.resume();
+      }
+
       const pcm16 = base64ToInt16Array(base64Data);
       if (pcm16.length === 0) return;
 
