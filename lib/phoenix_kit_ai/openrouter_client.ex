@@ -26,6 +26,7 @@ defmodule PhoenixKitAI.OpenRouterClient do
 
   alias PhoenixKit.Utils.Values
   alias PhoenixKitAI.AIModel
+  alias PhoenixKitAI.Endpoint
 
   require Logger
 
@@ -246,6 +247,68 @@ defmodule PhoenixKitAI.OpenRouterClient do
       }
     end)
     |> Enum.filter(&is_binary(&1.slug))
+  end
+
+  @doc """
+  Fetches available voices from xAI's `GET /v1/tts/voices` — used by the
+  streaming voice panel (`PhoenixKitAI.Web.Playground`), not the
+  request/response `/audio/speech` path `fetch_voices/2` serves.
+
+  A different shape from `fetch_voices/2` entirely — a different path
+  (`/tts/voices`, not `/audio/voices`), a `"voices"` envelope key (not
+  `"items"`), and per-voice fields (`voice_id`/`name`/`language`) with no
+  Mistral-style gender/tags/mood grouping — so it isn't a variant of that
+  function, it's xAI's own endpoint with its own shape. Includes any
+  custom/cloned voices on the account alongside the 5 built-ins
+  (ara/eve/leo/rex/sal), which is exactly why this fetches live instead of
+  hardcoding the built-in list.
+
+  Returns `{:ok, [%{voice_id, name, language}]}` or `{:error, reason}`.
+
+  ## Options
+  - `:base_url` - Defaults to xAI's base_url (`https://api.x.ai/v1`).
+  """
+  def fetch_xai_voices(api_key, opts \\ []) do
+    base = Keyword.get(opts, :base_url) || Endpoint.default_base_url("xai")
+    url = "#{String.trim_trailing(base, "/")}/tts/voices"
+    headers = build_headers(api_key, opts)
+
+    case http_get(url, headers) do
+      {:ok, %{status_code: 200, body: body}} ->
+        case Jason.decode(body) do
+          {:ok, %{"voices" => voices}} when is_list(voices) ->
+            {:ok, normalize_xai_voices(voices)}
+
+          {:ok, _} ->
+            {:error, :invalid_response_format}
+
+          {:error, _} ->
+            {:error, :invalid_json_response}
+        end
+
+      {:ok, %{status_code: 401}} ->
+        {:error, :invalid_api_key}
+
+      {:ok, %{status_code: status}} ->
+        Logger.warning("xAI voices fetch failed: #{status}")
+        {:error, {:api_error, status}}
+
+      {:error, reason} ->
+        Logger.warning("xAI voices fetch transport error: #{inspect(reason)}")
+        {:error, {:connection_error, reason}}
+    end
+  end
+
+  defp normalize_xai_voices(voices) do
+    voices
+    |> Enum.map(fn voice ->
+      %{
+        voice_id: voice["voice_id"],
+        name: voice["name"] || voice["voice_id"],
+        language: voice["language"]
+      }
+    end)
+    |> Enum.filter(&is_binary(&1.voice_id))
   end
 
   @doc """

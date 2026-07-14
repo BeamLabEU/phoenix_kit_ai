@@ -167,6 +167,14 @@
           class="bg-base-200"
         >
           <form phx-change="voice_change" phx-submit="speak_voice" class="space-y-3">
+            <.select
+              name="voice"
+              label={gettext("Voice")}
+              value={@voice_selected}
+              options={@voice_options}
+              disabled={@voice_status == :connected}
+            />
+
             <.textarea
               name="text"
               value={@voice_text}

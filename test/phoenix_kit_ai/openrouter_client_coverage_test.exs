@@ -467,6 +467,67 @@ defmodule PhoenixKitAI.OpenRouterClientCoverageTest do
     end
   end
 
+  describe "fetch_xai_voices/2" do
+    # Shape mirrors a live xAI GET /v1/tts/voices response — a different
+    # envelope key ("voices", not "items") and per-voice fields
+    # (voice_id/name/language) than fetch_voices/2's Mistral shape.
+    defp xai_voices_payload do
+      %{
+        "voices" => [
+          %{"voice_id" => "ara", "name" => "Ara", "language" => "en"},
+          %{"voice_id" => "eve", "name" => "Eve", "language" => "en"}
+        ]
+      }
+    end
+
+    test "200 returns a normalized voice list (voice_id/name/language)" do
+      stub_response(200, xai_voices_payload())
+
+      assert {:ok, voices} =
+               OpenRouterClient.fetch_xai_voices("sk-x", base_url: "https://api.x.ai/v1")
+
+      assert [
+               %{voice_id: "ara", name: "Ara", language: "en"},
+               %{voice_id: "eve", name: "Eve", language: "en"}
+             ] = voices
+    end
+
+    test "drops entries without a voice_id" do
+      stub_response(200, %{"voices" => [%{"name" => "no id"}, %{"voice_id" => "ok"}]})
+      assert {:ok, [%{voice_id: "ok"}]} = OpenRouterClient.fetch_xai_voices("sk-x")
+    end
+
+    test "falls back to voice_id when name is missing" do
+      stub_response(200, %{"voices" => [%{"voice_id" => "ara"}]})
+      assert {:ok, [%{voice_id: "ara", name: "ara"}]} = OpenRouterClient.fetch_xai_voices("sk-x")
+    end
+
+    test "200 without voices key returns :invalid_response_format" do
+      stub_response(200, %{"foo" => "bar"})
+      assert {:error, :invalid_response_format} = OpenRouterClient.fetch_xai_voices("sk-x")
+    end
+
+    test "200 with non-JSON body returns :invalid_json_response" do
+      stub_raw(200, "<html>")
+      assert {:error, :invalid_json_response} = OpenRouterClient.fetch_xai_voices("sk-x")
+    end
+
+    test "401 returns :invalid_api_key" do
+      stub_response(401, %{})
+      assert {:error, :invalid_api_key} = OpenRouterClient.fetch_xai_voices("sk-x")
+    end
+
+    test "500 returns {:api_error, 500}" do
+      stub_response(500, %{})
+      assert {:error, {:api_error, 500}} = OpenRouterClient.fetch_xai_voices("sk-x")
+    end
+
+    test "transport error returns {:connection_error, reason}" do
+      stub_transport_error(:nxdomain)
+      assert {:error, {:connection_error, :nxdomain}} = OpenRouterClient.fetch_xai_voices("sk-x")
+    end
+  end
+
   describe "humanize_provider / extract_provider / extract_model_name" do
     test "humanize_provider — covers explicit clauses + dash-split fallback" do
       assert OpenRouterClient.humanize_provider("openai") == "OpenAI"

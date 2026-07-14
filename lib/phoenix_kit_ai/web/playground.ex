@@ -24,6 +24,17 @@ defmodule PhoenixKitAI.Web.Playground do
   alias PhoenixKitAI.Prompt
   alias PhoenixKitAI.Realtime.Session
 
+  # Fallback shown until the live `GET /v1/tts/voices` fetch resolves (or
+  # if it fails) — xAI's 5 built-in voices. Any custom/cloned voices on
+  # the account only show up once the live fetch succeeds.
+  @default_voice_options [
+    {"Ara", "ara"},
+    {"Eve", "eve"},
+    {"Leo", "leo"},
+    {"Rex", "rex"},
+    {"Sal", "sal"}
+  ]
+
   # ===========================================
   # LIFECYCLE
   # ===========================================
@@ -59,6 +70,8 @@ defmodule PhoenixKitAI.Web.Playground do
       |> assign(:voice_error, nil)
       |> assign(:voice_session_pid, nil)
       |> assign(:voice_monitor_ref, nil)
+      |> assign(:voice_options, @default_voice_options)
+      |> assign(:voice_selected, "eve")
 
     {:ok, socket}
   end
@@ -140,8 +153,13 @@ defmodule PhoenixKitAI.Web.Playground do
   # ===========================================
 
   @impl true
-  def handle_event("voice_change", %{"text" => text}, socket) do
-    {:noreply, assign(socket, :voice_text, text)}
+  def handle_event("voice_change", params, socket) do
+    socket =
+      socket
+      |> maybe_update_voice_text(params)
+      |> maybe_update_voice_selected(params)
+
+    {:noreply, socket}
   end
 
   @impl true
@@ -189,7 +207,7 @@ defmodule PhoenixKitAI.Web.Playground do
       Session,
       live_view_pid: self(),
       api_key: api_key,
-      voice: "eve",
+      voice: socket.assigns.voice_selected,
       codec: "pcm",
       sample_rate: 24_000,
       realtime_module: Application.get_env(:phoenix_kit_ai, :realtime_module, Xai.Realtime)
@@ -216,6 +234,19 @@ defmodule PhoenixKitAI.Web.Playground do
     end
   end
 
+  defp maybe_update_voice_text(socket, %{"text" => text}), do: assign(socket, :voice_text, text)
+  defp maybe_update_voice_text(socket, _params), do: socket
+
+  # Voice is fixed for the lifetime of a connection (baked into the
+  # WebSocket URL at connect time — see Xai.Realtime.connect_tts/1), so
+  # changing it only matters while not yet connected; the template
+  # disables the select once `@voice_status == :connected`.
+  defp maybe_update_voice_selected(socket, %{"voice" => voice}) when voice != "" do
+    assign(socket, :voice_selected, voice)
+  end
+
+  defp maybe_update_voice_selected(socket, _params), do: socket
+
   # Form change helpers
 
   defp apply_form_changes(socket, params) do
@@ -236,10 +267,15 @@ defmodule PhoenixKitAI.Web.Playground do
     if uuid == socket.assigns.selected_endpoint_uuid do
       socket
     else
+      endpoint = Enum.find(socket.assigns.endpoints, &(&1.uuid == uuid))
+
       socket
       |> maybe_close_voice_session()
       |> assign(:selected_endpoint_uuid, uuid)
-      |> assign(:selected_endpoint, Enum.find(socket.assigns.endpoints, &(&1.uuid == uuid)))
+      |> assign(:selected_endpoint, endpoint)
+      |> assign(:voice_options, @default_voice_options)
+      |> assign(:voice_selected, "eve")
+      |> maybe_fetch_xai_voices(endpoint)
     end
   end
 
@@ -255,6 +291,23 @@ defmodule PhoenixKitAI.Web.Playground do
   end
 
   defp maybe_close_voice_session(socket), do: socket
+
+  # Live-fetches xAI's voice catalogue (built-ins + any custom/cloned
+  # voices on the account) so the dropdown isn't stuck on the hardcoded
+  # built-in fallback. Deferred via `send(self(), ...)` rather than called
+  # inline — this runs inside the shared `phx-change="change"` handler,
+  # and an HTTP round trip has no business blocking every keystroke in
+  # the rest of the form.
+  defp maybe_fetch_xai_voices(socket, %{provider: provider, uuid: uuid} = endpoint) do
+    if Endpoint.realtime_voice_capable?(provider) do
+      api_key = OpenRouterClient.resolve_api_key(endpoint)
+      send(self(), {:fetch_xai_voices, uuid, api_key})
+    end
+
+    socket
+  end
+
+  defp maybe_fetch_xai_voices(socket, _endpoint), do: socket
 
   defp maybe_update_prompt(socket, %{"prompt_uuid" => uuid}) do
     uuid = if uuid == "", do: nil, else: uuid
@@ -371,6 +424,27 @@ defmodule PhoenixKitAI.Web.Playground do
   def handle_info({:xai_realtime_event, event}, socket) do
     Logger.debug(fn -> "[PhoenixKitAI.Web.Playground] xai realtime event: #{inspect(event)}" end)
     {:noreply, socket}
+  end
+
+  # Stale-fetch guard: if the operator picked a different endpoint between
+  # `send/2` and this message arriving, `uuid` no longer matches — drop it
+  # rather than repopulating the voice list for the wrong endpoint.
+  @impl true
+  def handle_info({:fetch_xai_voices, uuid, api_key}, socket) do
+    if socket.assigns.selected_endpoint_uuid == uuid do
+      case OpenRouterClient.fetch_xai_voices(api_key) do
+        {:ok, voices} when voices != [] ->
+          options = Enum.map(voices, &{&1.name, &1.voice_id})
+          {:noreply, assign(socket, :voice_options, options)}
+
+        _ ->
+          # Keep the built-in fallback list already assigned — better
+          # than an empty dropdown.
+          {:noreply, socket}
+      end
+    else
+      {:noreply, socket}
+    end
   end
 
   # The realtime session ended — either the user clicked "Disconnect"
