@@ -410,4 +410,167 @@ defmodule PhoenixKitAI.TTSTest do
                Completion.text_to_speech(ep, "Hello", instructions: "Speak warmly.")
     end
   end
+
+  describe "Completion.text_to_speech/3 — xAI (POST /v1/tts, batch REST)" do
+    # xAI's documented shape: {"audio": <base64>, "content_type", "duration"}
+    # — not the Mistral audio_data envelope or a raw binary body.
+    defp stub_xai_audio(status, bytes, extra \\ %{}) do
+      Req.Test.stub(__MODULE__, fn conn ->
+        body =
+          Map.merge(
+            %{"audio" => Base.encode64(bytes), "content_type" => "audio/mpeg", "duration" => 1.2},
+            extra
+          )
+
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(status, Jason.encode!(body))
+      end)
+    end
+
+    defp xai_endpoint_fixture(attrs \\ %{}) do
+      endpoint_fixture(Map.merge(%{provider: "xai", model: "grok-4.5"}, attrs))
+    end
+
+    test "sends text/language/voice_id/output_format and decodes the response" do
+      Req.Test.stub(__MODULE__, fn conn ->
+        {:ok, raw, conn} = Plug.Conn.read_body(conn)
+        body = Jason.decode!(raw)
+
+        assert body == %{
+                 "text" => "Bonjour",
+                 "language" => "fr",
+                 "voice_id" => "eve",
+                 "output_format" => %{"codec" => "mp3"}
+               }
+
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(200, Jason.encode!(%{"audio" => Base.encode64(@audio_bytes)}))
+      end)
+
+      ep = xai_endpoint_fixture()
+
+      assert {:ok, %{audio: @audio_bytes, format: "mp3"}} =
+               Completion.text_to_speech(ep, "Bonjour", language: "fr", voice_id: "eve")
+    end
+
+    test "defaults language to auto when not provided" do
+      Req.Test.stub(__MODULE__, fn conn ->
+        {:ok, raw, conn} = Plug.Conn.read_body(conn)
+        assert Jason.decode!(raw)["language"] == "auto"
+
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(200, Jason.encode!(%{"audio" => Base.encode64(@audio_bytes)}))
+      end)
+
+      ep = xai_endpoint_fixture()
+      assert {:ok, _} = Completion.text_to_speech(ep, "Bonjour")
+    end
+
+    test "accepts :voice as a voice_id alias" do
+      Req.Test.stub(__MODULE__, fn conn ->
+        {:ok, raw, conn} = Plug.Conn.read_body(conn)
+        assert Jason.decode!(raw)["voice_id"] == "leo"
+
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(200, Jason.encode!(%{"audio" => Base.encode64(@audio_bytes)}))
+      end)
+
+      ep = xai_endpoint_fixture()
+      assert {:ok, _} = Completion.text_to_speech(ep, "Bonjour", voice: "leo")
+    end
+
+    test "passes sample_rate/bit_rate/speed through when present" do
+      Req.Test.stub(__MODULE__, fn conn ->
+        {:ok, raw, conn} = Plug.Conn.read_body(conn)
+        body = Jason.decode!(raw)
+
+        assert body["output_format"] == %{
+                 "codec" => "wav",
+                 "sample_rate" => 24_000,
+                 "bit_rate" => 64_000
+               }
+
+        assert body["speed"] == 1.2
+
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(200, Jason.encode!(%{"audio" => Base.encode64(@audio_bytes)}))
+      end)
+
+      ep = xai_endpoint_fixture()
+
+      assert {:ok, _} =
+               Completion.text_to_speech(ep, "Bonjour",
+                 response_format: "wav",
+                 sample_rate: 24_000,
+                 bit_rate: 64_000,
+                 speed: 1.2
+               )
+    end
+
+    test "returns latency + format alongside decoded audio" do
+      stub_xai_audio(200, @audio_bytes)
+      ep = xai_endpoint_fixture()
+
+      assert {:ok, %{audio: @audio_bytes, format: "mp3", latency_ms: latency}} =
+               Completion.text_to_speech(ep, "Bonjour")
+
+      assert is_integer(latency)
+    end
+
+    test "missing audio field returns :invalid_audio_response" do
+      stub_xai_audio(200, @audio_bytes, %{"audio" => nil})
+      ep = xai_endpoint_fixture()
+      assert {:error, :invalid_audio_response} = Completion.text_to_speech(ep, "Bonjour")
+    end
+
+    test "un-decodable base64 returns :invalid_audio_response" do
+      Req.Test.stub(__MODULE__, fn conn ->
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(200, Jason.encode!(%{"audio" => "!!!not-base64!!!"}))
+      end)
+
+      ep = xai_endpoint_fixture()
+      assert {:error, :invalid_audio_response} = Completion.text_to_speech(ep, "Bonjour")
+    end
+
+    test "does not fall back to a raw binary body (xAI is always the JSON envelope)" do
+      stub_raw(200, @audio_bytes)
+      ep = xai_endpoint_fixture()
+      assert {:error, :invalid_audio_response} = Completion.text_to_speech(ep, "Bonjour")
+    end
+
+    test "401 maps to :invalid_api_key same as the generic path" do
+      stub_json(401, %{})
+      ep = xai_endpoint_fixture()
+      assert {:error, :invalid_api_key} = Completion.text_to_speech(ep, "Bonjour")
+    end
+
+    test "callable end-to-end via PhoenixKitAI.speak/3, not just Completion directly" do
+      stub_xai_audio(200, @audio_bytes)
+      ep = xai_endpoint_fixture()
+
+      assert {:ok, %{audio: @audio_bytes, format: "mp3"}} =
+               PhoenixKitAI.speak(ep.uuid, "Bonjour", voice_id: "eve", language: "fr")
+    end
+
+    test "a named integration connection (xai:my-key) still dispatches to the xAI branch" do
+      Req.Test.stub(__MODULE__, fn conn ->
+        {:ok, raw, conn} = Plug.Conn.read_body(conn)
+        assert Jason.decode!(raw)["text"] == "Bonjour"
+
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(200, Jason.encode!(%{"audio" => Base.encode64(@audio_bytes)}))
+      end)
+
+      ep = xai_endpoint_fixture(%{provider: "xai:personal"})
+      assert {:ok, %{audio: @audio_bytes}} = Completion.text_to_speech(ep, "Bonjour")
+    end
+  end
 end

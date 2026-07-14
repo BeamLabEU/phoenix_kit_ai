@@ -179,7 +179,17 @@ defmodule PhoenixKitAI.Completion do
   end
 
   @doc """
-  Synthesizes speech from text via the provider's `/audio/speech` endpoint.
+  Synthesizes speech from text via the provider's `/audio/speech` endpoint
+  (OpenAI-compatible providers), or xAI's own `POST /v1/tts` (a completely
+  different request/response shape — see `xai_text_to_speech/3`).
+
+  This is xAI's **batch** REST endpoint — a single request, a complete
+  audio file back in the response, no persistent connection. Suited to
+  "generate once, cache, serve from your own storage" use cases (e.g. a
+  language-learning app pre-rendering vocabulary audio). For live,
+  low-latency streaming playback, use `Xai.Realtime` directly (what the
+  Playground's "Streaming Voice (xAI)" panel does) — that path returns no
+  cacheable file, just a stream of chunks meant for one immediate playback.
 
   ## Parameters
 
@@ -191,7 +201,9 @@ defmodule PhoenixKitAI.Completion do
 
   - `:response_format` - Audio container/codec (default `"mp3"`)
   - `:voice` - Preset voice identifier (OpenRouter / OSS vLLM shape)
-  - `:voice_id` - Saved/cloned voice id (Mistral hosted shape)
+  - `:voice_id` - Saved/cloned voice id (Mistral hosted shape; also xAI's
+    voice field — see `fetch_xai_voices/2` in `OpenRouterClient` for the
+    list, e.g. `"eve"`)
   - `:instructions` - Steering text for models that support it (e.g.
     `gpt-4o-mini-tts`'s accent/tone/pacing/language control). Only sent
     to models known to support it (the `gpt-4o*-tts` family); silently
@@ -199,6 +211,11 @@ defmodule PhoenixKitAI.Completion do
     some providers (Mistral's `voxtral-*-tts`) hard-fail the whole
     request with HTTP 422 on an unrecognized `instructions` field
     rather than ignoring it, so the module must not send it blindly.
+  - `:language` - **xAI only**, ignored by other providers. BCP-47 code
+    (`"en"`, `"pt-BR"`, ...) or `"auto"` for automatic detection.
+    Defaults to `"auto"`.
+  - `:sample_rate`, `:bit_rate`, `:speed` - **xAI only**, passed through
+    to its `output_format` / `speed` fields when present.
 
   Only the voice option that is present is sent; the module stays
   provider-neutral and does not assume a field name.
@@ -210,6 +227,20 @@ defmodule PhoenixKitAI.Completion do
     `PhoenixKitAI.Errors` for the full reason vocabulary and translation.
   """
   def text_to_speech(endpoint, text, opts \\ []) do
+    if xai_provider?(endpoint.provider) do
+      xai_text_to_speech(endpoint, text, opts)
+    else
+      generic_text_to_speech(endpoint, text, opts)
+    end
+  end
+
+  defp xai_provider?(provider) when is_binary(provider) do
+    provider |> String.split(":", parts: 2) |> List.first() == "xai"
+  end
+
+  defp xai_provider?(_provider), do: false
+
+  defp generic_text_to_speech(endpoint, text, opts) do
     url = build_url(endpoint, "/audio/speech")
     headers = OpenRouterClient.build_headers_from_endpoint(endpoint)
     format = Keyword.get(opts, :response_format, "mp3")
@@ -238,6 +269,65 @@ defmodule PhoenixKitAI.Completion do
       {:error, reason} ->
         Logger.warning("TTS transport error: #{inspect(reason)}")
         {:error, {:connection_error, reason}}
+    end
+  end
+
+  # Synthesizes speech via xAI's synchronous POST /v1/tts — a single
+  # request, a complete audio file back, no WebSocket. Not the same
+  # endpoint Xai.Realtime.connect_tts/1 streams from, and not a variant
+  # of generic_text_to_speech/2 — text/voice_id/language fields
+  # (language required by xAI, defaulted to "auto" here), a nested
+  # output_format, and a {"audio": <base64>, "content_type", "duration"}
+  # response — none of that matches the OpenAI-compatible shape.
+  defp xai_text_to_speech(endpoint, text, opts) do
+    base = endpoint.base_url || Endpoint.default_base_url("xai")
+    url = "#{String.trim_trailing(base, "/")}/tts"
+    headers = OpenRouterClient.build_headers_from_endpoint(endpoint)
+    format = Keyword.get(opts, :response_format, "mp3")
+
+    body =
+      %{"text" => text, "language" => Keyword.get(opts, :language, "auto")}
+      |> maybe_add("voice_id", Keyword.get(opts, :voice_id) || Keyword.get(opts, :voice))
+      |> maybe_add("output_format", xai_output_format(format, opts))
+      |> maybe_add("speed", Keyword.get(opts, :speed))
+
+    start_time = System.monotonic_time(:millisecond)
+
+    case http_post(url, headers, body) do
+      {:ok, %{status_code: 200, body: response_body}} ->
+        decode_xai_audio(response_body, format, start_time)
+
+      {:ok, %{status_code: status, body: response_body}} ->
+        handle_error_status(status, response_body)
+
+      {:error, :timeout} ->
+        {:error, :request_timeout}
+
+      {:error, reason} ->
+        Logger.warning("xAI TTS transport error: #{inspect(reason)}")
+        {:error, {:connection_error, reason}}
+    end
+  end
+
+  defp xai_output_format(codec, opts) do
+    %{}
+    |> maybe_add("codec", codec)
+    |> maybe_add("sample_rate", Keyword.get(opts, :sample_rate))
+    |> maybe_add("bit_rate", Keyword.get(opts, :bit_rate))
+  end
+
+  # xAI's response is always `{"audio": <base64>, "content_type", "duration"}`
+  # — no raw-binary-body fallback, unlike `decode_audio/3`, since this is a
+  # single documented shape rather than several providers' worth of
+  # variance to tolerate.
+  defp decode_xai_audio(response_body, format, start_time) do
+    latency_ms = System.monotonic_time(:millisecond) - start_time
+
+    with {:ok, %{"audio" => b64}} when is_binary(b64) <- Jason.decode(response_body),
+         {:ok, bytes} when byte_size(bytes) > 0 <- Base.decode64(b64) do
+      {:ok, %{audio: bytes, format: format, latency_ms: latency_ms}}
+    else
+      _ -> {:error, :invalid_audio_response}
     end
   end
 
