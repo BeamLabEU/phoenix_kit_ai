@@ -352,6 +352,10 @@ defmodule PhoenixKitAI.Web.Playground do
 
   @impl true
   def handle_info({:xai_audio_chunk, chunk}, socket) do
+    Logger.debug(fn ->
+      "[PhoenixKitAI.Web.Playground] xai audio chunk received: #{byte_size(chunk)} bytes"
+    end)
+
     {:noreply, push_event(socket, "xai-audio-chunk", %{data: Base.encode64(chunk)})}
   end
 
@@ -360,8 +364,14 @@ defmodule PhoenixKitAI.Web.Playground do
     {:noreply, socket |> assign(:voice_status, :error) |> assign(:voice_error, message)}
   end
 
+  # Every other realtime event (acks, "text.done" echoes, unrecognized
+  # shapes) — logged rather than silently dropped, since this is the only
+  # visibility into whether xAI's realtime endpoint is responding at all.
   @impl true
-  def handle_info({:xai_realtime_event, _event}, socket), do: {:noreply, socket}
+  def handle_info({:xai_realtime_event, event}, socket) do
+    Logger.debug(fn -> "[PhoenixKitAI.Web.Playground] xai realtime event: #{inspect(event)}" end)
+    {:noreply, socket}
+  end
 
   # The realtime session ended — either the user clicked "Disconnect"
   # (`Session.close/1`, reason `:normal`) or the connection died on its own

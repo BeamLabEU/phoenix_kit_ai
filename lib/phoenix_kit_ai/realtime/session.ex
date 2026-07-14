@@ -92,12 +92,12 @@ defmodule PhoenixKitAI.Realtime.Session do
 
   @impl true
   def handle_cast({:send_text, text}, state) do
-    state.realtime_module.send_text(state.ws_pid, text)
+    log_send_error("send_text", state.realtime_module.send_text(state.ws_pid, text))
     {:noreply, state}
   end
 
   def handle_cast(:finish, state) do
-    state.realtime_module.send_text_done(state.ws_pid)
+    log_send_error("send_text_done", state.realtime_module.send_text_done(state.ws_pid))
     {:noreply, state}
   end
 
@@ -120,5 +120,21 @@ defmodule PhoenixKitAI.Realtime.Session do
     end)
 
     {:noreply, state}
+  end
+
+  # `Xai.Realtime.send_text/2` and `send_text_done/1` return :ok | {:error, _},
+  # but the sends above are casts — nothing else would ever surface a failed
+  # send (e.g. the socket already closed) since the caller doesn't see the
+  # return value at all.
+  defp log_send_error(_op, :ok), do: :ok
+
+  defp log_send_error(op, {:error, reason}) do
+    Logger.warning("[PhoenixKitAI.Realtime.Session] #{op} failed: #{inspect(reason)}")
+  end
+
+  defp log_send_error(op, other) do
+    Logger.warning(
+      "[PhoenixKitAI.Realtime.Session] #{op} returned unexpected value: #{inspect(other)}"
+    )
   end
 end
