@@ -18,10 +18,19 @@ window.PhoenixKitAIHooks = (function () {
   // MediaSource's incremental-append support for compressed formats is
   // unreliable across browsers, while scheduling PCM buffers needs no
   // format-specific demuxing at all.
+  //
+  // This hook also renders its own status line (chunk counts, AudioContext
+  // state) directly into its otherwise-empty div (`phx-update="ignore"`, so
+  // LiveView never fights it for control of this content) — audio played
+  // via the Web Audio API has no visible player at all, so without this
+  // there's no way to tell "silently not working" apart from "actually
+  // playing" short of trusting your ears.
   const XaiVoiceStream = {
     mounted() {
       this.audioContext = null;
       this.nextStartTime = 0;
+      this.chunksReceived = 0;
+      this.chunksScheduled = 0;
 
       // Browser autoplay policy requires the AudioContext to be created
       // (or at least resumed) synchronously inside a real user-gesture
@@ -30,15 +39,18 @@ window.PhoenixKitAIHooks = (function () {
       // gesture. Without this, the context is silently created
       // `suspended` on first chunk arrival and nothing ever plays: no
       // error, no console warning, just silence. `this.el` is this
-      // hook's own (otherwise empty) div, not the Connect/Speak buttons
-      // elsewhere in the form, so listen document-wide for the first
-      // click instead.
+      // hook's own div, not the Connect/Speak buttons elsewhere in the
+      // form, so listen document-wide for the first click instead.
       this._unlockAudio = () => this.ensureContext().resume();
       document.addEventListener("click", this._unlockAudio, { once: true });
 
       this.handleEvent("xai-audio-chunk", ({ data }) => {
+        this.chunksReceived += 1;
         this.enqueueChunk(data);
+        this.renderStatus();
       });
+
+      this.renderStatus();
     },
 
     destroyed() {
@@ -54,6 +66,7 @@ window.PhoenixKitAIHooks = (function () {
         const Ctx = window.AudioContext || window.webkitAudioContext;
         this.audioContext = new Ctx({ sampleRate: SAMPLE_RATE });
         this.nextStartTime = this.audioContext.currentTime;
+        this.audioContext.onstatechange = () => this.renderStatus();
       }
 
       return this.audioContext;
@@ -88,6 +101,48 @@ window.PhoenixKitAIHooks = (function () {
       const startAt = Math.max(this.nextStartTime, context.currentTime);
       source.start(startAt);
       this.nextStartTime = startAt + buffer.duration;
+      this.chunksScheduled += 1;
+
+      source.onended = () => this.renderStatus();
+    },
+
+    // Plays a short 440Hz tone directly via Web Audio, with no dependency
+    // on xAI at all — isolates "is Web Audio output broken on this
+    // browser/device" (wrong output device, muted tab, OS-level block)
+    // from "is the xAI realtime pipeline broken."
+    playTestTone() {
+      const context = this.ensureContext();
+      context.resume();
+
+      const osc = context.createOscillator();
+      const gain = context.createGain();
+      osc.frequency.value = 440;
+      gain.gain.value = 0.2;
+      osc.connect(gain);
+      gain.connect(context.destination);
+      osc.start();
+      osc.stop(context.currentTime + 0.3);
+    },
+
+    renderStatus() {
+      const state = this.audioContext ? this.audioContext.state : "not created yet";
+
+      this.el.innerHTML =
+        '<div class="flex items-center gap-3 text-xs text-base-content/60 mt-2">' +
+        "<span>Audio context: <strong>" +
+        state +
+        "</strong></span>" +
+        "<span>Chunks: " +
+        this.chunksReceived +
+        " received / " +
+        this.chunksScheduled +
+        " scheduled</span>" +
+        '<button type="button" data-role="test-tone" class="btn btn-xs btn-outline">Test speaker</button>' +
+        "</div>";
+
+      this.el.querySelector('[data-role="test-tone"]').addEventListener("click", () => {
+        this.playTestTone();
+      });
     },
   };
 
