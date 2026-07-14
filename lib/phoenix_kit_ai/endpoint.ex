@@ -358,6 +358,21 @@ defmodule PhoenixKitAI.Endpoint do
   def provider_label(provider), do: provider
 
   @doc """
+  Whether `provider` supports xAI's realtime streaming voice API
+  (`PhoenixKitAI.Realtime.Session`, WebSocket-based) — gates the
+  Playground's streaming voice panel to capable endpoints.
+  """
+  @spec realtime_voice_capable?(String.t() | nil) :: boolean()
+  def realtime_voice_capable?(provider) when is_binary(provider) do
+    case Providers.get(provider) do
+      %{capabilities: capabilities} -> :realtime_voice in capabilities
+      _ -> false
+    end
+  end
+
+  def realtime_voice_capable?(_provider), do: false
+
+  @doc """
   Checks if the endpoint has been validated recently (within the last 24 hours).
   """
   def recently_validated?(%__MODULE__{last_validated_at: nil}), do: false

@@ -30,6 +30,8 @@ support_dir = Path.expand("support", __DIR__)
   Code.ensure_loaded?(mod) || Code.require_file(file, support_dir)
 end)
 
+Mox.defmock(PhoenixKitAI.Test.RealtimeMock, for: Xai.RealtimeBehaviour)
+
 alias PhoenixKitAI.Test.Repo, as: TestRepo
 
 # Check if the test database exists before trying to connect.
@@ -132,6 +134,13 @@ Application.put_env(:phoenix_kit_ai, :test_repo_available, repo_available)
 # that hits the validation path crashes with `(EXIT) no process` on
 # the start_child call.
 {:ok, _pid} = Task.Supervisor.start_link(name: PhoenixKit.TaskSupervisor)
+
+# `PhoenixKitAI.Realtime.Supervisor` is the DynamicSupervisor that owns
+# xAI realtime voice sessions (`PhoenixKitAI.Realtime.Session`), started in
+# production via `PhoenixKitAI.children/0` + `PhoenixKit.Supervisor`. Same
+# gap as `PhoenixKit.TaskSupervisor` above — boot it explicitly here.
+{:ok, _pid} =
+  DynamicSupervisor.start_link(name: PhoenixKitAI.Realtime.Supervisor, strategy: :one_for_one)
 
 # Force PhoenixKit's URL prefix cache so `Routes.ai_path/0` produces
 # paths that the test router matches. Admin paths always get the

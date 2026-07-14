@@ -463,7 +463,12 @@ defmodule PhoenixKitAI.OpenRouterClient do
     build_headers(api_key, opts)
   end
 
-  defp resolve_api_key(endpoint) do
+  @doc false
+  # Public so non-REST callers (e.g. PhoenixKitAI.Realtime.Session, which
+  # talks to xAI over WebSocket instead of through this module's REST
+  # helpers) can resolve the same API key without duplicating the
+  # integration_uuid / legacy-provider / endpoint.api_key fallback chain.
+  def resolve_api_key(endpoint) do
     # Prefer the explicit `integration_uuid` reference. Fall back to the
     # legacy `provider` field (which carried a uuid before the dedicated
     # column existed) for any endpoint that wasn't reached by V107's

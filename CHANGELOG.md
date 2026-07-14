@@ -1,3 +1,16 @@
+## 0.12.0 - 2026-07-14
+
+### Added
+- **Streaming voice for xAI endpoints.** The Playground gets a "Streaming Voice (xAI)" panel — shown only for endpoints on a provider declaring the `:realtime_voice` capability (xAI, as of `phoenix_kit ~> 1.7.194`) — that connects to xAI's realtime TTS WebSocket (via the new `xai` Hex package's `Xai.Realtime`) and streams synthesized audio back in near-real-time as PCM chunks instead of waiting for a full request/response render.
+  - `PhoenixKitAI.Realtime.Session` — a `GenServer` owning one realtime connection per Playground session; monitors the owning LiveView so the socket closes automatically when the LiveView goes away (LiveView `terminate/2` isn't reliable without `trap_exit`, so cleanup is driven from here instead), and runs under a `DynamicSupervisor` (`restart: :temporary` — a dead/ended session is never auto-restarted).
+  - A new `XaiVoiceStream` JS hook (`priv/static/assets/phoenix_kit_ai.js`, wired via `js_sources/0`) schedules the streamed 16-bit PCM chunks through the Web Audio API for gapless playback.
+  - `OpenRouterClient.resolve_api_key/1` is now public so the realtime session can resolve the endpoint's API key the same way the REST completion path does.
+  - Scope is streaming **output** only (type text, hear it spoken) — no microphone input / full-duplex voice agent.
+- Depends on `phoenix_kit ~> 1.7.194` (adds the xAI `:realtime_voice` capability) and the new `xai ~> 0.1` package.
+
+### Known issues
+- `xai`'s gRPC transport pulls in `gun`/`cowlib`, which currently carries two unpatched upstream advisories (`cowlib` 2.18.0: CVE-2026-43966 MEDIUM, CVE-2026-43969 LOW — both in outgoing HTTP header/cookie construction). No fixed `cowlib` release exists yet; `xai`'s own maintainers accept the same risk for the same reason. This module only uses `Xai.Realtime` (WebSocket, via `websockex`) — the vulnerable gRPC/`gun` code path is never exercised at runtime here. Accepted; re-evaluate once `cowlib` patches upstream.
+
 ## 0.11.2 - 2026-07-13
 
 ### Fixed

@@ -1007,12 +1007,30 @@ defmodule PhoenixKitAI do
   def css_sources, do: [:phoenix_kit_ai]
 
   @impl PhoenixKit.Module
+  @spec js_sources() :: [map()]
+  def js_sources do
+    [
+      %{
+        app: :phoenix_kit_ai,
+        file: "static/assets/phoenix_kit_ai.js",
+        global: "PhoenixKitAIHooks"
+      }
+    ]
+  end
+
+  @impl PhoenixKit.Module
+  @spec children() :: [Supervisor.child_spec() | module() | {module(), term()}]
+  def children do
+    [{DynamicSupervisor, name: PhoenixKitAI.Realtime.Supervisor, strategy: :one_for_one}]
+  end
+
+  @impl PhoenixKit.Module
   @spec required_integrations() :: [String.t()]
   def required_integrations, do: ["openrouter"]
 
   @impl PhoenixKit.Module
   @spec version() :: String.t()
-  def version, do: "0.11.1"
+  def version, do: "0.12.0"
 
   @impl PhoenixKit.Module
   @spec route_module() :: module()

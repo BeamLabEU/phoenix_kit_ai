@@ -1,7 +1,7 @@
 defmodule PhoenixKitAI.MixProject do
   use Mix.Project
 
-  @version "0.11.2"
+  @version "0.12.0"
   @source_url "https://github.com/BeamLabEU/phoenix_kit_ai"
 
   def project do
@@ -93,10 +93,18 @@ defmodule PhoenixKitAI.MixProject do
       # Values,Format} and the <.form_section> / :sort_bar core components.
       # 1.7.184+ required: `disabled`/`wrapper_class`/`title`/`:description`
       # attrs on <.checkbox> (PhoenixKitWeb.Components.Core.Checkbox).
-      pk_dep(:phoenix_kit, ">= 1.7.189"),
+      # 1.7.194+ required: xAI provider declares the `:realtime_voice`
+      # capability that gates the streaming-voice Playground panel — an
+      # older core would just never show the panel (silent no-op, not a
+      # crash), so this floor is what actually guarantees the feature works.
+      pk_dep(:phoenix_kit, ">= 1.7.194"),
 
       # LiveView is needed for the admin pages.
       {:phoenix_live_view, "~> 1.1"},
+
+      # xAI realtime voice (WebSocket streaming TTS) — the one xAI capability
+      # unreachable through the shared REST completions path.
+      {:xai, "~> 0.1"},
 
       # Optional rustler pin so the transitive `mdex_native` NIF (via phoenix_kit,
       # a test dependency) can source-build on hosts where its precompiled variant
@@ -111,7 +119,10 @@ defmodule PhoenixKitAI.MixProject do
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
 
       # LiveView test rendering
-      {:lazy_html, ">= 0.1.0", only: :test}
+      {:lazy_html, ">= 0.1.0", only: :test},
+
+      # Mocking Xai.RealtimeBehaviour in PhoenixKitAI.Realtime.Session tests
+      {:mox, "~> 1.1", only: :test}
     ]
   end
 

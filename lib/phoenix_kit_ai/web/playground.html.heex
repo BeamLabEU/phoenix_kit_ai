@@ -158,6 +158,75 @@
         </.form_section>
       </form>
 
+      <%!-- Streaming Voice (xAI Realtime) — only for endpoints whose
+           provider declares the :realtime_voice capability. --%>
+      <%= if @selected_endpoint && PhoenixKitAI.Endpoint.realtime_voice_capable?(@selected_endpoint.provider) do %>
+        <.form_section
+          title={gettext("Streaming Voice (xAI)")}
+          icon="hero-speaker-wave"
+          class="bg-base-200"
+        >
+          <form phx-change="voice_change" phx-submit="speak_voice" class="space-y-3">
+            <.textarea
+              name="text"
+              value={@voice_text}
+              rows="3"
+              placeholder={gettext("Type text to speak...")}
+              phx-debounce="300"
+              disabled={@voice_status != :connected}
+            />
+
+            <%= if @voice_error do %>
+              <p class="text-sm text-error">{@voice_error}</p>
+            <% end %>
+
+            <div class="flex justify-between items-center">
+              <span class="text-sm text-base-content/60">
+                <%= case @voice_status do %>
+                  <% :idle -> %>
+                    {gettext("Not connected")}
+                  <% :connecting -> %>
+                    {gettext("Connecting…")}
+                  <% :connected -> %>
+                    <.icon name="hero-signal" class="w-4 h-4 inline text-success" />
+                    {gettext("Connected")}
+                  <% :error -> %>
+                    {gettext("Disconnected")}
+                <% end %>
+              </span>
+
+              <div class="flex gap-2">
+                <button
+                  type="button"
+                  class="btn btn-sm"
+                  phx-click="start_voice"
+                  disabled={@voice_status == :connected}
+                >
+                  {gettext("Connect")}
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-ghost"
+                  phx-click="stop_voice"
+                  disabled={@voice_status != :connected}
+                >
+                  {gettext("Disconnect")}
+                </button>
+                <button
+                  type="submit"
+                  class="btn btn-sm btn-primary"
+                  disabled={@voice_status != :connected || @voice_text == ""}
+                >
+                  <.icon name="hero-speaker-wave" class="w-4 h-4 mr-1" /> {gettext("Speak")}
+                </button>
+              </div>
+            </div>
+          </form>
+
+          <div id="xai-voice-stream" phx-hook="XaiVoiceStream" phx-update="ignore"></div>
+        </.form_section>
+      <% end %>
+
       <%!-- Response Area --%>
       <div id="playground-response" class="space-y-6">
         <%!-- Loading Skeleton --%>

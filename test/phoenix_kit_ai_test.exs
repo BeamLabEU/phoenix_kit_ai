@@ -115,13 +115,29 @@ defmodule PhoenixKitAITest do
     test "returns a version string" do
       version = PhoenixKitAI.version()
       assert is_binary(version)
-      assert version == "0.11.1"
+      assert version == "0.12.0"
     end
   end
 
   describe "css_sources/0" do
     test "returns list with OTP app name" do
       assert PhoenixKitAI.css_sources() == [:phoenix_kit_ai]
+    end
+  end
+
+  describe "js_sources/0" do
+    test "declares the phoenix_kit_ai hook bundle" do
+      assert [%{app: :phoenix_kit_ai, file: file, global: "PhoenixKitAIHooks"}] =
+               PhoenixKitAI.js_sources()
+
+      assert file == "static/assets/phoenix_kit_ai.js"
+    end
+  end
+
+  describe "children/0" do
+    test "starts the realtime session DynamicSupervisor" do
+      assert [{DynamicSupervisor, name: PhoenixKitAI.Realtime.Supervisor, strategy: :one_for_one}] =
+               PhoenixKitAI.children()
     end
   end
 
@@ -150,10 +166,6 @@ defmodule PhoenixKitAITest do
 
     test "user_dashboard_tabs/0 returns empty list" do
       assert PhoenixKitAI.user_dashboard_tabs() == []
-    end
-
-    test "children/0 returns empty list" do
-      assert PhoenixKitAI.children() == []
     end
   end
 end
