@@ -1,3 +1,8 @@
+## 0.12.1 - 2026-07-14
+
+### Fixed
+- **0.12.0's `XaiVoiceStream` JS hook bundle never actually shipped.** `package[:files]` in `mix.exs` didn't list `priv`, so `priv/static/assets/phoenix_kit_ai.js` — declared via `js_sources/0` — was left out of the published Hex tarball entirely. Any host app depending on `phoenix_kit_ai` from Hex (not a local path dep) failed to compile with `js_sources/0 bundle not found` the moment the `:phoenix_kit_js_sources` compiler tried to vendor it. `priv` is now included; verified via `mix hex.build`'s file listing.
+
 ## 0.12.0 - 2026-07-14
 
 ### Added

@@ -115,7 +115,7 @@ defmodule PhoenixKitAITest do
     test "returns a version string" do
       version = PhoenixKitAI.version()
       assert is_binary(version)
-      assert version == "0.12.0"
+      assert version == "0.12.1"
     end
   end
 
@@ -131,6 +131,29 @@ defmodule PhoenixKitAITest do
                PhoenixKitAI.js_sources()
 
       assert file == "static/assets/phoenix_kit_ai.js"
+    end
+
+    test "every declared bundle file exists under this app's priv/" do
+      for %{app: app, file: file} <- PhoenixKitAI.js_sources() do
+        path = Path.join(:code.priv_dir(app), file)
+        assert File.exists?(path), "js_sources/0 declares #{file}, but #{path} does not exist"
+      end
+    end
+
+    # Regression: 0.12.0 declared this bundle via js_sources/0 but omitted
+    # `priv` from `package[:files]` in mix.exs, so it existed in this repo
+    # (this test would have passed) yet never shipped in the published Hex
+    # tarball — any host consuming it from Hex hit `js_sources/0 bundle not
+    # found` at compile time. `File.exists?/1` above can't catch a packaging
+    # omission (the file is always present in a local checkout); only
+    # checking the actual package allowlist can.
+    test "mix.exs package files include priv (so js_sources bundles actually ship on Hex)" do
+      # `package/0` is private in mix.exs — read it back from the project
+      # config instead of calling it directly.
+      files = Mix.Project.config()[:package][:files] || []
+
+      assert "priv" in files,
+             "mix.exs package[:files] must include \"priv\" or js_sources/0 bundles won't ship on Hex"
     end
   end
 
