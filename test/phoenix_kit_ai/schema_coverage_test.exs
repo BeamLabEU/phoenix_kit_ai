@@ -58,11 +58,15 @@ defmodule PhoenixKitAI.SchemaCoverageTest do
       assert Endpoint.short_model_name("bare") == "bare"
     end
 
-    test "kind/1 — classifies model id (tts / embedding / chat)" do
+    test "kind/1 — classifies model id (tts / embedding / image_gen / chat)" do
       assert Endpoint.kind("voxtral-mini-tts-2603") == :tts
       assert Endpoint.kind("mistralai/Voxtral-4B-TTS") == :tts
       assert Endpoint.kind("openai/text-embedding-3-small") == :embedding
       assert Endpoint.kind("mistral-embed") == :embedding
+      assert Endpoint.kind("dall-e-3") == :image_gen
+      assert Endpoint.kind("gpt-image-1") == :image_gen
+      assert Endpoint.kind("grok-imagine-image-quality") == :image_gen
+      assert Endpoint.kind("google/gemini-2.5-flash-image") == :image_gen
       assert Endpoint.kind("anthropic/claude-3-haiku") == :chat
       # struct + nil/blank fall back to chat
       assert Endpoint.kind(%Endpoint{model: "voxtral-mini-tts-2603"}) == :tts
@@ -72,7 +76,18 @@ defmodule PhoenixKitAI.SchemaCoverageTest do
     test "kind_icon/1 — one heroicon per kind" do
       assert Endpoint.kind_icon(:tts) == "hero-speaker-wave"
       assert Endpoint.kind_icon(:embedding) == "hero-rectangle-stack"
+      assert Endpoint.kind_icon(:image_gen) == "hero-photo"
       assert Endpoint.kind_icon(:chat) == "hero-chat-bubble-left-right"
+    end
+
+    test "image_gen_model_picker?/1 — capability-gated (OpenAI/OpenRouter/xAI yes, Mistral/DeepSeek no)" do
+      assert Endpoint.image_gen_model_picker?("openai")
+      assert Endpoint.image_gen_model_picker?("openrouter")
+      assert Endpoint.image_gen_model_picker?("xai")
+      assert Endpoint.image_gen_model_picker?("xai:personal")
+      refute Endpoint.image_gen_model_picker?("mistral")
+      refute Endpoint.image_gen_model_picker?("deepseek")
+      refute Endpoint.image_gen_model_picker?(nil)
     end
 
     test "image_size_options + image_quality_options + reasoning_effort_options" do

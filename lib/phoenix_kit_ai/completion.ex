@@ -9,8 +9,8 @@ defmodule PhoenixKitAI.Completion do
 
   - `/chat/completions` - Text and vision completions
   - `/embeddings` - Text embeddings
-  - `/audio/speech` - Text-to-speech synthesis
-  - `/images/generations` - Image generation (planned)
+  - `/audio/speech` / xAI's `/tts` - Text-to-speech synthesis
+  - `/images/generations` - Image generation
 
   ## Logging conventions
 
@@ -394,6 +394,103 @@ defmodule PhoenixKitAI.Completion do
         {:error, :invalid_audio_response}
     end
   end
+
+  @doc """
+  Generates image(s) from a text prompt via the provider's
+  `POST /images/generations` endpoint.
+
+  Unlike TTS, this one genuinely is the same path and response envelope
+  across OpenAI, OpenRouter, and xAI — `{"data": [{"url" | "b64_json",
+  ...}]}` — so a single implementation covers all three; only the
+  optional request fields differ per provider/model family.
+
+  ## Options
+
+  - `:n` - Number of images to generate (default 1; provider-limited —
+    e.g. DALL-E 3 only supports 1)
+  - `:response_format` - `"url"` or `"b64_json"` (DALL-E 2/3 only — GPT
+    image models always return `b64_json` regardless; xAI honors it)
+  - `:size` - Pixel dimensions, e.g. `"1024x1024"` (OpenAI / DALL-E / GPT
+    image models)
+  - `:quality` - `"standard"`/`"hd"` (DALL-E 3) or `"low"`/`"medium"`/`"high"`
+    (GPT image models)
+  - `:style` - `"vivid"`/`"natural"` (DALL-E 3 only)
+  - `:background`, `:output_format` - GPT image models only
+  - `:aspect_ratio` - e.g. `"16:9"` (**xAI only**)
+  - `:resolution` - `"1k"` or `"2k"` (**xAI only**)
+
+  Only options the caller passes are sent — the module stays
+  provider-neutral and does not assume which fields a given model
+  supports.
+
+  ## Returns
+
+  - `{:ok, %{images: [%{url: String.t() | nil, data: binary() | nil}], latency_ms: integer()}}` —
+    `data` is the decoded bytes when the provider returned `b64_json`;
+    `url` is the provider's URL when it returned one instead (DALL-E's
+    default, valid ~60 minutes). Never both nil for a successfully
+    decoded entry.
+  - `{:error, reason}` - Error atom or tagged tuple. See
+    `PhoenixKitAI.Errors` for the full reason vocabulary and translation.
+  """
+  def generate_image(endpoint, prompt, opts \\ []) do
+    url = build_url(endpoint, "/images/generations")
+    headers = OpenRouterClient.build_headers_from_endpoint(endpoint)
+
+    body =
+      %{"model" => endpoint.model, "prompt" => prompt}
+      |> maybe_add("n", Keyword.get(opts, :n))
+      |> maybe_add("response_format", Keyword.get(opts, :response_format))
+      |> maybe_add("size", Keyword.get(opts, :size))
+      |> maybe_add("quality", Keyword.get(opts, :quality))
+      |> maybe_add("style", Keyword.get(opts, :style))
+      |> maybe_add("background", Keyword.get(opts, :background))
+      |> maybe_add("output_format", Keyword.get(opts, :output_format))
+      |> maybe_add("aspect_ratio", Keyword.get(opts, :aspect_ratio))
+      |> maybe_add("resolution", Keyword.get(opts, :resolution))
+
+    start_time = System.monotonic_time(:millisecond)
+
+    case http_post(url, headers, body) do
+      {:ok, %{status_code: 200, body: response_body}} ->
+        decode_images(response_body, start_time)
+
+      {:ok, %{status_code: status, body: response_body}} ->
+        handle_error_status(status, response_body)
+
+      {:error, :timeout} ->
+        {:error, :request_timeout}
+
+      {:error, reason} ->
+        Logger.warning("Image generation transport error: #{inspect(reason)}")
+        {:error, {:connection_error, reason}}
+    end
+  end
+
+  defp decode_images(response_body, start_time) do
+    latency_ms = System.monotonic_time(:millisecond) - start_time
+
+    case Jason.decode(response_body) do
+      {:ok, %{"data" => images}} when is_list(images) and images != [] ->
+        {:ok, %{images: Enum.map(images, &decode_image_entry/1), latency_ms: latency_ms}}
+
+      {:ok, _} ->
+        {:error, :invalid_response_format}
+
+      {:error, _} ->
+        {:error, :invalid_json_response}
+    end
+  end
+
+  defp decode_image_entry(%{"b64_json" => b64}) when is_binary(b64) do
+    case Base.decode64(b64) do
+      {:ok, bytes} -> %{url: nil, data: bytes}
+      :error -> %{url: nil, data: nil}
+    end
+  end
+
+  defp decode_image_entry(%{"url" => url}) when is_binary(url), do: %{url: url, data: nil}
+  defp decode_image_entry(_entry), do: %{url: nil, data: nil}
 
   @doc """
   Extracts the text content from a chat completion response.

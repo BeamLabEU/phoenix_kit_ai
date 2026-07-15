@@ -2527,6 +2527,109 @@ defmodule PhoenixKitAI do
   end
 
   @doc """
+  Generates image(s) from a text prompt via `Completion.generate_image/3`.
+
+  Falls back to the endpoint's stored `image_size` / `image_quality`
+  (set on the Endpoint form's "Image generation" model type) when the
+  caller doesn't pass `:size` / `:quality` — same pattern `speak/3` uses
+  for its stored default voice.
+
+  ## Options
+
+  See `Completion.generate_image/3` for the full option list
+  (`:n`, `:response_format`, `:size`, `:quality`, `:style`, `:background`,
+  `:output_format`, `:aspect_ratio`, `:resolution`).
+
+  ## Returns
+
+  - `{:ok, %{images: [%{url: String.t() | nil, data: binary() | nil}]}}`
+  - `{:error, reason}` - Error atom or tagged tuple.
+  """
+  @spec generate_image(String.t() | Endpoint.t(), String.t(), keyword()) ::
+          {:ok, %{images: [%{url: String.t() | nil, data: binary() | nil}]}} | {:error, term()}
+  def generate_image(endpoint_uuid, prompt, opts \\ []) when is_binary(prompt) do
+    with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
+         {:ok, _} <- validate_endpoint(endpoint) do
+      {auto_source, stacktrace, caller_context} = capture_caller_info()
+      source = Keyword.get(opts, :source) || auto_source
+
+      opts = maybe_put_default_image_opts(endpoint, opts)
+
+      case Completion.generate_image(endpoint, prompt, opts) do
+        {:ok, result} ->
+          log_image_request(endpoint, prompt, result, source, stacktrace, caller_context)
+          {:ok, Map.take(result, [:images])}
+
+        {:error, reason} ->
+          log_failed_image_request(endpoint, prompt, reason, source, stacktrace, caller_context)
+          {:error, reason}
+      end
+    end
+  end
+
+  # An explicit caller value always wins; a blank/absent stored default
+  # is a no-op (Completion sends no size/quality field at all then).
+  defp maybe_put_default_image_opts(endpoint, opts) do
+    opts
+    |> maybe_put_default_opt(:size, endpoint.image_size)
+    |> maybe_put_default_opt(:quality, endpoint.image_quality)
+  end
+
+  defp maybe_put_default_opt(opts, key, value) do
+    if Keyword.has_key?(opts, key) or not is_binary(value) or value == "" do
+      opts
+    else
+      Keyword.put(opts, key, value)
+    end
+  end
+
+  defp log_image_request(endpoint, prompt, result, source, stacktrace, caller_context) do
+    capture_content = capture_request_content?()
+    images = result[:images] || []
+
+    base_metadata = %{
+      input_chars: String.length(prompt),
+      image_count: length(images),
+      total_bytes: Enum.reduce(images, 0, fn img, acc -> acc + byte_size(img[:data] || "") end),
+      source: source,
+      stacktrace: stacktrace,
+      caller_context: caller_context
+    }
+
+    create_request(%{
+      endpoint_uuid: endpoint.uuid,
+      endpoint_name: endpoint.name,
+      model: endpoint.model,
+      request_type: "image",
+      latency_ms: result[:latency_ms],
+      status: "success",
+      metadata: maybe_add_content(base_metadata, :input, capture_content, fn -> prompt end)
+    })
+  end
+
+  defp log_failed_image_request(endpoint, prompt, reason, source, stacktrace, caller_context) do
+    capture_content = capture_request_content?()
+
+    base_metadata = %{
+      error_reason: inspect(reason),
+      input_chars: String.length(prompt),
+      source: source,
+      stacktrace: stacktrace,
+      caller_context: caller_context
+    }
+
+    create_request(%{
+      endpoint_uuid: endpoint.uuid,
+      endpoint_name: endpoint.name,
+      model: endpoint.model,
+      request_type: "image",
+      status: "error",
+      error_message: error_reason_to_string(reason),
+      metadata: maybe_add_content(base_metadata, :input, capture_content, fn -> prompt end)
+    })
+  end
+
+  @doc """
   Extracts the text content from a completion response.
 
   ## Examples

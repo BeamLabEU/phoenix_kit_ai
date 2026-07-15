@@ -800,17 +800,26 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     end
   end
 
-  # Switching to a provider whose TTS isn't model-discoverable (xAI —
-  # see `Endpoint.tts_model_picker?/1`) while "Text-to-Speech" was
-  # selected would otherwise leave the picker's hidden `<option>` still
-  # assigned as the current `model_type`, with the select showing no
-  # visible selection at all. Reset to the always-available "Chat /
+  # Switching to a provider whose current `model_type` isn't offered for
+  # it (TTS isn't model-discoverable on xAI; image generation isn't
+  # supported at all on e.g. Mistral/DeepSeek) would otherwise leave the
+  # picker's hidden `<option>` still assigned, with the select showing
+  # no visible selection at all. Reset to the always-available "Chat /
   # Completion" type instead.
   defp maybe_reset_tts_model_type(socket, new_provider) do
-    if socket.assigns.model_type == :tts and not Endpoint.tts_model_picker?(new_provider) do
-      assign(socket, :model_type, :text)
-    else
-      socket
+    case socket.assigns.model_type do
+      :tts ->
+        if Endpoint.tts_model_picker?(new_provider),
+          do: socket,
+          else: assign(socket, :model_type, :text)
+
+      :image_gen ->
+        if Endpoint.image_gen_model_picker?(new_provider),
+          do: socket,
+          else: assign(socket, :model_type, :text)
+
+      _ ->
+        socket
     end
   end
 
@@ -1345,15 +1354,23 @@ defmodule PhoenixKitAI.Web.EndpointForm do
   end
 
   # The model-type picker drives which `model_type` filter the fetch
-  # uses. Only Chat and TTS are wired today (embedding/image come from
-  # other sources); anything unrecognised falls back to chat.
+  # uses. Embedding models come from a curated list, not this picker;
+  # anything unrecognised falls back to chat.
   defp parse_model_type("tts"), do: :tts
+  defp parse_model_type("image_gen"), do: :image_gen
   defp parse_model_type(_), do: :text
 
   # Infer an existing endpoint's type from its saved model id so editing
-  # a TTS endpoint opens on the TTS filter (and shows the voice field).
+  # a TTS/image-gen endpoint opens on the right filter (and shows the
+  # voice / size+quality fields). Mirrors Endpoint.kind/1's heuristic.
   defp model_type_for(model) when is_binary(model) do
-    if String.contains?(String.downcase(model), "tts"), do: :tts, else: :text
+    downcased = String.downcase(model)
+
+    cond do
+      String.contains?(downcased, "tts") -> :tts
+      String.contains?(downcased, "dall-e") or String.contains?(downcased, "image") -> :image_gen
+      true -> :text
+    end
   end
 
   defp model_type_for(_), do: :text

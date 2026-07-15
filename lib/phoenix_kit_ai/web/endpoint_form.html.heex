@@ -213,8 +213,9 @@
                  3. **No model selected** — friendly empty state. --%>
 
             <%!-- Model-type filter. Drives which `model_type` the model
-                 fetch uses (Chat vs Text-to-Speech). Has its own
-                 phx-change so it doesn't ride the form's "validate". --%>
+                 fetch uses (Chat vs Text-to-Speech vs Image Generation).
+                 Has its own phx-change so it doesn't ride the form's
+                 "validate". --%>
             <div class="form-control mt-4">
               <label class="label">
                 <span class="label-text font-medium">{gettext("Model Type")}</span>
@@ -234,16 +235,32 @@
                 >
                   {gettext("Text-to-Speech")}
                 </option>
+                <option
+                  :if={PhoenixKitAI.Endpoint.image_gen_model_picker?(@current_provider)}
+                  value="image_gen"
+                  selected={@model_type == :image_gen}
+                >
+                  {gettext("Image Generation")}
+                </option>
               </select>
               <p class="label-text-alt text-base-content/50 mt-1">
-                <%= if PhoenixKitAI.Endpoint.tts_model_picker?(@current_provider) do %>
-                  {gettext(
-                    "Filters the model list below. Text-to-Speech endpoints are called via PhoenixKitAI.speak/3."
-                  )}
-                <% else %>
-                  {gettext(
-                    "xAI's text-to-speech isn't model-based — any endpoint already works with PhoenixKitAI.speak/3."
-                  )}
+                <%= case @model_type do %>
+                  <% :tts -> %>
+                    {gettext(
+                      "Filters the model list below. Text-to-Speech endpoints are called via PhoenixKitAI.speak/3."
+                    )}
+                  <% :image_gen -> %>
+                    {gettext(
+                      "Filters the model list below. Image generation endpoints are called via PhoenixKitAI.generate_image/3."
+                    )}
+                  <% _ -> %>
+                    <%= if PhoenixKitAI.Endpoint.tts_model_picker?(@current_provider) do %>
+                      {gettext("Filters the model list below.")}
+                    <% else %>
+                      {gettext(
+                        "xAI's text-to-speech isn't model-based — any endpoint already works with PhoenixKitAI.speak/3."
+                      )}
+                    <% end %>
                 <% end %>
               </p>
             </div>
@@ -326,6 +343,49 @@
                   )}
                 </p>
               <% end %>
+            </div>
+
+            <%!-- Default size / quality — Image Generation only. Stored
+                 directly on the endpoint (not provider_settings) and used
+                 by generate_image/3 as the default :size / :quality when
+                 the caller passes neither. --%>
+            <div :if={@model_type == :image_gen} class="form-control mt-4">
+              <% current_size = @form.params["image_size"] || (@endpoint && @endpoint.image_size) || "" %>
+              <% current_quality =
+                @form.params["image_quality"] || (@endpoint && @endpoint.image_quality) || "" %>
+              <div class="flex flex-wrap items-end gap-3">
+                <div>
+                  <label class="label py-1">
+                    <span class="label-text font-medium">{gettext("Default Size")}</span>
+                  </label>
+                  <select name="endpoint[image_size]" class="select select-bordered">
+                    <option value="" selected={current_size == ""}>
+                      {gettext("— Provider default —")}
+                    </option>
+                    <%= for {label, value} <- PhoenixKitAI.Endpoint.image_size_options() do %>
+                      <option value={value} selected={current_size == value}>{label}</option>
+                    <% end %>
+                  </select>
+                </div>
+                <div>
+                  <label class="label py-1">
+                    <span class="label-text font-medium">{gettext("Default Quality")}</span>
+                  </label>
+                  <select name="endpoint[image_quality]" class="select select-bordered">
+                    <option value="" selected={current_quality == ""}>
+                      {gettext("— Provider default —")}
+                    </option>
+                    <%= for {label, value} <- PhoenixKitAI.Endpoint.image_quality_options() do %>
+                      <option value={value} selected={current_quality == value}>{label}</option>
+                    <% end %>
+                  </select>
+                </div>
+              </div>
+              <p class="label-text-alt text-base-content/50 mt-1">
+                {gettext(
+                  "Used when generate_image/3 is called without an explicit :size/:quality. xAI uses :aspect_ratio/:resolution instead — pass those directly as call options."
+                )}
+              </p>
             </div>
 
             <div class="form-control mt-4">

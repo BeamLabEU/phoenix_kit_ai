@@ -19,7 +19,7 @@ defmodule PhoenixKitAI.Request do
 
   ### Request Details
   - `model`: Model identifier (e.g., "anthropic/claude-3-haiku")
-  - `request_type`: Type of request (e.g., "text_completion", "chat", "embedding", "tts")
+  - `request_type`: Type of request (e.g., "text_completion", "chat", "embedding", "tts", "image")
 
   ### Token Usage
   - `input_tokens`: Number of tokens in the prompt
@@ -80,7 +80,7 @@ defmodule PhoenixKitAI.Request do
 
   @primary_key {:uuid, UUIDv7, autogenerate: true}
   @valid_statuses ~w(success error timeout)
-  @valid_request_types ~w(text_completion chat embedding tts)
+  @valid_request_types ~w(text_completion chat embedding tts image)
 
   @derive {Jason.Encoder,
            only: [

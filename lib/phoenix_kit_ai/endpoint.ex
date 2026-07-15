@@ -391,6 +391,28 @@ defmodule PhoenixKitAI.Endpoint do
 
   def tts_model_picker?(_provider), do: true
 
+  @doc """
+  Whether picking "Image generation" in the Endpoint form's model-type
+  filter could plausibly return models to choose from for `provider`.
+
+  Unlike `tts_model_picker?/1`, this reuses the Integrations registry's
+  `:image_generation` capability directly rather than a hardcoded
+  provider check — OpenAI, OpenRouter, and xAI all genuinely support
+  image generation at the same `/images/generations` path
+  (`PhoenixKitAI.Completion.generate_image/3`), so there's no single
+  provider to special-case; Mistral/DeepSeek correctly show an empty
+  list here since they have no image-gen models at all.
+  """
+  @spec image_gen_model_picker?(String.t() | nil) :: boolean()
+  def image_gen_model_picker?(provider) when is_binary(provider) do
+    case Providers.get(provider) do
+      %{capabilities: capabilities} -> :image_generation in capabilities
+      _ -> false
+    end
+  end
+
+  def image_gen_model_picker?(_provider), do: false
+
   defp base_provider(provider) do
     provider |> String.split(":", parts: 2) |> List.first()
   end
@@ -425,11 +447,14 @@ defmodule PhoenixKitAI.Endpoint do
 
   Endpoints don't store a model type, so this infers it from the model
   id using the same heuristic the model picker uses (see
-  `PhoenixKitAI.OpenRouterClient` `:tts` filter): a `tts` substring
-  marks text-to-speech, `embed` marks an embedding model, and everything
-  else is treated as chat/completion. Used to badge rows in the admin UI.
+  `PhoenixKitAI.OpenRouterClient` `:tts`/`:image_gen` filters): a `tts`
+  substring marks text-to-speech, `embed` marks an embedding model,
+  `dall-e`/`image` marks image generation (`gpt-image-1`,
+  `grok-imagine-image[-quality]`, `google/gemini-2.5-flash-image`, ...),
+  and everything else is treated as chat/completion. Used to badge rows
+  in the admin UI.
   """
-  @spec kind(t() | String.t() | nil) :: :chat | :tts | :embedding
+  @spec kind(t() | String.t() | nil) :: :chat | :tts | :embedding | :image_gen
   def kind(%__MODULE__{model: model}), do: kind(model)
 
   def kind(model) when is_binary(model) do
@@ -438,6 +463,7 @@ defmodule PhoenixKitAI.Endpoint do
     cond do
       String.contains?(downcased, "tts") -> :tts
       String.contains?(downcased, "embed") -> :embedding
+      String.contains?(downcased, "dall-e") or String.contains?(downcased, "image") -> :image_gen
       true -> :chat
     end
   end
@@ -447,9 +473,10 @@ defmodule PhoenixKitAI.Endpoint do
   @doc """
   Heroicon name representing an endpoint `kind/1`.
   """
-  @spec kind_icon(:chat | :tts | :embedding) :: String.t()
+  @spec kind_icon(:chat | :tts | :embedding | :image_gen) :: String.t()
   def kind_icon(:tts), do: "hero-speaker-wave"
   def kind_icon(:embedding), do: "hero-rectangle-stack"
+  def kind_icon(:image_gen), do: "hero-photo"
   def kind_icon(:chat), do: "hero-chat-bubble-left-right"
 
   @doc """
