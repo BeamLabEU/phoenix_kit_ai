@@ -276,9 +276,12 @@ defmodule PhoenixKitAI.Completion do
   # request, a complete audio file back, no WebSocket. Not the same
   # endpoint Xai.Realtime.connect_tts/1 streams from, and not a variant
   # of generic_text_to_speech/2 — text/voice_id/language fields
-  # (language required by xAI, defaulted to "auto" here), a nested
-  # output_format, and a {"audio": <base64>, "content_type", "duration"}
-  # response — none of that matches the OpenAI-compatible shape.
+  # (language required by xAI, defaulted to "auto" here) and a nested
+  # output_format request body, matching neither the OpenAI-compatible
+  # request shape. The response, despite xAI's own docs describing a
+  # `{"audio": <base64>, "content_type", "duration"}` envelope, comes
+  # back on the live API as the raw audio bytes directly (confirmed
+  # against a real endpoint) — see `decode_xai_audio/3`.
   defp xai_text_to_speech(endpoint, text, opts) do
     base = endpoint.base_url || Endpoint.default_base_url("xai")
     url = "#{String.trim_trailing(base, "/")}/tts"
@@ -316,18 +319,40 @@ defmodule PhoenixKitAI.Completion do
     |> maybe_add("bit_rate", Keyword.get(opts, :bit_rate))
   end
 
-  # xAI's response is always `{"audio": <base64>, "content_type", "duration"}`
-  # — no raw-binary-body fallback, unlike `decode_audio/3`, since this is a
-  # single documented shape rather than several providers' worth of
-  # variance to tolerate.
+  # xAI's docs describe `{"audio": <base64>, "content_type", "duration"}`,
+  # but the live API returns the raw audio bytes directly (verified against
+  # a real endpoint: status 200, body starting with an MP3 frame-sync byte,
+  # not JSON). Fall back to raw-binary only when the body fails to parse as
+  # JSON at all — unlike `decode_audio/3`'s broader "any non-matching JSON
+  # shape" fallback, this stays narrow on purpose: a body that *is* valid
+  # JSON but missing/null `"audio"` is a real error response, not an audio
+  # file, and must still surface as `:invalid_audio_response` rather than
+  # being handed back as bogus "audio" bytes (the JSON text itself).
   defp decode_xai_audio(response_body, format, start_time) do
     latency_ms = System.monotonic_time(:millisecond) - start_time
 
-    with {:ok, %{"audio" => b64}} when is_binary(b64) <- Jason.decode(response_body),
-         {:ok, bytes} when byte_size(bytes) > 0 <- Base.decode64(b64) do
-      {:ok, %{audio: bytes, format: format, latency_ms: latency_ms}}
-    else
-      _ -> {:error, :invalid_audio_response}
+    audio =
+      case Jason.decode(response_body) do
+        {:ok, %{"audio" => b64}} when is_binary(b64) ->
+          case Base.decode64(b64) do
+            {:ok, bytes} -> bytes
+            :error -> nil
+          end
+
+        {:ok, _other_json} ->
+          nil
+
+        {:error, _} ->
+          # Not JSON at all → assume raw binary audio body.
+          response_body
+      end
+
+    case audio do
+      bytes when is_binary(bytes) and byte_size(bytes) > 0 ->
+        {:ok, %{audio: bytes, format: format, latency_ms: latency_ms}}
+
+      _ ->
+        {:error, :invalid_audio_response}
     end
   end
 

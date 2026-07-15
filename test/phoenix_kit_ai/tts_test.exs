@@ -413,7 +413,9 @@ defmodule PhoenixKitAI.TTSTest do
 
   describe "Completion.text_to_speech/3 — xAI (POST /v1/tts, batch REST)" do
     # xAI's documented shape: {"audio": <base64>, "content_type", "duration"}
-    # — not the Mistral audio_data envelope or a raw binary body.
+    # — not the Mistral audio_data envelope. Kept as one of two response
+    # shapes the decoder tolerates; see the "raw binary body" test below for
+    # the live API's actual shape.
     defp stub_xai_audio(status, bytes, extra \\ %{}) do
       Req.Test.stub(__MODULE__, fn conn ->
         body =
@@ -539,10 +541,12 @@ defmodule PhoenixKitAI.TTSTest do
       assert {:error, :invalid_audio_response} = Completion.text_to_speech(ep, "Bonjour")
     end
 
-    test "does not fall back to a raw binary body (xAI is always the JSON envelope)" do
+    test "decodes a raw binary body (the live API's actual response shape)" do
       stub_raw(200, @audio_bytes)
       ep = xai_endpoint_fixture()
-      assert {:error, :invalid_audio_response} = Completion.text_to_speech(ep, "Bonjour")
+
+      assert {:ok, %{audio: @audio_bytes, format: "mp3"}} =
+               Completion.text_to_speech(ep, "Bonjour")
     end
 
     test "401 maps to :invalid_api_key same as the generic path" do
