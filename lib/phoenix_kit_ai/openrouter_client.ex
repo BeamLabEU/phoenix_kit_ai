@@ -893,9 +893,17 @@ defmodule PhoenixKitAI.OpenRouterClient do
   end
 
   defp model_matches_type?(model, :image_gen) do
-    modality = get_modality(model)
-    # Include both pure text-to-image and multimodal image generation
-    modality == "text->text+image" or modality == "text+image->text+image"
+    case get_modality(model) do
+      # Include both pure text-to-image and multimodal image generation
+      "text->text+image" -> true
+      "text+image->text+image" -> true
+      # No modality field at all — same xAI gap `:text`'s "" branch works
+      # around below. Without this, `grok-imagine-image`/`-quality` never
+      # matched here either, so picking "Image generation" for xAI always
+      # returned an empty list despite the models genuinely existing.
+      "" -> xai_image_gen_model?(model)
+      _ -> false
+    end
   end
 
   # Neither Mistral's nor OpenRouter's `/models` exposes a reliable
@@ -916,19 +924,31 @@ defmodule PhoenixKitAI.OpenRouterClient do
   # xAI's `/models` response has no `architecture.modality` field on any
   # model, so `grok-imagine-image`/`grok-imagine-video` (and their
   # `-quality`/`-1.5` variants) would otherwise fall through to the
-  # no-modality "assume text" branch above. `image_price` only appears on
-  # image-gen entries; the id substring check catches the video-gen
-  # entries, which carry no pricing fields at all.
+  # no-modality "assume text" branch above.
   defp generative_media_model?(model) do
-    Map.has_key?(model, "image_price") or media_gen_id?(model["id"])
+    xai_image_gen_model?(model) or xai_video_gen_model?(model)
   end
 
-  defp media_gen_id?(id) when is_binary(id) do
-    downcased = String.downcase(id)
-    String.contains?(downcased, "-image") or String.contains?(downcased, "-video")
+  # `image_price` only appears on image-gen entries; the id substring
+  # check catches any without it (and is what `:image_gen`'s no-modality
+  # branch reuses to actually surface these models, not just exclude
+  # them from `:text`).
+  defp xai_image_gen_model?(model) do
+    Map.has_key?(model, "image_price") or id_contains?(model["id"], "-image")
   end
 
-  defp media_gen_id?(_), do: false
+  # Video-gen entries carry no pricing fields at all — id substring only.
+  # No dedicated `:video_gen` model type exists yet, so these stay
+  # excluded from every current filter (not just `:text`).
+  defp xai_video_gen_model?(model) do
+    id_contains?(model["id"], "-video")
+  end
+
+  defp id_contains?(id, substring) when is_binary(id) do
+    String.contains?(String.downcase(id), substring)
+  end
+
+  defp id_contains?(_id, _substring), do: false
 
   defp get_modality(model) do
     architecture = model["architecture"] || %{}

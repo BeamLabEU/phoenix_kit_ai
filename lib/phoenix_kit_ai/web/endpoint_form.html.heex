@@ -227,14 +227,24 @@
                 <option value="text" selected={@model_type == :text}>
                   {gettext("Chat / Completion")}
                 </option>
-                <option value="tts" selected={@model_type == :tts}>
+                <option
+                  :if={PhoenixKitAI.Endpoint.tts_model_picker?(@current_provider)}
+                  value="tts"
+                  selected={@model_type == :tts}
+                >
                   {gettext("Text-to-Speech")}
                 </option>
               </select>
               <p class="label-text-alt text-base-content/50 mt-1">
-                {gettext(
-                  "Filters the model list below. Text-to-Speech endpoints are called via PhoenixKitAI.speak/3."
-                )}
+                <%= if PhoenixKitAI.Endpoint.tts_model_picker?(@current_provider) do %>
+                  {gettext(
+                    "Filters the model list below. Text-to-Speech endpoints are called via PhoenixKitAI.speak/3."
+                  )}
+                <% else %>
+                  {gettext(
+                    "xAI's text-to-speech isn't model-based — any endpoint already works with PhoenixKitAI.speak/3."
+                  )}
+                <% end %>
               </p>
             </div>
 

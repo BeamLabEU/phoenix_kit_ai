@@ -758,6 +758,26 @@ defmodule PhoenixKitAI.EndpointTest do
     end
   end
 
+  describe "tts_model_picker?/1" do
+    test "false for xai — its TTS isn't model-discoverable" do
+      refute Endpoint.tts_model_picker?("xai")
+    end
+
+    test "false for a named xai connection too (xai:personal)" do
+      refute Endpoint.tts_model_picker?("xai:personal")
+    end
+
+    test "true for providers whose TTS (if any) is model-based" do
+      assert Endpoint.tts_model_picker?("openrouter")
+      assert Endpoint.tts_model_picker?("mistral")
+      assert Endpoint.tts_model_picker?("openai")
+    end
+
+    test "true for nil/non-binary (fails open — not a dead end to hide)" do
+      assert Endpoint.tts_model_picker?(nil)
+    end
+  end
+
   defp ssrf_changeset(url) do
     Endpoint.changeset(%Endpoint{}, %{
       name: "SSRF Probe #{System.unique_integer([:positive])}",

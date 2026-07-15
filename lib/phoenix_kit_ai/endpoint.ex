@@ -373,6 +373,29 @@ defmodule PhoenixKitAI.Endpoint do
   def realtime_voice_capable?(_provider), do: false
 
   @doc """
+  Whether picking "Text-to-Speech" in the Endpoint form's model-type
+  filter could plausibly return models to choose from for `provider`.
+
+  False only for xAI: it has real TTS (`PhoenixKitAI.speak/3` works via
+  `POST /v1/tts` regardless of what model type the endpoint stores —
+  see `Completion.text_to_speech/3`) but it isn't model-based at all —
+  no model id, nothing in `GET /models` — so the picker would always
+  come back empty. True for every other provider, including ones with
+  no TTS at all (an empty list there is accurate, not a dead end to
+  hide).
+  """
+  @spec tts_model_picker?(String.t() | nil) :: boolean()
+  def tts_model_picker?(provider) when is_binary(provider) do
+    base_provider(provider) != "xai"
+  end
+
+  def tts_model_picker?(_provider), do: true
+
+  defp base_provider(provider) do
+    provider |> String.split(":", parts: 2) |> List.first()
+  end
+
+  @doc """
   Checks if the endpoint has been validated recently (within the last 24 hours).
   """
   def recently_validated?(%__MODULE__{last_validated_at: nil}), do: false

@@ -265,6 +265,29 @@ defmodule PhoenixKitAI.OpenRouterClientCoverageTest do
       assert Enum.map(models, & &1.id) == ["grok-4.3"]
     end
 
+    test ":image_gen surfaces xAI's grok-imagine-image (no modality field to match on)" do
+      # Same no-modality gap as the :text exclusion above, but for
+      # inclusion instead: grok-imagine-image genuinely is an image-gen
+      # model, so it must show up here — grok-imagine-video must not
+      # (no dedicated :video_gen type exists yet), and the regular chat
+      # model must not either.
+      stub_response(200, %{
+        "data" => [
+          %{"id" => "grok-4.3", "object" => "model", "prompt_text_token_price" => 12_500},
+          %{"id" => "grok-imagine-image", "object" => "model", "image_price" => 200_000_000},
+          %{"id" => "grok-imagine-image-quality", "object" => "model"},
+          %{"id" => "grok-imagine-video", "object" => "model"}
+        ]
+      })
+
+      {:ok, models} = OpenRouterClient.fetch_models("sk-x", model_type: :image_gen)
+
+      assert Enum.map(models, & &1.id) |> Enum.sort() == [
+               "grok-imagine-image",
+               "grok-imagine-image-quality"
+             ]
+    end
+
     test "normalizes xAI's flat token-price fields to dollars-per-token" do
       # xAI reports `prompt_text_token_price` / `completion_text_token_price`
       # in USD cents per 100,000,000 tokens instead of OpenRouter's nested

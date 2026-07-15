@@ -792,10 +792,25 @@ defmodule PhoenixKitAI.Web.EndpointForm do
         |> assign(:selected_speaker, nil)
         |> stop_model_fetch_indicators()
         |> assign(:models_error, nil)
+        |> maybe_reset_tts_model_type(new_provider)
 
       {params, socket}
     else
       {params, socket}
+    end
+  end
+
+  # Switching to a provider whose TTS isn't model-discoverable (xAI —
+  # see `Endpoint.tts_model_picker?/1`) while "Text-to-Speech" was
+  # selected would otherwise leave the picker's hidden `<option>` still
+  # assigned as the current `model_type`, with the select showing no
+  # visible selection at all. Reset to the always-available "Chat /
+  # Completion" type instead.
+  defp maybe_reset_tts_model_type(socket, new_provider) do
+    if socket.assigns.model_type == :tts and not Endpoint.tts_model_picker?(new_provider) do
+      assign(socket, :model_type, :text)
+    else
+      socket
     end
   end
 
