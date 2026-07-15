@@ -1,7 +1,7 @@
 defmodule PhoenixKitAI.MixProject do
   use Mix.Project
 
-  @version "0.13.0"
+  @version "0.14.0"
   @source_url "https://github.com/BeamLabEU/phoenix_kit_ai"
 
   def project do
@@ -97,7 +97,7 @@ defmodule PhoenixKitAI.MixProject do
       # capability that gates the streaming-voice Playground panel — an
       # older core would just never show the panel (silent no-op, not a
       # crash), so this floor is what actually guarantees the feature works.
-      pk_dep(:phoenix_kit, ">= 1.7.194"),
+      pk_dep(:phoenix_kit, ">= 1.7.196"),
 
       # LiveView is needed for the admin pages.
       {:phoenix_live_view, "~> 1.1"},

@@ -1,3 +1,12 @@
+## 0.14.0 - 2026-07-15
+
+### Added
+- **Image generation.** `PhoenixKitAI.generate_image/3` (and `Completion.generate_image/3`) call the provider's `POST /images/generations` — the same path and response envelope across OpenAI, OpenRouter, and xAI, so one implementation covers all three (unlike TTS, which needed a separate xAI-specific function). Falls back to the endpoint's stored `image_size`/`image_quality` when the caller passes neither.
+  - The Endpoint form gets a new "Image Generation" model type (with its own size/quality picker), gated on the Integrations registry's `:image_generation` capability via `Endpoint.image_gen_model_picker?/1` — shown for OpenAI, OpenRouter, and xAI; correctly absent for providers with no image-gen models (Mistral, DeepSeek).
+  - `Endpoint.kind/1` now recognizes image-gen models (`dall-e-*`, `gpt-image-*`, `grok-imagine-image*`, etc.) for admin-UI badging instead of falling back to chat.
+  - New `request_type: "image"` in usage tracking (added to `Request`'s valid types).
+- Depends on `phoenix_kit ~> 1.7.196` (adds the `:image_generation` capability to OpenRouter and xAI — OpenAI already had it).
+
 ## 0.13.0 - 2026-07-14
 
 ### Fixed
