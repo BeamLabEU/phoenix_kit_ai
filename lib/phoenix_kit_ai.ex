@@ -1030,7 +1030,7 @@ defmodule PhoenixKitAI do
 
   @impl PhoenixKit.Module
   @spec version() :: String.t()
-  def version, do: "0.14.0"
+  def version, do: "0.14.1"
 
   @impl PhoenixKit.Module
   @spec route_module() :: module()
@@ -2529,10 +2529,12 @@ defmodule PhoenixKitAI do
   @doc """
   Generates image(s) from a text prompt via `Completion.generate_image/3`.
 
-  Falls back to the endpoint's stored `image_size` / `image_quality`
-  (set on the Endpoint form's "Image generation" model type) when the
-  caller doesn't pass `:size` / `:quality` — same pattern `speak/3` uses
-  for its stored default voice.
+  Falls back to the endpoint's stored defaults when the caller omits
+  them — same pattern `speak/3` uses for its stored default voice:
+
+  - OpenAI / OpenRouter: `image_size` / `image_quality` columns → `:size` / `:quality`
+  - xAI: `provider_settings["aspect_ratio"]` / `["resolution"]` →
+    `:aspect_ratio` / `:resolution` (xAI does not accept OpenAI's size/quality fields)
 
   ## Options
 
@@ -2568,11 +2570,21 @@ defmodule PhoenixKitAI do
   end
 
   # An explicit caller value always wins; a blank/absent stored default
-  # is a no-op (Completion sends no size/quality field at all then).
+  # is a no-op (Completion sends no size/quality/aspect fields at all then).
+  # xAI's /images/generations takes aspect_ratio/resolution, not OpenAI's
+  # size/quality — applying the wrong pair either no-ops or 400s upstream.
   defp maybe_put_default_image_opts(endpoint, opts) do
-    opts
-    |> maybe_put_default_opt(:size, endpoint.image_size)
-    |> maybe_put_default_opt(:quality, endpoint.image_quality)
+    if xai_endpoint?(endpoint) do
+      settings = endpoint.provider_settings || %{}
+
+      opts
+      |> maybe_put_default_opt(:aspect_ratio, settings["aspect_ratio"])
+      |> maybe_put_default_opt(:resolution, settings["resolution"])
+    else
+      opts
+      |> maybe_put_default_opt(:size, endpoint.image_size)
+      |> maybe_put_default_opt(:quality, endpoint.image_quality)
+    end
   end
 
   defp maybe_put_default_opt(opts, key, value) do
@@ -2582,6 +2594,12 @@ defmodule PhoenixKitAI do
       Keyword.put(opts, key, value)
     end
   end
+
+  defp xai_endpoint?(%{provider: provider}) when is_binary(provider) do
+    Endpoint.base_provider(provider) == "xai"
+  end
+
+  defp xai_endpoint?(_), do: false
 
   defp log_image_request(endpoint, prompt, result, source, stacktrace, caller_context) do
     capture_content = capture_request_content?()
@@ -3072,16 +3090,21 @@ defmodule PhoenixKitAI do
   # Which request field carries the stored default voice. Mistral's
   # /audio/speech documents `voice_id`, and the voices catalogue the
   # picker reads is Mistral-specific, so a stored voice is always a
-  # Mistral slug → send `voice_id`. OpenRouter / OSS vLLM use `voice`
-  # (e.g. "casual_male"), so every other provider stays on `voice`. An
-  # explicit caller-supplied :voice / :voice_id is never overridden —
-  # this only governs the endpoint's stored default.
+  # Mistral slug → send `voice_id`. xAI's batch /v1/tts also uses
+  # `voice_id` (see `Completion.xai_text_to_speech/3`). OpenRouter /
+  # OSS vLLM use `voice` (e.g. "casual_male"). An explicit
+  # caller-supplied :voice / :voice_id is never overridden — this only
+  # governs the endpoint's stored default.
   #
   # The provider column may hold the bare key ("mistral") or a named
   # connection string ("mistral:my-key") for legacy / pre-V107 rows,
-  # so match on the prefix rather than an exact string.
+  # so match on the base key rather than an exact string.
   defp voice_field_for(%{provider: provider}) when is_binary(provider) do
-    if String.starts_with?(provider, "mistral"), do: :voice_id, else: :voice
+    case Endpoint.base_provider(provider) do
+      "mistral" -> :voice_id
+      "xai" -> :voice_id
+      _ -> :voice
+    end
   end
 
   defp voice_field_for(_), do: :voice

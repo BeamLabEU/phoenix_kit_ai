@@ -98,6 +98,17 @@ defmodule PhoenixKitAI.SchemaCoverageTest do
       assert "xhigh" in effort_values
     end
 
+    test "image_aspect_ratio_options + image_resolution_options (xAI form defaults)" do
+      ratios = Endpoint.image_aspect_ratio_options() |> Enum.map(fn {_, v} -> v end)
+      assert "1:1" in ratios
+      assert "16:9" in ratios
+      assert "9:16" in ratios
+
+      resolutions = Endpoint.image_resolution_options() |> Enum.map(fn {_, v} -> v end)
+      assert "1k" in resolutions
+      assert "2k" in resolutions
+    end
+
     test "validation_changeset/1 stamps last_validated_at" do
       ep = %Endpoint{last_validated_at: nil}
       changeset = Endpoint.validation_changeset(ep)

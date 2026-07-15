@@ -413,7 +413,17 @@ defmodule PhoenixKitAI.Endpoint do
 
   def image_gen_model_picker?(_provider), do: false
 
-  defp base_provider(provider) do
+  @doc """
+  Strips a named connection suffix from a provider string.
+
+  The `provider` column may hold the bare key (`"xai"`) or a named
+  connection string (`"xai:my-key"`, legacy / pre-V107 rows) — this
+  extracts the base key so callers can compare against it directly
+  instead of using `String.starts_with?/2`, which would also match
+  unrelated providers sharing the same prefix.
+  """
+  @spec base_provider(String.t()) :: String.t()
+  def base_provider(provider) do
     provider |> String.split(":", parts: 2) |> List.first()
   end
 
@@ -497,6 +507,37 @@ defmodule PhoenixKitAI.Endpoint do
     [
       {"Standard", "standard"},
       {"HD", "hd"}
+    ]
+  end
+
+  @doc """
+  Returns xAI image aspect-ratio options for form selects.
+
+  Stored in `provider_settings["aspect_ratio"]` and applied by
+  `PhoenixKitAI.generate_image/3` when the endpoint's provider is xAI.
+  """
+  def image_aspect_ratio_options do
+    [
+      {"1:1 (Square)", "1:1"},
+      {"16:9 (Landscape)", "16:9"},
+      {"9:16 (Portrait)", "9:16"},
+      {"4:3", "4:3"},
+      {"3:4", "3:4"},
+      {"3:2", "3:2"},
+      {"2:3", "2:3"}
+    ]
+  end
+
+  @doc """
+  Returns xAI image resolution options for form selects.
+
+  Stored in `provider_settings["resolution"]` and applied by
+  `PhoenixKitAI.generate_image/3` when the endpoint's provider is xAI.
+  """
+  def image_resolution_options do
+    [
+      {"1k", "1k"},
+      {"2k", "2k"}
     ]
   end
 

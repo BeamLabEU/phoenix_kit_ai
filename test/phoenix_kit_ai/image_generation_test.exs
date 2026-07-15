@@ -298,6 +298,91 @@ defmodule PhoenixKitAI.ImageGenerationTest do
       ep = endpoint_fixture()
       assert {:ok, _} = PhoenixKitAI.generate_image(ep.uuid, "anything")
     end
+
+    test "xAI applies provider_settings aspect_ratio/resolution, not image_size/quality" do
+      Req.Test.stub(__MODULE__, fn conn ->
+        {:ok, raw, conn} = Plug.Conn.read_body(conn)
+        body = Jason.decode!(raw)
+
+        assert body["aspect_ratio"] == "16:9"
+        assert body["resolution"] == "2k"
+        refute Map.has_key?(body, "size")
+        refute Map.has_key?(body, "quality")
+
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(
+          200,
+          Jason.encode!(%{"data" => [%{"b64_json" => Base.encode64(@image_bytes)}]})
+        )
+      end)
+
+      ep =
+        endpoint_fixture(%{
+          provider: "xai",
+          model: "grok-imagine-image",
+          # OpenAI-shaped columns must be ignored for xAI defaults.
+          image_size: "1024x1024",
+          image_quality: "hd",
+          provider_settings: %{"aspect_ratio" => "16:9", "resolution" => "2k"}
+        })
+
+      assert {:ok, _} = PhoenixKitAI.generate_image(ep.uuid, "a landscape")
+    end
+
+    test "xAI named connection (xai:personal) still uses aspect_ratio defaults" do
+      Req.Test.stub(__MODULE__, fn conn ->
+        {:ok, raw, conn} = Plug.Conn.read_body(conn)
+        body = Jason.decode!(raw)
+
+        assert body["aspect_ratio"] == "9:16"
+        refute Map.has_key?(body, "size")
+
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(
+          200,
+          Jason.encode!(%{"data" => [%{"b64_json" => Base.encode64(@image_bytes)}]})
+        )
+      end)
+
+      ep =
+        endpoint_fixture(%{
+          provider: "xai:personal",
+          model: "grok-imagine-image",
+          image_size: "1024x1792",
+          provider_settings: %{"aspect_ratio" => "9:16"}
+        })
+
+      assert {:ok, _} = PhoenixKitAI.generate_image(ep.uuid, "a portrait")
+    end
+
+    test "xAI caller :aspect_ratio overrides the stored default" do
+      Req.Test.stub(__MODULE__, fn conn ->
+        {:ok, raw, conn} = Plug.Conn.read_body(conn)
+        body = Jason.decode!(raw)
+
+        assert body["aspect_ratio"] == "1:1"
+        assert body["resolution"] == "1k"
+
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(
+          200,
+          Jason.encode!(%{"data" => [%{"b64_json" => Base.encode64(@image_bytes)}]})
+        )
+      end)
+
+      ep =
+        endpoint_fixture(%{
+          provider: "xai",
+          model: "grok-imagine-image",
+          provider_settings: %{"aspect_ratio" => "16:9", "resolution" => "1k"}
+        })
+
+      assert {:ok, _} =
+               PhoenixKitAI.generate_image(ep.uuid, "a square", aspect_ratio: "1:1")
+    end
   end
 
   describe "Completion.generate_image/3 — request body" do

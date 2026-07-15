@@ -719,7 +719,12 @@ defmodule PhoenixKitAI.Web.EndpointForm do
         # Per-endpoint default TTS voice (used by PhoenixKitAI.speak/3 when
         # the caller passes no voice). Only the TTS type renders this input,
         # so for other types it submits as "" — a harmless no-op.
-        "voice" => get_in(params, ["provider_settings", "voice"]) || ""
+        "voice" => get_in(params, ["provider_settings", "voice"]) || "",
+        # xAI image-gen defaults (OpenAI/OpenRouter use image_size /
+        # image_quality columns instead). Only the xAI image_gen form
+        # renders these; other types submit "" and clear them.
+        "aspect_ratio" => get_in(params, ["provider_settings", "aspect_ratio"]) || "",
+        "resolution" => get_in(params, ["provider_settings", "resolution"]) || ""
       })
 
     params = Map.put(params, "provider_settings", provider_settings)
@@ -766,11 +771,15 @@ defmodule PhoenixKitAI.Web.EndpointForm do
       # @endpoint.model` fallback would otherwise resurface the saved
       # model (nil is falsy in Elixir, "" is truthy).
       #
-      # Also clear the stored default TTS voice: voice slugs are
-      # provider-specific (Mistral catalogue vs OpenRouter preset names),
-      # so a Mistral voice must not be sent to OpenRouter on the next
-      # save.
-      provider_settings = Map.put(params["provider_settings"] || %{}, "voice", "")
+      # Also clear provider-specific defaults: voice slugs are
+      # provider-specific (Mistral catalogue vs OpenRouter preset names /
+      # xAI voice_id), and xAI's aspect_ratio/resolution don't apply to
+      # OpenAI size/quality endpoints (and vice versa).
+      provider_settings =
+        (params["provider_settings"] || %{})
+        |> Map.put("voice", "")
+        |> Map.put("aspect_ratio", "")
+        |> Map.put("resolution", "")
 
       params =
         params

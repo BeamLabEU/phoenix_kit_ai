@@ -235,7 +235,7 @@ defmodule PhoenixKitAI.Completion do
   end
 
   defp xai_provider?(provider) when is_binary(provider) do
-    provider |> String.split(":", parts: 2) |> List.first() == "xai"
+    Endpoint.base_provider(provider) == "xai"
   end
 
   defp xai_provider?(_provider), do: false

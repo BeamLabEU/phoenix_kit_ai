@@ -1,3 +1,12 @@
+## 0.14.1 - 2026-07-15
+
+### Fixed
+- **xAI batch TTS decode against the live API.** `Completion.text_to_speech/3`'s xAI path (`POST /v1/tts`) assumed the documented `{"audio": <base64>, "content_type", "duration"}` envelope. Verified against a live endpoint: the response is the raw audio bytes (e.g. MP3) with status 200 — same ambiguity the OpenAI-compatible path already tolerates. `decode_xai_audio/3` now accepts both shapes, falling back to raw binary only when the body is not JSON at all (so a real error JSON with a missing/null `"audio"` still surfaces as `:invalid_audio_response` rather than the JSON text misread as audio).
+- **xAI image-generation form defaults no longer send OpenAI-only fields.** The Endpoint form's Image Generation defaults for xAI are now aspect ratio / resolution (stored in `provider_settings`), and `generate_image/3` applies those as `:aspect_ratio` / `:resolution` instead of the OpenAI `image_size` / `image_quality` columns. OpenAI / OpenRouter keep the existing size/quality behaviour.
+
+### Added
+- **xAI batch REST TTS** (landed in 0.14.0, documented here). `speak/3` dispatches to `POST /v1/tts` for xAI endpoints — a single request, complete audio file back — distinct from the Playground's streaming WebSocket path. Request fields: `text`, `voice_id`, `language` (default `"auto"`), nested `output_format`, optional `speed`.
+
 ## 0.14.0 - 2026-07-15
 
 ### Added
@@ -5,7 +14,12 @@
   - The Endpoint form gets a new "Image Generation" model type (with its own size/quality picker), gated on the Integrations registry's `:image_generation` capability via `Endpoint.image_gen_model_picker?/1` — shown for OpenAI, OpenRouter, and xAI; correctly absent for providers with no image-gen models (Mistral, DeepSeek).
   - `Endpoint.kind/1` now recognizes image-gen models (`dall-e-*`, `gpt-image-*`, `grok-imagine-image*`, etc.) for admin-UI badging instead of falling back to chat.
   - New `request_type: "image"` in usage tracking (added to `Request`'s valid types).
+- **xAI batch REST TTS** via `POST /v1/tts` (dispatched from existing `PhoenixKitAI.speak/3` / `Completion.text_to_speech/3`). Synchronous counterpart to the streaming Playground panel — generate once, cache, serve.
 - Depends on `phoenix_kit ~> 1.7.196` (adds the `:image_generation` capability to OpenRouter and xAI — OpenAI already had it).
+
+### Fixed
+- **Endpoint form: hide the non-functional TTS model type for xAI.** xAI TTS is not model-based (`POST /v1/tts` takes `voice_id`, nothing in `GET /models`), so picking "Text-to-Speech" always returned an empty model list. `Endpoint.tts_model_picker?/1` hides the option for xAI and resets `model_type` when switching an endpoint onto xAI while TTS was selected.
+- **`:image_gen` model filter for xAI.** Relied on `architecture.modality`, which xAI's `/models` never returns — `grok-imagine-image` / `-quality` never matched. No-modality branch now uses `image_price` / id substring the same way the `:text` exclusion already did.
 
 ## 0.13.0 - 2026-07-14
 
