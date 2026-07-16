@@ -14,9 +14,8 @@ defmodule PhoenixKitAI.TtsPricing do
   periodic manual updates, same as any other hardcoded rate table. Sources:
 
   - Mistral (`voxtral-mini-tts-2603`): $16 / 1M characters — https://mistral.ai/pricing/api/
-  - xAI (Grok TTS, any model — see the moduledoc on `endpoint_matches?`-equivalent
-    logic in host apps: xAI TTS has no real model concept): $4.20 / 1M characters —
-    https://docs.x.ai/developers/pricing
+  - xAI (Grok TTS — one flat rate regardless of model, since xAI TTS has no
+    per-model pricing tiers): $4.20 / 1M characters — https://docs.x.ai/developers/pricing
   - OpenAI (`gpt-4o-mini-tts`): $0.60 / 1M input text tokens + $12 / 1M audio output
     tokens — https://developers.openai.com/api/docs/models/gpt-4o-mini-tts
 
