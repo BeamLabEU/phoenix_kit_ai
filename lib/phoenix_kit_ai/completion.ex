@@ -216,13 +216,24 @@ defmodule PhoenixKitAI.Completion do
     Defaults to `"auto"`.
   - `:sample_rate`, `:bit_rate`, `:speed` - **xAI only**, passed through
     to its `output_format` / `speed` fields when present.
+  - `:with_timestamps` - **xAI only**, ignored by other providers (neither
+    Mistral's Voxtral TTS nor OpenAI's `/audio/speech` offer anything
+    equivalent). When `true`, xAI returns character-level timing data
+    alongside the audio (see `Returns` below) — no cost difference, per
+    xAI's pricing page; adds latency for the post-synthesis alignment
+    pass on xAI's side.
 
   Only the voice option that is present is sent; the module stays
   provider-neutral and does not assume a field name.
 
   ## Returns
 
-  - `{:ok, %{audio: binary(), format: String.t(), latency_ms: integer()}}`
+  - `{:ok, %{audio: binary(), format: String.t(), latency_ms: integer(),
+    timestamps: [%{char:, start:, end:}] | nil}}` - `timestamps` is `nil`
+    unless `:with_timestamps` was passed to an xAI endpoint and the
+    response actually included them; `char` is a single input character,
+    `start`/`end` its position in seconds as floats. Word boundaries
+    aren't provided directly — derive them by splitting on whitespace.
   - `{:error, reason}` - Error atom or tagged tuple. See
     `PhoenixKitAI.Errors` for the full reason vocabulary and translation.
   """
@@ -293,6 +304,7 @@ defmodule PhoenixKitAI.Completion do
       |> maybe_add("voice_id", Keyword.get(opts, :voice_id) || Keyword.get(opts, :voice))
       |> maybe_add("output_format", xai_output_format(format, opts))
       |> maybe_add("speed", Keyword.get(opts, :speed))
+      |> maybe_add("with_timestamps", Keyword.get(opts, :with_timestamps))
 
     start_time = System.monotonic_time(:millisecond)
 
@@ -322,39 +334,63 @@ defmodule PhoenixKitAI.Completion do
   # xAI's docs describe `{"audio": <base64>, "content_type", "duration"}`,
   # but the live API returns the raw audio bytes directly (verified against
   # a real endpoint: status 200, body starting with an MP3 frame-sync byte,
-  # not JSON). Fall back to raw-binary only when the body fails to parse as
-  # JSON at all — unlike `decode_audio/3`'s broader "any non-matching JSON
-  # shape" fallback, this stays narrow on purpose: a body that *is* valid
-  # JSON but missing/null `"audio"` is a real error response, not an audio
-  # file, and must still surface as `:invalid_audio_response` rather than
-  # being handed back as bogus "audio" bytes (the JSON text itself).
+  # not JSON) — *unless* `with_timestamps: true` was requested, in which case
+  # it genuinely does return that JSON envelope (now also carrying
+  # "audio_timestamps"), since there'd be nowhere else to put the timing data.
+  # Fall back to raw-binary only when the body fails to parse as JSON at all —
+  # unlike `decode_audio/3`'s broader "any non-matching JSON shape" fallback,
+  # this stays narrow on purpose: a body that *is* valid JSON but missing/null
+  # `"audio"` is a real error response, not an audio file, and must still
+  # surface as `:invalid_audio_response` rather than being handed back as
+  # bogus "audio" bytes (the JSON text itself).
   defp decode_xai_audio(response_body, format, start_time) do
     latency_ms = System.monotonic_time(:millisecond) - start_time
 
-    audio =
+    {audio, timestamps} =
       case Jason.decode(response_body) do
-        {:ok, %{"audio" => b64}} when is_binary(b64) ->
-          case Base.decode64(b64) do
-            {:ok, bytes} -> bytes
-            :error -> nil
-          end
+        {:ok, %{"audio" => b64} = json} when is_binary(b64) ->
+          bytes =
+            case Base.decode64(b64) do
+              {:ok, bytes} -> bytes
+              :error -> nil
+            end
+
+          {bytes, parse_xai_timestamps(json["audio_timestamps"])}
 
         {:ok, _other_json} ->
-          nil
+          {nil, nil}
 
         {:error, _} ->
-          # Not JSON at all → assume raw binary audio body.
-          response_body
+          # Not JSON at all → assume raw binary audio body (never has
+          # timestamps — that shape only exists when with_timestamps forced
+          # the JSON envelope in the first place).
+          {response_body, nil}
       end
 
     case audio do
       bytes when is_binary(bytes) and byte_size(bytes) > 0 ->
-        {:ok, %{audio: bytes, format: format, latency_ms: latency_ms}}
+        {:ok, %{audio: bytes, format: format, latency_ms: latency_ms, timestamps: timestamps}}
 
       _ ->
         {:error, :invalid_audio_response}
     end
   end
+
+  # "graph_chars"/"graph_times" are parallel arrays (every input character, in
+  # order, paired with a [start, end] in seconds) — zipped once here into a flat
+  # list of maps so every caller doesn't have to redo it. `nil` when
+  # with_timestamps wasn't requested (no "audio_timestamps" key at all) or the
+  # response doesn't match the documented shape.
+  defp parse_xai_timestamps(%{"graph_chars" => chars, "graph_times" => times})
+       when is_list(chars) and is_list(times) and length(chars) == length(times) do
+    Enum.zip(chars, times)
+    |> Enum.map(fn
+      {char, [start_t, end_t]} -> %{char: char, start: start_t, end: end_t}
+      {char, _other} -> %{char: char, start: nil, end: nil}
+    end)
+  end
+
+  defp parse_xai_timestamps(_), do: nil
 
   # Gate `instructions` on the model, not the provider: OpenAI's own
   # `tts-1` / `tts-1-hd` predate steering and don't accept the field
@@ -413,7 +449,10 @@ defmodule PhoenixKitAI.Completion do
 
     case audio do
       bytes when is_binary(bytes) and byte_size(bytes) > 0 ->
-        {:ok, %{audio: bytes, format: format, latency_ms: latency_ms}}
+        # Neither Mistral's nor OpenAI's /audio/speech has any equivalent to xAI's
+        # with_timestamps — always nil here, never omitted, so a caller can safely
+        # read result.timestamps regardless of which provider answered.
+        {:ok, %{audio: bytes, format: format, latency_ms: latency_ms, timestamps: nil}}
 
       _ ->
         {:error, :invalid_audio_response}

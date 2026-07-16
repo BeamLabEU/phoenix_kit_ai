@@ -1,3 +1,9 @@
+## 0.16.0 - 2026-07-16
+
+### Added
+- **`:with_timestamps` option for `PhoenixKitAI.speak/3` / `Completion.text_to_speech/3`, xAI only.** xAI's `POST /v1/tts` accepts `with_timestamps: true` and returns character-level timing (`audio_timestamps.graph_chars`/`graph_times`, parallel arrays) alongside the audio — useful for caption sync, karaoke-style highlighting, or word-level playback in host apps. `decode_xai_audio/3` now parses that into a flat `timestamps: [%{char:, start:, end:}]` list (word boundaries aren't given directly — split on whitespace to derive them); `nil` when not requested or the response doesn't include it. Ignored by Mistral/OpenAI (`timestamps` is always `nil` there too, for a uniform return shape regardless of provider) — neither offers anything equivalent on their TTS APIs (only on their separate speech-*to*-text models, the wrong direction). No price difference confirmed against xAI's pricing page; adds latency for xAI's post-synthesis alignment pass. Verified against the live API, not just documented shape — the response genuinely does switch from the usual raw-binary body to the documented JSON envelope when this flag is set (unlike the base default-shape assumption fixed in 0.14.1, this one held up).
+- `phoenix_kit_ai_requests` TTS metadata gains `has_timestamps: boolean` for observability.
+
 ## 0.15.1 - 2026-07-16
 
 ### Fixed

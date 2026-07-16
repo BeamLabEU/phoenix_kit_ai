@@ -1031,7 +1031,7 @@ defmodule PhoenixKitAI do
 
   @impl PhoenixKit.Module
   @spec version() :: String.t()
-  def version, do: "0.15.1"
+  def version, do: "0.16.0"
 
   @impl PhoenixKit.Module
   @spec route_module() :: module()
@@ -2481,6 +2481,11 @@ defmodule PhoenixKitAI do
     to models known to support it; silently dropped otherwise so a
     provider that hard-rejects an unrecognized field (Mistral) never
     sees it
+  - `:with_timestamps` - **xAI only**, ignored elsewhere (no other
+    provider offers anything equivalent). When `true`, the result
+    includes character-level timing data — see `Returns` below. No
+    price difference; adds latency for xAI's post-synthesis alignment
+    pass.
   - `:response_format` - Audio format (default `"mp3"`)
   - `:source` - Request-tracking label (defaults to auto-detected caller)
 
@@ -2496,11 +2501,21 @@ defmodule PhoenixKitAI do
 
   ## Returns
 
-  - `{:ok, %{audio: binary(), format: String.t()}}`
+  - `{:ok, %{audio: binary(), format: String.t(), timestamps: [%{char:
+    String.t(), start: float(), end: float()}] | nil}}` - `timestamps`
+    is `nil` unless `:with_timestamps` was passed to an xAI endpoint and
+    the response actually included them. Word boundaries aren't given
+    directly — split on whitespace to derive them.
   - `{:error, reason}` - Error atom or tagged tuple.
   """
   @spec speak(String.t() | Endpoint.t(), String.t(), keyword()) ::
-          {:ok, %{audio: binary(), format: String.t()}} | {:error, term()}
+          {:ok,
+           %{
+             audio: binary(),
+             format: String.t(),
+             timestamps: [%{char: String.t(), start: float(), end: float()}] | nil
+           }}
+          | {:error, term()}
   def speak(endpoint_uuid, text, opts \\ []) when is_binary(text) do
     with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
          {:ok, _} <- validate_endpoint(endpoint) do
@@ -2518,7 +2533,7 @@ defmodule PhoenixKitAI do
       case Completion.text_to_speech(endpoint, text, opts) do
         {:ok, result} ->
           log_tts_request(endpoint, text, result, source, stacktrace, caller_context)
-          {:ok, Map.take(result, [:audio, :format])}
+          {:ok, Map.take(result, [:audio, :format, :timestamps])}
 
         {:error, reason} ->
           log_failed_tts_request(endpoint, text, reason, source, stacktrace, caller_context)
@@ -3057,6 +3072,7 @@ defmodule PhoenixKitAI do
       input_chars: input_chars,
       audio_format: result[:format],
       audio_bytes: audio_bytes,
+      has_timestamps: is_list(result[:timestamps]),
       # Debug context (source tracking)
       source: source,
       stacktrace: stacktrace,

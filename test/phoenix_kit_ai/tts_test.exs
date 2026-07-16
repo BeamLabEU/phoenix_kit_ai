@@ -576,5 +576,95 @@ defmodule PhoenixKitAI.TTSTest do
       ep = xai_endpoint_fixture(%{provider: "xai:personal"})
       assert {:ok, %{audio: @audio_bytes}} = Completion.text_to_speech(ep, "Bonjour")
     end
+
+    test "with_timestamps: true is sent through, false/omitted is not" do
+      Req.Test.stub(__MODULE__, fn conn ->
+        {:ok, raw, conn} = Plug.Conn.read_body(conn)
+        assert Jason.decode!(raw)["with_timestamps"] == true
+
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(200, Jason.encode!(%{"audio" => Base.encode64(@audio_bytes)}))
+      end)
+
+      ep = xai_endpoint_fixture()
+      assert {:ok, _} = Completion.text_to_speech(ep, "Bonjour", with_timestamps: true)
+    end
+
+    test "with_timestamps omitted sends no such field" do
+      Req.Test.stub(__MODULE__, fn conn ->
+        {:ok, raw, conn} = Plug.Conn.read_body(conn)
+        refute Map.has_key?(Jason.decode!(raw), "with_timestamps")
+
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(200, Jason.encode!(%{"audio" => Base.encode64(@audio_bytes)}))
+      end)
+
+      ep = xai_endpoint_fixture()
+      assert {:ok, _} = Completion.text_to_speech(ep, "Bonjour")
+    end
+
+    test "parses audio_timestamps into a flat char/start/end list" do
+      stub_xai_audio(200, @audio_bytes, %{
+        "audio_timestamps" => %{
+          "graph_chars" => ["H", "i"],
+          "graph_times" => [[0.0, 0.05], [0.05, 0.12]]
+        }
+      })
+
+      ep = xai_endpoint_fixture()
+
+      assert {:ok, %{timestamps: timestamps}} =
+               Completion.text_to_speech(ep, "Hi", with_timestamps: true)
+
+      assert timestamps == [
+               %{char: "H", start: 0.0, end: 0.05},
+               %{char: "i", start: 0.05, end: 0.12}
+             ]
+    end
+
+    test "no audio_timestamps in the response means timestamps: nil" do
+      stub_xai_audio(200, @audio_bytes)
+      ep = xai_endpoint_fixture()
+
+      assert {:ok, %{timestamps: nil}} = Completion.text_to_speech(ep, "Bonjour")
+    end
+
+    test "malformed audio_timestamps (mismatched array lengths) degrades to nil, not a crash" do
+      stub_xai_audio(200, @audio_bytes, %{
+        "audio_timestamps" => %{
+          "graph_chars" => ["H", "i"],
+          "graph_times" => [[0.0, 0.05]]
+        }
+      })
+
+      ep = xai_endpoint_fixture()
+      assert {:ok, %{timestamps: nil}} = Completion.text_to_speech(ep, "Hi")
+    end
+
+    test "callable end-to-end via PhoenixKitAI.speak/3, timestamps included" do
+      stub_xai_audio(200, @audio_bytes, %{
+        "audio_timestamps" => %{
+          "graph_chars" => ["H", "i"],
+          "graph_times" => [[0.0, 0.05], [0.05, 0.12]]
+        }
+      })
+
+      ep = xai_endpoint_fixture()
+
+      assert {:ok, %{audio: @audio_bytes, timestamps: [%{char: "H"}, %{char: "i"}]}} =
+               PhoenixKitAI.speak(ep.uuid, "Hi", voice_id: "eve", with_timestamps: true)
+    end
+  end
+
+  describe "Completion.text_to_speech/3 — non-xAI providers always return timestamps: nil" do
+    test "Mistral/OpenAI-compatible path has no with_timestamps concept" do
+      stub_base64_json(200, @audio_bytes)
+      ep = endpoint_fixture(%{provider: "mistral", model: "voxtral-mini-tts-latest"})
+
+      assert {:ok, %{timestamps: nil}} =
+               Completion.text_to_speech(ep, "Bonjour", with_timestamps: true, voice_id: "v-123")
+    end
   end
 end
