@@ -8,8 +8,8 @@ defmodule PhoenixKitAI.TtsPricingTest do
       assert TtsPricing.cost_nanodollars("mistral", 1000, 999_999) == 16_000
     end
 
-    test "xai: input_chars * $4.20/1M" do
-      assert TtsPricing.cost_nanodollars("xai", 1000, 999_999) == 4200
+    test "xai: input_chars * $15/1M" do
+      assert TtsPricing.cost_nanodollars("xai", 1000, 999_999) == 15_000
     end
 
     test "a named integration connection (xai:personal) still resolves via base_provider" do

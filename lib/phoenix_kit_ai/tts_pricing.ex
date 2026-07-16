@@ -15,7 +15,11 @@ defmodule PhoenixKitAI.TtsPricing do
 
   - Mistral (`voxtral-mini-tts-2603`): $16 / 1M characters — https://mistral.ai/pricing/api/
   - xAI (Grok TTS — one flat rate regardless of model, since xAI TTS has no
-    per-model pricing tiers): $4.20 / 1M characters — https://docs.x.ai/developers/pricing
+    per-model pricing tiers): $15.00 / 1M characters —
+    https://docs.x.ai/developers/pricing (**corrected 2026-07-16**: originally
+    shipped as $4.20/1M in 0.15.0, sourced from an OpenRouter resale listing rather
+    than xAI's own direct-API rate — this module only ever calls xAI's own API, so
+    that number was never the applicable one)
   - OpenAI (`gpt-4o-mini-tts`): $0.60 / 1M input text tokens + $12 / 1M audio output
     tokens — https://developers.openai.com/api/docs/models/gpt-4o-mini-tts
 
@@ -35,7 +39,7 @@ defmodule PhoenixKitAI.TtsPricing do
   # and nanodollars = dollars * 1_000_000 — the two 1,000,000s cancel.
   @per_char_nanodollars_by_provider %{
     "mistral" => 16,
-    "xai" => 4.2
+    "xai" => 15
   }
 
   # Blended input+output estimate — see moduledoc. 1_000_000 nanodollars = $1, so

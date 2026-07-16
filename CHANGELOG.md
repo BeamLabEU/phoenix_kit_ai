@@ -1,3 +1,8 @@
+## 0.15.1 - 2026-07-16
+
+### Fixed
+- **xAI TTS pricing was wrong by ~3.6x.** `TtsPricing`'s xAI rate shipped in 0.15.0 as $4.20/1M characters — sourced from an OpenRouter resale listing, not xAI's own direct-API rate (this module only ever calls xAI's own `POST /v1/tts`, never OpenRouter's proxy of it). Corrected to **$15.00/1M characters**, confirmed against xAI's own pricing page (a flat per-character rate, no per-model breakdown — consistent with TTS having no model concept at all for xAI). Every xAI `cost_cents` value recorded under 0.15.0 is undercounted by the same factor; host apps that care about historical accuracy should recompute those rows (`input_chars * 15` nanodollars) rather than trusting the stored value.
+
 ## 0.15.0 - 2026-07-16
 
 ### Added
