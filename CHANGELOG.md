@@ -1,3 +1,8 @@
+## 0.15.0 - 2026-07-16
+
+### Added
+- **Estimated cost for TTS requests.** `cost_cents` (nanodollars) on a `tts` request row was always `nil` — no TTS provider self-reports cost the way OpenRouter's chat completions do (no `usage` object at all in an `/audio/speech` or xAI `/tts` response), so unlike chat/embeddings there was nothing to extract. New `PhoenixKitAI.TtsPricing` module estimates it from a hand-maintained per-provider rate table instead: Mistral and xAI bill per character (`$16` / `$4.20` per 1M chars respectively) and `input_chars` is exact, so those are exact given the rate is current; OpenAI bills per token with no token counts to read back, so it uses the commonly-cited blended rate (~$0.015/min of audio) applied to a duration estimated from `audio_bytes` at the assumed 128kbps MP3 bitrate — an estimate, not exact. Rates are dated in the module doc and will need periodic manual updates as providers change pricing; an unpriced provider still returns `nil`, same as before.
+
 ## 0.14.1 - 2026-07-15
 
 ### Fixed

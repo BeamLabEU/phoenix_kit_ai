@@ -91,6 +91,7 @@ defmodule PhoenixKitAI do
   alias PhoenixKitAI.Endpoint
   alias PhoenixKitAI.Prompt
   alias PhoenixKitAI.Request
+  alias PhoenixKitAI.TtsPricing
 
   # ===========================================
   # PUBSUB TOPICS
@@ -1030,7 +1031,7 @@ defmodule PhoenixKitAI do
 
   @impl PhoenixKit.Module
   @spec version() :: String.t()
-  def version, do: "0.14.1"
+  def version, do: "0.15.0"
 
   @impl PhoenixKit.Module
   @spec route_module() :: module()
@@ -3041,17 +3042,21 @@ defmodule PhoenixKitAI do
     })
   end
 
-  # TTS responses carry no token usage — billing is per-character — so
-  # input_tokens/output_tokens/total_tokens/cost_cents stay unset. The
-  # host can derive cost from input_chars app-side if needed. The input
+  # TTS responses carry no token usage — billing is per-character (or per-token with
+  # no usage object to read back, for OpenAI) — so input_tokens/output_tokens/
+  # total_tokens stay unset, same as before. cost_cents is now estimated from a
+  # hand-maintained rate table (see TtsPricing) instead of staying unset, since no
+  # TTS provider self-reports cost the way OpenRouter's chat completions do. The input
   # text is gated by `capture_request_content?/0` like chat/embedding.
   defp log_tts_request(endpoint, text, result, source, stacktrace, caller_context) do
     capture_content = capture_request_content?()
+    input_chars = String.length(text)
+    audio_bytes = byte_size(result[:audio])
 
     base_metadata = %{
-      input_chars: String.length(text),
+      input_chars: input_chars,
       audio_format: result[:format],
-      audio_bytes: byte_size(result[:audio]),
+      audio_bytes: audio_bytes,
       # Debug context (source tracking)
       source: source,
       stacktrace: stacktrace,
@@ -3065,6 +3070,7 @@ defmodule PhoenixKitAI do
       request_type: "tts",
       latency_ms: result[:latency_ms],
       status: "success",
+      cost_cents: TtsPricing.cost_nanodollars(endpoint.provider, input_chars, audio_bytes),
       metadata: maybe_add_content(base_metadata, :input, capture_content, fn -> text end)
     })
   end

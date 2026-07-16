@@ -115,7 +115,7 @@ defmodule PhoenixKitAITest do
     test "returns a version string" do
       version = PhoenixKitAI.version()
       assert is_binary(version)
-      assert version == "0.14.1"
+      assert version == "0.15.0"
     end
   end
 
