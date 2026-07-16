@@ -577,7 +577,7 @@ defmodule PhoenixKitAI.TTSTest do
       assert {:ok, %{audio: @audio_bytes}} = Completion.text_to_speech(ep, "Bonjour")
     end
 
-    test "with_timestamps: true is sent through, false/omitted is not" do
+    test "with_timestamps: true is sent through" do
       Req.Test.stub(__MODULE__, fn conn ->
         {:ok, raw, conn} = Plug.Conn.read_body(conn)
         assert Jason.decode!(raw)["with_timestamps"] == true
