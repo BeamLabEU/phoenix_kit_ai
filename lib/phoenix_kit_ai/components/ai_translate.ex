@@ -7,15 +7,20 @@ defmodule PhoenixKitAI.Components.AITranslate do
   Render-only function components driven by a single `ai_translate` config
   map the host LV builds each render; the host owns the state + event
   handlers (see `PhoenixKitAI.Translations` for the backend and
-  any consumer's form LV for the wiring shape). Three surfaces:
+  any consumer's form LV for the wiring shape). Five surfaces:
 
-    * `<.ai_translate_button>` — compact "AI Translate" trigger above the
-      multilang tabs; toggles the modal. Spinner while a job is in flight.
+    * `<.ai_multilang_tabs>` — core's multilang tabs with the
+      button/progress/hint row bundled underneath in the canonical
+      placement; the preferred entry point for new consumers (the modal
+      still renders separately — see its doc).
+    * `<.ai_translate_button>` — compact "AI Translate" trigger; toggles
+      the modal. Spinner while a job is in flight.
     * `<.ai_translate_modal>` — daisyUI dialog: endpoint + prompt
       selectors, a "Generate Default Prompt" button when none exists, a
       scope picker (missing-only / all-overwrite / current tab), in-flight
       status, and one scope-driven "Translate" action.
     * `<.ai_translate_progress>` — slim inline progress bar for the session.
+    * `<.ai_translate_hint>` — the "taking a while…" stall reassurance.
 
   ## Host contract
 
@@ -72,6 +77,7 @@ defmodule PhoenixKitAI.Components.AITranslate do
   use Gettext, backend: PhoenixKitWeb.Gettext
 
   alias PhoenixKitWeb.Components.Core.Icon
+  alias PhoenixKitWeb.Components.MultilangForm
 
   attr(:ai_translate, :map, default: nil, doc: "Config map — see moduledoc.")
 
@@ -303,6 +309,86 @@ defmodule PhoenixKitAI.Components.AITranslate do
         </span>
       </div>
     <% end %>
+    """
+  end
+
+  attr(:multilang_enabled, :boolean, required: true)
+  attr(:language_tabs, :list, required: true)
+  attr(:current_lang, :string, required: true)
+  attr(:compact, :boolean, default: nil)
+  attr(:show_header, :boolean, default: true)
+  attr(:show_info, :boolean, default: true)
+  attr(:class, :string, default: "card-body pb-0")
+
+  attr(:ai_translate, :map,
+    default: nil,
+    doc: "FormGlue config map; nil or disabled renders the tabs alone."
+  )
+
+  attr(:ai_row_class, :any,
+    # Core's tabs wrap the switcher in a hardcoded mb-4; -mt-3 claws that
+    # back to a tight 4px so the row reads as part of the tabs block. px-6
+    # pairs with the default `class` ("card-body pb-0", which pads the tabs) —
+    # the row is a SIBLING of that div, so it needs its own matching padding.
+    default: "flex items-center gap-3 -mt-3 px-6",
+    doc: """
+    Class of the button/progress/hint row under the tabs. Tuned as a PAIR
+    with `class`: replace `class` (e.g. with "" inside an already-padded
+    container) and adjust this to match — typically dropping the px-6.
+    """
+  )
+
+  @doc """
+  Core's `<.multilang_tabs>` with the AI-translate row bundled underneath —
+  the \"just enable it\" wrapper for the canonical placement every consumer
+  was hand-building (a compact button/progress/hint row tucked under the
+  tabs). Attrs mirror `PhoenixKitWeb.Components.MultilangForm.multilang_tabs/1`
+  plus the `ai_translate` config map from `FormGlue.ai_translate_config/1`;
+  when that is nil or disabled, the tabs render exactly as core's component
+  alone would, so the attr is safe to pass unconditionally.
+
+      <.ai_multilang_tabs
+        multilang_enabled={@multilang_enabled}
+        language_tabs={@language_tabs}
+        current_lang={@current_lang}
+        ai_translate={FormGlue.ai_translate_config(assigns)}
+      />
+
+  The modal is NOT bundled — it carries its own selector `<form>`s and HTML
+  forbids nesting, so keep `<.ai_translate_modal>` outside (after) the host's
+  outer `</.form>` as before.
+
+  Rendering alone is not enough: the config comes from the LV wiring —
+  `use PhoenixKitAI.Components.AITranslate.Embed` (event/PubSub hooks) plus a
+  `FormGlue.assign_ai_translation/4` call in mount with the consumer's
+  `FormBinding`. Without it the config is nil and this renders tabs-only.
+
+  `class` and `ai_row_class` defaults are tuned as a pair (the row is a
+  sibling of the tabs div and pads itself to match `card-body`); override
+  both together when embedding in a container that owns the padding.
+  """
+  def ai_multilang_tabs(assigns) do
+    ~H"""
+    <MultilangForm.multilang_tabs
+      multilang_enabled={@multilang_enabled}
+      language_tabs={@language_tabs}
+      current_lang={@current_lang}
+      compact={@compact}
+      show_header={@show_header}
+      show_info={@show_info}
+      class={@class}
+    />
+    <%!-- Row visibility mirrors the tabs' own render condition — without it
+      a single-language site (where core renders no tabs at all) would show
+      the AI row floating alone with nothing to translate into. --%>
+    <div
+      :if={enabled?(@ai_translate) and @multilang_enabled and match?([_, _ | _], @language_tabs)}
+      class={@ai_row_class}
+    >
+      <.ai_translate_button ai_translate={@ai_translate} />
+      <.ai_translate_progress ai_translate={@ai_translate} />
+      <.ai_translate_hint ai_translate={@ai_translate} />
+    </div>
     """
   end
 
