@@ -1,3 +1,8 @@
+## 0.17.0 - 2026-07-22
+
+### Added
+- **`<.ai_multilang_tabs>` component.** Wraps core's `PhoenixKitWeb.Components.MultilangForm.multilang_tabs/1` with the AI-translate button/progress/hint row bundled underneath in the canonical placement — the "just enable it" entry point for the layout every consumer (catalogue, projects, publishing) was previously hand-building. Attrs mirror `multilang_tabs/1` plus an `ai_translate` config map from `FormGlue.ai_translate_config/1`; when that's `nil` or disabled, renders byte-identical to core's tabs alone, so the attr is safe to pass unconditionally. The modal is not bundled (HTML forbids nested `<form>`s) — keep `<.ai_translate_modal>` outside the host's outer form as before. See PR #14.
+
 ## 0.16.0 - 2026-07-16
 
 ### Added

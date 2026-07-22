@@ -1031,7 +1031,7 @@ defmodule PhoenixKitAI do
 
   @impl PhoenixKit.Module
   @spec version() :: String.t()
-  def version, do: "0.16.0"
+  def version, do: "0.17.0"
 
   @impl PhoenixKit.Module
   @spec route_module() :: module()
