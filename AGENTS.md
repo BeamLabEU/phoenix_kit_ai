@@ -1,729 +1,136 @@
 # AGENTS.md
 
-This file provides guidance to AI agents when working with code in this repository.
+Guidance for AI agents working in this repository.
 
 ## Project Overview
 
-PhoenixKit AI module — provides AI endpoint management, prompt templates, chat completions, text-to-speech, embeddings, and usage tracking via OpenAI-compatible providers discovered from the `PhoenixKit.Integrations` registry. Implements the `PhoenixKit.Module` behaviour for auto-discovery by a parent Phoenix application.
-
-Valid providers, their display labels, and default base URLs are all read from the Integrations registry at runtime (`PhoenixKit.Integrations.Providers.with_capability(:ai_completions)`). Any provider declaring that capability — built-in or contributed by an external module — appears in the endpoint form automatically. Adding a new AI provider is a single entry in the core providers registry; no hardcoded whitelist remains in this module. See "Multi-provider support" below.
+PhoenixKit AI module — AI endpoint management, prompt templates, chat completions, text-to-speech, embeddings, and usage tracking via OpenAI-compatible providers discovered at runtime from the `PhoenixKit.Integrations` registry (`PhoenixKit.Integrations.Providers.with_capability(:ai_completions)`). Implements the `PhoenixKit.Module` behaviour for auto-discovery by a parent Phoenix application.
 
 ## What This Module Does NOT Have (by design)
 
-The omissions below are deliberate so consumers and future contributors don't expect them.
-
-- **No DB migrations of its own** — every table this module owns (`phoenix_kit_ai_endpoints`, `phoenix_kit_ai_prompts`, `phoenix_kit_ai_requests`) is created by versioned migrations in core `phoenix_kit` (V40+ for `uuid_generate_v7()`, V57+ for the AI tables). Adding a column is a core migration first, then schema + changeset edits here.
-- **No per-completion activity logging** — `PhoenixKit.Activity.log/1` is invoked only on endpoint/prompt CRUD + enable/disable toggles. Per-request usage already lives in `phoenix_kit_ai_requests` with token/cost/latency columns; mirroring it into `phoenix_kit_activities` would double-write the same audit trail.
-- **No forced data migration for legacy `endpoint.api_key`** — `OpenRouterClient.resolve_api_key/1` keeps pre-Integrations endpoints working via a 3-tier fallback chain (`integration_uuid` → legacy `provider` string → raw `api_key` column) with a per-call `Logger.warning` only when it actually falls all the way through to the column. Operators can migrate at their own pace through the UI (an explicit save with an integration picked atomically clears the legacy column), OR opt in to the orchestrated migrators by calling `PhoenixKit.ModuleRegistry.run_all_legacy_migrations/0` from `Application.start/2`. The orchestrator invokes `migrate_legacy/0` on every registered module — for AI that runs both the api_key→Integration credentials migration (atomic clear of the legacy column on success) AND the provider-string→integration_uuid reference sweep, with activity-log emissions per migrated record. See "Migrating from legacy `endpoint.api_key`" below.
-- **No public HTTP / API surface** — AI is admin-only. No JSON endpoints, no webhook receivers, no socket forwards. Consumers wire AI completions into their own host code via the `PhoenixKitAI` context module.
-- **No background jobs for completions (Oban)** — chat/TTS/embed completions run synchronously from the calling process / LiveView so the caller sees the response inline. Long-running batch generation belongs in the consumer app, not here. The module *does* use Oban for the AI-translation pipeline (`PhoenixKitAI.TranslateWorker`).
-- **No streaming responses** — `Completion` returns the full `{:ok, response}` shape; OpenRouter's SSE streaming endpoint isn't surfaced. The Playground UI is request/response, not chat-stream.
-- **No Errors-module truncation helper** — error messages from the OpenRouter API come back as short JSON strings, so `Errors.message/1` doesn't include a `truncate_for_log/2` style cap. The few Logger calls that take API response bodies (`completion.ex`, `openrouter_client.ex`) format them inline; if a future provider returns multi-KB error blobs, add a truncation helper then.
+- **No DB migrations of its own** — tables (`phoenix_kit_ai_endpoints`, `_prompts`, `_requests`) are created by versioned migrations in core `phoenix_kit`. Adding a column = core migration first, then schema + changeset edits here.
+- **No per-completion Activity logging** — `PhoenixKit.Activity.log/1` runs only on endpoint/prompt CRUD + enable/disable toggles (both success AND failure branches, via `log_failed_*_mutation/3` pipe-step helpers with PII-safe `error_keys` metadata). Per-request usage already lives in `phoenix_kit_ai_requests`.
+- **No forced legacy `endpoint.api_key` migration** — `OpenRouterClient.resolve_api_key/1` keeps pre-Integrations endpoints working via a 3-tier fallback (`integration_uuid` → legacy `provider` string → `api_key` column, with a `Logger.warning` only when it reaches the column). Opt-in orchestrator: call `PhoenixKit.ModuleRegistry.run_all_legacy_migrations/0` from `Application.start/2` (invokes `PhoenixKitAI.migrate_legacy/0`, which folds legacy api_keys into Integration connections — atomically clearing the legacy column — and sweeps `provider`-string refs to `integration_uuid`). Saving an endpoint with an integration picked also clears the legacy column atomically (`maybe_clear_legacy_api_key/1`).
+- **No public HTTP/API surface** — admin-only; consumers call the `PhoenixKitAI` context module.
+- **No Oban for completions** — chat/TTS/embed run synchronously; Oban is used only for the AI-translation pipeline (`PhoenixKitAI.TranslateWorker`).
+- **No streaming responses** — `Completion` returns full `{:ok, response}`; the Playground UI is request/response.
 
 ## Common Commands
 
-### Setup & Dependencies
-
 ```bash
 mix deps.get                # Install dependencies
+createdb phoenix_kit_ai_test # Create test DB (first time only)
+mix test                    # All tests (integration tests auto-excluded without the DB)
+mix test test/phoenix_kit_ai/completion_test.exs:25   # Specific test by line
+mix format                  # Format (imports Phoenix LiveView rules)
+mix credo --strict          # Lint
+mix dialyzer                # Type checking
+mix precommit               # compile + format + credo --strict + dialyzer — run before every commit
 ```
 
-### Testing
+## Dependencies & cross-repo development
+
+This is a **library** — the host app provides endpoint/router; `config/` exists only for tests. Deps: `phoenix_kit` (~> 1.7; Module behaviour, Settings, components, RepoHelper, Activity, Integrations), `phoenix_live_view`, `req` + `jason` (via phoenix_kit), `lazy_html` (test only), `rustler` (optional, lets the transitive `mdex_native` NIF source-build).
+
+Sibling `phoenix_kit*` deps resolve from Hex by default. To build against a local checkout, export `<APP>_PATH`:
 
 ```bash
-mix test                                            # Run all tests
-mix test test/phoenix_kit_ai_test.exs               # Specific file
-mix test test/phoenix_kit_ai/completion_test.exs:25 # Specific test by line
-createdb phoenix_kit_ai_test                        # Create test DB (first time)
+PHOENIX_KIT_PATH=../phoenix_kit mix test
 ```
 
-Without the test database, integration tests (anything using `PhoenixKitAI.DataCase`) are automatically excluded and unit tests still run.
-
-### Code Quality
-
-```bash
-mix format                  # Format code (imports Phoenix LiveView rules)
-mix credo --strict          # Lint / code quality (strict mode)
-mix dialyzer                # Static type checking
-mix precommit               # compile + format + credo --strict + dialyzer
-mix quality                 # format + credo --strict + dialyzer
-mix quality.ci              # format --check-formatted + credo --strict + dialyzer
-mix docs                    # Generate documentation
-```
-
-## Dependencies
-
-This is a **library** (not a standalone Phoenix app) — in production the host app provides the endpoint and router. The `config/` directory exists only for test infrastructure (`config/test.exs` wires up `PhoenixKitAI.Test.Repo` and `PhoenixKitAI.Test.Endpoint`). The full dependency chain:
-
-- `phoenix_kit` (`~> 1.7`) — Module behaviour, Settings API, shared components, RepoHelper, Activity logging, Integrations
-- `phoenix_live_view` — Web framework (LiveView UI)
-- `req` (via phoenix_kit) — HTTP client for chat completions, embeddings, and `/models` discovery across all three providers
-- `jason` (via phoenix_kit) — JSON encoding/decoding
-- `lazy_html` (`:test` only) — HTML assertions in `Phoenix.LiveViewTest`
-
-## Local cross-repo development
-
-`phoenix_kit` (and any sibling `phoenix_kit_*` dep) resolves from Hex by
-default. To build or test this module against a **local checkout** of a
-dependency — e.g. an unpublished core change — export `<APP>_PATH` and Mix
-swaps the Hex pin for a `path:` + `override: true` dep at resolve time:
-
-```bash
-PHOENIX_KIT_PATH=../phoenix_kit mix test     # this module against local core
-```
-
-The variable name is the dep's app name upper-cased with `_PATH` appended
-(`:phoenix_kit` -> `PHOENIX_KIT_PATH`, `:phoenix_kit_ai` ->
-`PHOENIX_KIT_AI_PATH`). Set several at once to override multiple deps. **Unset = the
-published pin**, so `mix hex.publish` and CI resolve exactly as before.
-Implemented via `pk_dep/3` in `mix.exs` — never hand-edit a `phoenix_kit*`
-dep into a `path:` tuple (a committed path dep ships a broken package); set
-the env var instead.
+Unset = the published pin (so publishing and CI are unaffected). Implemented via `pk_dep/3` in `mix.exs` — never hand-edit a `phoenix_kit*` dep into a `path:` tuple.
 
 ## Architecture
 
-This is a **PhoenixKit module** that implements the `PhoenixKit.Module` behaviour. It depends on the host PhoenixKit app for Repo, Endpoint, and Settings.
+PhoenixKit scans `.beam` files at startup and auto-discovers modules (zero config). `admin_tabs/0` registers admin pages; `route_module/0` (`PhoenixKitAI.Routes`) adds sub-routes (new/edit forms, usage). Settings via `PhoenixKit.Settings`; permissions via `permission_metadata/0` + `Scope.has_module_access?/2`. API keys live centrally in `PhoenixKit.Integrations`; each endpoint pins one connection by `integration_uuid`. `required_integrations: ["openrouter"]` — Mistral/DeepSeek/OpenAI also work but aren't required.
 
-### How It Works
+Key modules (`lib/phoenix_kit_ai/` unless noted):
 
-1. Parent app adds this as a dependency in `mix.exs`
-2. PhoenixKit scans `.beam` files at startup and auto-discovers modules (zero config)
-3. `admin_tabs/0` callback registers admin pages; PhoenixKit generates routes at compile time
-4. `route_module/0` provides additional admin routes (new/edit/usage) via `admin_routes/0`
-5. Settings are persisted via `PhoenixKit.Settings` API (DB-backed in parent app)
-6. Permissions are declared via `permission_metadata/0` and checked via `Scope.has_module_access?/2`
-7. API keys are managed centrally via `PhoenixKit.Integrations`. Each endpoint pins to a specific integration row by uuid in `endpoint.integration_uuid` (added in core's V107 migration with backfill from the legacy `provider` string column). The form's picker filters connections to whichever provider is currently selected on the dropdown — see "Multi-provider support" below. The module declares `required_integrations: ["openrouter"]` because the original wired provider was OpenRouter; Mistral / DeepSeek are additionally supported but not required for the module to run.
-
-### Key Modules
-
-- **`PhoenixKitAI`** (`lib/phoenix_kit_ai.ex`) — Main module implementing `PhoenixKit.Module` behaviour AND serving as the context module for all AI operations (endpoints, prompts, requests, completions).
-
-- **`PhoenixKitAI.Endpoint`** (`lib/phoenix_kit_ai/endpoint.ex`) — Ecto schema for AI endpoint configurations (provider credentials, model, generation parameters).
-
-- **`PhoenixKitAI.Prompt`** (`lib/phoenix_kit_ai/prompt.ex`) — Ecto schema for reusable prompt templates with `{{Variable}}` substitution.
-
-- **`PhoenixKitAI.Request`** (`lib/phoenix_kit_ai/request.ex`) — Ecto schema for request logging (tokens, cost, latency, status).
-
-- **`PhoenixKitAI.Errors`** (`lib/phoenix_kit_ai/errors.ex`) — Maps error atoms returned from the API layer (`:endpoint_not_found`, `:invalid_api_key`, etc.) to translated strings via gettext. UI surfaces errors via `Errors.message/1` so business logic stays locale-agnostic.
-
-- **`PhoenixKitAI.Completion`** (`lib/phoenix_kit_ai/completion.ex`) — HTTP client for chat completions and embeddings. Provider-agnostic: builds `<endpoint.base_url>/chat/completions` and `<endpoint.base_url>/embeddings` URLs, so OpenRouter / Mistral / DeepSeek all flow through the same path. When `endpoint.base_url` is missing it falls back through `Endpoint.default_base_url(endpoint.provider)` rather than a hardcoded OpenRouter URL — silent misrouting of Mistral / DeepSeek traffic to openrouter.ai is a real failure mode for legacy rows persisted before the changeset gained `maybe_set_default_base_url`. If neither resolves, raises `ArgumentError` instead of misrouting. Also exposes `extract_content/1` and `extract_reasoning/1` for parsing responses (the latter normalises three known field names — `reasoning`, `reasoning_content`, `thinking` — into one return value).
-
-- **`PhoenixKitAI.OpenRouterClient`** (`lib/phoenix_kit_ai/openrouter_client.ex`) — API key validation, model discovery, header building. Despite the name (kept for git-history continuity) the module is now generic across OpenRouter / Mistral / DeepSeek: `fetch_models/2` and `fetch_models_grouped/2` accept a `:base_url` opt that overrides the OpenRouter default, and a `:fallback_provider` opt that groups slash-less model IDs (Mistral's `mistral-large-latest`, DeepSeek's `deepseek-chat`) under a single key. Credentials are resolved from `PhoenixKit.Integrations` via the endpoint's `integration_uuid` field with a 3-tier fallback ladder (uuid → legacy `provider` → legacy `api_key` column) — see "Migrating from legacy `endpoint.api_key`" below.
-
-- **`PhoenixKitAI.AIModel`** (`lib/phoenix_kit_ai/ai_model.ex`) — Normalized struct for OpenRouter model data.
-
-- **`PhoenixKitAI.Routes`** (`lib/phoenix_kit_ai/routes.ex`) — Route module providing admin sub-routes (new/edit forms, usage page). Auto-discovered and compiled into PhoenixKit's `live_session :phoenix_kit_admin` — never hand-register these routes in the parent app's `router.ex`. See `phoenix_kit/guides/custom-admin-pages.md` for the authoritative admin routing reference.
-
-- **`PhoenixKitAI.Web.*`** (`lib/phoenix_kit_ai/web/`) — Admin LiveViews: Endpoints, EndpointForm, Prompts, PromptForm, Playground.
-
-### Activity Logging Pattern
-
-Every mutating context function logs via `PhoenixKit.Activity.log/1`, guarded with `Code.ensure_loaded?/1` + `rescue` so logging failures never crash the primary operation. Mutating functions accept an `opts \\ []` keyword list; LiveViews extract the current user UUID via a private `actor_opts/1` helper.
-
-The internal helper takes resource type + UUID directly (rather than a struct) so both success-path callers (with a saved `Endpoint`/`Prompt`) and failure-path callers (with only an `Ecto.Changeset`) can share the same logger:
-
-```elixir
-defp log_activity(action, resource_type, resource_uuid, opts, extra) do
-  if Code.ensure_loaded?(PhoenixKit.Activity) do
-    metadata =
-      %{"actor_role" => Keyword.get(opts, :actor_role, "user")}
-      |> Map.merge(extra)
-
-    PhoenixKit.Activity.log(%{
-      action: action,
-      module: "ai",
-      mode: Keyword.get(opts, :mode, "manual"),
-      actor_uuid: Keyword.get(opts, :actor_uuid),
-      resource_type: resource_type,
-      resource_uuid: resource_uuid,
-      metadata: metadata
-    })
-  end
-rescue
-  e in Postgrex.Error -> ...    # silent on :undefined_table; Logger.warning otherwise
-  e -> log_activity_failure(...)
-end
-```
-
-Current logged actions (success path AND failure path — both branches log so an admin click survives a DB outage / validation rejection in the audit feed):
-
-| Action | When | Failure-branch metadata |
-|--------|------|-------------------------|
-| `endpoint.created` | `create_endpoint/2` | `db_pending: true`, `error_keys: [...]` |
-| `endpoint.updated` | `update_endpoint/3` (skipped on no-op `changeset.changes == %{}`) | `db_pending: true`, `error_keys: [...]` |
-| `endpoint.deleted` | `delete_endpoint/2` | `db_pending: true`, `error_keys: [...]` |
-| `endpoint.enabled` / `endpoint.disabled` | `update_endpoint/3` with a flipped `enabled` field | n/a (toggle has its own guard) |
-| `prompt.created` | `create_prompt/2` | `db_pending: true`, `error_keys: [...]` |
-| `prompt.updated` | `update_prompt/3` (skipped on no-op `changeset.changes == %{}`) | `db_pending: true`, `error_keys: [...]` |
-| `prompt.deleted` | `delete_prompt/2` | `db_pending: true`, `error_keys: [...]` |
-| `prompt.enabled` / `prompt.disabled` | `update_prompt/3` with a flipped `enabled` field | n/a |
-
-Failure-branch logging is wired via `log_failed_endpoint_mutation/3` and `log_failed_prompt_mutation/3` pipe-step helpers — they no-op on `{:ok, _}` and write a `db_pending: true` audit row with PII-safe metadata (`error_keys` is the list of failed validation key NAMES, never the rejected values).
-
-Individual AI completion requests are **not** logged to Activity; they already have dedicated rows in `phoenix_kit_ai_requests` for usage tracking.
-
-### Settings Keys
-
-| Key | Type | Default | Purpose |
-|-----|------|---------|---------|
-| `ai_enabled` | boolean | `false` | Module enable/disable toggle |
-
-Application env (not Settings table):
-
-| Key | Default | Purpose |
-|-----|---------|---------|
-| `config :phoenix_kit_ai, :capture_request_content` | `true` | Persist user message + assistant response content in request `metadata` JSONB. Default preserves the shipped debugging shape; deployments with PII / data-retention obligations can set to `false`, which writes `metadata.content_redacted: true` in place of `messages` / `response` / `request_payload`. Token counts, latency, model, and cost are still recorded. |
-| `config :phoenix_kit_ai, :capture_request_memory` | `false` | Opt-in `:memory` capture per request. Keep off unless actively debugging memory issues; every request otherwise carries the memory snapshot in its JSONB metadata. |
-| `config :phoenix_kit_ai, :allow_internal_endpoint_urls` | `false` | Bypass the SSRF guard on `Endpoint.base_url` (which rejects loopback / RFC1918 / link-local / `*.local` / non-http(s)). Required for self-hosted Ollama / intranet inference; off in production by default. |
-| `config :phoenix_kit_ai, :embedding_models` | `[]` | User-contributed embedding models appended to the built-in list in `OpenRouterClient.fetch_embedding_models/2`. Non-list values log a warning and are ignored. |
-| `config :phoenix_kit_ai, :req_options` | `[]` | Optional `Req` opts appended to every HTTP call site (`OpenRouterClient.http_get/2`, `Completion.http_post/3`, `Completion.text_to_speech/3`). Used by tests to route HTTP through `Req.Test` plug stubs (`plug: {Req.Test, MyStub}`); production default is `[]`, behaviour unchanged. |
-
-### File Layout
-
-```
-lib/phoenix_kit_ai.ex                    # Main module (behaviour + context)
-lib/phoenix_kit_ai/
-├── ai_model.ex                          # Normalised OpenRouter model struct
-├── completion.ex                        # OpenRouter / OpenAI-compatible HTTP client (chat, embeddings, TTS)
-├── endpoint.ex                          # Endpoint schema
-├── errors.ex                            # Atom → translated error string
-├── openrouter_client.ex                 # API key + model + voice discovery
-├── prompt.ex                            # Prompt template schema
-├── request.ex                           # Request logging schema
-├── routes.ex                            # Admin sub-routes
-├── translatable.ex                      # AI-translation adapter behaviour
-├── translatables.ex                     # Adapter discovery
-├── translation.ex                       # AI call + ---FIELD--- parser
-├── translations.ex                      # Enqueue / dedup / broadcast helpers
-├── translate_worker.ex                  # Generic Oban worker for AI translation
-└── web/
-    ├── endpoint_form.ex / .heex         # Create/edit endpoint
-    ├── endpoints.ex / .heex             # List + usage dashboard
-    ├── playground.ex / .heex            # Live testing
-    ├── prompt_form.ex / .heex           # Create/edit prompt
-    ├── prompts.ex / .heex               # Prompt list
-    └── components/ai_translate/*        # Shared AI-translation UI glue
-```
+- `../phoenix_kit_ai.ex` — `PhoenixKitAI`: Module behaviour + context for all operations
+- `endpoint.ex` / `prompt.ex` / `request.ex` — Ecto schemas (endpoint config, `{{Variable}}` templates, request logging)
+- `completion.ex` — provider-agnostic HTTP client (chat, embeddings, TTS). Builds `<base_url>/chat/completions` etc.; missing `base_url` falls back to `Endpoint.default_base_url(provider)`, raises `ArgumentError` rather than misrouting. `extract_content/1`, `extract_reasoning/1` (normalises `reasoning` / `reasoning_content` / `thinking`)
+- `openrouter_client.ex` — despite the name, generic across providers: API key validation, model/voice discovery (`fetch_models_grouped/2` takes `:base_url` and `:fallback_provider` opts for slash-less IDs like Mistral/DeepSeek), credential resolution with the 3-tier fallback. 15s timeout for `/models`; chat gets 120s in `Completion`
+- `errors.ex` — error atom → gettext string (`Errors.message/1`)
+- `ai_model.ex`, `routes.ex` — model struct; admin sub-routes
+- `translatable.ex` / `translatables.ex` / `translation.ex` / `translations.ex` / `translate_worker.ex` — generic AI-translation pipeline (adapter behaviour, duck-typed `ai_translatables/0` discovery, Oban worker, enqueue/dedup/broadcast)
+- `web/` — admin LiveViews (Endpoints, EndpointForm, Prompts, PromptForm, Playground) + `components/ai_translate/*`
 
 ## Critical Conventions
 
-- **Module key** must be consistent across all callbacks: `"ai"`
-- **Tab IDs**: prefixed with `:admin_ai_` (e.g., `:admin_ai_endpoints`)
-- **URL paths**: use hyphens, not underscores (`"ai/endpoints"`)
-- **Navigation paths**: always use `PhoenixKit.Utils.Routes.path/1`, never relative paths
-- **`enabled?/0`**: must rescue errors and return `false` as fallback (DB may not be available)
-- **LiveViews use `PhoenixKitWeb` macros** — use `use PhoenixKitWeb, :live_view` (not `use Phoenix.LiveView` directly); this also imports Gettext automatically
-- **JavaScript hooks**: must be inline `<script>` tags; register on `window.PhoenixKitHooks`
-- **LiveView assigns** available in admin pages: `@phoenix_kit_current_scope`, `@current_locale`, `@url_path`
-- **Cost precision**: Costs stored in nanodollars (1/1,000,000 USD) in the `cost_cents` field for precision with cheap API calls
-- **Error returns**: public functions return atoms or `{atom, detail}` tuples, not raw strings. UI surfaces them via `PhoenixKitAI.Errors.message/1`. See README for the full atom set.
-- **Translatable strings**: every user-visible string goes through `gettext(...)`. Feature modules never own `.po` files — translations live in core `phoenix_kit`.
+- **Module key** `"ai"` everywhere; **tab IDs** prefixed `:admin_ai_`; **URL paths** use hyphens (`"ai/endpoints"`)
+- **Navigation paths**: always `PhoenixKit.Utils.Routes.path/1`, never relative
+- **`enabled?/0`** must rescue and return `false` (DB may be down)
+- **LiveViews**: `use PhoenixKitWeb, :live_view` (not `Phoenix.LiveView` directly; imports Gettext). Admin assigns: `@phoenix_kit_current_scope`, `@current_locale`, `@url_path`
+- **JS hooks**: inline `<script>` tags, register on `window.PhoenixKitHooks`
+- **Costs** stored in nanodollars in `cost_cents`
+- **Error returns**: atoms or `{atom, detail}` tuples, surfaced via `PhoenixKitAI.Errors.message/1`
+- **Translatable strings**: everything user-visible through `gettext(...)`; `.po` files live in core `phoenix_kit`, never here
+- **Commit messages** start with `Add` / `Update` / `Fix` / `Remove` / `Merge`
 
-### Commit Message Rules
+## Routing
 
-Start with action verbs: `Add`, `Update`, `Fix`, `Remove`, `Merge`.
+> ⚠️ **Never hand-register plugin LiveView routes in the parent app's `router.ex`.** PhoenixKit injects module routes into its own `live_session :phoenix_kit_admin` automatically; a hand-written route loses the admin layout and crashes socket navigation.
 
-## Routing: Single Page vs Multi-Page
+Multi-page route-module pattern: `PhoenixKitAI.Routes` defines `admin_routes/0` and `admin_locale_routes/0`; tabs (Endpoints, Prompts, Playground, Usage) are declared in `admin_tabs/0`. Discovery: `use PhoenixKit.Module` persists a beam marker → `ModuleDiscovery` scans deps of `:phoenix_kit` → routes compiled into the host router via `phoenix_kit_routes()`.
 
-> ⚠️ **Never hand-register plugin LiveView routes in the parent app's `router.ex`.** PhoenixKit injects module routes into its own `live_session :phoenix_kit_admin` automatically. A hand-written route sits outside that session, which (a) loses the admin layout — `:phoenix_kit_ensure_admin` only applies it inside the session — and (b) crashes the socket on navigation between admin pages.
-
-The AI module uses the **multi-page route-module pattern**: `route_module/0` returns `PhoenixKitAI.Routes`, which defines `admin_routes/0` and `admin_locale_routes/0`. Sub-routes like `/endpoints/new`, `/endpoints/:uuid/edit`, and `/prompts/:uuid/edit` live there.
-
-Top-level tabs (Endpoints, Prompts, Playground, Usage) are declared in `admin_tabs/0` in `lib/phoenix_kit_ai.ex`. Each tab targets a LiveView via `live_view: {Module, :action}`.
-
-### How route discovery works
-
-Module routes are auto-discovered at compile time — no manual registration needed:
-
-1. `use PhoenixKit.Module` persists a `@phoenix_kit_module` marker in the `.beam` file
-2. PhoenixKit's `ModuleDiscovery` scans beam files of deps that depend on `:phoenix_kit`
-3. Admin routes (`admin_routes/0`, `admin_locale_routes/0`) and tab routes are compiled into the host router via the `phoenix_kit_routes()` macro
-4. The host router auto-recompiles when module deps are added or removed
-
-## Tailwind CSS Scanning
-
-This module implements `css_sources/0` returning `[:phoenix_kit_ai]` so PhoenixKit's installer adds the correct `@source` directive to the parent's `app.css`. Without this, Tailwind purges CSS classes unique to this module's templates.
-
-## Database & Migrations
-
-This module has **no migrations of its own**. All three tables are created by the parent `phoenix_kit` project as versioned migrations (see `phoenix_kit/lib/phoenix_kit/migrations/postgres/` in core).
-
-Tables owned by this module:
-
-- `phoenix_kit_ai_endpoints` — Endpoint configurations (UUIDv7 PK)
-- `phoenix_kit_ai_prompts` — Prompt templates (UUIDv7 PK)
-- `phoenix_kit_ai_requests` — Request logs for usage tracking (UUIDv7 PK, FK to endpoints/prompts/users)
+Tailwind: `css_sources/0` returns `[:phoenix_kit_ai]` so the installer adds the right `@source` directive — without it, module-specific classes get purged.
 
 ## Multi-provider support
 
-AI providers are discovered at runtime from the `PhoenixKit.Integrations`
-registry. Any provider declaring the `:ai_completions` capability
-(built-in or contributed by an external module) appears in the endpoint
-form automatically:
+Providers come from the Integrations registry — no hardcoded whitelist. `Endpoint.valid_providers/0`, `provider_options/0`, `default_base_url/1`, `provider_label/1` all read registry entries. Built-ins with `:ai_completions`: `openrouter`, `mistral`, `deepseek`, `openai`. **Adding a provider = one registry entry in core** (`capabilities: [:ai_completions]` + `base_url`); zero edits here, provided the API exposes `<base_url>/chat/completions` and `/models`.
 
-- `Endpoint.valid_providers/0` returns the provider keys.
-- `Endpoint.provider_options/0` returns `{display_name, key}` tuples for the form dropdown.
-- `Endpoint.default_base_url/1` and `Endpoint.provider_label/1` read from the registry entry.
+- The changeset does **not** `validate_inclusion(:provider, …)` — legacy rows hold UUIDs or `provider:name` strings; the UI dropdown is the enforcement surface.
+- **Provider switch in the form** clears integration, model list/params, `provider_settings["voice"]`, and `base_url` — cleared with `""`, not `nil` (the template's `@form.params[...] || @endpoint...` fallback treats `nil` as "no intent"; `""` is truthy).
+- **The integration picker never auto-picks**, even with one connection — `active_connection` is set only from what the endpoint is actually pinned to. Orphaned `integration_uuid` renders a "deleted/missing" warning card; no silent rebinding on PubSub changes.
+- OpenRouter `/models` excludes embeddings — curated list in `OpenRouterClient.builtin_embedding_models/0`. Mistral `/v1/models` returns chat + embeddings together; `/audio/voices` feeds the TTS voice picker.
+- Endpoint cards show enabled badge + integration-health badge (missing/error/not-connected) + masked key (first-8 + last-4 via `Web.Endpoints.mask_api_key/1`; short keys → `•••`). `integrations_by_uuid` is loaded once per render to avoid N+1.
+- Endpoint form model-fetch UX: `models_loading` / `models_loading_slow` (10s hint) / `models_error` with Retry, consolidated in `start/stop_model_fetch_indicators/1`.
 
-Built-in providers that ship with `:ai_completions` today include
-`openrouter`, `mistral`, `deepseek`, and `openai`. The registry also
-contains non-AI providers (`google`, `microsoft`, etc.) that do **not**
-appear in the AI dropdown unless they declare the capability.
+## Completion behaviour notes
 
-**Adding a new AI provider** requires one change: a registry entry in
-core's `PhoenixKit.Integrations.Providers` with `capabilities:
-[:ai_completions]` and a `base_url` pointing at an OpenAI-compatible API.
-No edits are required in this module. The form picker, model fetcher,
-base_url resolution, and chat/TTS completion paths are all
-provider-agnostic, provided the API exposes `<base_url>/chat/completions`
-and `<base_url>/models`.
+- **Reasoning capture**: `extract_reasoning/1` → persisted to `phoenix_kit_ai_requests.metadata.response_reasoning` (`PhoenixKitAI.log_request/7`), rendered collapsed in the Usage modal. Gated by `capture_request_content?/0` like response content (PII-equivalent).
+- **TTS**: `PhoenixKitAI.speak/3` → `Completion.text_to_speech/3` posts `<base_url>/audio/speech`; decodes Mistral base64-JSON and raw binary. Returns `{:ok, %{audio, format}}`. Endpoint form has a `:text`/`:tts` model-type selector (heuristic: `tts` substring in id/name); switching clears the model. Default voice in `provider_settings["voice"]` (`voice_id` field for Mistral, `voice` otherwise). TTS logs use `request_type: "tts"` with `input_chars`/`audio_format`/`audio_bytes`, same PII gate.
 
-### Provider-specific notes
+## Settings & config
 
-| Provider key | Default base URL | Notes |
-|---|---|---|
-| `"openrouter"` | `https://openrouter.ai/api/v1` | Aggregator; ~100 chat models with rich pricing/modality metadata. `/models` does NOT include embeddings — see curated list in `OpenRouterClient.builtin_embedding_models/0`. |
-| `"mistral"` | `https://api.mistral.ai/v1` | Native Mistral API. `/v1/models` returns chat AND embedding models in one list (`mistral-embed`, `codestral-embed`). `/audio/voices` provides the voice catalogue used by the TTS picker. |
-| `"deepseek"` | `https://api.deepseek.com/v1` | Native DeepSeek API. `/models` returns chat models (`deepseek-chat`, `deepseek-reasoner`). Reasoner emits chain-of-thought — see "Reasoning capture" below. |
-| `"openai"` | `https://api.openai.com/v1` | Native OpenAI API; configured out of the box once the registry entry is present. |
+Settings table: `ai_enabled` (boolean, default `false`) — module toggle.
 
-The changeset does **not** enforce `validate_inclusion(:provider, …)`.
-`provider` is a legacy column that may hold integration UUIDs or
-`provider:name` strings from pre-V107 rows; strict inclusion would break
-those legacy values. The UI dropdown is the enforcement surface.
+Application env:
 
-### Form picker — reflects current provider, never auto-picks
-
-The picker filters connections to whichever provider is currently
-selected on the dropdown. Switching providers (e.g. OpenRouter →
-Mistral) clears any selected integration, the model list, the
-`selected_model` assign, the `model` form param, the stored default
-TTS voice (`provider_settings["voice"]`), AND empties `base_url` so
-the changeset's `maybe_set_default_base_url/1` picks up the new
-provider's default URL. `model`, `base_url`, and `voice` are cleared
-with `""` rather than `nil` because the form template's fallback
-(`@form.params["model"] || @endpoint.model`) treats `nil` as "no
-intent" and falls through to the saved value — `""` is truthy in
-Elixir, so the `||` short-circuits there and the display reflects the
-cleared state. The picker NEVER auto-selects a single available
-connection — even when only one exists, the operator must pick
-explicitly so the form's display matches the endpoint's actual
-stored state. See "Picker reflects state, never auto-picks" below
-for the policy rationale.
-
-### Dynamic model selector
-
-`OpenRouterClient.fetch_models_grouped/2` accepts two opts that make
-it provider-agnostic:
-
-- `:base_url` — overrides the hardcoded OpenRouter URL when set. Lets
-  the same fetch logic hit Mistral / DeepSeek `/models` endpoints
-  without forking the code.
-- `:fallback_provider` — group key for IDs that don't follow
-  OpenRouter's `provider/model` slash convention. Mistral's
-  `"mistral-large-latest"` and DeepSeek's `"deepseek-chat"` lack the
-  slash; without this, each model would land in its own one-off group
-  (the picker would render dozens of single-model groups).
-
-`Web.EndpointForm.current_models_base_url/1` resolves the URL: prefers
-the saved endpoint's `base_url` (in case the operator overrode it),
-falls back to the schema default for the currently-selected provider,
-then to OpenRouter's URL as a last resort. Necessary because new
-endpoints don't have a saved `base_url` yet — the form-side
-`current_provider` assign is the source of truth.
-
-`OpenRouterClient.@timeout` is 15s for `/models` and `/auth/key`
-traffic — both are lightweight metadata endpoints. Chat completions
-have their own 120s budget in `Completion.chat_completion/3`.
-
-### Loading-state UX
-
-`Web.EndpointForm` tracks four assigns through the model-fetch
-lifecycle: `models_loading`, `models_loading_slow`, `models_error`,
-and `model_fetch_slow_timer`. Two private helpers
-(`start_model_fetch_indicators/1`, `stop_model_fetch_indicators/1`)
-consolidate the lifecycle plumbing across all five entry points
-that initiate or complete a fetch.
-
-- 10s after the fetch starts, a `:model_fetch_slow` `handle_info`
-  fires and flips `models_loading_slow` so the spinner gains a
-  "(taking longer than usual — the provider may be slow)" hint. The
-  handler is idempotent — if the fetch already completed it's a
-  no-op.
-- On failure, the error pane gets a Retry button (the new
-  `"retry_model_fetch"` event) when the integration is still
-  connected. Re-fires `:fetch_models_from_integration` with the same
-  active connection so the operator can recover from a transient
-  upstream error (5xx, timeout, rate-limit) without re-picking.
-
-### Reasoning capture
-
-Reasoning models (DeepSeek-R1, Mistral Magistral, OpenAI o-series,
-Anthropic extended thinking) return their chain-of-thought alongside
-the final answer. `Completion.extract_reasoning/1` walks three known
-field-name shapes and returns the first non-empty binary it finds:
-
-| Provider / shape | Field on `message` |
-|---|---|
-| OpenRouter (and what it proxies) | `reasoning` |
-| DeepSeek native API | `reasoning_content` |
-| Some others | `thinking` |
-
-The extracted trace is persisted to
-`phoenix_kit_ai_requests.metadata.response_reasoning` (in
-`PhoenixKitAI.log_request/7`) and rendered in the admin Usage page's
-request-details modal as a collapsible "Reasoning" section
-(collapsed by default — chains-of-thought routinely run 5-50× the
-length of the answer).
-
-Subject to the same `capture_request_content?/0` privacy gate as
-`response` content — when content capture is off, reasoning is
-dropped too. Reasoning can mirror prompt content and is
-PII-equivalent.
-
-## Text-to-speech (TTS)
-
-The module exposes `PhoenixKitAI.speak/3` for synchronous speech
-synthesis through a configured endpoint. It mirrors the `embed/3`
-path: endpoint resolution, credential validation, error mapping, and
-request logging are all shared.
-
-- `Completion.text_to_speech/3` posts to `<base_url>/audio/speech` and
-  decodes both the Mistral hosted base64-JSON shape
-  (`{"audio_data": "<base64>"}`) and raw binary audio bodies
-  (OpenRouter / OSS vLLM).
-- `speak/3` returns `{:ok, %{audio: binary, format: String.t}}`.
-- The endpoint form has a "Model Type" selector (`:text` / `:tts`).
-  TTS models are matched by the substring `tts` in the model id/name
-  (a heuristic — neither OpenRouter nor Mistral expose a reliable
-  audio modality flag). Switching model types clears the selected
-  model so a chat model can't be saved against a TTS endpoint.
-- A per-endpoint default voice can be stored in
-  `provider_settings["voice"]`. `speak/3` falls back to it when the
-  caller passes no `:voice` or `:voice_id`. The request field used
-  depends on the provider: `voice_id` for Mistral, `voice` for
-  everyone else.
-- When the selected integration is Mistral, the form fetches
-  `/audio/voices` and renders a two-level speaker → mood picker. The
-  resolved voice slug is stored. Other providers fall back to a
-  free-text voice input.
-- TTS request logs use `request_type: "tts"` and record
-  `input_chars`, `audio_format`, and `audio_bytes` (no token usage —
-  billing is per-character). Input text is subject to the same
-  `capture_request_content` PII gate as chat requests.
-
-## Pinning endpoints to a specific integration
-
-Each AI endpoint references a specific `PhoenixKit.Integrations`
-connection by uuid via the `integration_uuid` column (added in core's
-V107 with backfill from existing `provider` strings). The form's
-`integration_picker` writes the chosen connection's uuid into
-`integration_uuid` on save; `OpenRouterClient.resolve_api_key/1` looks
-up credentials by that uuid at request time — no guessing, no
-per-provider fallback.
-
-Provider-string-or-uuid resolution converges on
-`PhoenixKit.Integrations.resolve_to_uuid/1` (core primitive added in
-the strict-UUID flip). Both `OpenRouterClient.lookup_uuid_for_provider/1`
-(lazy on-read promotion) and `PhoenixKitAI.resolve_provider_to_uuid/1`
-(V107 migration sweep) delegate to it — single regex + dispatch +
-provider:name split lives in core, no duplication in this module.
-
-Renaming or re-validating the integration on the admin side doesn't
-break the endpoint's reference: uuids are stable across renames
-(`PhoenixKit.Integrations.rename_connection/3` updates the storage
-row's `key` column in place).
-
-## Migrating from legacy `endpoint.api_key`
-
-Endpoints created before V107 / PR #3 stored the OpenRouter API key
-directly in the `api_key` column and used the bare `provider` field
-(`"openrouter"`) without a specific connection reference. V107's
-backfill stamps `integration_uuid` for any endpoint whose `provider`
-matches a `PhoenixKit.Integrations` row (exact match for
-`"openrouter:my-key"` shapes, most-recently-validated row for bare
-`"openrouter"` strings). Endpoints with no resolvable integration get
-NULL — `resolve_api_key/1` falls back to the legacy `api_key` column
-and logs a `Logger.warning` identifying the endpoint by name + UUID.
-
-### Recovery card for stuck migrations
-
-When the legacy `api_key` is populated but `integration_uuid` is
-still NULL (V107 couldn't match, or `migrate_legacy/0` didn't reach
-this endpoint), the endpoint edit form renders a "Legacy API key
-(recovery)" card under the integration picker. Read-only, with a
-copy button. Lets the operator recover the key and paste it into a
-new Integration without bouncing back to OpenRouter. The card
-disappears once an integration is selected and saved.
-
-### Picker reflects state, never auto-picks
-
-The integration picker is a status display, not a convenience
-shortcut. `load_endpoint/2` and `reload_connections/1` only set
-`active_connection` to a uuid the endpoint is actually pinned to —
-either via `integration_uuid` or via the legacy `provider` field
-when it carried the uuid pre-V107. If nothing is pinned, the picker
-shows no selection, even when only one connection exists. This
-keeps the form honest: an operator scanning a new endpoint sees
-"no integration set" and knows to pick one, instead of being misled
-by a single available connection rendering as already-selected.
-
-When `integration_uuid` is set but doesn't resolve to a current
-connection (the integration was deleted since the endpoint was
-wired up), the orphaned uuid flows through `:selected_uuids` to the
-picker, which renders its "Integration deleted — Missing" warning
-card. The operator has to explicitly pick a new connection. The
-same logic protects `reload_connections/1` against silently
-rebinding endpoints when integrations are added or removed via
-PubSub.
-
-### Endpoints list — connection-health badges + integration row
-
-The endpoint card surfaces three independent signals:
-
-1. **Enabled badge** (`Active` / `Disabled`) — config state, derived
-   from `endpoint.enabled`.
-2. **Health badge** — derived from `integration_uuid` lookup against
-   the per-render `integrations_by_uuid` map. Surfaces:
-   - `Integration missing` (red) — uuid set but doesn't resolve
-   - `Integration error` (red) — resolves with `status="error"`
-   - `Not connected` (yellow) — resolves but never reached `connected`
-   - `No integration` (yellow) — `integration_uuid` is nil
-   - (no badge) — connected and healthy
-3. **Integration + key row** — `🔗 Integration: <name>  🔑 Key: sk-or-v1…abcd`.
-   Mask format is first-8 + last-4 via
-   `PhoenixKitAI.Web.Endpoints.mask_api_key/1`. Short keys (< 14
-   chars) fully mask to `•••` to avoid leaking most of a short
-   secret. For orphaned endpoints the row reads "Integration:
-   Deleted, Key: —"; for endpoints with `integration_uuid: nil`,
-   it reads "Integration: none, Key: —".
-
-The `integrations_by_uuid` map is loaded once per render in
-`reload_endpoints/1` so per-endpoint rendering doesn't N+1 on
-`Integrations.connected?/1` or `get_credentials/1`.
-
-### Manual cleanup flow
-
-To clear the legacy warning for a stuck endpoint:
-
-1. Open Settings → Integrations and add an OpenRouter connection (or
-   reuse the legacy key copied from the recovery card).
-2. Edit the endpoint in the AI admin UI and select the connection
-   from the `integration_picker`. The form writes the connection's
-   uuid into `integration_uuid`.
-3. Save. `Endpoint.changeset/2`'s `maybe_clear_legacy_api_key/1`
-   wipes the legacy `api_key` column to `""` in the same DB write
-   (atomic with the integration_uuid set). The warning stops, the
-   recovery card disappears, and stays gone.
-
-The `api_key` column is retained in the schema so a manual DB
-recovery is still possible if something goes catastrophically wrong;
-the *value* is cleared post-migration. The column is flagged
-**Deprecated** in `PhoenixKitAI.Endpoint` — planned for removal in a
-future major version.
-
-### Auto-migrating at host-app boot
-
-The recommended boot-time entry point is the orchestrator:
-
-```elixir
-# In your host app's Application.start/2, after the Repo + supervisor children
-def start(_type, _args) do
-  children = [...]
-  result = Supervisor.start_link(children, opts)
-
-  # Walks every registered PhoenixKit.Module and calls its
-  # `migrate_legacy/0` callback. Idempotent — safe every boot.
-  # Per-module errors are caught + logged; never crashes boot.
-  PhoenixKit.ModuleRegistry.run_all_legacy_migrations()
-
-  result
-end
-```
-
-For AI specifically, `PhoenixKitAI.migrate_legacy/0` is the callback. It runs both kinds of legacy data migration AI may need:
-
-1. **Credentials migration** (`run_legacy_api_key_migration/0` underneath) — folds pre-Integrations endpoints' api_keys into named `PhoenixKit.Integrations` connections AND stamps `endpoint.integration_uuid` to point at the new row.
-2. **Reference sweep** (`provider`-string → `integration_uuid`) — endpoints whose `provider` field is already a `provider:name` reference (form-saves between PR #3 and V107, or new endpoints created against an older form) get their `integration_uuid` resolved and persisted.
-
-Both kinds emit `PhoenixKit.Activity` entries with `action: "integration.legacy_migrated"`, `mode: "auto"`, and PII-safe metadata (uuid, count, kind — never api_key values).
-
-Calling the underlying functions directly is still supported for ad-hoc operations, but the orchestrator is the single entry point that future-proofs against new modules adding their own `migrate_legacy/0` callbacks.
-
-What the credentials pass does:
-
-- Finds endpoints with `provider == "openrouter"` (the bare default — never named connections like `"openrouter:my-key"`) AND a non-empty `api_key`.
-- Groups them by api_key value (so endpoints sharing a key share one connection — dedup).
-- For each group: creates a `PhoenixKit.Integrations` connection via `add_connection/3`, writes the key into the integration row via `save_setup(uuid, attrs)`, then atomically updates each endpoint's `provider`, `integration_uuid`, AND clears `api_key` to `""` in a single `Repo.update_all`. Naming: `"openrouter:default"` for single-key deployments; `"openrouter:imported-1"`, `"openrouter:imported-2"` for multi-key deployments.
-- **Clears the legacy `api_key` column atomically with linking** — once the credential is in the integration row and the endpoint references it by uuid, the duplicate column would only rot. The runtime resolver (`OpenRouterClient.build_headers_from_endpoint/1`) takes the `integration_uuid` path; with `api_key = ""` the legacy fallback tier returns `:not_configured`, so a broken integration surfaces a loud error instead of silently coasting on a stale key.
-- *Un*-migrated endpoints (skipped by the where-clause filter, or skipped because of an idempotency gate) keep their `api_key` populated as a safety net until they're explicitly handled.
-
-Idempotency guards (any one short-circuits):
-
-- The `ai_legacy_api_key_migration_completed_at` setting is set → skip.
-- ANY `integration:openrouter:*` key already exists in `phoenix_kit_settings` (operator already set up Integrations manually) → mark complete and skip.
-- No endpoints need migrating → mark complete and skip.
-- Plus the where-clause filter (`api_key != ""`) makes re-runs safe — already-migrated endpoints have an empty `api_key` and are invisible to subsequent passes.
-
-Failure modes are contained: a top-level `try/rescue/catch :exit` shell ensures the migration never crashes host-app boot. Per-key-group operations are isolated — one bad group doesn't abort others. Partial migration is safe because un-migrated endpoints still have their `api_key` populated and resolve via the legacy fallback path; only successfully-migrated endpoints have the fallback removed.
-
-The migration is opt-in (you must call it explicitly). Operators who prefer to migrate manually via the admin UI can simply not call the function — the resolver's legacy fallback path keeps existing endpoints working indefinitely.
+| Key | Default | Purpose |
+|-----|---------|---------|
+| `:capture_request_content` | `true` | Persist message/response content in request `metadata`; `false` writes `content_redacted: true` instead (tokens/latency/cost still recorded) |
+| `:capture_request_memory` | `false` | Opt-in per-request `:memory` snapshot in metadata — debug only |
+| `:allow_internal_endpoint_urls` | `false` | Bypass the SSRF guard on `Endpoint.base_url` (loopback/RFC1918/`*.local`/non-http(s) rejected) — for self-hosted Ollama etc. |
+| `:embedding_models` | `[]` | Extra embedding models appended to `OpenRouterClient.fetch_embedding_models/2`; non-list values warned + ignored |
+| `:req_options` | `[]` | Extra `Req` opts appended to every HTTP call — tests use it for `Req.Test` plug stubs |
 
 ## Testing
 
-### Running tests
-
-```bash
-mix test                                        # All tests
-mix test test/phoenix_kit_ai_test.exs           # Behaviour-compliance
-mix test test/phoenix_kit_ai/                   # Unit + integration
-mix test test/phoenix_kit_ai/web/               # LiveView tests
-```
-
-### Test infrastructure
-
-Two levels of tests:
-
-1. **Unit tests** — Pure logic, no DB required, always run. Examples: `errors_test.exs`, `prompt_test.exs` (extract/render helpers), `completion_test.exs` (HTTP error parsers).
-2. **Integration tests** — Real PostgreSQL via Ecto sandbox; auto-excluded when the DB is unavailable. Tests using `PhoenixKitAI.DataCase` or `PhoenixKitAI.LiveCase` are **automatically tagged `:integration`**. Examples: `endpoint_test.exs`, `request_test.exs`, `openrouter_client_coverage_test.exs`, `activity_logging_test.exs`, `legacy_api_key_migration_test.exs`, all `web/*_test.exs` files.
-
-The test DB (`phoenix_kit_ai_test`) uses an embedded `PhoenixKitAI.Test.Repo` in `test/support/test_repo.ex`. Schema setup happens in `test/test_helper.exs` by running core's versioned migrations directly (`Ecto.Migrator.run(TestRepo, [{0, PhoenixKit.Migration}], :up, all: true, log: false)`) — same call the host app makes in production. No module-owned DDL anywhere.
-
-LiveView tests need a minimal test Endpoint + Router + Layouts + LiveCase — see `test/support/`:
-
-- `test/support/test_endpoint.ex`, `test_router.ex`, `test_layouts.ex` — minimal Phoenix endpoint/router/layout stack for `Phoenix.LiveViewTest.live/2`
-- `test/support/live_case.ex` — `PhoenixKitAI.LiveCase` with `fixture_endpoint/1`, `fixture_prompt/1`, `seed_openrouter_connection/2`, `fake_scope/1`, `put_test_scope/2`
-- `test/support/data_case.ex` — `PhoenixKitAI.DataCase` (`:integration` auto-tag, sandbox setup)
-- `test/support/hooks.ex` — `:assign_scope` `on_mount` hook so tests can inject a `phoenix_kit_current_scope` / `phoenix_kit_current_user` via session
-- `test/support/activity_log_assertions.ex` — `assert_activity_logged/2` / `refute_activity_logged/2` querying `phoenix_kit_activities` directly
-
-The router scopes at `/en/admin/ai/…` so admin paths receive the default locale. `lazy_html` is a `:test`-only dep for rendered-HTML assertions.
-
-Destructive rescue tests (DROP-TABLE-in-sandbox to exercise rescue branches) live in `test/phoenix_kit_ai/destructive_rescue_test.exs` (`async: false`). They use `:integration` like every other DB-bound test; the LV-mounted save_endpoint rescue test is additionally tagged `:destructive` and is opt-in via `--include destructive` because it mounts a LiveView and drops a table mid-handler.
-
-### Version compliance test
-
-`test/phoenix_kit_ai_test.exs` verifies `module_key/0`, `module_name/0`, `version/0`, `permission_metadata/0`, `admin_tabs/0`, and `css_sources/0` return expected types/shapes.
+- **Unit tests** (no DB, always run) and **integration tests** (PostgreSQL sandbox; `PhoenixKitAI.DataCase`/`LiveCase` auto-tag `:integration`, auto-excluded without the DB).
+- Test DB `phoenix_kit_ai_test` uses `PhoenixKitAI.Test.Repo` (`test/support/test_repo.ex`); `test/test_helper.exs` runs core's versioned migrations directly — no module-owned DDL.
+- `test/support/`: `test_endpoint.ex` / `test_router.ex` / `test_layouts.ex` (minimal Phoenix stack), `live_case.ex` (`fixture_endpoint/1`, `seed_openrouter_connection/2`, `fake_scope/1`, …), `data_case.ex`, `hooks.ex` (`:assign_scope` on_mount), `activity_log_assertions.ex` (`assert/refute_activity_logged/2`). Router scopes at `/en/admin/ai/…`.
+- Destructive rescue tests: `test/phoenix_kit_ai/destructive_rescue_test.exs` (`async: false`); the LV-mounted one is tagged `:destructive`, opt-in via `--include destructive`.
+- `test/phoenix_kit_ai_test.exs` verifies the behaviour callbacks (`module_key/0`, `version/0`, `admin_tabs/0`, …).
 
 ## Versioning & Releases
 
-This project follows [Semantic Versioning](https://semver.org/).
+SemVer. Bump the version in **three places**: `mix.exs` `@version`, `lib/phoenix_kit_ai.ex` `version/0`, and the version test in `test/phoenix_kit_ai_test.exs`.
 
-### Version locations
+Release checklist:
 
-The version must be updated in **three places** when bumping:
+1. Bump the three version locations; add a `CHANGELOG.md` entry
+2. `mix precommit` — zero warnings/errors
+3. Commit (`"Bump version to x.y.z"`), push to main, **verify the push**
+4. Tag with bare version (no `v`): `git tag x.y.z && git push origin x.y.z`
+5. `gh release create x.y.z --title "x.y.z - YYYY-MM-DD" --notes "<changelog section>"`
 
-1. `mix.exs` — `@version` module attribute
-2. `lib/phoenix_kit_ai.ex` — `def version, do: "x.y.z"`
-3. `test/phoenix_kit_ai_test.exs` — version compliance test
-
-### Tagging & GitHub releases
-
-Tags use **bare version numbers** (no `v` prefix):
-
-```bash
-git tag 0.1.0
-git push origin 0.1.0
-```
-
-GitHub releases are created with `gh release create` using the tag as the release name. The title format is `<version> - <date>`, and the body comes from the corresponding `CHANGELOG.md` section:
-
-```bash
-gh release create 0.1.0 \
-  --title "0.1.0 - 2026-03-24" \
-  --notes "$(changelog body for this version)"
-```
-
-### Full release checklist
-
-1. Update version in `mix.exs`, `lib/phoenix_kit_ai.ex` (`version/0`), and the version test
-2. Add changelog entry in `CHANGELOG.md`
-3. Run `mix precommit` — ensure zero warnings/errors before proceeding
-4. Commit all changes: `"Bump version to x.y.z"`
-5. Push to main and **verify the push succeeded** before tagging
-6. Create and push git tag: `git tag x.y.z && git push origin x.y.z`
-7. Create GitHub release: `gh release create x.y.z --title "x.y.z - YYYY-MM-DD" --notes "..."`
-
-**IMPORTANT:** Never tag or create a release before all changes are committed and pushed. Tags are immutable pointers — tagging before pushing means the release points to the wrong commit.
-
-## Pre-commit Commands
-
-Always run before git commit:
-
-```bash
-mix precommit   # compile + format + credo --strict + dialyzer
-```
+**Never tag before all changes are committed and pushed** — tags are immutable pointers.
 
 ## Pull Requests
 
-### PR Reviews
+PR review files go in `dev_docs/pull_requests/{year}/{pr_number}-{slug}/{AGENT}_REVIEW.md` (see `dev_docs/pull_requests/README.md`). Every PR folder gets a `FOLLOW_UP.md` once triaged (a stub if no findings) — no `FOLLOW_UP.md` means "not triaged yet".
 
-PR review files go in `dev_docs/pull_requests/{year}/{pr_number}-{slug}/` directory. Use `{AGENT}_REVIEW.md` naming (e.g., `CLAUDE_REVIEW.md`, `PINCER_REVIEW.md`). See `dev_docs/pull_requests/README.md`.
+## Deferred refactors (don't do as standalone work)
 
-`FOLLOW_UP.md` is added to every PR folder once the review has been triaged — even PRs with no findings get a stub so an absence of `FOLLOW_UP.md` in a PR folder means "not triaged yet".
-
-## External Dependencies
-
-- **PhoenixKit** (`~> 1.7`) — Module behaviour, Settings API, shared components, RepoHelper, Activity logging, Integrations
-- **Phoenix LiveView** (`~> 1.0`) — Admin LiveViews
-- **Req** (via PhoenixKit) — HTTP client for OpenRouter API calls
-- **Jason** (via PhoenixKit) — JSON encoding/decoding
-- **lazy_html** (`:test` only) — Rendered-HTML assertions in LiveView tests
-- **rustler** (optional) — lets the transitive `mdex_native` NIF (pulled in via `phoenix_kit`, a test dependency) source-build on hosts whose precompiled variant doesn't match the local NIF version
-
-## Two Module Types
-
-- **Full-featured** (this module): Admin tabs, routes, UI, settings, LiveViews, real DB tables (migrations live in core `phoenix_kit`, not here)
-- **Headless**: Functions/API only, no UI — still gets auto-discovery, toggles, and permissions
-
-`phoenix_kit_ai` is full-featured.
-
-## Future refactor opportunities
-
-Items deliberately deferred — surface them when an unrelated refactor naturally touches the same code, not as standalone work.
-
-### `metadata.error_reason` shape
-
-`log_failed_request/7` and `log_failed_embedding_request/5` (`lib/phoenix_kit_ai.ex`) currently store the failure reason in `metadata.error_reason` via `inspect/1`. So a tagged tuple like `{:connection_error, :nxdomain}` lands in the JSONB column as the string `"{:connection_error, :nxdomain}"`. The original `error_message` column still holds the human-readable, gettext-rendered message via `Errors.message/1` — this is just the machine-readable shadow.
-
-The string form works for ad-hoc grep, but consumers that want to filter by error type have to do string parsing (`metadata->>'error_reason' LIKE '%connection_error%'`). A cleaner shape would be:
-
-```elixir
-# Today
-metadata: %{error_reason: inspect(reason)}
-# → "{:connection_error, :nxdomain}"
-
-# Future
-metadata: %{error_reason: reason}
-# → ["connection_error", "nxdomain"] (Jason coerces tuples to lists, atoms to strings)
-# Filter via JSONB: metadata->'error_reason'->>0 = 'connection_error'
-```
-
-**Why deferred**: no consumer currently filters on `error_reason`. The string form is workable for the only current reader (the activity log UI). A consumer-driven refactor is the right time — the structured shape should match the consumer's filter needs (split kind/data vs. raw list, atoms-as-strings vs. coerced).
-
-**When you do refactor**: also update the assertion in `test/phoenix_kit_ai/completion_coverage_test.exs:~240` that currently pins the inspect-string literal `"{:connection_error, :nxdomain}"`.
-
-### AI translation protocol — DONE (the generic pipeline now lives in this plugin)
-
-The shared AI-translation protocol was extracted (originally proposed 2026-05-22 after the PR #13 retro) and, in the 2026-06 AI move, the **entire pipeline was relocated out of core into this plugin** (`phoenix_kit_ai`). Core keeps only the `phoenix_kit_ai_endpoints` / `_prompts` table migrations. The "rule of three" was satisfied by publishing + catalogue + projects all consuming it.
-
-**What shipped (all in `PhoenixKitAI.*`):**
-
-| Concern | Module |
-| --- | --- |
-| Adapter behaviour | `PhoenixKitAI.Translatable` — `fetch/2` + optional scoped `fetch/3(type, uuid, scope)`, `source_fields/2`, `put_translation/4` (FOR-UPDATE merge so concurrent per-language jobs don't drop siblings), optional `pubsub_topics/1` |
-| AI call + `---FIELD---` parser | `PhoenixKitAI.Translation` (moved from core) |
-| Enqueue / dedup / broadcast / lang resolution | `PhoenixKitAI.Translations` — `enqueue/1`, `enqueue_all_missing/2`, `missing_languages/3`, scope-aware in-flight dedup, default endpoint/prompt |
-| Generic Oban worker | `PhoenixKitAI.TranslateWorker` — threads `resource_scope` to `fetch/3` when the adapter exports it |
-| Adapter discovery | `PhoenixKitAI.Translatables` — duck-typed scan over `PhoenixKit.ModuleRegistry.all_modules/0` for an `ai_translatables/0` function |
-| UI + LV glue | `PhoenixKitAI.Components.AITranslate{,.Embed,.FormBinding,.FormGlue}` |
-
-**How a consumer plugs in:** depend on `phoenix_kit_ai`; implement `PhoenixKitAI.Translatable`; expose a plain `ai_translatables/0` function (duck-typed — **not** a `PhoenixKit.Module` callback, so no `@impl`); delegate the form LV to `FormGlue` + a small `FormBinding`. The per-module workers (`TranslatePostWorker`, `TranslateResourceWorker`) were retired.
-
-**Design decisions that got settled (the open questions in the old proposal):**
-- **Broadcast shape:** `{:ai_translation, :translation_started | :translation_completed | :translation_failed, payload}`; payload carries `resource_type` / `resource_uuid` / `resource_scope` / `source_lang` / `target_lang`.
-- **Version / partition dimension:** optional `resource_scope` (a JSON-safe string) threaded through `fetch/3`, the in-flight dedup key, and the broadcast payload — lets a consumer translate a specific slice (publishing uses it per post version). `nil` scope = default slice = legacy behavior.
-- **Discovery:** duck-typed `ai_translatables/0` (so consumers declare AI-translatability without core knowing anything about AI).
-- **Activity log:** the worker emits `ai.translation_added` with `resource_scope` in metadata.
-
-**Reference adapters:** `phoenix_kit_catalogue` (multilang `data` JSONB, `_`-prefixed keys) · `phoenix_kit_projects` (`translations[lang]` plain keys) · `phoenix_kit_publishing` (versioned posts, lowercase prompt keys, local slug generation).
+- `metadata.error_reason` is stored via `inspect/1` (`log_failed_request/7`, `log_failed_embedding_request/5`) — a raw `reason` value would filter better via JSONB, but no consumer filters on it yet. If refactored, update the assertion pinning `"{:connection_error, :nxdomain}"` in `test/phoenix_kit_ai/completion_coverage_test.exs`.
