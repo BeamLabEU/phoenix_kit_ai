@@ -1,7 +1,7 @@
 defmodule PhoenixKitAI.MixProject do
   use Mix.Project
 
-  @version "0.17.0"
+  @version "0.17.1"
   @source_url "https://github.com/BeamLabEU/phoenix_kit_ai"
 
   def project do
@@ -97,7 +97,10 @@ defmodule PhoenixKitAI.MixProject do
       # capability that gates the streaming-voice Playground panel — an
       # older core would just never show the panel (silent no-op, not a
       # crash), so this floor is what actually guarantees the feature works.
-      pk_dep(:phoenix_kit, ">= 1.7.196"),
+      # 1.7.214+ required: Scope.can_access_admin_area?/1 (the rename of the
+      # now-`@deprecated` Scope.admin?/1) — an older core has no such function,
+      # so this is an UndefinedFunctionError at runtime, not a warning.
+      pk_dep(:phoenix_kit, ">= 1.7.214"),
 
       # LiveView is needed for the admin pages.
       {:phoenix_live_view, "~> 1.1"},

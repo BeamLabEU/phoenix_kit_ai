@@ -851,8 +851,8 @@ defmodule PhoenixKitAI.Web.EndpointFormCoverageTest do
          %{conn: conn} do
       # Pin the scope-bound branches of `actor_opts/1` (`%{uuid: uuid}`
       # match → `[actor_uuid: uuid, actor_role: role]`) and `admin?/1`
-      # (`scope -> Scope.admin?(scope)`). Also exercises the EDIT save
-      # path through `AI.update_endpoint(...)` (vs the new-endpoint
+      # (`scope -> Scope.can_access_admin_area?(scope)`). Also exercises
+      # the EDIT save path through `AI.update_endpoint(...)` (vs the new-endpoint
       # branch covered by the previous test).
       scope = fake_scope()
       conn = put_test_scope(conn, scope)

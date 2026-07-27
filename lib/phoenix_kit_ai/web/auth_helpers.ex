@@ -35,14 +35,18 @@ defmodule PhoenixKitAI.Web.AuthHelpers do
   end
 
   @doc """
-  Returns `true` when the socket's scope reports admin role, `false`
-  otherwise (including `nil` scope).
+  Returns `true` when the socket's scope can reach the admin area,
+  `false` otherwise (including `nil` scope).
+
+  Backed by `PhoenixKit.Users.Auth.Scope.can_access_admin_area?/1` —
+  which is true for any permission holder, not only the Admin role.
+  The name is kept for the `actor_role` string this feeds.
   """
   @spec admin?(Phoenix.LiveView.Socket.t()) :: boolean()
   def admin?(socket) do
     case socket.assigns[:phoenix_kit_current_scope] do
       nil -> false
-      scope -> Scope.admin?(scope)
+      scope -> Scope.can_access_admin_area?(scope)
     end
   end
 end

@@ -69,7 +69,8 @@ defmodule PhoenixKitAI.Web.PromptFormCoverageTest do
     test "saving an edit with an injected scope threads actor_uuid through",
          %{conn: conn} do
       # Pin `actor_opts/1` `%{uuid: uuid} -> [actor_uuid: uuid, ...]`
-      # branch + `admin?/1` `scope -> Scope.admin?(scope)` branch.
+      # branch + `admin?/1` `scope -> Scope.can_access_admin_area?(scope)`
+      # branch.
       # Without a scope, both fall through to the `_`/`nil` clauses.
       scope = fake_scope()
       conn = put_test_scope(conn, scope)

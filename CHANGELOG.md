@@ -1,3 +1,9 @@
+## 0.17.1 - 2026-07-27
+
+### Changed
+- **Stop calling the deprecated `PhoenixKit.Users.Auth.Scope.admin?/1`.** `PhoenixKitAI.Web.AuthHelpers.admin?/1` now calls `Scope.can_access_admin_area?/1`, the name core renamed it to in phoenix_kit 1.7.214. The old name is a pure `@deprecated` delegate to the new one, so **no behavior changes** — this only silences the deprecation warning host apps were eating on every compile of this library, with no way to fix it themselves. Our own `AuthHelpers.admin?/1` keeps its name (it feeds the `"admin" | "user"` `actor_role` string in `actor_opts/1`), but its doc now states what it actually reports: admin-*area* access, true for any permission holder rather than only the Admin role.
+- Dependency floor raised to `phoenix_kit >= 1.7.214` — `can_access_admin_area?/1` does not exist below it, so an older core would be an `UndefinedFunctionError` at call time rather than a warning.
+
 ## 0.17.0 - 2026-07-22
 
 ### Added
