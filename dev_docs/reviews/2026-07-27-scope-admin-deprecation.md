@@ -120,13 +120,26 @@ weak evidence here, and the floor bump is what actually needed reasoning about.
 | Type checker | `mix dialyzer` | ✅ 0 errors |
 | Test suite | `mix test` | ✅ 332 tests, 0 failures (545 excluded) |
 | Unused deps | `mix deps.unlock --check-unused` | ✅ |
+| Retired deps | `mix hex.audit` | ✅ none found |
 
-That is the full `mix precommit` gate minus `mix hex.audit`, which was not run.
+Re-run in full after the version-bump correction below: `mix precommit` exits 0,
+and `mix test` is green. Note that `precommit` does **not** run the test suite —
+it is compile + `deps.unlock --check-unused` + `hex.audit` + `quality.ci`
+(format, credo, dialyzer), so `mix test` has to be run separately.
 
 ## Release
 
 Bumped to **0.17.1** with a CHANGELOG entry. Not published to Hex as of this
 writing — the fix is inert for host apps until it is.
+
+**Post-review correction:** the original commit bumped only `mix.exs`
+`@version`, missing the other two locations this repo's versioning rule
+requires — `PhoenixKitAI.version/0` (`lib/phoenix_kit_ai.ex`) and the literal
+assertion in `test/phoenix_kit_ai_test.exs` both still said `"0.17.0"`. The
+green suite did not catch it precisely because the test pins a literal and
+`version/0` still matched it — the same "tests are weak evidence" caveat as
+the rename itself, one section up. Both corrected to `"0.17.1"` after the
+fact; `mix test test/phoenix_kit_ai_test.exs` passes (26 tests, 0 failures).
 
 ## Follow-Up for `phoenix_kit_entities`
 
@@ -139,6 +152,10 @@ Not done here; that repo is a separate checkout. Checklist:
 3. **Raise the `phoenix_kit` floor to `>= 1.7.214`** — see the trap above.
 4. Check any local wrapper's `@doc`/`@spec` for the same "admin role" wording.
 5. Run the gate, bump from 0.2.8, publish.
+6. **Bump the version in every location that repo's conventions require**, and
+   check whether its version test pins a literal — a literal assertion that
+   still matches a stale `version/0` is exactly how the incomplete 0.17.1 bump
+   here slipped through a green suite (see the post-review correction above).
 
 ## Related
 
