@@ -123,6 +123,61 @@ defmodule PhoenixKitAI.PromptTest do
   end
 
   # ============================================================================
+  # unbound_placeholders/1
+  # ============================================================================
+
+  describe "unbound_placeholders/1" do
+    test "returns [] for text with no placeholders" do
+      assert Prompt.unbound_placeholders("Hello World!") == []
+    end
+
+    test "returns [] for already-rendered text (no {{...}} left)" do
+      {:ok, rendered} = Prompt.render_content("Hello {{Name}}!", %{"Name" => "World"})
+      assert Prompt.unbound_placeholders(rendered) == []
+    end
+
+    test "finds a single leftover placeholder" do
+      assert Prompt.unbound_placeholders("Hi {{Name}}") == ["{{Name}}"]
+    end
+
+    test "finds multiple distinct leftover placeholders in appearance order" do
+      assert Prompt.unbound_placeholders("{{A}} then {{B}} then {{C}}") ==
+               ["{{A}}", "{{B}}", "{{C}}"]
+    end
+
+    test "deduplicates a placeholder repeated in the text" do
+      assert Prompt.unbound_placeholders("{{A}} ... later, {{A}} again") == ["{{A}}"]
+    end
+
+    test "reports only what's left after a partial render" do
+      # The exact §2 shape: the caller bound `title` but not `seo_title` —
+      # `render/2` leaves `seo_title` as a literal placeholder, and this
+      # is the function that's supposed to catch it.
+      {:ok, rendered} =
+        Prompt.render_content(
+          "Title: {{title}}. SEO: {{seo_title}}.",
+          %{"title" => "Widget"}
+        )
+
+      assert Prompt.unbound_placeholders(rendered) == ["{{seo_title}}"]
+    end
+
+    test "a fully-bound render leaves nothing to report" do
+      {:ok, rendered} =
+        Prompt.render_content(
+          "Title: {{title}}. SEO: {{seo_title}}.",
+          %{"title" => "Widget", "seo_title" => "Widget SEO"}
+        )
+
+      assert Prompt.unbound_placeholders(rendered) == []
+    end
+
+    test "non-binary input returns [] rather than raising" do
+      assert Prompt.unbound_placeholders(nil) == []
+    end
+  end
+
+  # ============================================================================
   # changeset/2 - variable extraction from both fields
   # ============================================================================
 

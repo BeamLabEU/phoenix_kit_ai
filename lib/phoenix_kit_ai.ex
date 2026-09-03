@@ -1700,12 +1700,24 @@ defmodule PhoenixKitAI do
          {:ok, _} <- validate_prompt(prompt),
          {:ok, rendered} <- Prompt.render(prompt, variables),
          {:ok, system_prompt} <- Prompt.render_system_prompt(prompt, variables) do
+      # §9.2 guard: after rendering, check whether any `{{...}}` is still
+      # literally present — a variable the caller didn't bind. Non-fatal
+      # (a prompt may legitimately contain a literal `{{...}}`), but cheap
+      # insurance against the whole defect class diagnosed in the
+      # translation-control design doc §2: an unbound placeholder left in
+      # a rendered prompt reads to the model as real content, not an
+      # error. Logged now; recorded into the request's metadata below via
+      # `:unbound_placeholders` so it shows up next to the request that
+      # actually rendered it, not just in the log stream.
+      unbound = detect_unbound_placeholders(prompt, rendered, system_prompt)
+
       # Pass prompt info to ask for request logging
       opts_with_prompt =
         opts
         |> Keyword.put(:prompt_uuid, prompt.uuid)
         |> Keyword.put(:prompt_name, prompt.name)
         |> Keyword.put(:prompt_snapshot, prompt_snapshot(prompt))
+        |> Keyword.put(:unbound_placeholders, unbound)
 
       # Include system prompt if the prompt template defines one
       opts_with_prompt =
@@ -1733,6 +1745,29 @@ defmodule PhoenixKitAI do
   defp prompt_snapshot(%Prompt{} = prompt) do
     body = (prompt.system_prompt || "") <> "\n---\n" <> (prompt.content || "")
     %{hash: :crypto.hash(:sha256, body) |> Base.encode16(case: :lower) |> binary_part(0, 16)}
+  end
+
+  # §9.2: scans both the rendered user prompt and the rendered system
+  # prompt (when present) for leftover `{{...}}` placeholders and logs a
+  # warning when any are found. Returns the deduplicated list so the
+  # caller can thread it into request metadata. Kept out of
+  # `Prompt.unbound_placeholders/1` itself — that function stays a pure,
+  # single-string scan; combining the two rendered strings and deciding
+  # to log is specific to this call site.
+  defp detect_unbound_placeholders(prompt, rendered, system_prompt) do
+    unbound =
+      (Prompt.unbound_placeholders(rendered) ++
+         Prompt.unbound_placeholders(system_prompt || ""))
+      |> Enum.uniq()
+
+    if unbound != [] do
+      Logger.warning(
+        "[PhoenixKitAI] prompt #{inspect(prompt.slug)} rendered with unbound " <>
+          "placeholder(s): #{Enum.join(unbound, ", ")}"
+      )
+    end
+
+    unbound
   end
 
   @doc """
@@ -2158,6 +2193,16 @@ defmodule PhoenixKitAI do
 
   defp maybe_put_attribution(metadata, attribution),
     do: Map.put(metadata, :attribution, attribution)
+
+  # §9.2: only stamp `unbound_placeholders` when the guard actually found
+  # something — the common case (nothing unbound, or no prompt template
+  # involved at all — plain `complete/3`/`ask/3` calls never set this key
+  # in `opts`) stays metadata-neutral rather than adding a noisy `[]` to
+  # every single request row.
+  defp maybe_put_unbound_placeholders(metadata, list) when list in [nil, []], do: metadata
+
+  defp maybe_put_unbound_placeholders(metadata, list),
+    do: Map.put(metadata, :unbound_placeholders, list)
 
   @doc """
   Usage sinks: every discovered module exporting `handle_ai_usage/1`
@@ -2781,7 +2826,8 @@ defmodule PhoenixKitAI do
         prompt_uuid: Keyword.get(opts, :prompt_uuid),
         prompt_name: Keyword.get(opts, :prompt_name),
         prompt_snapshot: Keyword.get(opts, :prompt_snapshot),
-        attribution: normalize_attribution(Keyword.get(opts, :attribution))
+        attribution: normalize_attribution(Keyword.get(opts, :attribution)),
+        unbound_placeholders: Keyword.get(opts, :unbound_placeholders, [])
       }
 
       merged_opts = merge_endpoint_opts(endpoint, opts)
@@ -3915,6 +3961,7 @@ defmodule PhoenixKitAI do
       }
       |> maybe_put_attribution(prompt_info[:attribution])
       |> maybe_put_prompt_snapshot(prompt_info[:prompt_snapshot])
+      |> maybe_put_unbound_placeholders(prompt_info[:unbound_placeholders])
 
     metadata =
       if capture_content do
@@ -3975,6 +4022,14 @@ defmodule PhoenixKitAI do
         stacktrace: stacktrace,
         caller_context: caller_context
       }
+      # §9.4 fix: this branch used to build `metadata` without ever
+      # merging `attribution` — the success branch (`log_request/7`,
+      # above) did, so a request that failed came out unattributable in
+      # the usage/diagnostics panel. A caller can't tell which resource a
+      # timeout belonged to on exactly the runs where knowing that
+      # matters most.
+      |> maybe_put_attribution(prompt_info[:attribution])
+      |> maybe_put_unbound_placeholders(prompt_info[:unbound_placeholders])
       |> maybe_add_content(:messages, capture_content, fn -> normalize_messages(messages) end)
 
     create_request(%{
