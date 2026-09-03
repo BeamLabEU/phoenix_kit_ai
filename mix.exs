@@ -56,6 +56,13 @@ defmodule PhoenixKitAI.MixProject do
 
   defp aliases do
     [
+      # Standard Phoenix/Ecto contract: `mix test` provisions its own
+      # database before running. Without this, `config/test.exs`'s
+      # `PhoenixKitAI.Test.Repo` names a database that never gets created,
+      # and `test/test_helper.exs` has nothing to connect to. `ecto.create
+      # --quiet` is idempotent (no-op against an existing database), so
+      # this is safe on every invocation, including repeated local runs.
+      test: ["ecto.create --quiet", "test"],
       quality: ["format", "credo --strict", "dialyzer"],
       "quality.ci": ["format --check-formatted", "credo --strict", "dialyzer"],
       precommit: [
