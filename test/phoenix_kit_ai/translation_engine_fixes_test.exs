@@ -183,6 +183,52 @@ defmodule PhoenixKitAI.TranslationEngineFixesTest do
       row = latest_request_for(ep)
       refute Map.has_key?(row.metadata, "unbound_placeholders")
     end
+
+    test "the guard also covers complete_with_system_prompt/5, the other render path" do
+      # §9.2 says "after rendering, check" — not "after rendering in
+      # ask_with_prompt/4". `complete_with_system_prompt/5` renders the same
+      # kind of stored template into a message that goes to the model, so an
+      # unbound placeholder leaking through it has to be just as visible.
+      ep = endpoint_fixture()
+      prompt = prompt_fixture("You are a {{Role}} working on {{campaign_slug}}.")
+
+      stub_response(200, success_payload("ok"))
+
+      log =
+        capture_log(fn ->
+          assert {:ok, _} =
+                   PhoenixKitAI.complete_with_system_prompt(
+                     ep.uuid,
+                     prompt.uuid,
+                     %{"Role" => "translator"},
+                     "Translate: hello"
+                   )
+        end)
+
+      assert log =~ "unbound"
+      assert log =~ "{{campaign_slug}}"
+
+      row = latest_request_for(ep)
+      assert row.metadata["unbound_placeholders"] == ["{{campaign_slug}}"]
+    end
+
+    test "complete_with_system_prompt/5 with everything bound records nothing" do
+      ep = endpoint_fixture()
+      prompt = prompt_fixture("You are a {{Role}}.")
+
+      stub_response(200, success_payload("ok"))
+
+      assert {:ok, _} =
+               PhoenixKitAI.complete_with_system_prompt(
+                 ep.uuid,
+                 prompt.uuid,
+                 %{"Role" => "translator"},
+                 "Translate: hello"
+               )
+
+      row = latest_request_for(ep)
+      refute Map.has_key?(row.metadata, "unbound_placeholders")
+    end
   end
 
   # ==========================================================================

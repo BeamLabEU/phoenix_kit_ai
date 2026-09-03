@@ -1786,12 +1786,19 @@ defmodule PhoenixKitAI do
         %{role: "user", content: user_message}
       ]
 
+      # §9.2 guard — the same net `ask_with_prompt/4` applies. This is the
+      # module's other render-a-template-then-call-the-model path, so an
+      # unbound `{{...}}` reaching a model through it has to be just as
+      # visible; there's only one rendered string here (the system prompt).
+      unbound = detect_unbound_placeholders(prompt, system_prompt, nil)
+
       # Pass prompt info to complete for request logging
       opts_with_prompt =
         opts
         |> Keyword.put(:prompt_uuid, prompt.uuid)
         |> Keyword.put(:prompt_name, prompt.name)
         |> Keyword.put(:prompt_snapshot, prompt_snapshot(prompt))
+        |> Keyword.put(:unbound_placeholders, unbound)
 
       case complete(endpoint_uuid, messages, opts_with_prompt) do
         {:ok, response} ->
