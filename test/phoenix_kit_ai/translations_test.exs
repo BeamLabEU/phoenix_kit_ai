@@ -51,6 +51,7 @@ defmodule PhoenixKitAI.TranslationsTest do
   alias PhoenixKit.PubSub.Manager, as: PubSubManager
   alias PhoenixKit.Settings
   alias PhoenixKitAI.Test.Repo, as: TestRepo
+  alias PhoenixKitAI.TranslateWorker
   alias PhoenixKitAI.Translations
 
   describe "missing_languages/3" do
@@ -241,6 +242,31 @@ defmodule PhoenixKitAI.TranslationsTest do
 
       assert Translations.default_endpoint_uuid() == reasoning_ep.uuid
     end
+
+    # Step 1 of the order does NOT validate what the setting points at — the
+    # value is returned whether or not that endpoint still exists or is still
+    # enabled. Pinned deliberately: consumers that need a usable endpoint
+    # (the catalogue sweep is the first) have to pair this call with an
+    # availability check of their own, and that obligation only stays visible
+    # if the quirk is written down as a test.
+    test "the explicit setting is returned unvalidated: a dangling uuid still wins" do
+      live_ep = fixture_ep()
+      dangling = Ecto.UUID.generate()
+
+      Settings.update_setting_with_module("ai_translation_endpoint_uuid", dangling, "ai")
+
+      assert Translations.default_endpoint_uuid() == dangling
+      refute Translations.default_endpoint_uuid() == live_ep.uuid
+    end
+
+    test "the explicit setting is returned unvalidated: a DISABLED endpoint still wins" do
+      {:ok, disabled_ep} = PhoenixKitAI.update_endpoint(fixture_ep(), %{enabled: false})
+      _live_ep = fixture_ep()
+
+      Settings.update_setting_with_module("ai_translation_endpoint_uuid", disabled_ep.uuid, "ai")
+
+      assert Translations.default_endpoint_uuid() == disabled_ep.uuid
+    end
   end
 
   describe "enqueue/1 + job_in_flight?/1 dedup identity" do
@@ -303,6 +329,40 @@ defmodule PhoenixKitAI.TranslationsTest do
 
       assert {:ok, %{conflict?: true}} =
                Translations.enqueue(Map.put(unscoped, :resource_scope, nil))
+    end
+
+    test "resource_scope is normalized before dedup: integer 2 and string \"2\" are one slice" do
+      params = base_enqueue_params(resource_scope: 2)
+
+      assert {:ok, %{conflict?: false}} = Translations.enqueue(params)
+      assert {:ok, %{conflict?: true}} = Translations.enqueue(%{params | resource_scope: "2"})
+    end
+
+    # The `nil`-scope clause matches `->>` returning NULL, which covers a JSON
+    # null AND an absent key. The test above only produces the first form
+    # (`to_args/1` always writes the key); this one produces the second — a
+    # job enqueued by a build that predates `resource_scope` and is still in
+    # flight during an upgrade. It must still block a duplicate.
+    test "a legacy in-flight job with no resource_scope key at all still dedups" do
+      params = base_enqueue_params() |> Map.delete(:resource_scope)
+
+      legacy_args =
+        Map.new(
+          [
+            :resource_type,
+            :resource_uuid,
+            :endpoint_uuid,
+            :prompt_uuid,
+            :source_lang,
+            :target_lang
+          ],
+          &{Atom.to_string(&1), Map.fetch!(params, &1)}
+        )
+
+      {:ok, job} = legacy_args |> TranslateWorker.new() |> Oban.insert()
+      refute Map.has_key?(job.args, "resource_scope")
+
+      assert {:ok, %{conflict?: true}} = Translations.enqueue(params)
     end
 
     test "enqueue_all_missing/2 enqueues every missing language independently, even with a pre-existing in-flight job for one of them" do
