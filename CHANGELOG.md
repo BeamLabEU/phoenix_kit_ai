@@ -1,3 +1,61 @@
+## Unreleased
+
+### Added
+
+- **`{{SourceFields}}` prompt variable.** `Translation.build_variables/3`
+  (used by the translation pipeline's `do_translate/6`) now also binds a
+  computed `{{SourceFields}}` block — one `---MARKER---` section per field
+  actually passed — alongside the existing per-field variables. A prompt
+  template can be written against this single variable instead of one
+  hardcoded slot per field, so it never has an unbound `{{fieldname}}`
+  placeholder for a field the caller didn't supply. Additive: an existing
+  prompt built on named slots (`{{title}}`, `{{Title}}`, …) keeps
+  rendering exactly as before.
+- **`Prompt.unbound_placeholders/1`** — returns the literal `{{...}}`
+  sequences left in already-*rendered* text. `PhoenixKitAI.ask_with_prompt/4`
+  and `complete_with_system_prompt/5` now call it after rendering: a
+  leftover placeholder logs a `Logger.warning` and is recorded as
+  `unbound_placeholders` in the request's metadata. Non-fatal — a prompt
+  may legitimately contain a literal `{{...}}` unrelated to this engine —
+  and metadata-neutral when nothing is unbound (no `[]` added to every
+  request row).
+- **`put_translation/4`'s `opts` now carries `:source_fields`.**
+  `TranslateWorker` threads the `%{field_name => text}` it read via
+  `source_fields/2` — captured *before* the AI call, not the resource's
+  state at persist time, which can be seconds to tens of seconds later —
+  through to the `Translatable` adapter. An adapter that doesn't need it
+  (most don't) ignores the key; one that wants to fingerprint what was
+  actually translated (e.g. to detect a source that changed again while
+  the call was in flight) no longer has to reconstruct it from a
+  possibly-stale `resource`.
+- `TranslateWorker.retryable?/1` now also treats
+  `{:parse_error, {:missing_fields, _}}` as retryable, within the existing
+  `max_attempts: 3`. Insurance against ordinary model non-determinism on
+  an otherwise well-formed prompt, not a substitute for one.
+
+### Fixed
+
+- **A failed AI request no longer drops its `:attribution`.**
+  `log_failed_request/7` merges `attribution` into the request's metadata
+  the same way the success path already did, so a timed-out or errored
+  call stays traceable to the resource that triggered it instead of only
+  the calls that happened to succeed.
+- **A provider error delivered inside a 200 response body is now
+  classified instead of discarded.** `Translation.handle_ai_response/2`
+  normalizes `%{"error" => %{"code" => code}}` to the same
+  `{:api_error, code}` shape the transport-error path already produces,
+  so the existing retry classification picks up a transient failure
+  (observed: a 504 reported in the body by OpenRouter) instead of
+  discarding it on the first attempt.
+
+No action is required from an existing consumer, `phoenix_kit_publishing`
+included — every change above is additive: a new template variable, a
+new metadata field, a new `opts` key adapters may ignore, and wider
+retry/attribution coverage on paths that previously under-reported. A
+`Translatable` adapter that wants the staleness-tracking use case this
+was built for reads `opts[:source_fields]` in its own `put_translation/4`;
+everything else keeps working unchanged.
+
 ## 0.22.0 - 2026-09-14
 
 ### Added
