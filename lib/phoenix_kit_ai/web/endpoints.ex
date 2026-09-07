@@ -59,6 +59,19 @@ defmodule PhoenixKitAI.Web.Endpoints do
     ]
   end
 
+  # Breadcrumb title/subtitle for the active tab. Kept in sync with
+  # `handle_params/3` on every navigation so the shared breadcrumb bar
+  # never shows stale text after switching tabs (unlike @page_title,
+  # which used to be set once in mount/3 and never touched again).
+  defp tab_title_and_subtitle("usage") do
+    {gettext("AI Usage"), gettext("Monitor API requests, token usage, and costs")}
+  end
+
+  defp tab_title_and_subtitle(_tab) do
+    {gettext("AI Endpoints"),
+     gettext("Artificial intelligence — manage provider endpoints and API configurations")}
+  end
+
   @page_size 20
 
   @impl true
@@ -78,6 +91,10 @@ defmodule PhoenixKitAI.Web.Endpoints do
       socket
       |> assign(:current_path, current_path)
       |> assign(:page_title, "AI Endpoints")
+      |> assign(
+        :page_subtitle,
+        gettext("Artificial intelligence — manage provider endpoints and API configurations")
+      )
       |> assign(:project_title, project_title)
       |> assign(:endpoints, [])
       |> assign(:endpoint_stats, %{})
@@ -130,10 +147,14 @@ defmodule PhoenixKitAI.Web.Endpoints do
       # Update current_path based on actual URI for proper nav highlighting
       current_path = URI.parse(uri).path
 
+      {page_title, page_subtitle} = tab_title_and_subtitle(tab)
+
       socket =
         socket
         |> assign(:active_tab, tab)
         |> assign(:current_path, current_path)
+        |> assign(:page_title, page_title)
+        |> assign(:page_subtitle, page_subtitle)
 
       # Apply tab-specific params
       socket =

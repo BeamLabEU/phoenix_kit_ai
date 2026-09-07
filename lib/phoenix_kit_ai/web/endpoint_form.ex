@@ -277,6 +277,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
       |> assign(:integration_connected, false)
       |> assign(:form, to_form(AI.change_endpoint(%Endpoint{})))
       |> assign(:page_title, "AI Endpoint")
+      |> assign(:page_subtitle, new_endpoint_subtitle())
       |> assign(:loaded_id, :unloaded)
 
     {:ok, socket}
@@ -290,6 +291,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     # confuse anyone scanning the form to verify wiring.
     socket
     |> assign(:page_title, "New AI Endpoint")
+    |> assign(:page_subtitle, new_endpoint_subtitle())
     |> assign(:endpoint, nil)
     |> assign(:form, to_form(AI.change_endpoint(%Endpoint{})))
     |> assign(:active_connection, nil)
@@ -314,6 +316,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
 
         socket
         |> assign(:page_title, "Edit AI Endpoint")
+        |> assign(:page_subtitle, gettext("Update your AI endpoint configuration"))
         |> assign(:endpoint, endpoint)
         |> assign(:form, to_form(changeset))
         |> assign(:active_connection, active)
@@ -323,6 +326,12 @@ defmodule PhoenixKitAI.Web.EndpointForm do
         |> assign(:model_type, model_type_for(endpoint.model))
         |> maybe_fetch_models_on_load(connected)
     end
+  end
+
+  # Kept as a function (not a module attribute) so `gettext/1` sees a
+  # literal string at extraction time.
+  defp new_endpoint_subtitle do
+    gettext("Create a new AI endpoint with provider credentials, model selection, and parameters")
   end
 
   # Resolves the picker's `active_connection` from the endpoint's

@@ -31,6 +31,10 @@ defmodule PhoenixKitAI.Web.PromptForm do
       |> assign(:prompt, nil)
       |> assign(:form, to_form(AI.change_prompt(%Prompt{})))
       |> assign(:page_title, "AI Prompt")
+      |> assign(
+        :page_subtitle,
+        gettext("Create reusable prompts with variable substitution")
+      )
       |> assign(:loaded_id, :unloaded)
 
     {:ok, socket}
