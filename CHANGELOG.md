@@ -1,3 +1,10 @@
+## 0.19.3 - 2026-09-07
+
+### Fixed
+
+- Removed duplicate page headings across AI admin pages (Endpoints, Prompts, Prompt form, Playground, Endpoint form) — each repeated the page title already shown in the top breadcrumb bar.
+- Fixed the Endpoints page breadcrumb title going stale after switching to the Usage tab.
+
 ## 0.19.2 - 2026-08-21
 
 ### Changed
