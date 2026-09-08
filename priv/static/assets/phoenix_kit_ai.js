@@ -167,6 +167,82 @@ window.PhoenixKitAIHooks = (function () {
     },
   };
 
+  // Endpoint form — manual model-ID fallback, shown when model discovery
+  // returned nothing. Stamps the input's current value onto the sibling
+  // submit button's `phx-value-model` just before LiveView reads the click.
+  // A hook rather than an `onclick="..."` attribute because inline event
+  // handlers mix imperative DOM with LV events and trip strict-CSP setups.
+  const PhoenixKitAIManualModelInput = {
+    mounted() {
+      this.button = this.el.closest(".join")?.querySelector("[data-manual-model-submit]");
+      if (!this.button) return;
+
+      this.sync = () => {
+        this.button.setAttribute("phx-value-model", this.el.value);
+      };
+      this.el.addEventListener("input", this.sync);
+      this.sync();
+    },
+
+    destroyed() {
+      if (this.sync) {
+        this.el.removeEventListener("input", this.sync);
+      }
+    },
+  };
+
+  // Endpoint form — client-side filter over the model grid. Scopes to the
+  // grid referenced by `data-grid-id`; toggles `display: none` on cards whose
+  // `data-search-text` doesn't contain the query, so no LV round-trip per
+  // keystroke.
+  const PhoenixKitAIModelGridSearch = {
+    mounted() {
+      this.handler = (event) => {
+        const query = (event.target.value || "").toLowerCase().trim();
+        const grid = document.getElementById(event.target.dataset.gridId);
+        if (!grid) return;
+
+        grid.querySelectorAll("button[data-search-text]").forEach((card) => {
+          const text = card.getAttribute("data-search-text") || "";
+          card.style.display = query === "" || text.indexOf(query) !== -1 ? "" : "none";
+        });
+      };
+      this.el.addEventListener("input", this.handler);
+    },
+
+    destroyed() {
+      this.el.removeEventListener("input", this.handler);
+    },
+  };
+
+  // Playground — scrolls the freshly-rendered skeleton / error / response
+  // card into view. Those elements carry
+  // `phx-mounted={JS.dispatch("phx:scroll-into-view", to: "#…")}`, which
+  // dispatches a bubbling CustomEvent on the element itself, so one listener
+  // on their common container (`#playground-response`) covers all three and
+  // `event.target` is the element to scroll to.
+  //
+  // Scoped to `this.el` rather than `document`: a document-level listener
+  // added in `mounted()` would leak one live handler per LiveView mount,
+  // since nothing ever removes it. `mounted()` runs before any `phx-mounted`
+  // binding in the same patch (LiveView's `execNewMounted` adds hooks first),
+  // so a child dispatching on join still finds this listener bound.
+  const PhoenixKitAIScrollIntoView = {
+    mounted() {
+      this.onScrollIntoView = (event) => {
+        const target = event.target;
+        if (target && typeof target.scrollIntoView === "function") {
+          target.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      };
+      this.el.addEventListener("phx:scroll-into-view", this.onScrollIntoView);
+    },
+
+    destroyed() {
+      this.el.removeEventListener("phx:scroll-into-view", this.onScrollIntoView);
+    },
+  };
+
   function base64ToInt16Array(base64Data) {
     const binary = atob(base64Data);
     const bytes = new Uint8Array(binary.length);
@@ -178,5 +254,10 @@ window.PhoenixKitAIHooks = (function () {
     return new Int16Array(bytes.buffer);
   }
 
-  return { XaiVoiceStream };
+  return {
+    XaiVoiceStream,
+    PhoenixKitAIManualModelInput,
+    PhoenixKitAIModelGridSearch,
+    PhoenixKitAIScrollIntoView,
+  };
 })();

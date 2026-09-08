@@ -118,10 +118,12 @@ mix test --include destructive                        # opt-in destructive-rescu
 - **JS hooks** ship in the prebuilt bundle `priv/static/assets/phoenix_kit_ai.js`
   under the namespaced global `PhoenixKitAIHooks`, declared by `js_sources/0`
   and folded into `window.PhoenixKitHooks` by the `:phoenix_kit_js_sources`
-  compiler. Prefer an existing core hook (`ResetSelect`, `CopyToClipboard`)
-  before writing one. Never register a hook from an inline `<script>`: morphdom
-  does not execute inserted script tags, so an inline hook vanishes on
-  LiveView navigation.
+  compiler. That fold is last-write-wins across every module's bundle and
+  core's own hooks, so a new hook's name carries the `PhoenixKitAI` prefix
+  (`PhoenixKitAIModelGridSearch`, not `ModelGridSearch`). Prefer an existing
+  core hook (`ResetSelect`, `CopyToClipboard`) before writing one. Never
+  register a hook from an inline `<script>`: morphdom does not execute inserted
+  script tags, so an inline hook vanishes on LiveView navigation.
 - **Tailwind** classes are kept by `css_sources/0` returning
   `[:phoenix_kit_ai]`, which makes the installer add the right `@source`
   directive; without it module-specific classes get purged.
@@ -145,13 +147,18 @@ mix test --include destructive                        # opt-in destructive-rescu
 
 ### Landmines
 
-- `web/endpoint_form.html.heex` still registers the `ManualModelInput` and
-  `ModelGridSearch` hooks from an inline `<script>`, and
-  `web/playground.html.heex` adds a `phx:scroll-into-view` listener the same
-  way. This is a known defect, not the pattern: both stop working after a
-  LiveView navigation because morphdom never runs inserted script tags. Move
-  them into `priv/static/assets/phoenix_kit_ai.js` rather than copying the
-  shape.
+- No template here carries an inline `<script>`, and none may: morphdom never
+  runs a script tag it inserts, so a hook registered that way works on a hard
+  page load and silently does nothing after a `live_redirect` (the console
+  reads `unknown hook found for "…"`). Every hook lives in
+  `priv/static/assets/phoenix_kit_ai.js` — `PhoenixKitAIManualModelInput` and
+  `PhoenixKitAIModelGridSearch` for the endpoint form, `PhoenixKitAIScrollIntoView`
+  on the playground's `#playground-response` container, `XaiVoiceStream` for
+  realtime audio. The scroll hook is the shape to copy for a page-level
+  listener: the cards dispatch `phx:scroll-into-view` on themselves via
+  `phx-mounted` and it bubbles to the container hook, which binds in
+  `mounted()` and unbinds in `destroyed()`. A `document.addEventListener` in
+  `mounted()` would instead leak one live handler per navigation.
 - The `cost_cents` column holds **nanodollars** (1/1,000,000 of a dollar),
   not cents — the name is legacy. Reading it as cents is off by seven orders of
   magnitude.
@@ -401,12 +408,6 @@ folder with no `FOLLOW_UP.md` means "not triaged yet"; a stub file is what
 
 ## TODOs
 
-- Move the `ManualModelInput` and `ModelGridSearch` hooks out of the inline
-  `<script>` in `web/endpoint_form.html.heex` (and the `phx:scroll-into-view`
-  listener out of `web/playground.html.heex`) into
-  `priv/static/assets/phoenix_kit_ai.js`. Trigger: the next change to either
-  hook, or the first report of the model picker going dead after navigating
-  between admin pages.
 - `metadata.error_reason` is stored via `inspect/1` in `log_failed_request/7`
   and `log_failed_embedding_request/5`. A raw `reason` value would filter better
   through JSONB, but no consumer filters on it yet. Trigger: the first consumer

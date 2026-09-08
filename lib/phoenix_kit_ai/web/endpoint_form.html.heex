@@ -558,7 +558,7 @@
                       class="input join-item flex-1"
                       placeholder={gettext("Enter model ID (e.g., anthropic/claude-3-haiku)")}
                       disabled={!@integration_connected}
-                      phx-hook="ManualModelInput"
+                      phx-hook="PhoenixKitAIManualModelInput"
                     />
                     <button
                       type="button"
@@ -654,7 +654,7 @@
                         type="text"
                         id="model_grid_search"
                         data-grid-id="model_grid"
-                        phx-hook="ModelGridSearch"
+                        phx-hook="PhoenixKitAIModelGridSearch"
                         placeholder={gettext("Filter models…")}
                         class="input input-sm w-full mb-2"
                       />
@@ -921,52 +921,3 @@
       </.form>
     </div>
   </div>
-
-<%!-- Inline hook for the manual-model-id fallback. Stamps the input's
-     current value onto the sibling submit button's phx-value-model
-     just before LiveView reads the click — replacing the previous
-     `onclick="..."` inline JS, which mixed imperative DOM with LV
-     events and tripped strict-CSP setups. --%>
-<script>
-  if (!window.PhoenixKitHooks) window.PhoenixKitHooks = {};
-  window.PhoenixKitHooks.ManualModelInput = {
-    mounted() {
-      this.button = this.el
-        .closest('.join')
-        ?.querySelector('[data-manual-model-submit]');
-      if (!this.button) return;
-
-      this.sync = () => {
-        this.button.setAttribute('phx-value-model', this.el.value);
-      };
-      this.el.addEventListener('input', this.sync);
-      this.sync();
-    },
-    destroyed() {
-      this.el.removeEventListener?.('input', this.sync);
-    }
-  };
-
-  // Client-side filter over the model grid. Scopes to the grid
-  // referenced by `data-grid-id`; toggles `display: none` on cards
-  // whose `data-search-text` doesn't contain the query. No LV
-  // round-trip per keystroke.
-  window.PhoenixKitHooks.ModelGridSearch = {
-    mounted() {
-      this.handler = (e) => {
-        const query = (e.target.value || '').toLowerCase().trim();
-        const grid = document.getElementById(e.target.dataset.gridId);
-        if (!grid) return;
-        grid.querySelectorAll('button[data-search-text]').forEach((card) => {
-          const text = card.getAttribute('data-search-text') || '';
-          card.style.display =
-            query === '' || text.indexOf(query) !== -1 ? '' : 'none';
-        });
-      };
-      this.el.addEventListener('input', this.handler);
-    },
-    destroyed() {
-      this.el.removeEventListener?.('input', this.handler);
-    }
-  };
-</script>
