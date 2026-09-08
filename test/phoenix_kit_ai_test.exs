@@ -115,7 +115,7 @@ defmodule PhoenixKitAITest do
     test "returns a version string" do
       version = PhoenixKitAI.version()
       assert is_binary(version)
-      assert version == "0.19.2"
+      assert version == Mix.Project.config()[:version]
     end
   end
 

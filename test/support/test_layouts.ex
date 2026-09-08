@@ -23,8 +23,14 @@ defmodule PhoenixKitAI.Test.Layouts do
     """
   end
 
+  # Core's admin layout renders `page_title` / `page_subtitle` as the page
+  # header, which is why the LiveViews here set the assign instead of putting
+  # a heading in their own markup. Mirror that, or every test asserting on a
+  # page's name fails against a page that is rendering perfectly well.
   def app(assigns) do
     ~H"""
+    <h1 :if={assigns[:page_title]}>{@page_title}</h1>
+    <p :if={assigns[:page_subtitle]}>{@page_subtitle}</p>
     <div :if={msg = Phoenix.Flash.get(@flash, :info)} id="flash-info" role="alert">{msg}</div>
     <div :if={msg = Phoenix.Flash.get(@flash, :error)} id="flash-error" role="alert">{msg}</div>
     <div :if={msg = Phoenix.Flash.get(@flash, :warning)} id="flash-warning" role="alert">

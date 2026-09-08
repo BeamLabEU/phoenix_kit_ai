@@ -102,6 +102,9 @@ defmodule PhoenixKitAI do
   @prompts_topic "phoenix_kit:ai:prompts"
   @requests_topic "phoenix_kit:ai:requests"
 
+  # Single-sourced from mix.exs so a release bump touches one place only.
+  @version Mix.Project.config()[:version]
+
   @doc """
   Returns the PubSub topic for AI endpoints.
   Subscribe to this topic to receive real-time updates.
@@ -1077,7 +1080,7 @@ defmodule PhoenixKitAI do
 
   @impl PhoenixKit.Module
   @spec version() :: String.t()
-  def version, do: "0.19.2"
+  def version, do: @version
 
   @impl PhoenixKit.Module
   @spec route_module() :: module()
