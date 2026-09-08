@@ -147,6 +147,20 @@ mix test --include destructive                        # opt-in destructive-rescu
 
 ### Landmines
 
+- **A hook that filters or stamps must reapply itself on every patch.** Two
+  in this bundle used to resolve once at `mounted()` and never again.
+  `PhoenixKitAIModelGridSearch` keeps its filter in inline `style.display` on
+  the CARDS, so cards arriving from a discovery round-trip render visible
+  under a query still typed in the box, and morphdom resets the style on any
+  card it re-renders — and because the hook is on the INPUT, a patch to the
+  grid alone never calls its `updated()`. It watches the grid with a
+  `MutationObserver` (childList only, so its own style writes cannot
+  re-trigger it) and reapplies from `updated()` too.
+  `PhoenixKitAIManualModelInput` re-resolves its sibling submit button on
+  every patch instead of caching it: a patch can replace the button while
+  leaving the input in place, and a cached reference then stamps
+  `phx-value-model` onto a detached node.
+
 - No template here carries an inline `<script>`, and none may: morphdom never
   runs a script tag it inserts, so a hook registered that way works on a hard
   page load and silently does nothing after a `live_redirect` (the console

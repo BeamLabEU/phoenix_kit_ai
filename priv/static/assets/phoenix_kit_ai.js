@@ -174,14 +174,24 @@ window.PhoenixKitAIHooks = (function () {
   // handlers mix imperative DOM with LV events and trip strict-CSP setups.
   const PhoenixKitAIManualModelInput = {
     mounted() {
-      this.button = this.el.closest(".join")?.querySelector("[data-manual-model-submit]");
-      if (!this.button) return;
-
-      this.sync = () => {
-        this.button.setAttribute("phx-value-model", this.el.value);
-      };
+      this.sync = () => this.stampModel();
       this.el.addEventListener("input", this.sync);
-      this.sync();
+      this.stampModel();
+    },
+
+    // The button is re-resolved on every patch, never cached across one. It is
+    // a sibling, so a patch can replace it while leaving this input (and this
+    // hook) in place; a reference captured at mount would then stamp
+    // phx-value-model onto a detached node and the click would submit the
+    // stale value. Re-stamping here also covers a server-set input value,
+    // which fires no "input" event.
+    updated() {
+      this.stampModel();
+    },
+
+    stampModel() {
+      const button = this.el.closest(".join")?.querySelector("[data-manual-model-submit]");
+      if (button) button.setAttribute("phx-value-model", this.el.value);
     },
 
     destroyed() {
@@ -197,21 +207,50 @@ window.PhoenixKitAIHooks = (function () {
   // keystroke.
   const PhoenixKitAIModelGridSearch = {
     mounted() {
-      this.handler = (event) => {
-        const query = (event.target.value || "").toLowerCase().trim();
-        const grid = document.getElementById(event.target.dataset.gridId);
-        if (!grid) return;
-
-        grid.querySelectorAll("button[data-search-text]").forEach((card) => {
-          const text = card.getAttribute("data-search-text") || "";
-          card.style.display = query === "" || text.indexOf(query) !== -1 ? "" : "none";
-        });
-      };
+      this.handler = () => this.applyFilter();
       this.el.addEventListener("input", this.handler);
+      this.applyFilter();
+      this.watchGrid();
+    },
+
+    // A patch that leaves the input alone does not call updated() here, and
+    // the filter lives in inline `style.display` on the CARDS -- so cards
+    // arriving from a discovery round-trip render visible under a query that
+    // is still typed in the box, and morphdom resets the style on any card it
+    // re-renders. The observer is what makes the filter survive that; watching
+    // childList only means applyFilter's own style writes (attribute
+    // mutations) cannot re-trigger it.
+    watchGrid() {
+      const grid = this.grid();
+      if (!grid || typeof MutationObserver !== "function") return;
+
+      this.observer = new MutationObserver(() => this.applyFilter());
+      this.observer.observe(grid, { childList: true, subtree: true });
+    },
+
+    updated() {
+      this.applyFilter();
+    },
+
+    grid() {
+      return document.getElementById(this.el.dataset.gridId);
+    },
+
+    applyFilter() {
+      const grid = this.grid();
+      if (!grid) return;
+
+      const query = (this.el.value || "").toLowerCase().trim();
+
+      grid.querySelectorAll("button[data-search-text]").forEach((card) => {
+        const text = card.getAttribute("data-search-text") || "";
+        card.style.display = query === "" || text.indexOf(query) !== -1 ? "" : "none";
+      });
     },
 
     destroyed() {
       this.el.removeEventListener("input", this.handler);
+      if (this.observer) this.observer.disconnect();
     },
   };
 
