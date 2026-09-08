@@ -230,8 +230,10 @@
         </.form_section>
       <% end %>
 
-      <%!-- Response Area --%>
-      <div id="playground-response" class="space-y-6">
+      <%!-- Response Area. The hook owns the `phx:scroll-into-view` listener
+           for every card below: each dispatches the event on itself via
+           `phx-mounted`, and it bubbles up to this container. --%>
+      <div id="playground-response" class="space-y-6" phx-hook="PhoenixKitAIScrollIntoView">
         <%!-- Loading Skeleton --%>
         <%= if @sending do %>
           <div
@@ -311,11 +313,5 @@
           </.form_section>
         <% end %>
       </div>
-
-      <script>
-        document.addEventListener("phx:scroll-into-view", function(e) {
-          e.target.scrollIntoView({behavior: "smooth", block: "start"});
-        });
-      </script>
     </div>
   </div>

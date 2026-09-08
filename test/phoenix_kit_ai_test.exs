@@ -1,6 +1,16 @@
 defmodule PhoenixKitAITest do
   use ExUnit.Case
 
+  # `function_exported?/3` answers FALSE for a module that is merely not
+  # loaded, not only for one that lacks the function, so a bare callback
+  # assertion fails intermittently under a random seed and never when the file
+  # runs alone -- the shape that reads as flaky infrastructure and gets re-run
+  # instead of fixed. Reproduced in two sibling modules before this went in.
+  setup_all do
+    Code.ensure_loaded!(PhoenixKitAI)
+    :ok
+  end
+
   # These tests verify that the module correctly implements the
   # PhoenixKit.Module behaviour.
 
@@ -115,7 +125,7 @@ defmodule PhoenixKitAITest do
     test "returns a version string" do
       version = PhoenixKitAI.version()
       assert is_binary(version)
-      assert version == "0.19.2"
+      assert version == Mix.Project.config()[:version]
     end
   end
 

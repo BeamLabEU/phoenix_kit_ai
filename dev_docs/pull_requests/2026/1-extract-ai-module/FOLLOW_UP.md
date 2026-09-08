@@ -176,7 +176,7 @@ gaps the current C-step checklist surfaced and the fixes applied.
   any RFC1918 / loopback / `.local` host and have the server make
   the request, with the response surfacing in the playground UI.
   Mitigating factor: AI is admin-only, no public route. Not fixed
-  here per the [feedback_quality_sweep_scope.md](~/.claude/projects/-Users-maxdon-Desktop-Elixir/memory/feedback_quality_sweep_scope.md)
+  here per the [feedback_quality_sweep_scope.md]the agent memory note `feedback_quality_sweep_scope.md`
   rule — SSRF allowlist validation is a missing-feature, not a
   refactor of an existing path. Surfaced for Max to schedule as a
   dedicated hardening PR. Suggested fix: a `validate_base_url/1`

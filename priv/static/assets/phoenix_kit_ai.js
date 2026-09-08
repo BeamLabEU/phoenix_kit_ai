@@ -167,6 +167,121 @@ window.PhoenixKitAIHooks = (function () {
     },
   };
 
+  // Endpoint form — manual model-ID fallback, shown when model discovery
+  // returned nothing. Stamps the input's current value onto the sibling
+  // submit button's `phx-value-model` just before LiveView reads the click.
+  // A hook rather than an `onclick="..."` attribute because inline event
+  // handlers mix imperative DOM with LV events and trip strict-CSP setups.
+  const PhoenixKitAIManualModelInput = {
+    mounted() {
+      this.sync = () => this.stampModel();
+      this.el.addEventListener("input", this.sync);
+      this.stampModel();
+    },
+
+    // The button is re-resolved on every patch, never cached across one. It is
+    // a sibling, so a patch can replace it while leaving this input (and this
+    // hook) in place; a reference captured at mount would then stamp
+    // phx-value-model onto a detached node and the click would submit the
+    // stale value. Re-stamping here also covers a server-set input value,
+    // which fires no "input" event.
+    updated() {
+      this.stampModel();
+    },
+
+    stampModel() {
+      const button = this.el.closest(".join")?.querySelector("[data-manual-model-submit]");
+      if (button) button.setAttribute("phx-value-model", this.el.value);
+    },
+
+    destroyed() {
+      if (this.sync) {
+        this.el.removeEventListener("input", this.sync);
+      }
+    },
+  };
+
+  // Endpoint form — client-side filter over the model grid. Scopes to the
+  // grid referenced by `data-grid-id`; toggles `display: none` on cards whose
+  // `data-search-text` doesn't contain the query, so no LV round-trip per
+  // keystroke.
+  const PhoenixKitAIModelGridSearch = {
+    mounted() {
+      this.handler = () => this.applyFilter();
+      this.el.addEventListener("input", this.handler);
+      this.applyFilter();
+      this.watchGrid();
+    },
+
+    // A patch that leaves the input alone does not call updated() here, and
+    // the filter lives in inline `style.display` on the CARDS -- so cards
+    // arriving from a discovery round-trip render visible under a query that
+    // is still typed in the box, and morphdom resets the style on any card it
+    // re-renders. The observer is what makes the filter survive that; watching
+    // childList only means applyFilter's own style writes (attribute
+    // mutations) cannot re-trigger it.
+    watchGrid() {
+      const grid = this.grid();
+      if (!grid || typeof MutationObserver !== "function") return;
+
+      this.observer = new MutationObserver(() => this.applyFilter());
+      this.observer.observe(grid, { childList: true, subtree: true });
+    },
+
+    updated() {
+      this.applyFilter();
+    },
+
+    grid() {
+      return document.getElementById(this.el.dataset.gridId);
+    },
+
+    applyFilter() {
+      const grid = this.grid();
+      if (!grid) return;
+
+      const query = (this.el.value || "").toLowerCase().trim();
+
+      grid.querySelectorAll("button[data-search-text]").forEach((card) => {
+        const text = card.getAttribute("data-search-text") || "";
+        card.style.display = query === "" || text.indexOf(query) !== -1 ? "" : "none";
+      });
+    },
+
+    destroyed() {
+      this.el.removeEventListener("input", this.handler);
+      if (this.observer) this.observer.disconnect();
+    },
+  };
+
+  // Playground — scrolls the freshly-rendered skeleton / error / response
+  // card into view. Those elements carry
+  // `phx-mounted={JS.dispatch("phx:scroll-into-view", to: "#…")}`, which
+  // dispatches a bubbling CustomEvent on the element itself, so one listener
+  // on their common container (`#playground-response`) covers all three and
+  // `event.target` is the element to scroll to.
+  //
+  // Scoped to `this.el` rather than `document`: a document-level listener
+  // added in `mounted()` would leak one live handler per LiveView mount,
+  // since nothing ever removes it. `mounted()` runs before any `phx-mounted`
+  // binding in the same patch (LiveView's `execNewMounted` adds hooks first),
+  // so a child dispatching on join still finds this listener bound.
+  const PhoenixKitAIScrollIntoView = {
+    mounted() {
+      this.onScrollIntoView = (event) => {
+        const target = event.target;
+        if (target && typeof target.scrollIntoView === "function") {
+          target.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      };
+      this.el.addEventListener("phx:scroll-into-view", this.onScrollIntoView);
+    },
+
+    destroyed() {
+      this.el.removeEventListener("phx:scroll-into-view", this.onScrollIntoView);
+    },
+  };
+
   function base64ToInt16Array(base64Data) {
     const binary = atob(base64Data);
     const bytes = new Uint8Array(binary.length);
@@ -178,5 +293,10 @@ window.PhoenixKitAIHooks = (function () {
     return new Int16Array(bytes.buffer);
   }
 
-  return { XaiVoiceStream };
+  return {
+    XaiVoiceStream,
+    PhoenixKitAIManualModelInput,
+    PhoenixKitAIModelGridSearch,
+    PhoenixKitAIScrollIntoView,
+  };
 })();
