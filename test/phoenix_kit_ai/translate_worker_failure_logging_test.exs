@@ -17,6 +17,13 @@ defmodule PhoenixKitAI.TranslateWorkerFailureLoggingTest do
       :no_markers}`) went through. Driven here through a deterministic,
       network-free `non_string_fields` failure via `FakeTranslatable`
       (same `fail/3` clause, no live AI endpoint needed).
+    * `fail/3`'s OTHER terminal clause — `retry? and final?` (a
+      retryable reason, but attempts are exhausted). Unlike the discard
+      clause above, this one is only reachable through a *retryable*
+      `{:ai_error, _}` reason, which only `Translation.translate_fields/6`
+      ever produces — so it needs an actual (stubbed, no real network)
+      AI-provider round trip via `Req.Test`, same technique as
+      `completion_coverage_test.exs`.
 
   `classify_reason/1`'s own mapping (incl. the literal `parse_error` /
   `no_markers` case and the no-leakage guarantee) is unit-tested in
@@ -26,8 +33,12 @@ defmodule PhoenixKitAI.TranslateWorkerFailureLoggingTest do
 
   use PhoenixKitAI.DataCase, async: false
 
-  alias PhoenixKitAI.Test.FakeTranslatable
+  alias PhoenixKitAI.Test.{FakeTranslatable, FakeTranslatableValid}
   alias PhoenixKitAI.TranslateWorker
+
+  defp stub_connection_error do
+    Req.Test.stub(__MODULE__, fn conn -> Req.Test.transport_error(conn, :nxdomain) end)
+  end
 
   describe "perform/1 setup-failure branch" do
     test "an unresolvable adapter logs ai.translation_failed with a no_adapter classification" do
@@ -174,6 +185,110 @@ defmodule PhoenixKitAI.TranslateWorkerFailureLoggingTest do
         resource_uuid: uuid,
         metadata_has: %{"resource_scope" => "v2"}
       )
+    end
+  end
+
+  describe "fail/3's retry-exhausted clause (retry? and final?), via a stubbed AI connection error" do
+    setup do
+      :ok = PhoenixKit.ModuleRegistry.register(FakeTranslatableValid)
+
+      Application.put_env(:phoenix_kit_ai, :req_options,
+        plug: {Req.Test, __MODULE__},
+        retry: false
+      )
+
+      # Same fixture recipe as completion_coverage_test.exs: a connected
+      # OpenRouter integration setting so `validate_endpoint/1` doesn't
+      # short-circuit before the (stubbed) HTTP call ever happens.
+      {:ok, _} =
+        PhoenixKit.Settings.update_json_setting(
+          "integration:openrouter:default",
+          %{"api_key" => "sk-test-key", "status" => "connected", "provider" => "openrouter"}
+        )
+
+      {:ok, endpoint} =
+        PhoenixKitAI.create_endpoint(%{
+          name: "EP-failure-logging-#{System.unique_integer([:positive])}",
+          provider: "openrouter",
+          model: "anthropic/claude-3-haiku",
+          api_key: "sk-test-key"
+        })
+
+      {:ok, prompt} =
+        PhoenixKitAI.create_prompt(%{
+          name: "Prompt-failure-logging-#{System.unique_integer([:positive])}",
+          content: "Translate {{name}} from {{SourceLanguage}} to {{TargetLanguage}}."
+        })
+
+      on_exit(fn ->
+        PhoenixKit.ModuleRegistry.unregister(FakeTranslatableValid)
+        Application.delete_env(:phoenix_kit_ai, :req_options)
+      end)
+
+      %{endpoint: endpoint, prompt: prompt}
+    end
+
+    test "attempt == max_attempts logs ai.translation_failed and returns {:error, _} (not a discard)",
+         %{endpoint: endpoint, prompt: prompt} do
+      stub_connection_error()
+      uuid = Ecto.UUID.generate()
+
+      job = %Oban.Job{
+        args: %{
+          "resource_type" => FakeTranslatableValid.resource_type(),
+          "resource_uuid" => uuid,
+          "endpoint_uuid" => endpoint.uuid,
+          "prompt_uuid" => prompt.uuid,
+          "source_lang" => "en",
+          "target_lang" => "fr"
+        },
+        attempt: 3,
+        max_attempts: 3
+      }
+
+      # A genuinely retryable reason (a transport connection error) that has
+      # run out of attempts: `fail/3`'s `retry? and final?` (a.k.a. `retry?`
+      # alone once `retry? and not final?` fails) clause, NOT the discard
+      # clause every other test in this file exercises — the outcome is
+      # `{:error, reason}`, which Oban treats as exhausted-retries, not a
+      # clean discard.
+      assert {:error, {:ai_error, {:connection_error, :nxdomain}}} = TranslateWorker.perform(job)
+
+      assert_activity_logged("ai.translation_failed",
+        resource_uuid: uuid,
+        metadata_has: %{
+          "reason" => "ai_error",
+          "reason_detail" => "connection_error",
+          "source_lang" => "en",
+          "target_lang" => "fr"
+        }
+      )
+    end
+
+    test "attempt < max_attempts (still retrying) does not log — matches the broadcast's own silence",
+         %{endpoint: endpoint, prompt: prompt} do
+      stub_connection_error()
+      uuid = Ecto.UUID.generate()
+
+      job = %Oban.Job{
+        args: %{
+          "resource_type" => FakeTranslatableValid.resource_type(),
+          "resource_uuid" => uuid,
+          "endpoint_uuid" => endpoint.uuid,
+          "prompt_uuid" => prompt.uuid,
+          "source_lang" => "en",
+          "target_lang" => "fr"
+        },
+        attempt: 1,
+        max_attempts: 3
+      }
+
+      # Same retryable reason, but attempts remain — `fail/3`'s
+      # `retry? and not final?` clause. No broadcast, no activity entry:
+      # a host UI's spinner should keep spinning through a pending retry.
+      assert {:error, {:ai_error, {:connection_error, :nxdomain}}} = TranslateWorker.perform(job)
+
+      refute_activity_logged("ai.translation_failed", resource_uuid: uuid)
     end
   end
 end
