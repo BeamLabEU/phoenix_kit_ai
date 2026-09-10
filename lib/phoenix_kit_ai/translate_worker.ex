@@ -11,8 +11,10 @@ defmodule PhoenixKitAI.TranslateWorker do
       Translation.translate_fields/6 → adapter.put_translation/4
 
   broadcasting `{:ai_translation, event, payload}` at each lifecycle step
-  (see `PhoenixKitAI.Translations`) and writing one
-  `ai.translation_added` activity entry on success.
+  (see `PhoenixKitAI.Translations`) and writing one activity entry per
+  terminal outcome — `ai.translation_added` on success, `ai.translation_failed`
+  on a terminal discard or a retry-exhausted give-up (never on a pending
+  retry, matching the broadcast).
 
   ## Job args
 
@@ -89,6 +91,18 @@ defmodule PhoenixKitAI.TranslateWorker do
           target_lang: Map.get(args, "target_lang"),
           reason: reason
         })
+
+        log_failed(
+          %{
+            type: Map.get(args, "resource_type"),
+            uuid: Map.get(args, "resource_uuid"),
+            scope: Map.get(args, "resource_scope"),
+            source: Map.get(args, "source_lang"),
+            target: Map.get(args, "target_lang"),
+            actor: Map.get(args, "actor_uuid")
+          },
+          reason
+        )
 
         {:discard, reason}
     end
@@ -182,10 +196,12 @@ defmodule PhoenixKitAI.TranslateWorker do
       retry? ->
         # Out of attempts — now it's terminal, so surface it.
         broadcast(ctx, :translation_failed, %{reason: reason})
+        log_failed(ctx, reason)
         {:error, reason}
 
       true ->
         broadcast(ctx, :translation_failed, %{reason: reason})
+        log_failed(ctx, reason)
         {:discard, reason}
     end
   end
@@ -312,6 +328,114 @@ defmodule PhoenixKitAI.TranslateWorker do
       Logger.warning("[AI.TranslateWorker] activity log failed: #{Exception.message(error)}")
       :ok
   end
+
+  # Mirrors `log_added/2` — same best-effort guard, same rescue. `ctx` here is
+  # only ever the small map both `fail/3` and the `perform/1` setup-failure
+  # branch build (`:type`, `:uuid`, `:scope`, `:source`, `:target`, `:actor`),
+  # not the full `do_translate` context.
+  #
+  # `reason` is never written to metadata verbatim — some shapes carry an
+  # adapter- or provider-supplied payload (a changeset, an arbitrary "other"
+  # return value, an exception message) that could embed resource content.
+  # `classify_reason/1` reduces it to a short, static classification tag
+  # before it reaches metadata.
+  defp log_failed(ctx, reason) do
+    if Code.ensure_loaded?(PhoenixKit.Activity) and
+         function_exported?(PhoenixKit.Activity, :log, 1) do
+      {category, detail} = classify_reason(reason)
+
+      PhoenixKit.Activity.log(%{
+        action: "ai.translation_failed",
+        module: "ai",
+        mode: "auto",
+        actor_uuid: ctx.actor,
+        resource_type: ctx.type,
+        resource_uuid: ctx.uuid,
+        metadata:
+          %{
+            "source_lang" => ctx.source,
+            "target_lang" => ctx.target,
+            "reason" => category
+          }
+          |> maybe_put_reason_detail(detail)
+          |> maybe_put_scope(ctx.scope)
+      })
+    end
+  rescue
+    error ->
+      Logger.warning(
+        "[AI.TranslateWorker] failure activity log failed: #{Exception.message(error)}"
+      )
+
+      :ok
+  end
+
+  defp maybe_put_reason_detail(metadata, nil), do: metadata
+  defp maybe_put_reason_detail(metadata, detail), do: Map.put(metadata, "reason_detail", detail)
+
+  # ── Failure classification ────────────────────────────────────────
+
+  # Reduce a failure `reason` to a `{category, detail}` pair of short, static
+  # strings safe for the activity log — never the raw term. `detail` is
+  # `nil` when the category alone says everything useful (e.g. a persist
+  # error's `reason` is an adapter changeset/return value we don't want to
+  # serialize). Public + `@doc false` so it's directly unit-testable, same
+  # convention as `retryable?/1` below.
+  @doc false
+  @spec classify_reason(term()) :: {String.t(), String.t() | nil}
+  def classify_reason({:missing_arg, key}), do: {"invalid_args", to_string(key)}
+  def classify_reason({:no_adapter, type}), do: {"no_adapter", to_string(type)}
+  def classify_reason({:bad_adapter_fetch, _other}), do: {"adapter_error", "bad_fetch_result"}
+
+  def classify_reason({:adapter_error, {:bad_source_fields, _other}}),
+    do: {"adapter_error", "bad_source_fields"}
+
+  def classify_reason({:adapter_error, :non_string_fields}),
+    do: {"adapter_error", "non_string_fields"}
+
+  def classify_reason({:adapter_error, {:exception, _message}}),
+    do: {"adapter_error", "exception"}
+
+  def classify_reason({:adapter_error, _other}), do: {"adapter_error", "unclassified"}
+  def classify_reason({:persist_error, _reason}), do: {"persist_error", nil}
+
+  def classify_reason({:bad_put_translation, _other}),
+    do: {"persist_error", "bad_put_translation"}
+
+  def classify_reason({:parse_error, :no_markers}), do: {"parse_error", "no_markers"}
+
+  def classify_reason({:parse_error, {:missing_fields, _fields}}),
+    do: {"parse_error", "missing_fields"}
+
+  def classify_reason({:parse_error, {:duplicate_markers, _duplicates}}),
+    do: {"parse_error", "duplicate_markers"}
+
+  def classify_reason({:parse_error, _other}), do: {"parse_error", "unclassified"}
+  def classify_reason({:ai_error, detail}), do: {"ai_error", classify_ai_detail(detail)}
+  def classify_reason(reason) when is_atom(reason), do: {"error", Atom.to_string(reason)}
+
+  def classify_reason(reason) when is_tuple(reason) and tuple_size(reason) > 0 do
+    case elem(reason, 0) do
+      tag when is_atom(tag) -> {"error", Atom.to_string(tag)}
+      _other -> {"error", "unclassified"}
+    end
+  end
+
+  def classify_reason(_reason), do: {"error", "unclassified"}
+
+  defp classify_ai_detail(:rate_limited), do: "rate_limited"
+  defp classify_ai_detail(:request_timeout), do: "request_timeout"
+  defp classify_ai_detail(:timeout), do: "timeout"
+  defp classify_ai_detail(:invalid_api_key), do: "invalid_api_key"
+  defp classify_ai_detail(:insufficient_credits), do: "insufficient_credits"
+  defp classify_ai_detail(:invalid_json_response), do: "invalid_json_response"
+  defp classify_ai_detail(:invalid_response_format), do: "invalid_response_format"
+  defp classify_ai_detail(:no_choices_in_response), do: "no_choices_in_response"
+  defp classify_ai_detail({:api_error, status}) when is_integer(status), do: "api_error_#{status}"
+  defp classify_ai_detail({:connection_error, _reason}), do: "connection_error"
+  defp classify_ai_detail({:exit, _reason}), do: "exit"
+  defp classify_ai_detail(detail) when is_atom(detail), do: Atom.to_string(detail)
+  defp classify_ai_detail(_detail), do: "unclassified"
 
   # ── Retry classification ─────────────────────────────────────────
 
