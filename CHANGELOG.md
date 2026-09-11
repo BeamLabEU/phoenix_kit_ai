@@ -1,3 +1,28 @@
+## 0.20.0 - 2026-09-10
+
+### Added
+
+- **`TranslateWorker` now writes an `ai.translation_failed` activity entry on
+  every terminal failure**, mirroring the existing `ai.translation_added`
+  success entry. Covers both `perform/1`'s setup-failure branch (bad args,
+  unknown adapter, missing resource) and `fail/3`'s two terminal clauses
+  (deterministic discard, or a retryable reason with attempts exhausted) —
+  never on a pending retry, matching the existing PubSub broadcast's own
+  silence there. The raw failure reason is never persisted verbatim; a new
+  `classify_reason/1` reduces it to a short, static classification tag first,
+  since some failure shapes can embed resource content (#24).
+
+### Fixed
+
+- **`classify_reason/1`'s persist-failure detail was unreachable.** The
+  generic `{:persist_error, _reason}` clause matched before the specific
+  `{:bad_put_translation, _other}` clause, which only ever matched a shape
+  nothing in the module produces at the top level in production —
+  `persist/2` always wraps it as `{:persist_error, {:bad_put_translation,
+  _}}`. Every persist failure logged with `reason_detail: nil` instead of
+  distinguishing "adapter returned a malformed shape." Reordered the clauses
+  and added the analogous `{:persist_error, {:exception, _}}` case.
+
 ## 0.19.3 - 2026-09-07
 
 ### Fixed

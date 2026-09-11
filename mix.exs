@@ -1,7 +1,7 @@
 defmodule PhoenixKitAI.MixProject do
   use Mix.Project
 
-  @version "0.19.3"
+  @version "0.20.0"
   @source_url "https://github.com/BeamLabEU/phoenix_kit_ai"
 
   def project do
