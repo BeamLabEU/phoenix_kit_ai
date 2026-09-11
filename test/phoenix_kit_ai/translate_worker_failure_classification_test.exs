@@ -57,9 +57,18 @@ defmodule PhoenixKitAI.TranslateWorkerFailureClassificationTest do
 
     test "persist_error has no detail — the adapter's return value is never serialized" do
       assert TranslateWorker.classify_reason({:persist_error, %{}}) == {"persist_error", nil}
+    end
 
-      assert TranslateWorker.classify_reason({:bad_put_translation, :whatever}) ==
+    test "persist_error wrapping a bad_put_translation or exception shape carries that detail" do
+      # `persist/2` always wraps `safe_put_translation/2`'s error as
+      # `{:persist_error, reason}` — this is the shape that actually reaches
+      # `classify_reason/1` in production, not a bare `{:bad_put_translation,
+      # _}` tuple.
+      assert TranslateWorker.classify_reason({:persist_error, {:bad_put_translation, :whatever}}) ==
                {"persist_error", "bad_put_translation"}
+
+      assert TranslateWorker.classify_reason({:persist_error, {:exception, "boom"}}) ==
+               {"persist_error", "exception"}
     end
 
     test "ai_error normalises the transient provider failures" do
@@ -100,7 +109,8 @@ defmodule PhoenixKitAI.TranslateWorkerFailureClassificationTest do
         {:adapter_error, {:exception, secret}},
         {:adapter_error, secret},
         {:persist_error, %{message: secret}},
-        {:bad_put_translation, secret},
+        {:persist_error, {:bad_put_translation, secret}},
+        {:persist_error, {:exception, secret}},
         {:parse_error, {:missing_fields, [secret]}},
         {:parse_error, {:duplicate_markers, [secret]}},
         {:parse_error, secret}

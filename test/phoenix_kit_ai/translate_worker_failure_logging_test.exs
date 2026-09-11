@@ -33,7 +33,12 @@ defmodule PhoenixKitAI.TranslateWorkerFailureLoggingTest do
 
   use PhoenixKitAI.DataCase, async: false
 
-  alias PhoenixKitAI.Test.{FakeTranslatable, FakeTranslatableValid}
+  alias PhoenixKitAI.Test.{
+    FakeTranslatable,
+    FakeTranslatablePersistFailure,
+    FakeTranslatableValid
+  }
+
   alias PhoenixKitAI.TranslateWorker
 
   defp stub_connection_error do
@@ -289,6 +294,94 @@ defmodule PhoenixKitAI.TranslateWorkerFailureLoggingTest do
       assert {:error, {:ai_error, {:connection_error, :nxdomain}}} = TranslateWorker.perform(job)
 
       refute_activity_logged("ai.translation_failed", resource_uuid: uuid)
+    end
+  end
+
+  describe "persist/2's fail/3 call (malformed adapter put_translation return)" do
+    setup do
+      :ok = PhoenixKit.ModuleRegistry.register(FakeTranslatablePersistFailure)
+
+      Application.put_env(:phoenix_kit_ai, :req_options,
+        plug: {Req.Test, __MODULE__},
+        retry: false
+      )
+
+      {:ok, _} =
+        PhoenixKit.Settings.update_json_setting(
+          "integration:openrouter:default",
+          %{"api_key" => "sk-test-key", "status" => "connected", "provider" => "openrouter"}
+        )
+
+      {:ok, endpoint} =
+        PhoenixKitAI.create_endpoint(%{
+          name: "EP-persist-failure-#{System.unique_integer([:positive])}",
+          provider: "openrouter",
+          model: "anthropic/claude-3-haiku",
+          api_key: "sk-test-key"
+        })
+
+      {:ok, prompt} =
+        PhoenixKitAI.create_prompt(%{
+          name: "Prompt-persist-failure-#{System.unique_integer([:positive])}",
+          content: "Translate {{name}} from {{SourceLanguage}} to {{TargetLanguage}}."
+        })
+
+      on_exit(fn ->
+        PhoenixKit.ModuleRegistry.unregister(FakeTranslatablePersistFailure)
+        Application.delete_env(:phoenix_kit_ai, :req_options)
+      end)
+
+      %{endpoint: endpoint, prompt: prompt}
+    end
+
+    test "a malformed put_translation return logs a persist_error/bad_put_translation classification",
+         %{endpoint: endpoint, prompt: prompt} do
+      # A successful chat-completion round trip, so `do_translate/1` reaches
+      # `persist/2` — the adapter's `put_translation/4` is what fails here,
+      # deterministically, with no live AI endpoint.
+      Req.Test.stub(__MODULE__, fn conn ->
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(
+          200,
+          Jason.encode!(%{
+            "choices" => [
+              %{"message" => %{"content" => "---NAME---\nBonjour le monde"}}
+            ]
+          })
+        )
+      end)
+
+      uuid = Ecto.UUID.generate()
+
+      job = %Oban.Job{
+        args: %{
+          "resource_type" => FakeTranslatablePersistFailure.resource_type(),
+          "resource_uuid" => uuid,
+          "endpoint_uuid" => endpoint.uuid,
+          "prompt_uuid" => prompt.uuid,
+          "source_lang" => "en",
+          "target_lang" => "fr"
+        },
+        attempt: 1,
+        max_attempts: 3
+      }
+
+      # Deterministic (a changeset/constraint-shaped failure, not transient)
+      # — `retryable?/1` doesn't recognise `{:persist_error, _}`, so this
+      # discards rather than retrying.
+      assert {:discard, {:persist_error, {:bad_put_translation, :not_a_tuple}}} =
+               TranslateWorker.perform(job)
+
+      assert_activity_logged("ai.translation_failed",
+        resource_uuid: uuid,
+        metadata_has: %{
+          "reason" => "persist_error",
+          "reason_detail" => "bad_put_translation",
+          "source_lang" => "en",
+          "target_lang" => "fr"
+        }
+      )
     end
   end
 end

@@ -397,10 +397,20 @@ defmodule PhoenixKitAI.TranslateWorker do
     do: {"adapter_error", "exception"}
 
   def classify_reason({:adapter_error, _other}), do: {"adapter_error", "unclassified"}
-  def classify_reason({:persist_error, _reason}), do: {"persist_error", nil}
 
-  def classify_reason({:bad_put_translation, _other}),
+  # `persist/2` always wraps `safe_put_translation/2`'s error in
+  # `{:persist_error, _}` (see `translate_worker.ex`'s `persist/2`) — these
+  # two nested-shape clauses must stay ABOVE the generic `{:persist_error,
+  # _reason}` catch-all below, or they're unreachable dead code: the generic
+  # clause matches any 2-tuple tagged `:persist_error` regardless of what's
+  # nested inside it.
+  def classify_reason({:persist_error, {:bad_put_translation, _other}}),
     do: {"persist_error", "bad_put_translation"}
+
+  def classify_reason({:persist_error, {:exception, _message}}),
+    do: {"persist_error", "exception"}
+
+  def classify_reason({:persist_error, _reason}), do: {"persist_error", nil}
 
   def classify_reason({:parse_error, :no_markers}), do: {"parse_error", "no_markers"}
 
