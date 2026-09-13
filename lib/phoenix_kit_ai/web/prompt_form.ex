@@ -30,7 +30,7 @@ defmodule PhoenixKitAI.Web.PromptForm do
       |> assign(:extracted_variables, [])
       |> assign(:prompt, nil)
       |> assign(:form, to_form(AI.change_prompt(%Prompt{})))
-      |> assign(:page_title, "AI Prompt")
+      |> assign(:page_title, gettext("AI Prompt"))
       |> assign(
         :page_subtitle,
         gettext("Create reusable prompts with variable substitution")
@@ -44,7 +44,7 @@ defmodule PhoenixKitAI.Web.PromptForm do
     changeset = AI.change_prompt(%Prompt{})
 
     socket
-    |> assign(:page_title, "New AI Prompt")
+    |> assign(:page_title, gettext("New AI Prompt"))
     |> assign(:prompt, nil)
     |> assign(:form, to_form(changeset))
   end
@@ -60,7 +60,7 @@ defmodule PhoenixKitAI.Web.PromptForm do
         changeset = AI.change_prompt(prompt)
 
         socket
-        |> assign(:page_title, "Edit AI Prompt")
+        |> assign(:page_title, gettext("Edit AI Prompt"))
         |> assign(:prompt, prompt)
         |> assign(:form, to_form(changeset))
         |> assign(:extracted_variables, prompt.variables || [])

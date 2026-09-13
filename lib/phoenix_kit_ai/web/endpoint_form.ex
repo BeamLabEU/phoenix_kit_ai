@@ -276,7 +276,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
       |> assign(:selected_uuids, [])
       |> assign(:integration_connected, false)
       |> assign(:form, to_form(AI.change_endpoint(%Endpoint{})))
-      |> assign(:page_title, "AI Endpoint")
+      |> assign(:page_title, gettext("AI Endpoint"))
       |> assign(:page_subtitle, new_endpoint_subtitle())
       |> assign(:loaded_id, :unloaded)
 
@@ -290,7 +290,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     # would mask "no integration set" with "an integration is set" and
     # confuse anyone scanning the form to verify wiring.
     socket
-    |> assign(:page_title, "New AI Endpoint")
+    |> assign(:page_title, gettext("New AI Endpoint"))
     |> assign(:page_subtitle, new_endpoint_subtitle())
     |> assign(:endpoint, nil)
     |> assign(:form, to_form(AI.change_endpoint(%Endpoint{})))
@@ -315,7 +315,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
         selected_uuids = picker_selected_uuids(active, orphaned_integration_uuid)
 
         socket
-        |> assign(:page_title, "Edit AI Endpoint")
+        |> assign(:page_title, gettext("Edit AI Endpoint"))
         |> assign(:page_subtitle, gettext("Update your AI endpoint configuration"))
         |> assign(:endpoint, endpoint)
         |> assign(:form, to_form(changeset))

@@ -32,11 +32,13 @@ host supplies endpoint and router (`config/` exists only for tests).
 - **No DB migrations of its own.** Tables are created by core's versioned
   chain. Adding a column is a core migration first, then schema + changeset
   edits here.
-- **No per-completion Activity logging.** `PhoenixKit.Activity.log/1` runs only
-  on endpoint/prompt CRUD and enable/disable toggles, on both the success and
+- **No per-completion Activity logging.** `PhoenixKit.Activity.log/1` runs on
+  endpoint/prompt CRUD and enable/disable toggles, on both the success and
   failure branches, via the `log_failed_*_mutation/3` pipe-step helpers with
-  PII-safe `error_keys` metadata. Per-request usage already lives in
-  `phoenix_kit_ai_requests`.
+  PII-safe `error_keys` metadata, and on each terminal outcome of an AI
+  translation job (`ai.translation_added` / `ai.translation_failed`, the
+  latter carrying only a static classification tag, never the raw reason).
+  Per-request usage already lives in `phoenix_kit_ai_requests`.
 - **No forced legacy `endpoint.api_key` migration.**
   `OpenRouterClient.resolve_api_key/1` keeps pre-Integrations endpoints working
   through a three-tier fallback (`integration_uuid` → legacy `provider` string →

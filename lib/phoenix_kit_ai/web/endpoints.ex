@@ -85,16 +85,17 @@ defmodule PhoenixKitAI.Web.Endpoints do
       AI.subscribe_requests()
     end
 
+    # Default to the endpoints tab; `handle_params/3` re-derives both for the
+    # tab actually requested.
+    {page_title, page_subtitle} = tab_title_and_subtitle("endpoints")
+
     # No DB queries here — `mount/3` runs twice (HTTP + WebSocket).
     # `has_endpoints` and the data load happen in `handle_params/3`.
     socket =
       socket
       |> assign(:current_path, current_path)
-      |> assign(:page_title, "AI Endpoints")
-      |> assign(
-        :page_subtitle,
-        gettext("Artificial intelligence — manage provider endpoints and API configurations")
-      )
+      |> assign(:page_title, page_title)
+      |> assign(:page_subtitle, page_subtitle)
       |> assign(:project_title, project_title)
       |> assign(:endpoints, [])
       |> assign(:endpoint_stats, %{})

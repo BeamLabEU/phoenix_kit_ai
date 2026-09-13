@@ -1,3 +1,22 @@
+## 0.20.1 - 2026-09-13
+
+### Fixed
+
+- **Admin page titles are translated again.** 0.19.3 moved every page's
+  title into a plain-string `page_title` assign, which core's admin layout
+  renders as the header — so the Playground and Prompts titles lost their
+  Estonian and Russian translations (the next `gettext.merge` would have
+  deleted them), and the endpoint/prompt form titles were never translated
+  at all. Every title assign now goes through `gettext/1`; the catalogues are
+  re-extracted with `et` and `ru` entries for the six new form-title msgids.
+- The Endpoints LiveView derives its mount title/subtitle from the same
+  helper `handle_params/3` uses instead of duplicating the strings.
+- `test/test_helper.exs`'s connect-failure messages had lost their line
+  breaks and pointed at a preflight diagnostic that isn't printed on that
+  path; they carry the `createdb` hint again.
+- `AGENTS.md` now documents the `ai.translation_added` /
+  `ai.translation_failed` activity entries added in 0.20.0.
+
 ## 0.20.0 - 2026-09-10
 
 ### Added
