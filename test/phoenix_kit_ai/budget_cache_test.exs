@@ -69,6 +69,12 @@ defmodule PhoenixKitAI.BudgetCacheTest do
     TestRepo.all(from(r in Request, where: r.endpoint_uuid == ^ep.uuid, order_by: r.uuid))
   end
 
+  # A fresh row and its cached twin can land in the same millisecond, so
+  # uuid order between them is not stable: split them instead.
+  defp fresh_and_cached(ep) do
+    Enum.split_with(rows(ep), &(&1.metadata["cached"] != true))
+  end
+
   defp attach(event) do
     :telemetry.attach(
       "#{inspect(event)}-#{System.unique_integer([:positive])}",
@@ -217,12 +223,9 @@ defmodule PhoenixKitAI.BudgetCacheTest do
       assert_received {:event, [:phoenix_kit_ai, :cache, :hit], _, meta}
       assert meta == %{verb: :complete, endpoint_uuid: ep.uuid}
 
-      assert [
-               %{cost_cents: 500_000, metadata: fresh},
-               %{cost_cents: 0, metadata: %{"cached" => true, "source" => "B"}}
-             ] = rows(ep)
-
-      refute Map.has_key?(fresh, "cached")
+      assert {[%{cost_cents: 500_000, metadata: %{"source" => "A"}}],
+              [%{cost_cents: 0, metadata: %{"cached" => true, "source" => "B"}}]} =
+               fresh_and_cached(ep)
 
       assert_received {:event, [:phoenix_kit_ai, :request], %{cost_cents: 500_000},
                        %{cached: false, request_type: "chat"}}
@@ -399,23 +402,25 @@ defmodule PhoenixKitAI.BudgetCacheTest do
 
       refute_received :provider_called
 
-      assert [
-               %{
-                 user_uuid: ^user_a,
-                 prompt_uuid: puuid,
-                 metadata: %{"prompt_snapshot" => %{"hash" => hash}}
-               },
-               %{
-                 user_uuid: ^user_b,
-                 prompt_uuid: puuid,
-                 cost_cents: 0,
-                 metadata: %{
-                   "cached" => true,
-                   "prompt_snapshot" => %{"hash" => hash},
-                   "attribution" => %{"project" => "p1"}
-                 }
-               }
-             ] = rows(ep)
+      assert {[
+                %{
+                  user_uuid: ^user_a,
+                  prompt_uuid: puuid,
+                  metadata: %{"prompt_snapshot" => %{"hash" => hash}}
+                }
+              ],
+              [
+                %{
+                  user_uuid: ^user_b,
+                  prompt_uuid: puuid,
+                  cost_cents: 0,
+                  metadata: %{
+                    "cached" => true,
+                    "prompt_snapshot" => %{"hash" => hash},
+                    "attribution" => %{"project" => "p1"}
+                  }
+                }
+              ]} = fresh_and_cached(ep)
 
       assert puuid == prompt.uuid
       assert String.length(hash) == 16
@@ -423,7 +428,8 @@ defmodule PhoenixKitAI.BudgetCacheTest do
       # Editing the prompt changes the snapshot.
       {:ok, _} = PhoenixKitAI.update_prompt(prompt, %{content: "Shout {{Thing}}!"})
       assert {:ok, _} = PhoenixKitAI.ask_with_prompt(ep.uuid, prompt.uuid, %{"Thing" => "hi"})
-      assert [_, _, %{metadata: %{"prompt_snapshot" => %{"hash" => other}}}] = rows(ep)
+      {fresh, _cached} = fresh_and_cached(ep)
+      assert [_, %{metadata: %{"prompt_snapshot" => %{"hash" => other}}}] = fresh
       assert other != hash
     end
 

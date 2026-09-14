@@ -785,14 +785,14 @@ defmodule PhoenixKitAI.ImagesTest do
                  cache: true
                )
 
-      rows = TestRepo.all(from(r in Request, where: r.request_type == "vision", order_by: r.uuid))
-
-      assert [
-               _,
-               %{cost_cents: 0},
-               %{model: "openai/gpt-4o-mini"},
-               %{model: "openai/gpt-4o-mini", cost_cents: 0}
-             ] = rows
+      # Fresh rows and their cached twins may share a millisecond, so no
+      # ordering: two paid rows, two zero-cost cached ones, the override on both.
+      rows = TestRepo.all(from(r in Request, where: r.request_type == "vision"))
+      {fresh, cached} = Enum.split_with(rows, &(&1.metadata["cached"] != true))
+      assert [%{cost_cents: 500}, %{cost_cents: 500}] = fresh
+      assert [%{cost_cents: 0}, %{cost_cents: 0}] = cached
+      assert Enum.count(fresh, &(&1.model == "openai/gpt-4o-mini")) == 1
+      assert Enum.count(cached, &(&1.model == "openai/gpt-4o-mini")) == 1
     end
 
     test "a dry run neither spends budget nor touches the cache" do

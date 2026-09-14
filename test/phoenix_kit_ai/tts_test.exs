@@ -115,13 +115,11 @@ defmodule PhoenixKitAI.TTSTest do
       assert {:ok, %{audio: @audio_bytes}} = PhoenixKitAI.speak(ep.uuid, "Bonjour", cache: true)
       assert {:ok, %{audio: @audio_bytes}} = PhoenixKitAI.speak(ep.uuid, "Bonjour", cache: true)
 
-      rows =
-        TestRepo.all(from(r in Request, where: r.endpoint_uuid == ^ep.uuid, order_by: r.uuid))
+      rows = TestRepo.all(from(r in Request, where: r.endpoint_uuid == ^ep.uuid))
 
-      assert [
-               %{request_type: "tts"},
-               %{request_type: "tts", cost_cents: 0, metadata: %{"cached" => true}}
-             ] = rows
+      assert {[%{request_type: "tts"}],
+              [%{request_type: "tts", cost_cents: 0, metadata: %{"cached" => true}}]} =
+               Enum.split_with(rows, &(&1.metadata["cached"] != true))
     end
 
     test "returns :audio, :format and :timestamps (latency stays internal)" do
