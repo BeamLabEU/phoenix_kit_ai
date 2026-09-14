@@ -47,7 +47,7 @@ msgid "AI Usage"
 msgstr "AI — использование"
 
 #: lib/phoenix_kit_ai/web/endpoint_form.ex:416
-#: lib/phoenix_kit_ai/web/playground.ex:115
+#: lib/phoenix_kit_ai/web/playground.ex:123
 #: lib/phoenix_kit_ai/web/prompt_form.ex:97
 #, elixir-autogen, elixir-format
 msgid "AI module is not enabled"
@@ -254,7 +254,7 @@ msgstr "Копировать"
 msgid "Cost"
 msgstr "Стоимость"
 
-#: lib/phoenix_kit_ai/web/playground.ex:285
+#: lib/phoenix_kit_ai/web/playground.ex:344
 #, elixir-autogen, elixir-format
 msgid "Could not connect to xAI realtime voice"
 msgstr "Не удалось подключиться к голосовому режиму реального времени xAI"
@@ -553,7 +553,7 @@ msgid "Enter your prompt template...\n\nUse {{VariableName}} for dynamic content
 msgstr "Введите шаблон промпта…\n\nИспользуйте {{VariableName}} для динамического содержимого.\n\nПример:\nПереведи следующий текст на {{Language}}:\n\n{{Text}}"
 
 #: lib/phoenix_kit_ai/request.ex:214
-#: lib/phoenix_kit_ai/web/playground.html.heex:356
+#: lib/phoenix_kit_ai/web/playground.html.heex:446
 #, elixir-autogen, elixir-format
 msgid "Error"
 msgstr "Ошибка"
@@ -975,9 +975,10 @@ msgstr "Выберите интеграцию выше, чтобы увидет�
 msgid "Pick an integration above, then a model, to configure generation parameters."
 msgstr "Выберите интеграцию выше, затем модель, чтобы настроить параметры генерации."
 
-#: lib/phoenix_kit_ai/web/playground.ex:135
-#: lib/phoenix_kit_ai/web/playground.ex:191
+#: lib/phoenix_kit_ai/web/playground.ex:143
 #: lib/phoenix_kit_ai/web/playground.ex:221
+#: lib/phoenix_kit_ai/web/playground.ex:249
+#: lib/phoenix_kit_ai/web/playground.ex:280
 #, elixir-autogen, elixir-format
 msgid "Please select an endpoint"
 msgstr "Выберите конечную точку"
@@ -1116,7 +1117,7 @@ msgid "Requests / Tokens today"
 msgstr "Запросы / токены сегодня"
 
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:854
-#: lib/phoenix_kit_ai/web/playground.html.heex:365
+#: lib/phoenix_kit_ai/web/playground.html.heex:455
 #, elixir-autogen, elixir-format
 msgid "Response"
 msgstr "Ответ"
@@ -1177,7 +1178,7 @@ msgstr "Выберите конечную точку…"
 msgid "Select provider (%{count} available)"
 msgstr "Выберите провайдера (доступно: %{count})"
 
-#: lib/phoenix_kit_ai/web/playground.ex:228
+#: lib/phoenix_kit_ai/web/playground.ex:287
 #, elixir-autogen, elixir-format
 msgid "Selected endpoint does not support realtime voice"
 msgstr "Выбранная конечная точка не поддерживает голос в реальном времени"
@@ -1485,7 +1486,7 @@ msgstr "Введите текст для озвучивания…"
 msgid "Type your message to the AI..."
 msgstr "Введите сообщение для AI…"
 
-#: lib/phoenix_kit_ai/errors.ex:101
+#: lib/phoenix_kit_ai/errors.ex:125
 #, elixir-autogen, elixir-format
 msgid "Unexpected error: %{reason}"
 msgstr "Неожиданная ошибка: %{reason}"
@@ -1518,7 +1519,7 @@ msgstr "Обновите конфигурацию конечной точки AI
 msgid "Updating…"
 msgstr "Обновление…"
 
-#: lib/phoenix_kit_ai.ex:1050
+#: lib/phoenix_kit_ai.ex:1052
 #: lib/phoenix_kit_ai/web/prompts.ex:39
 #, elixir-autogen, elixir-format
 msgid "Usage"
@@ -1586,7 +1587,7 @@ msgstr "Видимость"
 msgid "Voice"
 msgstr "Голос"
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:335
+#: lib/phoenix_kit_ai/web/playground.html.heex:425
 #, elixir-autogen, elixir-format
 msgid "Waiting for response..."
 msgstr "Ожидание ответа…"
@@ -1626,7 +1627,7 @@ msgstr "например, Claude Fast"
 msgid "e.g., Translator, Code Reviewer"
 msgstr "например, Переводчик, Ревьюер кода"
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:376
+#: lib/phoenix_kit_ai/web/playground.html.heex:466
 #, elixir-autogen, elixir-format
 msgid "in"
 msgstr "вход"
@@ -1646,7 +1647,7 @@ msgstr "нет"
 msgid "or"
 msgstr "или"
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:382
+#: lib/phoenix_kit_ai/web/playground.html.heex:472
 #, elixir-autogen, elixir-format
 msgid "out"
 msgstr "выход"
@@ -1666,7 +1667,7 @@ msgstr "основной язык"
 msgid "to use it as the default."
 msgstr "чтобы использовать его по умолчанию."
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:386
+#: lib/phoenix_kit_ai/web/playground.html.heex:476
 #, elixir-autogen, elixir-format
 msgid "total"
 msgstr "всего"
@@ -1789,22 +1790,22 @@ msgstr[0] "токен"
 msgstr[1] "токена"
 msgstr[2] "токенов"
 
-#: lib/phoenix_kit_ai.ex:1046
+#: lib/phoenix_kit_ai.ex:1048
 #, elixir-autogen, elixir-format
 msgid "AI"
 msgstr "AI"
 
-#: lib/phoenix_kit_ai.ex:1047
+#: lib/phoenix_kit_ai.ex:1049
 #, elixir-autogen, elixir-format
 msgid "Endpoints"
 msgstr "Конечные точки"
 
-#: lib/phoenix_kit_ai.ex:1049
+#: lib/phoenix_kit_ai.ex:1051
 #, elixir-autogen, elixir-format
 msgid "Playground"
 msgstr "Песочница"
 
-#: lib/phoenix_kit_ai.ex:1048
+#: lib/phoenix_kit_ai.ex:1050
 #, elixir-autogen, elixir-format
 msgid "Prompts"
 msgstr "Промпты"
@@ -1839,73 +1840,166 @@ msgstr "Новая AI конечная точка"
 msgid "New AI Prompt"
 msgstr "Новый AI промпт"
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:255
+#: lib/phoenix_kit_ai/web/playground.html.heex:257
 #, elixir-autogen, elixir-format
 msgid "Add image"
-msgstr ""
+msgstr "Добавить изображение"
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:294
+#: lib/phoenix_kit_ai/web/playground.html.heex:350
 #, elixir-autogen, elixir-format
 msgid "Edit image"
-msgstr ""
-
-#: lib/phoenix_kit_ai/web/playground.html.heex:312
-#, elixir-autogen, elixir-format
-msgid "Edited image"
-msgstr ""
-
-#: lib/phoenix_kit_ai/web/playground.html.heex:292
-#, elixir-autogen, elixir-format, fuzzy
-msgid "Editing…"
 msgstr "Редактировать"
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:238
+#: lib/phoenix_kit_ai/web/playground.html.heex:386
+#, elixir-autogen, elixir-format
+msgid "Edited image"
+msgstr "Отредактированное изображение"
+
+#: lib/phoenix_kit_ai/web/playground.html.heex:348
+#, elixir-autogen, elixir-format
+msgid "Editing…"
+msgstr "Редактируем…"
+
+#: lib/phoenix_kit_ai/web/playground.html.heex:240
 #, elixir-autogen, elixir-format
 msgid "Image edit"
-msgstr ""
-
-#: lib/phoenix_kit_ai/web/playground.html.heex:284
-#, elixir-autogen, elixir-format
-msgid "Instruction"
-msgstr ""
+msgstr "Редактирование изображения"
 
 #: lib/phoenix_kit_ai/errors.ex:48
 #, elixir-autogen, elixir-format
 msgid "Invalid image input"
-msgstr ""
+msgstr "Некорректное входное изображение"
 
-#: lib/phoenix_kit_ai/web/playground.ex:194
+#: lib/phoenix_kit_ai/web/playground.ex:224
+#: lib/phoenix_kit_ai/web/playground.ex:252
 #, elixir-autogen, elixir-format
 msgid "Please add at least one image"
-msgstr ""
+msgstr "Добавьте хотя бы одно изображение"
 
-#: lib/phoenix_kit_ai/web/playground.ex:197
-#, elixir-autogen, elixir-format
-msgid "Please write an instruction"
-msgstr ""
-
-#: lib/phoenix_kit_ai/web/playground.html.heex:272
+#: lib/phoenix_kit_ai/web/playground.html.heex:274
 #, elixir-autogen, elixir-format
 msgid "Remove"
-msgstr ""
-
-#: lib/phoenix_kit_ai/web/playground.html.heex:244
-#, elixir-autogen, elixir-format
-msgid "Send one or two images with an instruction to an image-capable endpoint (Gemini 2.5 Flash Image, Grok Imagine). The first image is the one being edited; a second one is a reference."
-msgstr ""
+msgstr "Удалить"
 
 #: lib/phoenix_kit_ai/errors.ex:53
-#: lib/phoenix_kit_ai/web/playground.ex:481
+#: lib/phoenix_kit_ai/web/playground.ex:554
 #, elixir-autogen, elixir-format
 msgid "The model returned no image"
-msgstr ""
+msgstr "Модель не вернула изображение"
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:297
+#: lib/phoenix_kit_ai/web/playground.html.heex:364
 #, elixir-autogen, elixir-format
 msgid "Usually 10–40 seconds…"
-msgstr ""
+msgstr "Обычно 10–40 секунд…"
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:287
+#: lib/phoenix_kit_ai/web/playground.html.heex:313
 #, elixir-autogen, elixir-format
 msgid "e.g. Repaint the cabinet fronts in matte sage green; keep everything else as it is"
-msgstr ""
+msgstr "напр. Перекрасить фасады в матовый шалфейно-зелёный; всё остальное оставить как есть"
+
+#: lib/phoenix_kit_ai/web/playground.html.heex:358
+#, elixir-autogen, elixir-format
+msgid "Asking…"
+msgstr "Спрашиваем…"
+
+#: lib/phoenix_kit_ai/web/playground.html.heex:390
+#, elixir-autogen, elixir-format
+msgid "Check flagged changes"
+msgstr "Проверка нашла изменения"
+
+#: lib/phoenix_kit_ai/web/playground.html.heex:390
+#, elixir-autogen, elixir-format
+msgid "Check passed"
+msgstr "Проверка пройдена"
+
+#: lib/phoenix_kit_ai/web/playground.html.heex:343
+#, elixir-autogen, elixir-format
+msgid "Check the result against the original with the same endpoint (one more call)"
+msgstr "Сверить результат с оригиналом через ту же конечную точку (ещё один запрос)"
+
+#: lib/phoenix_kit_ai/web/playground.html.heex:361
+#: lib/phoenix_kit_ai/web/playground.html.heex:369
+#, elixir-autogen, elixir-format
+msgid "Describe"
+msgstr "Описать"
+
+#: lib/phoenix_kit_ai/web/playground.html.heex:329
+#, elixir-autogen, elixir-format
+msgid "Endpoint's model"
+msgstr "Модель конечной точки"
+
+#: lib/phoenix_kit_ai/errors.ex:115
+#, elixir-autogen, elixir-format
+msgid "Image operation %{operation} needs %{key}"
+msgstr "Операции %{operation} нужен параметр %{key}"
+
+#: lib/phoenix_kit_ai/web/playground.html.heex:310
+#, elixir-autogen, elixir-format
+msgid "Instruction (optional with operations; the question for Describe)"
+msgstr "Инструкция (необязательна при выбранных операциях; вопрос для «Описать»)"
+
+#: lib/phoenix_kit_ai/web/playground.html.heex:320
+#, elixir-autogen, elixir-format
+msgid "Load model list"
+msgstr "Загрузить список моделей"
+
+#: lib/phoenix_kit_ai/web/playground.html.heex:327
+#, elixir-autogen, elixir-format
+msgid "Model (override)"
+msgstr "Модель (переопределение)"
+
+#: lib/phoenix_kit_ai/errors.ex:96
+#, elixir-autogen, elixir-format
+msgid "Not supported by this provider"
+msgstr "Этот провайдер этого не поддерживает"
+
+#: lib/phoenix_kit_ai/web/playground.html.heex:285
+#: lib/phoenix_kit_ai/web/playground.html.heex:286
+#, elixir-autogen, elixir-format
+msgid "Operations"
+msgstr "Операции"
+
+#: lib/phoenix_kit_ai/web/playground.ex:256
+#, elixir-autogen, elixir-format
+msgid "Pick an operation or write an instruction"
+msgstr "Выберите операцию или напишите инструкцию"
+
+#: lib/phoenix_kit_ai/web/playground.html.heex:404
+#, elixir-autogen, elixir-format
+msgid "Prompt sent"
+msgstr "Отправленный промпт"
+
+#: lib/phoenix_kit_ai/web/playground.html.heex:246
+#, elixir-autogen, elixir-format
+msgid "Send one or more images to an image-capable endpoint. The first image is the one being edited; the rest are references. Pick operations, add an instruction, or both — they become one prompt, and options are fitted to what the model accepts."
+msgstr "Отправьте одно или несколько изображений на конечную точку с поддержкой изображений. Первое изображение редактируется; остальные — образцы. Выберите операции, добавьте инструкцию или и то и другое — они станут одним промптом, а параметры подгоняются под возможности модели."
+
+#: lib/phoenix_kit_ai/errors.ex:118
+#, elixir-autogen, elixir-format
+msgid "The model did not answer with JSON"
+msgstr "Модель не ответила в формате JSON"
+
+#: lib/phoenix_kit_ai/errors.ex:100
+#, elixir-autogen, elixir-format
+msgid "The model does not accept %{option} = %{value}"
+msgstr "Модель не принимает %{option} = %{value}"
+
+#: lib/phoenix_kit_ai/errors.ex:97
+#, elixir-autogen, elixir-format
+msgid "This operation needs a reference image"
+msgstr "Этой операции нужно изображение-образец"
+
+#: lib/phoenix_kit_ai/web/playground.ex:196
+#, elixir-autogen, elixir-format
+msgid "This provider publishes no image model list"
+msgstr "Этот провайдер не публикует список моделей изображений"
+
+#: lib/phoenix_kit_ai/errors.ex:104
+#, elixir-autogen, elixir-format
+msgid "Too many images: %{count} given, the model takes at most %{max}"
+msgstr "Слишком много изображений: передано %{count}, модель принимает не более %{max}"
+
+#: lib/phoenix_kit_ai/errors.ex:111
+#, elixir-autogen, elixir-format
+msgid "Unknown image operation: %{operation}"
+msgstr "Неизвестная операция с изображением: %{operation}"

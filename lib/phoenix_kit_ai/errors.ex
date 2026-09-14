@@ -93,6 +93,30 @@ defmodule PhoenixKitAI.Errors do
     gettext("Prompt error: %{reason}", reason: inspect(reason))
   end
 
+  def message(:not_supported), do: gettext("Not supported by this provider")
+  def message(:reference_image_required), do: gettext("This operation needs a reference image")
+
+  def message({:unsupported_option, key, value}) do
+    gettext("The model does not accept %{option} = %{value}", option: key, value: inspect(value))
+  end
+
+  def message({:too_many_images, count, max}) do
+    gettext("Too many images: %{count} given, the model takes at most %{max}",
+      count: count,
+      max: max
+    )
+  end
+
+  def message({:unknown_operation, operation}) do
+    gettext("Unknown image operation: %{operation}", operation: inspect(operation))
+  end
+
+  def message({:missing_parameter, operation, key}) do
+    gettext("Image operation %{operation} needs %{key}", operation: operation, key: key)
+  end
+
+  def message({:no_json_in_response, _text}), do: gettext("The model did not answer with JSON")
+
   # Passthrough for strings so legacy callers returning {:error, "..."}
   # still render something. New code should return atoms/tuples.
   def message(reason) when is_binary(reason), do: reason

@@ -77,6 +77,14 @@ defmodule PhoenixKitAI.Web.Playground do
       |> assign(:edit_result, nil)
       |> assign(:edit_error, nil)
       |> assign(:editing, false)
+      |> assign(:edit_operations, [])
+      |> assign(:edit_options, %{})
+      |> assign(:edit_model, "")
+      |> assign(:edit_verify, false)
+      |> assign(:image_models, [])
+      |> assign(:image_models_error, nil)
+      |> assign(:describe_result, nil)
+      |> assign(:describing, false)
       |> allow_upload(:edit_images,
         accept: ~w(.jpg .jpeg .png .webp),
         max_entries: 2,
@@ -170,20 +178,42 @@ defmodule PhoenixKitAI.Web.Playground do
 
   @impl true
   def handle_event("edit_change", params, socket) do
-    {:noreply,
-     assign(socket, :edit_prompt, Map.get(params, "edit_prompt", socket.assigns.edit_prompt))}
+    {:noreply, apply_edit_params(socket, params)}
   end
 
   @impl true
-  def handle_event("edit_remove", %{"ref" => ref}, socket) do
-    {:noreply, cancel_upload(socket, :edit_images, ref)}
+  def handle_event("load_image_models", _params, socket) do
+    case socket.assigns.selected_endpoint_uuid &&
+           AI.image_models(socket.assigns.selected_endpoint_uuid) do
+      {:ok, models} ->
+        {:noreply, socket |> assign(:image_models, models) |> assign(:image_models_error, nil)}
+
+      {:error, :not_supported} ->
+        {:noreply,
+         assign(
+           socket,
+           :image_models_error,
+           gettext("This provider publishes no image model list")
+         )}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :image_models_error, PhoenixKitAI.Errors.message(reason))}
+
+      _ ->
+        {:noreply, socket}
+    end
   end
 
+  # The Describe button submits the same form with `action=describe`
+  # (the submitter's name/value ride along), so both verbs share the
+  # form state and the upload entries.
   @impl true
-  def handle_event("edit_send", params, socket) do
-    socket =
-      assign(socket, :edit_prompt, Map.get(params, "edit_prompt", socket.assigns.edit_prompt))
+  def handle_event("edit_send", %{"action" => "describe"} = params, socket),
+    do: handle_event("describe_send", params, socket)
 
+  @impl true
+  def handle_event("describe_send", params, socket) do
+    socket = apply_edit_params(socket, params)
     ready = Enum.filter(socket.assigns.uploads.edit_images.entries, & &1.done?)
 
     cond do
@@ -193,8 +223,37 @@ defmodule PhoenixKitAI.Web.Playground do
       ready == [] ->
         {:noreply, assign(socket, :edit_error, gettext("Please add at least one image"))}
 
-      String.trim(socket.assigns.edit_prompt) == "" ->
-        {:noreply, assign(socket, :edit_error, gettext("Please write an instruction"))}
+      true ->
+        send(self(), :do_describe)
+
+        {:noreply,
+         socket
+         |> assign(:describing, true)
+         |> assign(:edit_error, nil)
+         |> assign(:describe_result, nil)}
+    end
+  end
+
+  @impl true
+  def handle_event("edit_remove", %{"ref" => ref}, socket) do
+    {:noreply, cancel_upload(socket, :edit_images, ref)}
+  end
+
+  @impl true
+  def handle_event("edit_send", params, socket) do
+    socket = apply_edit_params(socket, params)
+    ready = Enum.filter(socket.assigns.uploads.edit_images.entries, & &1.done?)
+
+    cond do
+      is_nil(socket.assigns.selected_endpoint_uuid) ->
+        {:noreply, assign(socket, :edit_error, gettext("Please select an endpoint"))}
+
+      ready == [] ->
+        {:noreply, assign(socket, :edit_error, gettext("Please add at least one image"))}
+
+      edit_operations(socket.assigns) == [] ->
+        {:noreply,
+         assign(socket, :edit_error, gettext("Pick an operation or write an instruction"))}
 
       true ->
         send(self(), :do_edit)
@@ -327,6 +386,12 @@ defmodule PhoenixKitAI.Web.Playground do
       |> assign(:selected_endpoint, endpoint)
       |> assign(:voice_options, @default_voice_options)
       |> assign(:voice_selected, "eve")
+      |> assign(:image_models, [])
+      |> assign(:image_models_error, nil)
+      |> assign(:edit_model, "")
+      |> assign(:edit_options, %{})
+      |> assign(:edit_result, nil)
+      |> assign(:describe_result, nil)
       |> maybe_fetch_xai_voices(endpoint)
     end
   end
@@ -462,9 +527,14 @@ defmodule PhoenixKitAI.Web.Playground do
         {:ok, %{data: File.read!(path), content_type: image_type(entry)}}
       end)
 
+    started = System.monotonic_time(:millisecond)
+
     result =
-      AI.edit_image(socket.assigns.selected_endpoint_uuid, socket.assigns.edit_prompt, images,
-        source: "PhoenixKitAI.Web.Playground"
+      AI.process_image(
+        socket.assigns.selected_endpoint_uuid,
+        images,
+        edit_operations(socket.assigns),
+        edit_process_opts(socket.assigns)
       )
 
     socket =
@@ -473,8 +543,11 @@ defmodule PhoenixKitAI.Web.Playground do
           assign(socket, :edit_result, %{
             src: image_src(image),
             text: Map.get(response, :text),
-            usage: Map.get(response, :usage),
-            latency_ms: Map.get(response, :latency_ms)
+            prompt: Map.get(response, :prompt),
+            warnings: Map.get(response, :warnings, []),
+            model: Map.get(response, :model),
+            verification: Map.get(response, :verification),
+            latency_ms: System.monotonic_time(:millisecond) - started
           })
 
         {:ok, _} ->
@@ -485,6 +558,30 @@ defmodule PhoenixKitAI.Web.Playground do
       end
 
     {:noreply, assign(socket, :editing, false)}
+  end
+
+  @impl true
+  def handle_info(:do_describe, socket) do
+    images =
+      consume_uploaded_entries(socket, :edit_images, fn %{path: path}, entry ->
+        {:ok, %{data: File.read!(path), content_type: image_type(entry)}}
+      end)
+
+    opts =
+      [source: "PhoenixKitAI.Web.Playground"]
+      |> maybe_opt(:prompt, socket.assigns.edit_prompt)
+      |> maybe_opt(:model, socket.assigns.edit_model)
+
+    socket =
+      case AI.describe_image(socket.assigns.selected_endpoint_uuid, images, opts) do
+        {:ok, %{text: text, model: model}} ->
+          assign(socket, :describe_result, %{text: text, model: model})
+
+        {:error, reason} ->
+          assign(socket, :edit_error, PhoenixKitAI.Errors.message(reason))
+      end
+
+    {:noreply, assign(socket, :describing, false)}
   end
 
   @impl true
@@ -631,6 +728,67 @@ defmodule PhoenixKitAI.Web.Playground do
       {:ok, text} -> String.trim(text)
       {:error, _} -> "(No content in response)"
     end
+  end
+
+  # ── Image edit form state ──────────────────────────────────────────────
+
+  # The image-edit form posts the free text, the checked operations
+  # (`ops[]`), the option selects (`opt[<name>]`), the model override and
+  # the verify checkbox. A checkbox that is unchecked is simply absent, so
+  # the whole state is rebuilt from what arrived.
+  defp apply_edit_params(socket, params) do
+    socket
+    |> assign(:edit_prompt, Map.get(params, "edit_prompt", socket.assigns.edit_prompt))
+    |> assign(:edit_operations, params |> Map.get("ops", []) |> List.wrap())
+    |> assign(
+      :edit_options,
+      params |> Map.get("opt", %{}) |> Map.reject(fn {_k, v} -> v in [nil, ""] end)
+    )
+    |> assign(:edit_model, Map.get(params, "edit_model", socket.assigns.edit_model))
+    |> assign(:edit_verify, Map.get(params, "verify") in ["true", "on"])
+  end
+
+  # Checked operations first, the free text (if any) as a final instruction.
+  defp edit_operations(assigns) do
+    known = AI.image_operations()
+
+    checked =
+      for name <- assigns.edit_operations,
+          op = Enum.find(Map.keys(known), &(Atom.to_string(&1) == name)),
+          do: op
+
+    case String.trim(assigns.edit_prompt || "") do
+      "" -> checked
+      text -> checked ++ [{:instruction, text: text}]
+    end
+  end
+
+  defp edit_process_opts(assigns) do
+    options =
+      for {key, value} <- assigns.edit_options,
+          key in ~w(aspect_ratio resolution quality background output_format),
+          do: {String.to_atom(key), value}
+
+    options
+    |> Keyword.put(:source, "PhoenixKitAI.Web.Playground")
+    |> Keyword.put(:verify, assigns.edit_verify)
+    |> maybe_opt(:model, assigns.edit_model)
+  end
+
+  defp maybe_opt(opts, _key, value) when value in [nil, ""], do: opts
+  defp maybe_opt(opts, key, value), do: Keyword.put(opts, key, String.trim(value))
+
+  @doc false
+  # The capability entry for the model the card will use, or nil.
+  def edit_capabilities(%{image_models: []}), do: nil
+
+  def edit_capabilities(%{
+        image_models: models,
+        edit_model: override,
+        selected_endpoint: endpoint
+      }) do
+    id = if override in [nil, ""], do: endpoint && endpoint.model, else: override
+    Enum.find(models, &(&1.id == id))
   end
 
   defp image_type(%{client_type: type}) when is_binary(type) and type != "", do: type

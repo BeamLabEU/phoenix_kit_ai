@@ -22,8 +22,7 @@ defmodule PhoenixKitAI.Completion do
 
   require Logger
 
-  alias PhoenixKitAI.Endpoint
-  alias PhoenixKitAI.OpenRouterClient
+  alias PhoenixKitAI.{Endpoint, Images, OpenRouterClient, Provider}
 
   @timeout 120_000
 
@@ -498,275 +497,54 @@ defmodule PhoenixKitAI.Completion do
     `PhoenixKitAI.Errors` for the full reason vocabulary and translation.
   """
   def generate_image(endpoint, prompt, opts \\ []) do
-    url = build_url(endpoint, "/images/generations")
-    headers = OpenRouterClient.build_headers_from_endpoint(endpoint)
+    adapter = Provider.for_endpoint(endpoint)
+    options = Images.options(endpoint, opts)
 
-    body =
-      %{"model" => endpoint.model, "prompt" => prompt}
-      |> maybe_add("n", Keyword.get(opts, :n))
-      |> maybe_add("response_format", Keyword.get(opts, :response_format))
-      |> maybe_add("size", Keyword.get(opts, :size))
-      |> maybe_add("quality", Keyword.get(opts, :quality))
-      |> maybe_add("style", Keyword.get(opts, :style))
-      |> maybe_add("background", Keyword.get(opts, :background))
-      |> maybe_add("output_format", Keyword.get(opts, :output_format))
-      |> maybe_add("aspect_ratio", Keyword.get(opts, :aspect_ratio))
-      |> maybe_add("resolution", Keyword.get(opts, :resolution))
-
-    start_time = System.monotonic_time(:millisecond)
-
-    case http_post(url, headers, body) do
-      {:ok, %{status_code: 200, body: response_body}} ->
-        decode_images(response_body, start_time)
-
-      {:ok, %{status_code: status, body: response_body}} ->
-        handle_error_status(status, response_body)
-
-      {:error, :timeout} ->
-        {:error, :request_timeout}
-
-      {:error, reason} ->
-        Logger.warning("Image generation transport error: #{inspect(reason)}")
-        {:error, {:connection_error, reason}}
+    with {:ok, result} <- adapter.image_generate(endpoint, prompt, options) do
+      {:ok, Map.put_new(result, :model, options[:model] || endpoint.model)}
     end
   end
 
   @doc """
-  Edits or restyles one or more input images according to `prompt`.
+  Edits or restyles one or more input images according to `prompt`,
+  through the endpoint's `PhoenixKitAI.Provider` adapter:
 
-  Image-in → image-out has no single OpenAI-compatible shape, so the
-  transport is chosen by provider:
+    * OpenRouter — `POST /images` with `input_references` (the unified
+      Images API; `transport: :chat` keeps the chat-completions path)
+    * xAI — `POST /images/edits` as JSON
+    * OpenAI — `POST /images/edits` as multipart
+    * anything else — `POST /chat/completions` with `image_url` parts
 
-    * **xAI** — `POST <base_url>/images/edits` (JSON), served by
-      `grok-imagine-image-2.0`; up to 5 source images.
-    * **Everything else** — `POST <base_url>/chat/completions` with the
-      prompt and the images as `image_url` content parts. This is how
-      OpenRouter exposes Gemini's image models: the generated image comes
-      back on `choices[0].message.images[]` as a data URL, or as an image
-      content part. OpenRouter additionally gets
-      `modalities: ["image", "text"]` and `usage: %{include: true}` so
-      the response carries a cost; other providers reject unknown
-      top-level fields, so they get neither.
+  `images` is a non-empty list of raw bytes, `%{data:, content_type:}`
+  maps, `%{url:}` maps or bare `data:` / `http(s):` strings
+  (`PhoenixKitAI.Images.normalize_inputs/1`). Bytes are inlined; never
+  hand a provider a permanent URL it could cache. The image to change
+  goes first, references after it.
 
-  `images` is a non-empty list; each entry is one of
+  `opts` are the canonical options of `PhoenixKitAI.Images` —
+  `:aspect_ratio`, `:resolution`, `:size`, `:quality`, `:background`,
+  `:output_format`, `:output_compression`, `:n`, `:seed` — plus `:model`,
+  `:transport`, `:provider_options`, and the legacy `:image_config`
+  passthrough for the chat path. They are sent as given; use
+  `PhoenixKitAI.Images.process/4` to have them fitted to the model.
 
-    * `%{data: binary, content_type: "image/jpeg"}` — raw bytes
-    * `%{url: "https://…"}` or `%{url: "data:image/png;base64,…"}`
-    * a bare `data:` / `http(s):` URL string
-
-  Bytes are inlined as data URLs. Never hand the provider a URL it could
-  fetch and cache on its side (a permanent signed Storage URL, say) —
-  inline the bytes instead.
-
-  Order matters to the model: put the image to be edited first and the
-  references after it, and say in the prompt which is which.
-
-  ## Options
-
-    * `:image_config` — passthrough map for the chat path (OpenRouter
-      forwards it to Gemini, e.g. `%{"aspect_ratio" => "4:3"}`)
-    * `:n`, `:response_format`, `:aspect_ratio`, `:resolution` — xAI only
-
-  ## Returns
-
-    * `{:ok, %{images: [%{data: binary | nil, url: String.t() | nil,
-      content_type: String.t() | nil}], text: String.t() | nil,
-      usage: map(), latency_ms: integer()}}` — `text` is any prose the
-      model returned alongside the image; `usage` has `extract_usage/1`'s
-      shape (zero tokens and a nil cost when the provider reports none).
-    * `{:error, {:no_image_in_response, text | nil}}` when the model
-      answered with prose only — a refusal, typically; the prose is kept
-      so the usage log shows why.
-    * `{:error, :invalid_image_input}`, `{:error, :empty_input}`, and the
-      usual transport / status atoms.
+  Returns `{:ok, %{images: [%{data, url, content_type}], text, usage,
+  latency_ms, model}}`; a prose-only answer is
+  `{:error, {:no_image_in_response, text}}`.
   """
   def edit_image(endpoint, prompt, images, opts \\ [])
 
   def edit_image(_endpoint, _prompt, [], _opts), do: {:error, :empty_input}
 
   def edit_image(endpoint, prompt, images, opts) when is_binary(prompt) and is_list(images) do
-    with {:ok, refs} <- normalize_image_inputs(images) do
-      if xai_provider?(endpoint.provider) do
-        xai_edit_image(endpoint, prompt, refs, opts)
-      else
-        chat_edit_image(endpoint, prompt, refs, opts)
-      end
+    adapter = Provider.for_endpoint(endpoint)
+    options = Images.options(endpoint, opts)
+
+    with {:ok, refs} <- Images.normalize_inputs(images),
+         {:ok, result} <- adapter.image_edit(endpoint, prompt, refs, options) do
+      {:ok, Map.put_new(result, :model, options[:model] || endpoint.model)}
     end
   end
-
-  defp chat_edit_image(endpoint, prompt, refs, opts) do
-    url = build_url(endpoint, "/chat/completions")
-    headers = OpenRouterClient.build_headers_from_endpoint(endpoint)
-
-    content = [
-      %{"type" => "text", "text" => prompt}
-      | Enum.map(refs, &%{"type" => "image_url", "image_url" => %{"url" => &1}})
-    ]
-
-    body =
-      %{"model" => endpoint.model, "messages" => [%{"role" => "user", "content" => content}]}
-      |> maybe_add("image_config", Keyword.get(opts, :image_config))
-      |> maybe_add_openrouter_image_fields(endpoint)
-
-    start_time = System.monotonic_time(:millisecond)
-
-    case http_post(url, headers, body) do
-      {:ok, %{status_code: 200, body: response_body}} ->
-        decode_chat_images(response_body, start_time)
-
-      {:ok, %{status_code: status, body: response_body}} ->
-        handle_error_status(status, response_body)
-
-      {:error, :timeout} ->
-        {:error, :request_timeout}
-
-      {:error, reason} ->
-        Logger.warning("Image edit transport error: #{inspect(reason)}")
-        {:error, {:connection_error, reason}}
-    end
-  end
-
-  # `modalities` and `usage.include` are OpenRouter request extensions;
-  # OpenAI rejects unknown top-level fields, so only OpenRouter gets them.
-  defp maybe_add_openrouter_image_fields(body, %{provider: provider}) when is_binary(provider) do
-    if Endpoint.base_provider(provider) == "openrouter" do
-      body
-      |> Map.put("modalities", ["image", "text"])
-      |> Map.put("usage", %{"include" => true})
-    else
-      body
-    end
-  end
-
-  defp maybe_add_openrouter_image_fields(body, _endpoint), do: body
-
-  defp xai_edit_image(endpoint, prompt, refs, opts) do
-    url = build_url(endpoint, "/images/edits")
-    headers = OpenRouterClient.build_headers_from_endpoint(endpoint)
-
-    # `image` is one `{url, type: "image_url"}` object, or a list of them
-    # for a multi-image edit (xAI documents up to 5 source images).
-    image =
-      case Enum.map(refs, &%{"url" => &1, "type" => "image_url"}) do
-        [single] -> single
-        many -> many
-      end
-
-    body =
-      %{"model" => endpoint.model, "prompt" => prompt, "image" => image}
-      |> maybe_add("n", Keyword.get(opts, :n))
-      |> maybe_add("response_format", Keyword.get(opts, :response_format))
-      |> maybe_add("aspect_ratio", Keyword.get(opts, :aspect_ratio))
-      |> maybe_add("resolution", Keyword.get(opts, :resolution))
-
-    start_time = System.monotonic_time(:millisecond)
-
-    case http_post(url, headers, body) do
-      {:ok, %{status_code: 200, body: response_body}} ->
-        with {:ok, result} <- decode_images(response_body, start_time) do
-          images = Enum.map(result.images, &Map.put_new(&1, :content_type, nil))
-          usage = response_body |> Jason.decode() |> elem(1) |> extract_usage()
-          {:ok, %{result | images: images} |> Map.merge(%{text: nil, usage: usage})}
-        end
-
-      {:ok, %{status_code: status, body: response_body}} ->
-        handle_error_status(status, response_body)
-
-      {:error, :timeout} ->
-        {:error, :request_timeout}
-
-      {:error, reason} ->
-        Logger.warning("xAI image edit transport error: #{inspect(reason)}")
-        {:error, {:connection_error, reason}}
-    end
-  end
-
-  defp normalize_image_inputs(images) do
-    refs = Enum.map(images, &image_ref/1)
-
-    if Enum.all?(refs, &is_binary/1),
-      do: {:ok, refs},
-      else: {:error, :invalid_image_input}
-  end
-
-  defp image_ref(%{data: data, content_type: type})
-       when is_binary(data) and byte_size(data) > 0 and is_binary(type) and type != "",
-       do: "data:#{type};base64,#{Base.encode64(data)}"
-
-  defp image_ref(%{url: url}) when is_binary(url), do: image_ref(url)
-  defp image_ref("data:" <> _ = url), do: url
-  defp image_ref("http://" <> _ = url), do: url
-  defp image_ref("https://" <> _ = url), do: url
-  defp image_ref(_other), do: nil
-
-  defp decode_chat_images(response_body, start_time) do
-    latency_ms = System.monotonic_time(:millisecond) - start_time
-
-    case Jason.decode(response_body) do
-      {:ok, %{"choices" => [%{"message" => message} | _]} = response} when is_map(message) ->
-        text = message_text(message)
-
-        case message_image_urls(message) do
-          [] ->
-            {:error, {:no_image_in_response, text}}
-
-          urls ->
-            {:ok,
-             %{
-               images: Enum.map(urls, &decode_image_url/1),
-               text: text,
-               usage: extract_usage(response),
-               latency_ms: latency_ms
-             }}
-        end
-
-      {:ok, %{"choices" => []}} ->
-        {:error, :no_choices_in_response}
-
-      {:ok, _} ->
-        {:error, :invalid_response_format}
-
-      {:error, _} ->
-        {:error, :invalid_json_response}
-    end
-  end
-
-  # OpenRouter returns generated images on `message.images` (each an
-  # `image_url` part); some gateways return them as content parts instead.
-  defp message_image_urls(message) do
-    from_images =
-      for %{"image_url" => %{"url" => url}} <- List.wrap(message["images"]),
-          is_binary(url),
-          do: url
-
-    from_content =
-      case message["content"] do
-        parts when is_list(parts) ->
-          for %{"type" => type, "image_url" => %{"url" => url}} <- parts,
-              type in ["image_url", "output_image"],
-              is_binary(url),
-              do: url
-
-        _ ->
-          []
-      end
-
-    from_images ++ from_content
-  end
-
-  defp message_text(%{"content" => text}) when is_binary(text) and text != "", do: text
-
-  defp message_text(%{"content" => parts}) when is_list(parts) do
-    parts
-    |> Enum.filter(&(is_map(&1) and &1["type"] == "text" and is_binary(&1["text"])))
-    |> Enum.map_join("\n", & &1["text"])
-    |> case do
-      "" -> nil
-      text -> text
-    end
-  end
-
-  defp message_text(_message), do: nil
 
   @doc false
   # Public for tests. Splits a data URL into bytes + MIME type; passes an
@@ -788,31 +566,6 @@ defmodule PhoenixKitAI.Completion do
       do: Base.decode64(payload, ignore: :whitespace),
       else: {:ok, URI.decode(payload)}
   end
-
-  defp decode_images(response_body, start_time) do
-    latency_ms = System.monotonic_time(:millisecond) - start_time
-
-    case Jason.decode(response_body) do
-      {:ok, %{"data" => images}} when is_list(images) and images != [] ->
-        {:ok, %{images: Enum.map(images, &decode_image_entry/1), latency_ms: latency_ms}}
-
-      {:ok, _} ->
-        {:error, :invalid_response_format}
-
-      {:error, _} ->
-        {:error, :invalid_json_response}
-    end
-  end
-
-  defp decode_image_entry(%{"b64_json" => b64}) when is_binary(b64) do
-    case Base.decode64(b64) do
-      {:ok, bytes} -> %{url: nil, data: bytes}
-      :error -> %{url: nil, data: nil}
-    end
-  end
-
-  defp decode_image_entry(%{"url" => url}) when is_binary(url), do: %{url: url, data: nil}
-  defp decode_image_entry(_entry), do: %{url: nil, data: nil}
 
   @doc """
   Extracts the text content from a chat completion response.
@@ -937,6 +690,7 @@ defmodule PhoenixKitAI.Completion do
     |> maybe_add("stop", Keyword.get(opts, :stop))
     |> maybe_add("seed", Keyword.get(opts, :seed))
     |> maybe_add("stream", Keyword.get(opts, :stream))
+    |> maybe_add("response_format", Keyword.get(opts, :response_format))
     |> maybe_add_reasoning(opts)
   end
 
@@ -1017,6 +771,11 @@ defmodule PhoenixKitAI.Completion do
       _ -> nil
     end
   end
+
+  @doc false
+  # The endpoint's base URL plus `path`; adapters build every request
+  # with it. Raises when neither the row nor its provider has a base URL.
+  def url(endpoint, path), do: build_url(endpoint, path)
 
   defp build_url(endpoint, path) do
     # Falls back to the provider's canonical default base url when the

@@ -48,6 +48,9 @@ host supplies endpoint and router (`config/` exists only for tests).
   `Application.start/2`, which invokes `PhoenixKitAI.migrate_legacy/0`.
 - **No public HTTP/API surface.** Admin-only; consumers call the `PhoenixKitAI`
   context module.
+- **No file storage.** Image verbs take bytes or URLs in and hand bytes back;
+  the caller stores results (core's Storage, usually). Only the request row
+  is kept, and never the image bytes.
 - **No Oban for completions.** Chat, TTS, embeddings and image calls run
   synchronously. Oban is used only by the AI-translation pipeline
   (`PhoenixKitAI.TranslateWorker`).
@@ -208,7 +211,10 @@ Mistral, DeepSeek, OpenAI and xAI also work but are not required.
 lib/phoenix_kit_ai.ex            PhoenixKitAI — Module behaviour + the whole public context
 lib/phoenix_kit_ai/
   endpoint.ex prompt.ex request.ex   Ecto schemas
-  completion.ex                  provider-agnostic HTTP client (chat, embeddings, TTS, images)
+  completion.ex                  provider-agnostic HTTP client (chat, embeddings, TTS); image verbs delegate to adapters
+  provider.ex                    PhoenixKitAI.Provider behaviour + adapter resolution by provider key
+  providers/                     adapters: openrouter (unified /images), xai, openai (multipart), openai_compatible (chat parts), http (shared Req door)
+  images.ex images/              generic image layer: operations → prompt, option fitting, describe/compare, model-capability cache
   openrouter_client.ex           generic across providers despite the name
   errors.ex                      error atom -> gettext string
   ai_model.ex routes.ex          model struct; admin sub-routes
@@ -279,6 +285,8 @@ checked with `Scope.has_module_access?/2`. No sub-permissions.
 | `:embedding_models` | `[]` | Extra embedding models appended to `OpenRouterClient.fetch_embedding_models/2`; non-list values are warned about and ignored |
 | `:req_options` | `[]` | Extra `Req` opts appended to every HTTP call — tests use it for `Req.Test` plug stubs |
 | `:realtime_module` | `Xai.Realtime` | Swappable realtime client; tests point it at a Mox mock of `Xai.RealtimeBehaviour` |
+| `:provider_adapters` | `%{}` | Provider key → `PhoenixKitAI.Provider` module, merged over the built-in adapters (add a provider without touching this module) |
+| `:image_operations` | `%{}` | Extra or replacement image operations for `PhoenixKitAI.Images.Operations` (string or atom keys) |
 
 ### Providers
 
@@ -305,6 +313,10 @@ provided the API exposes `<base_url>/chat/completions` and `/models`.
   (missing/error/not-connected), and a masked key via
   `Endpoint.masked_api_key/1`. `integrations_by_uuid` is loaded once per render
   to avoid an N+1.
+- **Image verbs pick an adapter by provider key** (`PhoenixKitAI.Provider.for_endpoint/1`):
+  OpenRouter, xAI and OpenAI have their own; everything else gets the
+  OpenAI-compatible default. A new image provider is an adapter module plus
+  a `:provider_adapters` entry — no edits to `Completion` or `Images`.
 - Endpoint-form model fetching drives `models_loading` /
   `models_loading_slow` (10s hint) / `models_error` with Retry, all consolidated
   in `start/stop_model_fetch_indicators/1`.
@@ -314,23 +326,23 @@ provided the API exposes `<base_url>/chat/completions` and `/models`.
 - **Reasoning capture**: `extract_reasoning/1` is persisted to
   `phoenix_kit_ai_requests.metadata.response_reasoning` by `log_request/8` and
   rendered collapsed in the Usage modal, behind the PII gate.
-- **Image editing**: `edit_image/4` takes reference images
-  (`%{data:, content_type:}` maps, `%{url:}` maps, or data/http URL strings,
-  all inlined as data URLs) plus a prompt, and returns
-  `%{images: [%{data, url, content_type}], text}`. Two transports, chosen by
-  provider: xAI posts JSON to `<base_url>/images/edits` (`image` is one
-  `{url, type: "image_url"}` object or a list); every other provider goes
-  through `<base_url>/chat/completions` with `image_url` content parts, which
-  is how OpenRouter serves Gemini's image models — their output arrives on
-  `choices[0].message.images[]` as a data URL. Only OpenRouter gets
-  `modalities: ["image","text"]` and `usage: %{include: true}`; OpenAI rejects
-  unknown top-level fields. `:image_config` passes through on the chat path. A
-  prose-only answer (a refusal) is `{:error, {:no_image_in_response, text}}`,
-  with the text kept in the tuple so the log shows why. Logged as
-  `request_type: "image_edit"` with tokens, `usage.cost` when reported, and
-  `input_image_count` / `input_bytes` / `output_image_count` / `output_bytes`;
-  the image bytes themselves are never persisted. **Never send a provider a
-  permanent Storage URL — inline the bytes.**
+- **Image editing and processing**: `edit_image/4` takes reference images
+  (bytes, `%{data:, content_type:}`, `%{url:}`, or data/http URL strings,
+  all inlined as data URLs) plus a prompt and canonical options, and hands
+  them to the endpoint's adapter: OpenRouter → `POST /images` with
+  `input_references` (`transport: :chat` keeps the chat-completions path
+  with `modalities`/`usage.include`); xAI → JSON `/images/edits`; OpenAI →
+  multipart `/images/edits`; anything else → chat completions with
+  `image_url` parts. `process_image/4` is the generic entry point: named
+  operations become one prompt, options are fitted to the model's published
+  capabilities (dropped with a warning, or refused under `strict: true`),
+  and `verify: true` attaches a vision check of the result.
+  `describe_image/3` / `compare_images/4` are the vision verbs (`"vision"`
+  request type). A prose-only answer is `{:error, {:no_image_in_response, text}}`.
+  Logged with tokens, `usage.cost` when reported, image counts and byte
+  sizes, operations and warnings; the image bytes themselves are never
+  persisted. **Never send a provider a permanent Storage URL — inline the
+  bytes.** `dev_docs/guides/image-processing.md` has the full picture.
 - **Image generation**: `generate_image/3` posts to
   `<base_url>/images/generations` and fills omitted options from the endpoint's
   stored defaults — `image_size` / `image_quality` columns for OpenAI and
@@ -414,7 +426,10 @@ Test database `phoenix_kit_ai_test`.
 
 ## Feature notes
 
-None. Feature behaviour is documented in `@moduledoc`s.
+- Image processing is provider-neutral by construction: callers name an
+  endpoint and operations, adapters own the HTTP shape, and options are
+  fitted to the model's published capabilities before anything is sent —
+  `dev_docs/guides/image-processing.md`.
 
 ## Versioning & releases
 
