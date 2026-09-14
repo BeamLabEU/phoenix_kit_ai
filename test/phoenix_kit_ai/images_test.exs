@@ -98,6 +98,21 @@ defmodule PhoenixKitAI.ImagesTest do
   defp image_answer,
     do: %{"data" => [%{"b64_json" => Base.encode64(@png), "media_type" => "image/png"}]}
 
+  defp chat_image_answer do
+    %{
+      "choices" => [
+        %{
+          "message" => %{
+            "role" => "assistant",
+            "images" => [
+              %{"image_url" => %{"url" => "data:image/png;base64," <> Base.encode64(@png)}}
+            ]
+          }
+        }
+      ]
+    }
+  end
+
   defp chat_answer(content) do
     %{
       "model" => "google/gemini-2.5-flash",
@@ -278,6 +293,17 @@ defmodule PhoenixKitAI.ImagesTest do
       assert {:error, {:unsupported_option, :background, "transparent"}} =
                Images.fit_options(options, gemini, [:aspect_ratio], true)
 
+      # A key the adapter does not send is dropped even when the model lists it.
+      [_, gpt] = Enum.map(@listing, &ImageModel.from_openrouter/1)
+
+      assert {:ok, %{aspect_ratio: "1:1"}, [{:dropped_option, :background, "transparent"}]} =
+               Images.fit_options(
+                 %{aspect_ratio: "1:1", background: "transparent"},
+                 gpt,
+                 [:aspect_ratio],
+                 false
+               )
+
       # A value the model rejects is dropped too; no listing → the adapter's list decides.
       assert {:ok, %{}, [{:dropped_option, :aspect_ratio, "21:9"}]} =
                Images.fit_options(%{aspect_ratio: "21:9"}, gemini, [], false)
@@ -356,6 +382,59 @@ defmodule PhoenixKitAI.ImagesTest do
                          "background" => "transparent",
                          "output_format" => "png"
                        }}
+    end
+
+    test "a chat-completions edit drops the options it cannot send and uses the fallback wording" do
+      stub(chat_image_answer())
+
+      ep =
+        endpoint_fixture(%{
+          provider: "mistral",
+          model: "pixtral-large",
+          base_url: "https://api.mistral.ai/v1",
+          image_size: "1024x1024"
+        })
+
+      assert {:ok, %{warnings: warnings, prompt: prompt}} =
+               PhoenixKitAI.process_image(ep.uuid, [@jpeg], [:remove_background],
+                 aspect_ratio: "4:3"
+               )
+
+      # The stored image_size is not an option this edit sends, so it is left
+      # out quietly; the cutout's implied options are dropped out loud.
+      assert warnings == [
+               {:dropped_option, :background, "transparent"},
+               {:dropped_option, :output_format, "png"}
+             ]
+
+      assert prompt =~ "pure white background"
+      refute prompt =~ "transparent"
+
+      assert_received {:post, "/v1/chat/completions", body}
+      assert body["image_config"] == %{"aspect_ratio" => "4:3"}
+      refute_received {:get, _}
+    end
+
+    test "OpenRouter's chat transport drops what only its /images API takes, whatever the listing says" do
+      stub(chat_image_answer())
+      ep = endpoint_fixture()
+
+      assert {:ok, %{warnings: warnings, prompt: prompt}} =
+               PhoenixKitAI.process_image(ep.uuid, [@jpeg], [:remove_background],
+                 model: "openai/gpt-image-1",
+                 transport: :chat
+               )
+
+      assert warnings == [
+               {:dropped_option, :background, "transparent"},
+               {:dropped_option, :output_format, "png"}
+             ]
+
+      assert prompt =~ "pure white background"
+
+      assert_received {:post, "/api/v1/chat/completions", body}
+      assert body["modalities"] == ["image", "text"]
+      refute Map.has_key?(body, "background")
     end
 
     test "strict mode refuses an unsupported option before any request" do

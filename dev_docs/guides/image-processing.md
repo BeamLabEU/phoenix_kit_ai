@@ -71,14 +71,19 @@ untouched), `:provider_routing` (OpenRouter's `provider` object),
 
 Three layers, later wins: the endpoint's stored defaults
 (`provider_settings["aspect_ratio"]` / `["resolution"]`, the `image_size`
-/ `image_quality` columns — only those the adapter can send), then the
+/ `image_quality` columns — only those this edit can send), then the
 options the operations imply, then the caller's own.
 
 Before sending, `PhoenixKitAI.Images.fit_options/4` keeps the request
-inside what the model accepts. OpenRouter publishes a per-model listing
+inside what the adapter sends on this edit and what the model accepts.
+The adapter's set comes from its optional `image_edit_options/2`
+(falling back to `image_options/1`): a chat-completions edit — the default
+adapter, or OpenRouter with `transport: :chat` — carries only an aspect
+ratio, so a cutout's `background` is dropped there even when the model
+behind the gateway lists it. OpenRouter publishes a per-model listing
 (`GET /images/models`; `PhoenixKitAI.Images.ImageModels` caches it for
-30 minutes per base URL); other providers fall back to the adapter's
-static option set. An option the model does not list is dropped and
+30 minutes per base URL); other providers have only the adapter's
+option set. An option either one rules out is dropped and
 reported as `{:dropped_option, key, value}` in the result's `:warnings`,
 or refused up front with `strict: true`. An operation whose implied
 option was dropped switches to its fallback wording — a cutout on a
@@ -164,7 +169,8 @@ everything in tests.
 
 Adding a provider: implement `PhoenixKitAI.Provider` (four callbacks:
 `image_edit/4`, `image_generate/3`, `image_models/1`, `image_options/1`;
-`vision/3` optionally) and register it:
+optionally `vision/3`, and `image_edit_options/2` when the edit transport
+sends fewer options than generation) and register it:
 
 ```elixir
 config :phoenix_kit_ai, provider_adapters: %{"fal" => MyApp.FalAdapter}

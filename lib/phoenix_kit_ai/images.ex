@@ -217,14 +217,15 @@ defmodule PhoenixKitAI.Images do
       |> Map.take(@request_options ++ @control_options)
       |> Map.reject(fn {_k, v} -> v in [nil, ""] end)
 
-    endpoint |> endpoint_defaults() |> Map.merge(given)
+    endpoint
+    |> endpoint_defaults(Provider.for_endpoint(endpoint).image_options(endpoint))
+    |> Map.merge(given)
   end
 
   # Stored defaults only where the provider can take them: an xAI endpoint
   # with an `image_size` column set must not grow a `size` it cannot send.
-  defp endpoint_defaults(endpoint) do
+  defp endpoint_defaults(endpoint, accepted) do
     settings = endpoint.provider_settings || %{}
-    accepted = Provider.for_endpoint(endpoint).image_options(endpoint)
 
     %{}
     |> put_default(:aspect_ratio, settings["aspect_ratio"])
@@ -240,10 +241,11 @@ defmodule PhoenixKitAI.Images do
   defp put_default(map, _key, _value), do: map
 
   @doc """
-  Keeps `options` inside what the model accepts (or, without a listing,
-  what the adapter can send). Returns the fitted options and a warning
-  per change, `{:dropped_option, key, value}`, in the canonical option
-  order; with `strict: true` the first offender is an error instead.
+  Keeps `options` inside what the adapter can send (`adapter_options`)
+  and, when there is a model listing, what the model accepts. Returns the
+  fitted options and a warning per change, `{:dropped_option, key,
+  value}`, in the canonical option order; with `strict: true` the first
+  offender is an error instead.
   """
   @adapter_controls ~w(model transport provider_options provider_routing image_config)a
 
@@ -272,13 +274,13 @@ defmodule PhoenixKitAI.Images do
       else: {kept, [redact_warning({:dropped_option, key, value}) | warnings]}
   end
 
-  # With a model listing, both the key and the value must be listed —
-  # the listing is what that model accepts. Without one, the adapter's
-  # static option set decides and values go unchecked.
-  defp option_ok?(%ImageModel{} = model, _adapter_options, key, value),
-    do: ImageModel.allows?(model, key, value)
-
-  defp option_ok?(nil, adapter_options, key, _value), do: key in adapter_options
+  # A key the adapter does not send on this call is dropped whatever the
+  # listing says (OpenRouter's chat transport sends only an aspect ratio,
+  # though the model behind it lists more). With a model listing the key
+  # and the value must also be listed — the listing is what that model
+  # accepts; without one, values go unchecked.
+  defp option_ok?(model, adapter_options, key, value),
+    do: key in adapter_options and (is_nil(model) or ImageModel.allows?(model, key, value))
 
   # ── Processing ─────────────────────────────────────────────────────────
 
@@ -293,6 +295,7 @@ defmodule PhoenixKitAI.Images do
     options = options(endpoint, opts)
     model_id = options[:model] || endpoint.model
     strict = Keyword.get(opts, :strict, false)
+    sendable = Provider.edit_options(adapter, endpoint, options)
 
     with {:ok, refs} <- normalize_inputs(images, opts),
          {:ok, options} <- normalize_mask(options, opts[:mask], opts),
@@ -300,9 +303,8 @@ defmodule PhoenixKitAI.Images do
          :ok <- check_references(pairs, refs),
          {:ok, model, capability_warnings} <- capabilities(endpoint, model_id, strict),
          {merged, conflict_warnings} =
-           resolve_conflicts(layer_options(endpoint, pairs, opts, options)),
-         {:ok, fitted, fit_warnings} <-
-           fit_options(merged, model, adapter.image_options(endpoint), strict),
+           resolve_conflicts(layer_options(endpoint, sendable, pairs, opts, options)),
+         {:ok, fitted, fit_warnings} <- fit_options(merged, model, sendable, strict),
          :ok <- check_reference_count(model, refs),
          warnings = capability_warnings ++ conflict_warnings ++ fit_warnings,
          {:ok, prompt} <- build_prompt(pairs, Keyword.put(opts, :warnings, warnings)) do
@@ -333,17 +335,20 @@ defmodule PhoenixKitAI.Images do
     end
   end
 
-  # Endpoint defaults underneath, the operations' implied options on top of
-  # those, the caller's own options on top of everything — an operation's
-  # `resolution: "4K"` beats a stored "1K", and a caller beats both.
-  defp layer_options(endpoint, pairs, opts, options) do
+  # Endpoint defaults underneath (only the ones this edit can send — a
+  # stored `image_size` is no warning on a chat edit that never sends one),
+  # the operations' implied options on top of those, the caller's own
+  # options on top of everything — an operation's `resolution: "4K"` beats
+  # a stored "1K", and a caller beats both.
+  defp layer_options(endpoint, sendable, pairs, opts, options) do
     # The caller's own request options (a normalised mask is not "given").
     given = opts |> Map.new() |> Map.take(Map.keys(options) -- [:mask])
 
     endpoint
-    |> endpoint_defaults()
+    |> endpoint_defaults(sendable)
     |> Map.merge(Operations.options(pairs))
-    |> Map.merge(Map.drop(options, Map.keys(endpoint_defaults(endpoint))))
+    # Control options and the normalised mask; request options come from `given`.
+    |> Map.merge(Map.drop(options, @request_options -- [:mask]))
     |> Map.merge(Map.reject(given, fn {_k, v} -> v in [nil, ""] end))
   end
 

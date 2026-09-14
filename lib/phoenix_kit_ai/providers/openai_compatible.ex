@@ -72,6 +72,11 @@ defmodule PhoenixKitAI.Providers.OpenAICompatible do
   @impl true
   def image_options(_endpoint), do: @generation_options
 
+  # `chat_edit/5` carries no typed options: only an aspect ratio, as
+  # `image_config`. Everything else would be sent nowhere.
+  @impl true
+  def image_edit_options(_endpoint, _options), do: [:aspect_ratio]
+
   # ── Shared transports ──────────────────────────────────────────────────
 
   @doc false

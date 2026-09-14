@@ -67,6 +67,12 @@ defmodule PhoenixKitAI.Providers.OpenRouter do
   @impl true
   def image_options(_endpoint), do: @typed_options
 
+  @impl true
+  def image_edit_options(endpoint, %{transport: :chat} = options),
+    do: OpenAICompatible.image_edit_options(endpoint, options)
+
+  def image_edit_options(_endpoint, _options), do: @typed_options
+
   defp body(endpoint, prompt, options) do
     %{"model" => OpenAICompatible.model(endpoint, options), "prompt" => prompt}
     |> OpenAICompatible.put_options(options, @typed_options)

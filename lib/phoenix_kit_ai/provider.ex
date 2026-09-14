@@ -78,6 +78,16 @@ defmodule PhoenixKitAI.Provider do
   @callback image_options(Endpoint.t()) :: [atom()]
 
   @doc """
+  The request option names `image_edit/4` actually sends for these
+  options. Optional — defaults to `image_options/1`. An adapter whose
+  edit transport sends less than its generation one (a chat-completions
+  edit carries only an aspect ratio) implements this, so
+  `PhoenixKitAI.Images.process/4` drops the rest with a warning and picks
+  the operations' fallback wording instead of sending them nowhere.
+  """
+  @callback image_edit_options(Endpoint.t(), options()) :: [atom()]
+
+  @doc """
   Vision: a chat-shaped question about images. Optional — adapters that
   do not implement it get `PhoenixKitAI.Providers.OpenAICompatible.vision/3`
   (chat completions with `image_url` parts), which is right for every
@@ -85,7 +95,7 @@ defmodule PhoenixKitAI.Provider do
   """
   @callback vision(Endpoint.t(), [map()], options()) :: {:ok, map()} | {:error, term()}
 
-  @optional_callbacks vision: 3
+  @optional_callbacks vision: 3, image_edit_options: 2
 
   @builtin %{
     "openrouter" => PhoenixKitAI.Providers.OpenRouter,
@@ -113,6 +123,17 @@ defmodule PhoenixKitAI.Provider do
   @doc "The adapter used when a provider has no dedicated one."
   @spec default() :: module()
   def default, do: @default
+
+  @doc """
+  The request options `adapter`'s `image_edit/4` sends for `options`: its
+  `image_edit_options/2` when it has one, `image_options/1` otherwise.
+  """
+  @spec edit_options(module(), Endpoint.t(), options()) :: [atom()]
+  def edit_options(adapter, endpoint, options) do
+    if Code.ensure_loaded?(adapter) and function_exported?(adapter, :image_edit_options, 2),
+      do: adapter.image_edit_options(endpoint, options),
+      else: adapter.image_options(endpoint)
+  end
 
   defp configured do
     case Application.get_env(:phoenix_kit_ai, :provider_adapters, %{}) do

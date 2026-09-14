@@ -1,3 +1,53 @@
+## 0.21.0 - 2026-09-14
+
+### Added
+
+- **Provider-neutral image processing** (PR #25). `process_image/4` edits
+  images with named operations (`PhoenixKitAI.Images.Operations`:
+  background treatments, reflections, relight, recolour, upscale, restyle
+  and more, extendable through `:image_operations` config or a saved
+  `image-op-<name>` prompt) composed into one prompt. Options are fitted to
+  the model's published capabilities, dropped with a warning or refused
+  under `strict: true`, and `dry_run: true` returns the plan without a
+  request. `verify:` attaches a vision check of the result.
+- `edit_image/4` for prompt-driven edits, `describe_image/3` (free text or
+  schema-parsed JSON) and `compare_images/4` as vision verbs, plus
+  `image_models/2`, `image_model/1`, `image_options/1` and
+  `image_operations/0`.
+- `PhoenixKitAI.Provider` behaviour with OpenRouter (unified `/images`),
+  xAI (JSON `/images/edits`), OpenAI (multipart `/images/edits`, masks) and
+  an OpenAI-compatible chat-completions default. Hosts add adapters through
+  `:provider_adapters`.
+- `PhoenixKitAI.Providers.HTTP`: one bounded, host-checked image fetcher
+  (resolved addresses, every redirect hop, `:max_image_bytes`,
+  `:allow_internal_image_urls`). Output URLs always come back as bytes.
+- `image_edit` and `vision` request types, logged with image counts, byte
+  sizes, operations and warnings, never the image bytes. Error payloads are
+  kept only under the content-capture gate. A
+  `[:phoenix_kit_ai, :image, :request]` telemetry event fires per call.
+- Playground image-edit card: upload, operations, model override,
+  capability-driven option selects, Describe and verify.
+
+### Changed
+
+- `generate_image/3` goes through the endpoint's adapter: OpenRouter
+  endpoints now post to `/images` instead of `/images/generations`. The
+  result also carries `:model` and `:warnings`.
+- The Endpoints list defaults to newest first, matching what mount assigns.
+
+### Fixed
+
+- **Chat-completions image edits no longer accept options they never
+  send.** On the OpenAI-compatible default adapter, and on OpenRouter with
+  `transport: :chat`, only an aspect ratio reaches the provider. Yet
+  `process_image/4` fitted `background`, `output_format`, `size` and the
+  rest as if they were sent, without a warning, and `:remove_background`
+  kept its "fully transparent" wording. A new optional
+  `Provider.image_edit_options/2` callback declares what an edit sends:
+  anything else is dropped with a `{:dropped_option, …}` warning, and the
+  operation falls back to its white-background wording. Stored endpoint
+  defaults the edit cannot send are left out without a warning.
+
 ## 0.20.1 - 2026-09-13
 
 ### Fixed
