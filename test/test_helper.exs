@@ -126,6 +126,7 @@ Application.put_env(:phoenix_kit_ai, :test_repo_available, repo_available)
 
 # Start minimal PhoenixKit services needed for tests
 {:ok, _pid} = PhoenixKit.PubSub.Manager.start_link([])
+{:ok, _pid} = PhoenixKitAI.RequestCache.start_link([])
 {:ok, _pid} = PhoenixKit.ModuleRegistry.start_link([])
 
 # `PhoenixKit.Test.Fixtures.user_fixture/1` and friends register through

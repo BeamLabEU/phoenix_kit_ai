@@ -56,7 +56,7 @@ defmodule PhoenixKitAI.Images do
 
   import Bitwise
 
-  alias PhoenixKitAI.{Completion, Endpoint, Provider}
+  alias PhoenixKitAI.{Completion, Endpoint, Provider, StructuredOutput}
   alias PhoenixKitAI.Images.{ImageModel, ImageModels, Operations}
   alias PhoenixKitAI.Providers.{HTTP, OpenAICompatible}
 
@@ -630,7 +630,8 @@ defmodule PhoenixKitAI.Images do
     opts = Keyword.put_new(opts, :prompt, opts[:question] || default_question())
 
     with {:ok, refs} <- normalize_inputs(images, opts) do
-      {question, response_format} = question_and_format(opts)
+      {suffix, response_format} = StructuredOutput.request(opts)
+      question = if suffix, do: opts[:prompt] <> "\n\n" <> suffix, else: opts[:prompt]
 
       content = [
         %{"type" => "text", "text" => question}
@@ -654,7 +655,7 @@ defmodule PhoenixKitAI.Images do
 
       with {:ok, response} <- vision(endpoint, messages, vision_opts),
            text = content_text(response),
-           {:ok, json} <- parse_json(text, json_requested?(opts)) do
+           {:ok, json} <- StructuredOutput.parse(text, StructuredOutput.requested?(opts)) do
         {:ok,
          %{
            text: text,
@@ -666,8 +667,6 @@ defmodule PhoenixKitAI.Images do
       end
     end
   end
-
-  defp json_requested?(opts), do: is_map(opts[:schema]) or opts[:json] == true
 
   # The adapter's own vision when it has one; chat completions otherwise.
   defp vision(endpoint, messages, options) do
@@ -684,50 +683,6 @@ defmodule PhoenixKitAI.Images do
       _ -> nil
     end
   end
-
-  defp question_and_format(opts) do
-    question = opts[:prompt]
-
-    cond do
-      is_map(opts[:schema]) ->
-        # The schema rides in the prompt as well as in response_format, so
-        # the fallback without response_format still knows the shape.
-        {question <>
-           "\n\nAnswer only with a JSON object matching this JSON Schema:\n" <>
-           Jason.encode!(opts[:schema]),
-         %{
-           "type" => "json_schema",
-           "json_schema" => %{
-             "name" => opts[:schema_name] || "answer",
-             "strict" => true,
-             "schema" => opts[:schema]
-           }
-         }}
-
-      opts[:json] == true ->
-        {question <> "\n\nAnswer only with a JSON object.", %{"type" => "json_object"}}
-
-      true ->
-        {question, nil}
-    end
-  end
-
-  defp parse_json(_text, false), do: {:ok, nil}
-
-  defp parse_json(text, true) when is_binary(text) do
-    cleaned =
-      text
-      |> String.trim()
-      |> String.replace(~r/\A```(?:json)?\s*/i, "")
-      |> String.replace(~r/\s*```\z/, "")
-
-    case Jason.decode(cleaned) do
-      {:ok, json} when is_map(json) -> {:ok, json}
-      _ -> {:error, {:no_json_in_response, text}}
-    end
-  end
-
-  defp parse_json(text, true), do: {:error, {:no_json_in_response, text}}
 
   @compare_schema %{
     "type" => "object",

@@ -114,6 +114,48 @@ Run `mix deps.get` and start the server. The module appears in:
 {:ok, response} = PhoenixKitAI.embed(endpoint.uuid, "Hello", dimensions: 512)
 ```
 
+### Structured output
+
+```elixir
+{:ok, %{"json" => %{"axes" => axes}}} =
+  PhoenixKitAI.ask(endpoint_uuid, "Propose 3–5 rating axes for chocolate bars.",
+    schema: %{"type" => "object", "properties" => %{"axes" => %{"type" => "array", "items" => %{"type" => "string"}}}})
+
+{:ok, %{"json" => %{}}} = PhoenixKitAI.complete(endpoint_uuid, messages, json: true)
+```
+
+The schema goes to the provider as `response_format` and into the prompt, so
+models without `response_format` still answer in shape; the parsed object
+comes back under `"json"`.
+
+### Spend caps and the request cache
+
+```elixir
+# Settings (nanodollars per trailing 24 h; 0 = no cap)
+PhoenixKitAI.Budget.set_limit(:global, 5_000_000_000)      # $5 a day for the whole install
+PhoenixKitAI.Budget.set_limit(:user, 100_000_000)          # $0.10 a day per user_uuid
+
+{:error, {:budget_exceeded, :user}} = PhoenixKitAI.ask(ep, "…", user_uuid: visitor_uuid)
+PhoenixKitAI.Budget.status(endpoint, user_uuid: visitor_uuid)   # spent / limit / remaining per scope
+
+# Cache an answer for a day; the second identical call costs nothing
+{:ok, _} = PhoenixKitAI.ask(ep, prompt, cache: true)
+{:ok, _} = PhoenixKitAI.ask(ep, prompt, cache: [ttl: 3_600])
+{:ok, _} = PhoenixKitAI.ask(ep, prompt, cache: :refresh)
+```
+
+Caps cover the trailing 24 hours, are checked before every provider call
+and warn at 80 %. The cache is in-memory (ETS), keyed on what would be sent
+(or on your own `cache: [key: "product:123"]`), writes a zero-cost usage row
+on a hit, and empties on restart — pair it with your own persistence for
+"write once, keep forever".
+
+### Host apps in the translation pipeline
+
+```elixir
+config :phoenix_kit_ai, translatables: [{"product", MyApp.AI.ProductTranslatable}]
+```
+
 ### Image editing and processing
 
 Image-in, image-out through any provider, with the endpoint choosing the
@@ -139,6 +181,7 @@ transport:
   PhoenixKitAI.describe_image(endpoint_uuid, label_jpeg,
     prompt: "Read the label.",
     schema: %{"type" => "object", "properties" => %{"brand" => %{"type" => "string"}}})
+
 ```
 
 Operations (`PhoenixKitAI.Images.Operations`): `:clean_background`,
