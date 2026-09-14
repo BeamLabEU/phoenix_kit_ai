@@ -51,10 +51,11 @@ host supplies endpoint and router (`config/` exists only for tests).
 - **No file storage.** Image verbs take bytes or URLs in and hand bytes back;
   the caller stores results (core's Storage, usually). Only the request row
   is kept, and never the image bytes.
-- **No `gun` dependency.** The `:gun.*` compile warnings a host may see
-  come from the optional WebSocket adapter inside the `xai` package
-  (realtime voice); a host that uses voice adds `{:gun, "~> 2.0"}` itself,
-  one that does not can ignore them.
+- **No `gun` dependency, on purpose** (see Depends-on: cowlib's CVE
+  surface). The `:gun.*` compile warnings a host may see come from the
+  optional WebSocket adapter inside the `xai` package; they are harmless
+  unless the host runs realtime voice, and that host owns the decision to
+  add `gun` itself.
 - **No Oban for completions.** Chat, TTS, embeddings and image calls run
   synchronously. Oban is used only by the AI-translation pipeline
   (`PhoenixKitAI.TranslateWorker`).
@@ -189,7 +190,18 @@ Repo-local aliases:
   `mounted()` would instead leak one live handler per navigation.
 - The `cost_cents` column holds **nanodollars** (1/1,000,000 of a dollar),
   not cents — the name is legacy. Reading it as cents is off by seven orders of
-  magnitude.
+  magnitude. The spend-cap settings use the same unit: `5_000_000` is $5.
+- `user_uuid:` on a verb must be a PhoenixKit user uuid. The usage row has a
+  foreign key on it, so an anonymous or external id means the provider is
+  paid and the row is *not written* (logged as a warning) — which also
+  blinds the per-user cap. Cap the endpoint or the site for visitors.
+- Spend caps read the usage table; concurrent callers overshoot by their
+  in-flight calls, and a database error fails open. Treat a cap as a brake
+  on a runaway day, not as a hard invoice ceiling.
+- The request cache is ETS on one node: it empties on restart, is shared
+  across users (scope a caller `key:` yourself), and without the module's
+  supervisor tree every lookup is a silent miss. Never use it as the store
+  for "write once, keep forever".
 - Clearing a field in the endpoint form must write `""`, not `nil`. The
   template's `@form.params[...] || @endpoint...` fallback treats `nil` as "no
   intent" and the old value reappears; `""` is truthy and wins.
@@ -276,12 +288,11 @@ Settings: `ai_enabled` (boolean, default `false`) is the module toggle;
 `ai_legacy_api_key_migration_completed_at` is the idempotency marker for
 `migrate_legacy/0`. Spend caps (`PhoenixKitAI.Budget`): `ai_daily_budget`,
 `ai_daily_budget_per_endpoint`, `ai_daily_budget_per_user` — nanodollars per
-trailing 24 hours, `0` = no cap — and `ai_budget_warn_percent` (default 80).
-Every provider-calling verb checks them first and returns
-`{:error, {:budget_exceeded, scope}}` when one is spent. The check reads the
-usage rows; concurrent callers can overshoot by their in-flight calls (no
-reservation). The per-user cap keys on the `user_uuid:` the caller passes —
-the module has no session of its own, so the host supplies a trusted id.
+trailing 24 hours, `0` = no cap — and `ai_budget_warn_percent` (default 80),
+read through the settings cache. Every provider-calling verb (not the
+realtime voice session) checks them first and returns
+`{:error, {:budget_exceeded, scope}}` once one is reached, cached answers
+included; dry runs skip the check.
 
 Permissions: a single module permission `"ai"` from `permission_metadata/0`,
 checked with `Scope.has_module_access?/2`. No sub-permissions.
@@ -300,7 +311,7 @@ checked with `Scope.has_module_access?/2`. No sub-permissions.
 | `:image_operations` | `%{}` | Extra or replacement image operations for `PhoenixKitAI.Images.Operations` (string or atom keys) |
 | `:max_image_bytes` | `25_000_000` | Largest image accepted as input or fetched as output by the image verbs |
 | `:translatables` | `[]` | `[{resource_type, adapter_module}]` a host app registers for the AI-translation pipeline without being a kit module; configured entries win over module-declared ones |
-| `:request_cache` | `[]` | `ttl:` (seconds, default 86 400), `sweep:` (default 300), `default:` (`true` caches every verb unless a call says `cache: false`) for `PhoenixKitAI.RequestCache` |
+| `:request_cache` | `[]` | `ttl:` (seconds, default 86 400), `sweep:` (300), `max_entries:` (10 000), `max_value_bytes:` (8 000 000), `default:` (`true` caches every verb unless a call says `cache: false`); read per call by `PhoenixKitAI.RequestCache` |
 | `:allow_internal_image_urls` | `false` | Lift the image-fetch host policy (loopback / link-local / RFC 1918 / `.local`, resolved addresses included) — tests and air-gapped installs only; separate from the endpoint base-URL switch |
 
 ### Providers
@@ -448,29 +459,21 @@ Test database `phoenix_kit_ai_test`.
 
 ## Feature notes
 
-- **Structured output** (`PhoenixKitAI.StructuredOutput`): `schema:` / `json: true`
-  on `ask/3`, `complete/3` and `describe_image/3` request a JSON object
-  through the provider's `response_format` *and* put the schema in the
-  prompt, retry once without `response_format` on 400/422, and return the
-  parsed object (`response["json"]`, `:json`). Prose where JSON was asked
-  for is `{:error, {:no_json_in_response, text}}`.
-- **Spend caps** (`PhoenixKitAI.Budget`): settings-backed daily budgets,
-  checked before every provider call; a warning + telemetry at the warn
-  percent, a hard refusal at the cap. `Budget.status/2` gives hosts the
-  numbers to show.
-- **Request cache** (`PhoenixKitAI.RequestCache`): `cache: true | [ttl: s |
-  :infinity, key: term] | :refresh` on any verb; in-memory ETS keyed on
-  the request material (or the caller's `key:`); a hit writes a zero-cost
-  usage row marked `cached: true`; empties on restart — a cost saver, not
-  a store.
-- **Telemetry**: `[:phoenix_kit_ai, :request]` fires for every usage row
-  (all verbs, cached rows included) with tokens, cost, latency and tags;
-  `[:phoenix_kit_ai, :image, :request]`, `[:phoenix_kit_ai, :budget,
-  :warning]`, `[:phoenix_kit_ai, :cache, :hit | :miss]` are the specific
-  ones. Saved-prompt calls record a `prompt_snapshot` (content hash +
-  `updated_at`) on the row.
-- **Host translatables**: `config :phoenix_kit_ai, translatables:` joins a
-  host app's own schemas to the AI-translation pipeline.
+- Every provider-calling verb goes through one gate and one wrapper:
+  `authorize/2` (endpoint usable, spend caps have room) and `with_cache/6`
+  (key, lookup, zero-cost hit row). A new verb joins both or it is not a
+  verb — `dev_docs/guides/spend-caps-and-caching.md` holds the semantics
+  of caps, cache, structured output and telemetry.
+- Structured output (`schema:` / `json: true`) is parsed *inside* the
+  cached closure, so a prose answer to a JSON request is logged with its
+  usage but never stored as a success.
+- A cache hit's usage row is the fresh row minus cost: same `user_uuid`,
+  attribution, prompt link and snapshot. Reports that ignore
+  `metadata.cached` still add up.
+- Host translatables (`config :phoenix_kit_ai, translatables:`) implement
+  `PhoenixKitAI.Translatable` (`fetch/2`, `source_fields/2`,
+  `put_translation/4`); a configured entry wins over a module's adapter
+  for the same type without a duplicate warning.
 - Image processing is provider-neutral by construction: callers name an
   endpoint and operations, adapters own the HTTP shape, and options are
   fitted to the model's published capabilities before anything is sent —
@@ -505,18 +508,23 @@ folder with no `FOLLOW_UP.md` means "not triaged yet"; a stub file is what
 
 ## TODOs
 
-- From the 2026-09-15 kit-level brainstorm (codex, grok), not built:
-  a pluggable persistent cache backend behind `RequestCache` (ETS stays
-  L1); atomic budget reservation before dispatch (today concurrent calls
-  can overshoot); per-source / per-user rate and concurrency limits
+- Not built, each a self-contained PR when a host needs it: a pluggable
+  persistent cache backend behind `RequestCache` (ETS stays L1) with
+  single-flight on a miss; atomic budget reservation before dispatch
+  (today concurrent calls can overshoot); a nullable external-subject
+  column on the requests table in core so anonymous visitors can be
+  capped per identity (today `user_uuid` is a foreign key); composite
+  partial indexes `(endpoint_uuid, inserted_at)` / `(user_uuid,
+  inserted_at) WHERE status = 'success'` in core once per-endpoint caps
+  run on a busy table; per-source / per-user rate and concurrency limits
   (spend caps are too coarse against a scrape); one `%Result{}` struct
   across verbs instead of provider-shaped maps; streaming chat/TTS with
   cancellation and an async (Oban) mode for slow verbs; provider-neutral
   tool calling; endpoint capability flags (chat / json_schema / vision /
   embed / tts) that fail fast before HTTP — needs core columns; pre- and
-  post-dispatch policy hooks for tenancy and redaction. Trigger: the
-  first host that needs one — each is a self-contained PR.
-- Image layer follow-ups from the 2026-09 reviews, in rough order of value:
+  post-dispatch policy hooks for tenancy and redaction; usage rows for the
+  realtime voice session.
+- Image layer follow-ups, in rough order of value:
   async execution (an Oban worker with progress and cancellation for
   batch jobs); retries with backoff and idempotent replay on top of the
   `idempotency_key` already recorded; per-tenant cost ceilings and a

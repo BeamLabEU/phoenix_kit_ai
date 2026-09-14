@@ -125,36 +125,53 @@ Run `mix deps.get` and start the server. The module appears in:
 ```
 
 The schema goes to the provider as `response_format` and into the prompt, so
-models without `response_format` still answer in shape; the parsed object
-comes back under `"json"`.
+models without `response_format` still answer in shape (one retry without
+it); the parsed object comes back under `"json"`. Nothing validates the
+answer against the schema locally — check the keys you depend on.
 
 ### Spend caps and the request cache
 
 ```elixir
-# Settings (nanodollars per trailing 24 h; 0 = no cap)
-PhoenixKitAI.Budget.set_limit(:global, 5_000_000_000)      # $5 a day for the whole install
-PhoenixKitAI.Budget.set_limit(:user, 100_000_000)          # $0.10 a day per user_uuid
+# Settings in the unit of cost_cents: millionths of a dollar, 1_000_000 = $1
+# ("nanodollars" in the module's own vocabulary); trailing 24 hours; 0 = no cap
+PhoenixKitAI.Budget.set_limit(:global, 5_000_000)   # $5 per rolling day for the whole install
+PhoenixKitAI.Budget.set_limit(:user, 100_000)       # $0.10 per rolling day per user_uuid
 
-{:error, {:budget_exceeded, :user}} = PhoenixKitAI.ask(ep, "…", user_uuid: visitor_uuid)
-PhoenixKitAI.Budget.status(endpoint, user_uuid: visitor_uuid)   # spent / limit / remaining per scope
+# user_uuid must be a PhoenixKit user uuid (the usage row has a foreign key on it)
+{:error, {:budget_exceeded, :user}} = PhoenixKitAI.ask(ep, "…", user_uuid: current_user.uuid)
+PhoenixKitAI.Budget.status(endpoint_uuid, user_uuid: current_user.uuid)  # spent / limit / remaining per scope
+PhoenixKitAI.get_usage_stats(user_uuid: current_user.uuid, since: yesterday)  # what they spent
 
 # Cache an answer for a day; the second identical call costs nothing
 {:ok, _} = PhoenixKitAI.ask(ep, prompt, cache: true)
 {:ok, _} = PhoenixKitAI.ask(ep, prompt, cache: [ttl: 3_600])
+{:ok, _} = PhoenixKitAI.ask(ep, prompt, cache: [key: {current_user.uuid, "profile"}])
 {:ok, _} = PhoenixKitAI.ask(ep, prompt, cache: :refresh)
 ```
 
-Caps cover the trailing 24 hours, are checked before every provider call
-and warn at 80 %. The cache is in-memory (ETS), keyed on what would be sent
-(or on your own `cache: [key: "product:123"]`), writes a zero-cost usage row
-on a hit, and empties on restart — pair it with your own persistence for
-"write once, keep forever".
+Caps cover the trailing 24 hours (not a calendar day), are checked before
+every provider call — cached answers included, so a spent cap stops the
+site — and warn once at 80 %. The cache is in-memory (ETS), keyed on what
+would be sent (or on your own `cache: [key: …]`), shared across users
+unless your key says otherwise, writes a zero-cost usage row on a hit, and
+empties on restart — pair it with your own persistence for "write once,
+keep forever". Every usage row emits `[:phoenix_kit_ai, :request]`
+telemetry; the full contract is in
+`dev_docs/guides/spend-caps-and-caching.md`.
 
 ### Host apps in the translation pipeline
 
 ```elixir
 config :phoenix_kit_ai, translatables: [{"product", MyApp.AI.ProductTranslatable}]
 ```
+
+The module implements `PhoenixKitAI.Translatable` — `fetch/2`,
+`source_fields/2`, `put_translation/4` — and its records are then queued
+with `PhoenixKitAI.Translations.enqueue/1` like any kit module's. The shared
+prompt binds the field names `name`, `title`, `summary`, `description`,
+`body` and `content`; an adapter with other field names passes its own
+`prompt_uuid`, or those values never reach the model. A configured entry
+wins over a kit module's adapter for the same type.
 
 ### Image editing and processing
 
