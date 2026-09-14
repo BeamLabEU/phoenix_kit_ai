@@ -235,7 +235,6 @@
            options fitted to the model. Separate form: uploads need
            phx-change on the form holding the file input. --%>
       <%= if @selected_endpoint do %>
-        <% capabilities = PhoenixKitAI.Web.Playground.edit_capabilities(assigns) %>
         <.form_section
           title={gettext("Image edit")}
           icon="hero-photo"
@@ -346,11 +345,11 @@
               />
               <.select
                 :for={key <- ~w(aspect_ratio resolution quality background output_format)a}
-                :if={PhoenixKitAI.Images.ImageModel.values(capabilities, key) != []}
+                :if={PhoenixKitAI.Images.ImageModel.values(@edit_capabilities, key) != []}
                 name={"opt[#{key}]"}
                 label={PhoenixKitAI.Web.Playground.option_label(key)}
                 value={Map.get(@edit_options, Atom.to_string(key), "")}
-                options={[{"—", ""} | Enum.map(PhoenixKitAI.Images.ImageModel.values(capabilities, key), &{&1, &1})]}
+                options={[{"—", ""} | Enum.map(PhoenixKitAI.Images.ImageModel.values(@edit_capabilities, key), &{&1, &1})]}
               />
             </div>
 

@@ -84,6 +84,7 @@ defmodule PhoenixKitAI.Web.Playground do
       |> assign(:image_models, [])
       |> assign(:image_models_error, nil)
       |> assign(:image_models_loading, false)
+      |> assign(:edit_capabilities, nil)
       |> assign(:describe_result, nil)
       |> assign(:describing, false)
       |> assign(:edit_inputs, [])
@@ -402,6 +403,7 @@ defmodule PhoenixKitAI.Web.Playground do
       |> assign(:voice_selected, "eve")
       |> assign(:image_models, [])
       |> assign(:image_models_error, nil)
+      |> assign(:edit_capabilities, nil)
       |> assign(:edit_model, "")
       |> assign(:edit_options, %{})
       |> assign(:edit_result, nil)
@@ -686,7 +688,11 @@ defmodule PhoenixKitAI.Web.Playground do
 
     case result do
       {:ok, models} ->
-        {:noreply, socket |> assign(:image_models, models) |> assign(:image_models_error, nil)}
+        {:noreply,
+         socket
+         |> assign(:image_models, models)
+         |> assign(:image_models_error, nil)
+         |> assign_edit_capabilities()}
 
       {:error, :not_supported} ->
         {:noreply,
@@ -737,17 +743,31 @@ defmodule PhoenixKitAI.Web.Playground do
     end
   end
 
-  def handle_async(task, {:exit, reason}, socket)
-      when task in [:image_models, :edit, :describe] do
-    Logger.warning("[PhoenixKitAI.Web.Playground] #{task} task exited: #{inspect(reason)}")
+  # One clause per task: each resets only its own busy flag, so a crashed
+  # model listing does not re-enable the buttons of an edit still running.
+  def handle_async(:image_models, {:exit, reason}, socket) do
+    log_task_exit(:image_models, reason)
 
     {:noreply,
      socket
-     |> assign(:editing, false)
-     |> assign(:describing, false)
      |> assign(:image_models_loading, false)
-     |> assign(:edit_error, gettext("Something went wrong on our side. Please try again."))}
+     |> assign(:image_models_error, task_failed_message())}
   end
+
+  def handle_async(:edit, {:exit, reason}, socket) do
+    log_task_exit(:edit, reason)
+    {:noreply, socket |> assign(:editing, false) |> assign(:edit_error, task_failed_message())}
+  end
+
+  def handle_async(:describe, {:exit, reason}, socket) do
+    log_task_exit(:describe, reason)
+    {:noreply, socket |> assign(:describing, false) |> assign(:edit_error, task_failed_message())}
+  end
+
+  defp log_task_exit(task, reason),
+    do: Logger.warning("[PhoenixKitAI.Web.Playground] #{task} task exited: #{inspect(reason)}")
+
+  defp task_failed_message, do: gettext("Something went wrong on our side. Please try again.")
 
   # ── Image edit form state ──────────────────────────────────────────────
 
@@ -762,6 +782,7 @@ defmodule PhoenixKitAI.Web.Playground do
     |> assign(:edit_options, edit_option_params(params["opt"]))
     |> assign(:edit_model, Map.get(params, "edit_model", socket.assigns.edit_model))
     |> assign(:edit_verify, Map.get(params, "verify") in ["true", "on"])
+    |> assign_edit_capabilities()
   end
 
   # Uploads are consumed once and their bytes kept on the socket (until
@@ -823,16 +844,20 @@ defmodule PhoenixKitAI.Web.Playground do
   defp maybe_opt(opts, _key, value) when value in [nil, ""], do: opts
   defp maybe_opt(opts, key, value), do: Keyword.put(opts, key, String.trim(value))
 
-  @doc false
-  # The capability entry for the model the card will use, or nil.
-  @spec edit_capabilities(map()) :: PhoenixKitAI.Images.ImageModel.t() | nil
-  def edit_capabilities(%{image_models: []}), do: nil
+  # The capability entry for the model the card will use, or nil. Kept as
+  # an assign, recomputed when the listing, the override or the endpoint
+  # changes, so the template never hands the whole assigns map to a
+  # function (which would switch off change tracking for the card).
+  defp assign_edit_capabilities(socket),
+    do: assign(socket, :edit_capabilities, edit_capabilities(socket.assigns))
 
-  def edit_capabilities(%{
-        image_models: models,
-        edit_model: override,
-        selected_endpoint: endpoint
-      }) do
+  defp edit_capabilities(%{image_models: []}), do: nil
+
+  defp edit_capabilities(%{
+         image_models: models,
+         edit_model: override,
+         selected_endpoint: endpoint
+       }) do
     id = if override in [nil, ""], do: endpoint && endpoint.model, else: override
     Enum.find(models, &(&1.id == id))
   end

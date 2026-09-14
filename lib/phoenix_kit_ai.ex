@@ -2844,7 +2844,11 @@ defmodule PhoenixKitAI do
     checker = if verify == true, do: endpoint, else: verify
     intent = Enum.map_join(result.operations, ", ", &Atom.to_string/1)
 
-    case compare_images(checker, original, data, intent: intent, source: opts[:source]) do
+    # The check is billed to whoever asked for the edit. The idempotency key
+    # stays on the edit's own row: it names that call, not this one.
+    check_opts = [intent: intent, source: opts[:source], user_uuid: opts[:user_uuid]]
+
+    case compare_images(checker, original, data, check_opts) do
       {:ok, verdict} -> Map.put(result, :verification, verdict)
       {:error, reason} -> Map.put(result, :verification, %{error: reason})
     end

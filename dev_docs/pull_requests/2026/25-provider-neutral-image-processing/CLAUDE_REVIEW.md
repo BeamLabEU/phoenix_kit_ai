@@ -125,7 +125,7 @@ key the adapter cannot send.
 
 ---
 
-## Low / nitpicks (not fixed, on record)
+## Low / nitpicks *(all four fixed in a follow-up on main)*
 
 ### NITPICK — One `handle_async` exit clause resets all three busy flags
 
@@ -136,6 +136,13 @@ while an edit is in flight, the Edit/Describe buttons re-enable early. The
 edit's own result still lands when it arrives. Cosmetic, so left as-is.
 Per-task clauses would fix it if it ever matters.
 
+**Addressed in follow-up.** There is now one `{:exit, _}` clause per task, and
+each resets only its own flag. A listing crash reports under the Load button
+(`image_models_error`) instead of the edit's error line. New
+`playground_test.exs` test: an edit is held open in its stub while a listing
+task crashes, and the "Usually 10–40 seconds" indicator must survive until the
+edit is released.
+
 ### NITPICK — The `verify:` row loses the parent call's `user_uuid`
 
 `PhoenixKitAI.maybe_verify/5` calls `compare_images/4` with only `intent:` and
@@ -144,6 +151,11 @@ but the verification's `vision` row does not. A per-user cost report
 therefore undercounts verified edits by one vision call each. The one-line
 fix is to forward `user_uuid: opts[:user_uuid]`. It was not applied because
 no consumer reports per user yet.
+
+**Addressed in follow-up.** `maybe_verify/5` forwards `user_uuid`. The
+`idempotency_key` deliberately stays on the edit's own row, because it names
+that call and not the check. The `verify: true` test in `images_test.exs` now
+asserts both the `image_edit` and the `vision` row carry the user.
 
 ### NITPICK — `edit_capabilities(assigns)` in the template
 
@@ -155,6 +167,13 @@ anywhere on the page. It is harmless at Playground scale. Computing
 `capabilities` as an assign in `apply_edit_params/2` / `handle_async(:image_models)`
 would restore tracking.
 
+**Addressed in follow-up.** `@edit_capabilities` is an assign. It is set to
+`nil` in mount and on endpoint switch, and recomputed by
+`assign_edit_capabilities/1` when the listing arrives and on every
+`edit_change`. `edit_capabilities/1` is private now. The listing test asserts
+that the option selects follow a model override and disappear on an endpoint
+switch.
+
 ### NITPICK — The address policy misses a few reserved ranges
 
 `Providers.HTTP.private_address?/1` covers loopback, RFC 1918, link-local,
@@ -163,6 +182,19 @@ which reaches internal IPv4 on a NAT64 network, nor 198.18.0.0/15 or
 224.0.0.0/4 and above. The policy is documented as best-effort with egress
 firewalling recommended, and DNS rebinding is already a tracked TODO. Worth
 adding alongside that TODO rather than now.
+
+**Addressed in follow-up.** Changes to `private_address?/1`:
+- IPv4 now also refuses 192.0.0.0/24, 198.18.0.0/15 and everything from
+  224.0.0.0 up (multicast, reserved, broadcast).
+- IPv6 forms that embed an IPv4 address are judged by that address: mapped,
+  translated (`::ffff:0:a.b.c.d`), compatible (`::a.b.c.d`), NAT64
+  `64:ff9b::/96` and 6to4 `2002::/16`.
+- Local-use NAT64 `64:ff9b:1::/48` and multicast `ff00::/8` are refused
+  outright.
+
+A NAT64 address embedding a *public* IPv4 is still allowed. New
+`test/phoenix_kit_ai/providers/http_test.exs` covers literal addresses, so no
+DNS is involved. DNS rebinding remains the tracked TODO.
 
 ---
 
@@ -223,7 +255,7 @@ adding alongside that TODO rather than now.
 |---|---|
 | Code quality | Good. Dense but consistent, pattern-matched, well commented |
 | Architecture | Good. Behaviour + adapters + a generic layer; one seam (edit vs generation option sets) was missing, now added |
-| Security | Good. Host policy per hop, bounded bodies, PII-gated error payloads; minor reserved ranges on record |
+| Security | Good. Host policy per hop, bounded bodies, PII-gated error payloads; reserved and embedded-IPv4 ranges added in follow-up |
 | Performance | Acceptable. `persistent_term` cache (ETS TODO already tracked); one prompt-override DB lookup per operation |
 | Test coverage | Good. Bodies asserted per adapter; the chat-path fitting gap is now covered |
 | Migration safety | N/A. No schema change; `request_type` gains two values in the changeset allowlist |
@@ -238,8 +270,9 @@ adding alongside that TODO rather than now.
 **Areas to address**
 
 - ~~Chat-completions edits fitted options they never send.~~ Fixed.
-- Optional: per-task `handle_async` exit clauses; forward `user_uuid` to the
-  verification row; NAT64/reserved ranges in the address policy.
+- ~~Per-task `handle_async` exit clauses; forward `user_uuid` to the
+  verification row; `@edit_capabilities` as an assign; NAT64/reserved ranges
+  in the address policy.~~ Fixed in follow-up.
 
 **Verdict:** APPROVE. The Medium bug is fixed on main with regression tests.
 
@@ -254,3 +287,6 @@ adding alongside that TODO rather than now.
 | `mix test` after the fix | 984 tests, 0 failures |
 | `mix precommit` | clean (compile --warnings-as-errors, format, credo --strict, dialyzer) |
 | `mix hex.audit` | no retired or advisory packages |
+| Nitpick follow-up: touched test files with its `lib/` changes stashed | 47 tests, 5 failures (the new assertions) |
+| Nitpick follow-up: `mix test` | 989 tests, 0 failures |
+| Nitpick follow-up: `mix precommit` | clean |

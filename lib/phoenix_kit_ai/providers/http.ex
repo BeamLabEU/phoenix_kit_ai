@@ -106,8 +106,10 @@ defmodule PhoenixKitAI.Providers.HTTP do
   @doc """
   Whether an http(s) URL may be fetched on the caller's behalf: http or
   https, and a host that neither is nor resolves to a loopback,
-  link-local, RFC 1918 or unique-local address (IPv4-mapped IPv6 forms
-  included), nor ends in `.local` / `.internal`. Hostnames are resolved
+  link-local, RFC 1918, CGNAT, unique-local, reserved or multicast
+  address (IPv6 forms that embed an IPv4 address — mapped, compatible,
+  NAT64, 6to4 — are judged by that address), nor ends in `.local` /
+  `.internal`. Hostnames are resolved
   here so a public name pointing at an internal address is refused too.
   `:allow_internal_image_urls` lifts the policy (tests, air-gapped
   installs); it is deliberately separate from the endpoint base-URL
@@ -162,20 +164,37 @@ defmodule PhoenixKitAI.Providers.HTTP do
     end)
   end
 
-  # IPv4: loopback, RFC 1918, link-local, "this" network. IPv6: loopback,
-  # unspecified, unique-local, link-local, and IPv4-mapped forms.
-  defp private_address?({a, b, _, _}),
-    do:
-      a in [0, 10, 127] or {a, b} == {169, 254} or {a, b} == {192, 168} or
-        (a == 172 and b in 16..31) or (a == 100 and b in 64..127)
+  # IPv4: "this" network, 10/8, loopback, and multicast plus everything
+  # reserved above it (224.0.0.0 and up); the narrower blocks below.
+  defp private_address?({a, b, c, _}),
+    do: a in [0, 10, 127] or a >= 224 or reserved_v4_block?(a, b, c)
 
-  defp private_address?({0, 0, 0, 0, 0, 0xFFFF, hi, lo}),
-    do: private_address?({div(hi, 256), rem(hi, 256), div(lo, 256), rem(lo, 256)})
-
-  defp private_address?({0, 0, 0, 0, 0, 0, 0, x}) when x in [0, 1], do: true
-  # fc00::/7 (unique local), fe80::/10 (link local)
+  # IPv6 forms that carry an IPv4 address are judged by that address:
+  # IPv4-mapped (::ffff:a.b.c.d), IPv4-translated (::ffff:0:a.b.c.d),
+  # IPv4-compatible (::a.b.c.d, which covers :: and ::1 as well), NAT64's
+  # well-known prefix (64:ff9b::/96) and 6to4 (2002:aabb:ccdd::/48).
+  defp private_address?({0, 0, 0, 0, 0, 0xFFFF, hi, lo}), do: private_address?(ipv4(hi, lo))
+  defp private_address?({0, 0, 0, 0, 0xFFFF, 0, hi, lo}), do: private_address?(ipv4(hi, lo))
+  defp private_address?({0, 0, 0, 0, 0, 0, hi, lo}), do: private_address?(ipv4(hi, lo))
+  defp private_address?({0x64, 0xFF9B, 0, 0, 0, 0, hi, lo}), do: private_address?(ipv4(hi, lo))
+  defp private_address?({0x2002, hi, lo, _, _, _, _, _}), do: private_address?(ipv4(hi, lo))
+  # Local-use NAT64 (64:ff9b:1::/48) translates to whatever the site routes.
+  defp private_address?({0x64, 0xFF9B, 1, _, _, _, _, _}), do: true
+  # fc00::/7 (unique local), fe80::/10 (link local), ff00::/8 (multicast)
   defp private_address?({a, _, _, _, _, _, _, _}),
-    do: a in 0xFC00..0xFDFF or a in 0xFE80..0xFEBF
+    do: a in 0xFC00..0xFDFF or a in 0xFE80..0xFEBF or a >= 0xFF00
+
+  # Link-local, RFC 1918 (192.168/16, 172.16/12), CGNAT (100.64/10),
+  # benchmarking (198.18/15) and IETF protocol assignments (192.0.0/24).
+  defp reserved_v4_block?(169, 254, _c), do: true
+  defp reserved_v4_block?(192, 168, _c), do: true
+  defp reserved_v4_block?(172, b, _c) when b in 16..31, do: true
+  defp reserved_v4_block?(100, b, _c) when b in 64..127, do: true
+  defp reserved_v4_block?(198, b, _c) when b in 18..19, do: true
+  defp reserved_v4_block?(192, 0, 0), do: true
+  defp reserved_v4_block?(_a, _b, _c), do: false
+
+  defp ipv4(hi, lo), do: {div(hi, 256), rem(hi, 256), div(lo, 256), rem(lo, 256)}
 
   @doc """
   Downloads an image the module was handed a URL for (a caller's input

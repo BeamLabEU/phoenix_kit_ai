@@ -98,7 +98,9 @@ Guards that run before any request, on every verb:
 - inputs above `max_input_bytes` (default 25 MB, app env
   `:max_image_bytes`) → `{:error, {:image_too_large, bytes, max}}`
 - an http(s) input whose host is, or resolves to, a loopback / link-local /
-  RFC 1918 / unique-local address (IPv4-mapped IPv6 included), or ends in
+  RFC 1918 / CGNAT / unique-local / reserved / multicast address (IPv6
+  forms that embed an IPv4 address — mapped, compatible, NAT64, 6to4 —
+  are judged by that address), or ends in
   `.local` / `.internal` → `{:error, {:unsafe_url, url}}`. The same check
   runs on every redirect hop of every fetch the module makes (two hops
   at most), and bodies are abandoned the moment they pass the size cap.

@@ -9,6 +9,7 @@ defmodule PhoenixKitAI.ImagesTest do
 
   import Ecto.Query
 
+  alias PhoenixKit.Test.Fixtures
   alias PhoenixKitAI.{Images, Provider, Request}
   alias PhoenixKitAI.Images.{ImageModel, ImageModels, Operations}
   alias PhoenixKitAI.Test.Repo, as: TestRepo
@@ -951,11 +952,22 @@ defmodule PhoenixKitAI.ImagesTest do
       end)
 
       ep = endpoint_fixture()
+      user_uuid = Fixtures.confirmed_user_fixture().uuid
 
       assert {:ok, %{verification: %{passed: true, summary: "Clean."}}} =
-               PhoenixKitAI.process_image(ep.uuid, [@jpeg], [:enhance], verify: true)
+               PhoenixKitAI.process_image(ep.uuid, [@jpeg], [:enhance],
+                 verify: true,
+                 user_uuid: user_uuid
+               )
 
       assert_received :compared
+
+      # The check's vision row is billed to the same user as the edit.
+      assert [%{user_uuid: ^user_uuid}] =
+               TestRepo.all(from(r in Request, where: r.request_type == "image_edit"))
+
+      assert [%{user_uuid: ^user_uuid}] =
+               TestRepo.all(from(r in Request, where: r.request_type == "vision"))
 
       Req.Test.stub(__MODULE__, fn conn ->
         case {conn.method, conn.request_path} do

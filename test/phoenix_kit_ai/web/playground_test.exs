@@ -113,6 +113,13 @@ defmodule PhoenixKitAI.Web.PlaygroundTest do
                   "supported_parameters" => %{
                     "aspect_ratio" => %{"type" => "enum", "values" => ["1:1", "4:3"]}
                   }
+                },
+                %{
+                  "id" => "openai/gpt-image-1",
+                  "name" => "GPT Image 1",
+                  "supported_parameters" => %{
+                    "quality" => %{"type" => "enum", "values" => ["low", "high"]}
+                  }
                 }
               ]
             })
@@ -148,6 +155,73 @@ defmodule PhoenixKitAI.Web.PlaygroundTest do
       assert has_element?(view, "select[name=edit_model]")
       assert has_element?(view, "select[name='opt[aspect_ratio]']")
       refute has_element?(view, "select[name='opt[quality]']")
+
+      # The option selects follow the model override.
+      render_change(view, "edit_change", %{"edit_model" => "openai/gpt-image-1"})
+      assert has_element?(view, "select[name='opt[quality]']")
+      refute has_element?(view, "select[name='opt[aspect_ratio]']")
+
+      # A new endpoint starts without a listing, so without selects.
+      other = fixture_endpoint(name: "Img 2", model: "google/gemini-2.5-flash-image")
+      render_change(view, "change", %{"endpoint_uuid" => other.uuid})
+      refute has_element?(view, "select[name='opt[quality]']")
+    end
+
+    test "a crashed model-list task leaves an edit that is still running alone", %{conn: conn} do
+      test_pid = self()
+      crash_key = {__MODULE__, :crash_listing}
+      :persistent_term.put(crash_key, false)
+      on_exit(fn -> :persistent_term.erase(crash_key) end)
+
+      Req.Test.stub(PhoenixKitAI.Web.PlaygroundTest, fn conn ->
+        case {conn.method, conn.request_path} do
+          {"GET", "/api/v1/images/models"} ->
+            if :persistent_term.get(crash_key),
+              do: exit(:listing_crashed),
+              else: Req.Test.json(conn, %{"data" => []})
+
+          {"POST", "/api/v1/images"} ->
+            send(test_pid, {:edit_waiting, self()})
+
+            receive do
+              :go -> :ok
+            after
+              5_000 -> :ok
+            end
+
+            Req.Test.json(conn, %{
+              "data" => [%{"b64_json" => Base.encode64(@png), "media_type" => "image/png"}]
+            })
+        end
+      end)
+
+      endpoint = fixture_endpoint(name: "Img", model: "google/gemini-2.5-flash-image")
+      {:ok, view, _} = live(conn, "/en/admin/ai/playground")
+      render_change(view, "change", %{"endpoint_uuid" => endpoint.uuid})
+
+      view
+      |> file_input("#playground-image-edit-form", :edit_images, [
+        %{name: "bar.png", content: @png, type: "image/png"}
+      ])
+      |> render_upload("bar.png")
+
+      render_submit(view, "edit_send", %{"edit_prompt" => "", "ops" => ["enhance"]})
+      assert_receive {:edit_waiting, edit_request}, 2_000
+
+      # The edit's own lookup cached the listing; drop it so the click fetches, and crashes.
+      ImageModels.clear()
+      :persistent_term.put(crash_key, true)
+
+      ExUnit.CaptureLog.capture_log(fn ->
+        render_click(view, "load_image_models", %{})
+        html = render_until(view, "Something went wrong on our side")
+        assert html =~ "Usually 10–40 seconds"
+      end)
+
+      send(edit_request, :go)
+      html = render_async(view)
+      assert html =~ "data:image/png;base64,"
+      refute html =~ "Usually 10–40 seconds"
     end
 
     test "edits an uploaded image through process_image, keeps the bytes for a retry, and describes",
@@ -190,6 +264,23 @@ defmodule PhoenixKitAI.Web.PlaygroundTest do
       html = render_async(view)
       assert_received :chat_post
       assert html =~ "A bar."
+    end
+
+    # An async task's exit reaches the LiveView as a message, so poll the render.
+    defp render_until(view, text, tries \\ 100) do
+      html = render(view)
+
+      cond do
+        html =~ text ->
+          html
+
+        tries == 0 ->
+          flunk("never rendered #{inspect(text)}")
+
+        true ->
+          Process.sleep(10)
+          render_until(view, text, tries - 1)
+      end
     end
 
     test "guards: no endpoint, no image, no operation", %{conn: conn} do
