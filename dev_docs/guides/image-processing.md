@@ -83,9 +83,47 @@ sees why in the warnings.
 `edit_image/4` and `generate_image/3` send options as given, without
 fitting; they are the thin verbs for callers that already know the model.
 
+Guards that run before any request, on every verb:
+
+- inputs above `max_input_bytes` (default 25 MB, app env
+  `:max_image_bytes`) → `{:error, {:image_too_large, bytes, max}}`
+- an http(s) input on a loopback / link-local / RFC 1918 / `.local` host
+  → `{:error, {:unsafe_url, url}}` (lifted by `:allow_internal_endpoint_urls`)
+- two operations from one exclusive group (the background treatments)
+  → `{:error, {:conflicting_operations, a, b}}`
+- more inputs than the model's published maximum → `{:error, {:too_many_images, n, max}}`,
+  strict or not — the provider would refuse anyway
+- `background: "transparent"` next to a JPEG request → the format becomes
+  PNG with an `{:adjusted_option, …}` warning
+
+`dry_run: true` returns the plan — prompt, fitted options, warnings,
+model — with no request and no usage row. A batch job can price and
+inspect before it spends.
+
+Outputs always come back as bytes: a provider that answers with a URL
+(xAI, OpenAI's `response_format: "url"`) has it fetched — bounded, two
+redirects, same host policy — and `width` / `height` are read from the
+header. `fetch_outputs: false` keeps the URL. A failed fetch keeps the
+URL and adds `{:output_not_fetched, url, reason}` to the warnings.
+
+A `mask:` input (PNG whose transparent pixels may be repainted) rides as
+a request option: the OpenAI adapter sends it as the `mask` file;
+adapters without inpainting drop it with a `{:dropped_option, :mask, _}`
+warning, so the caller knows the region was not honoured.
+
+Warnings you may see in a result: `{:dropped_option, key, value}`,
+`{:adjusted_option, key, from, to}`, `{:model_not_listed, id}` (the
+listing exists, this model is not in it — adapter options decide),
+`{:capabilities_unavailable, reason}` (the listing could not be fetched),
+`{:output_not_fetched, url, reason}`.
+
 ## Vision
 
-`describe_image/3` runs a chat completion with the images attached.
+`describe_image/3` runs through the adapter's optional `vision/3`
+callback — chat completions with `image_url` parts for every
+OpenAI-shaped API, retried once without `response_format` when the model
+rejects it (image-output models do) — so a provider with its own vision
+shape only implements that callback.
 `schema:` (a JSON Schema map) or `json: true` requests a JSON answer
 and returns it parsed under `:json`; anything else comes back as
 `:text`. `compare_images/4` is a fixed-schema `describe_image/3` over an
@@ -108,8 +146,8 @@ same `:req_options` hook as `Completion`, so one `Req.Test` plug stubs
 everything in tests.
 
 Adding a provider: implement `PhoenixKitAI.Provider` (four callbacks:
-`image_edit/4`, `image_generate/3`, `image_models/1`, `image_options/1`)
-and register it:
+`image_edit/4`, `image_generate/3`, `image_models/1`, `image_options/1`;
+`vision/3` optionally) and register it:
 
 ```elixir
 config :phoenix_kit_ai, provider_adapters: %{"fal" => MyApp.FalAdapter}
@@ -125,6 +163,12 @@ options, and return the uniform result
 - Never send a provider a permanent Storage URL: inline bytes. The
   normaliser does this for you when you pass bytes or `%{data, content_type}`.
 - Caller mistakes (bad input, unknown operation, a refused option under
-  `strict`) never reach a provider and are not logged as requests.
+  `strict`) never reach a provider and are not logged as requests; dry
+  runs are not logged either. Provider failures are, with latency, the
+  model that was tried and the provider key.
 - Image bytes are never persisted in the request log; counts and sizes
-  are, the prompt and any text under the PII gate.
+  are, the prompt and any text under the PII gate. Pass
+  `idempotency_key:` and it lands in the row's metadata, so a retried job
+  can find its earlier attempt.
+- A provider's safety refusal is `{:error, {:content_policy, message}}`,
+  not a generic `{:api_error, 400}` — do not retry it.

@@ -51,9 +51,10 @@ defmodule PhoenixKitAI.ImageEditTest do
 
     Req.Test.stub(__MODULE__, fn conn ->
       case conn.method do
+        # An output URL being fetched back, or the model listing.
         "GET" ->
           send(test_pid, {:get, conn.request_path})
-          Req.Test.json(conn, %{"data" => models})
+          answer_get(conn, models)
 
         _ ->
           {:ok, raw, conn} = Plug.Conn.read_body(conn)
@@ -64,6 +65,12 @@ defmodule PhoenixKitAI.ImageEditTest do
           |> Plug.Conn.send_resp(status, Jason.encode!(body))
       end
     end)
+  end
+
+  defp answer_get(conn, models) do
+    if String.ends_with?(conn.request_path, ".png"),
+      do: conn |> Plug.Conn.put_resp_content_type("image/png") |> Plug.Conn.send_resp(200, @png),
+      else: Req.Test.json(conn, %{"data" => models})
   end
 
   # Parses a multipart body (OpenAI's edits endpoint) instead of JSON.
@@ -184,16 +191,25 @@ defmodule PhoenixKitAI.ImageEditTest do
       assert [%{model: "openai/gpt-image-1"}] = logged_requests()
     end
 
-    test "a url entry passes through without bytes; raw bytes are sniffed and inlined" do
+    test "a url output is fetched into bytes (or kept as a url on request); raw input bytes are sniffed and inlined" do
       stub_capturing(200, images_payload([%{"url" => "https://cdn.example/out.png"}]))
       ep = endpoint_fixture()
 
       assert {:ok,
-              %{images: [%{data: nil, url: "https://cdn.example/out.png", content_type: nil}]}} =
+              %{
+                images: [
+                  %{data: @png, url: "https://cdn.example/out.png", content_type: "image/png"}
+                ]
+              }} =
                PhoenixKitAI.edit_image(ep.uuid, "Restyle", [
                  @jpeg,
                  %{url: "https://example.com/in.jpg"}
                ])
+
+      assert_received {:get, "/out.png"}
+
+      assert {:ok, %{images: [%{data: nil, url: "https://cdn.example/out.png"}]}} =
+               PhoenixKitAI.edit_image(ep.uuid, "Restyle", [@jpeg], fetch_outputs: false)
 
       assert_received {:request, _, body}
 
@@ -351,7 +367,7 @@ defmodule PhoenixKitAI.ImageEditTest do
           base_url: "https://api.x.ai/v1"
         })
 
-      assert {:ok, %{images: [%{url: "https://x.ai/out.png", data: nil}]}} =
+      assert {:ok, %{images: [%{url: "https://x.ai/out.png", data: @png}]}} =
                PhoenixKitAI.edit_image(ep.uuid, "Night", [data_url(@jpeg, "image/jpeg")])
 
       assert_received {:request, "/v1/images/edits",

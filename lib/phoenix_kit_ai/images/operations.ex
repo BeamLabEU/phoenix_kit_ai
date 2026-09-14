@@ -59,7 +59,8 @@ defmodule PhoenixKitAI.Images.Operations do
           optional(:options) => map(),
           optional(:fallback_prompt) => String.t(),
           optional(:presets) => %{optional(atom()) => String.t()},
-          optional(:references) => :none | :optional | :required
+          optional(:references) => :none | :optional | :required,
+          optional(:group) => atom()
         }
 
   @relight_presets %{
@@ -82,6 +83,7 @@ defmodule PhoenixKitAI.Images.Operations do
     },
     clean_background: %{
       description: "Plain studio background",
+      group: :background,
       prompt:
         "Replace the background with a clean, plain, evenly lit {{color}} studio backdrop, keeping a soft natural contact shadow under the subject.",
       params: [:color],
@@ -89,11 +91,13 @@ defmodule PhoenixKitAI.Images.Operations do
     },
     blur_background: %{
       description: "Blur the background",
+      group: :background,
       prompt:
         "Keep the subject perfectly sharp and blur the background softly, as a shallow depth of field would, without changing what is in it."
     },
     remove_background: %{
       description: "Cut out on a transparent background",
+      group: :background,
       prompt:
         "Cut the subject out cleanly along its true edges and make the background fully transparent.",
       options: %{background: "transparent", output_format: "png"},
@@ -102,6 +106,7 @@ defmodule PhoenixKitAI.Images.Operations do
     },
     replace_background: %{
       description: "Replace the background",
+      group: :background,
       prompt:
         "Replace the background with {{with}}. Match the lighting, perspective and scale so the subject looks naturally placed.",
       params: [:with]
@@ -183,12 +188,16 @@ defmodule PhoenixKitAI.Images.Operations do
 
   Accepts atoms (`:enhance`), tuples with keyword or map parameters
   (`{:relight, light: :night}`), bare strings (a free-form instruction),
-  and `{:custom, "text"}`. Unknown names and missing parameters are
-  errors before anything is sent.
+  and `{:custom, "text"}`. Unknown names, missing parameters and two
+  operations from one exclusive group (two background treatments, say)
+  are errors before anything is sent.
   """
   @spec normalize([term()]) ::
           {:ok, [{name(), params()}]}
-          | {:error, {:unknown_operation, term()} | {:missing_parameter, name(), atom()}}
+          | {:error,
+             {:unknown_operation, term()}
+             | {:missing_parameter, name(), atom()}
+             | {:conflicting_operations, name(), name()}}
   def normalize(operations) when is_list(operations) do
     operations
     |> Enum.reduce_while({:ok, []}, fn op, {:ok, acc} ->
@@ -198,12 +207,39 @@ defmodule PhoenixKitAI.Images.Operations do
       end
     end)
     |> case do
-      {:ok, pairs} -> {:ok, Enum.reverse(pairs)}
+      {:ok, pairs} -> pairs |> Enum.reverse() |> check_groups()
       error -> error
     end
   end
 
   def normalize(operation), do: normalize([operation])
+
+  defp check_groups(pairs) do
+    pairs
+    |> Enum.reduce_while({:ok, %{}}, fn {name, _}, {:ok, seen} ->
+      note_group(seen, name, group_of(name))
+    end)
+    |> case do
+      {:ok, _seen} -> {:ok, pairs}
+      error -> error
+    end
+  end
+
+  defp group_of(name) do
+    case fetch(name) do
+      {:ok, %{group: group}} when is_atom(group) -> group
+      _ -> nil
+    end
+  end
+
+  defp note_group(seen, _name, nil), do: {:cont, {:ok, seen}}
+
+  defp note_group(seen, name, group) do
+    case Map.fetch(seen, group) do
+      {:ok, other} -> {:halt, {:error, {:conflicting_operations, other, name}}}
+      :error -> {:cont, {:ok, Map.put(seen, group, name)}}
+    end
+  end
 
   defp normalize_one(text) when is_binary(text), do: normalize_one({:instruction, %{text: text}})
 
@@ -213,7 +249,9 @@ defmodule PhoenixKitAI.Images.Operations do
   defp normalize_one(name) when is_atom(name), do: normalize_one({name, %{}})
 
   defp normalize_one({name, params}) when is_atom(name) and (is_list(params) or is_map(params)) do
-    params = Map.new(params, fn {k, v} -> {to_atom(k), v} end)
+    # Caller-supplied keys never create atoms; an unknown string key stays
+    # a string and simply does not satisfy a parameter.
+    params = Map.new(params, fn {k, v} -> {existing_atom(k), v} end)
 
     with {:ok, spec} <- fetch_or_error(name),
          params = Map.merge(Map.get(spec, :defaults, %{}), params),
@@ -362,6 +400,15 @@ defmodule PhoenixKitAI.Images.Operations do
   defp atom_keys(map) when is_map(map), do: Map.new(map, fn {k, v} -> {to_atom(k), v} end)
   defp atom_keys(_other), do: %{}
 
+  # Host config is trusted (it is code); caller parameters are not.
   defp to_atom(key) when is_atom(key), do: key
   defp to_atom(key) when is_binary(key), do: String.to_atom(key)
+
+  defp existing_atom(key) when is_atom(key), do: key
+
+  defp existing_atom(key) when is_binary(key) do
+    String.to_existing_atom(key)
+  rescue
+    ArgumentError -> key
+  end
 end

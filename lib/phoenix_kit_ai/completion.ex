@@ -500,7 +500,8 @@ defmodule PhoenixKitAI.Completion do
     adapter = Provider.for_endpoint(endpoint)
     options = Images.options(endpoint, opts)
 
-    with {:ok, result} <- adapter.image_generate(endpoint, prompt, options) do
+    with {:ok, result} <- adapter.image_generate(endpoint, prompt, options),
+         {:ok, result} <- Images.fetch_outputs(result, opts) do
       {:ok, Map.put_new(result, :model, options[:model] || endpoint.model)}
     end
   end
@@ -540,8 +541,9 @@ defmodule PhoenixKitAI.Completion do
     adapter = Provider.for_endpoint(endpoint)
     options = Images.options(endpoint, opts)
 
-    with {:ok, refs} <- Images.normalize_inputs(images),
-         {:ok, result} <- adapter.image_edit(endpoint, prompt, refs, options) do
+    with {:ok, refs} <- Images.normalize_inputs(images, opts),
+         {:ok, result} <- adapter.image_edit(endpoint, prompt, refs, options),
+         {:ok, result} <- Images.fetch_outputs(result, opts) do
       {:ok, Map.put_new(result, :model, options[:model] || endpoint.model)}
     end
   end

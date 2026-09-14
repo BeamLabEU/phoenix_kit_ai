@@ -46,6 +46,19 @@ defmodule PhoenixKitAI.ImageGenerationTest do
     end)
   end
 
+  # JSON for the API call, PNG bytes for a GET of an output URL.
+  defp stub_json_with_png(status, body, png) do
+    Req.Test.stub(__MODULE__, fn conn ->
+      if conn.method == "GET" do
+        conn |> Plug.Conn.put_resp_content_type("image/png") |> Plug.Conn.send_resp(200, png)
+      else
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(status, Jason.encode!(body))
+      end
+    end)
+  end
+
   defp stub_raw(status, raw_body) do
     Req.Test.stub(__MODULE__, fn conn ->
       Plug.Conn.send_resp(conn, status, raw_body)
@@ -73,12 +86,24 @@ defmodule PhoenixKitAI.ImageGenerationTest do
                PhoenixKitAI.generate_image(ep.uuid, "a cat on a skateboard")
     end
 
-    test "returns a url image untouched (no auto-download)" do
-      stub_json(200, %{"data" => [%{"url" => "https://example.com/cat.png"}]})
+    test "a url image is fetched into bytes; fetch_outputs: false keeps the url" do
+      png = <<0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A>>
+      stub_json_with_png(200, %{"data" => [%{"url" => "https://example.com/cat.png"}]}, png)
       ep = endpoint_fixture()
 
-      assert {:ok, %{images: [%{url: "https://example.com/cat.png", data: nil}]}} =
+      assert {:ok,
+              %{
+                images: [
+                  %{url: "https://example.com/cat.png", data: ^png, content_type: "image/png"}
+                ]
+              }} =
                PhoenixKitAI.generate_image(ep.uuid, "a cat", response_format: "url")
+
+      assert {:ok, %{images: [%{url: "https://example.com/cat.png", data: nil}]}} =
+               PhoenixKitAI.generate_image(ep.uuid, "a cat",
+                 response_format: "url",
+                 fetch_outputs: false
+               )
     end
 
     test "decodes multiple images (n > 1)" do
@@ -186,11 +211,11 @@ defmodule PhoenixKitAI.ImageGenerationTest do
       assert row.metadata["input"] == "a cat on a skateboard"
     end
 
-    test "url-only response logs zero total_bytes (nothing decoded)" do
+    test "url-only response logs zero total_bytes when nothing is fetched" do
       stub_json(200, %{"data" => [%{"url" => "https://example.com/cat.png"}]})
       ep = endpoint_fixture()
 
-      assert {:ok, _} = PhoenixKitAI.generate_image(ep.uuid, "a cat")
+      assert {:ok, _} = PhoenixKitAI.generate_image(ep.uuid, "a cat", fetch_outputs: false)
 
       row =
         PhoenixKitAI.list_requests()

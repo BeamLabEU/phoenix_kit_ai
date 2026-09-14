@@ -54,12 +54,14 @@ defmodule PhoenixKitAI.Images do
   an original and its edit, answering whether the subject survived.
   """
 
+  import Bitwise
+
   alias PhoenixKitAI.{Completion, Endpoint, Provider}
   alias PhoenixKitAI.Images.{ImageModel, ImageModels, Operations}
-  alias PhoenixKitAI.Providers.OpenAICompatible
+  alias PhoenixKitAI.Providers.{HTTP, OpenAICompatible}
 
-  @request_options ~w(aspect_ratio resolution size quality background output_format output_compression n seed response_format style)a
-  @control_options ~w(model transport provider_options provider_routing image_config strict preserve finish prompt_overrides)a
+  @request_options ~w(aspect_ratio resolution size quality background output_format output_compression n seed response_format style mask)a
+  @control_options ~w(model transport provider_options provider_routing image_config strict preserve finish prompt_overrides dry_run fetch_outputs max_input_bytes)a
 
   @type input ::
           binary() | String.t() | %{data: binary(), content_type: String.t()} | %{url: String.t()}
@@ -75,6 +77,20 @@ defmodule PhoenixKitAI.Images do
           warnings: [term()]
         }
 
+  @typedoc "What `process/4` returns for `dry_run: true`: the plan, no images."
+  @type plan :: %{
+          prompt: String.t(),
+          operations: [atom()],
+          warnings: [term()],
+          model: String.t() | nil,
+          options: map(),
+          images: [],
+          text: nil,
+          usage: map(),
+          latency_ms: 0,
+          dry_run: true
+        }
+
   @doc "The canonical request option names."
   @spec request_options() :: [atom()]
   def request_options, do: @request_options
@@ -87,16 +103,57 @@ defmodule PhoenixKitAI.Images do
   `%{url}`, and bare `data:` / `http(s):` strings. Never hand a provider a
   permanent URL it could cache — pass bytes.
   """
-  @spec normalize_inputs([input()]) ::
-          {:ok, [String.t()]} | {:error, :invalid_image_input | :empty_input}
-  def normalize_inputs([]), do: {:error, :empty_input}
+  @spec normalize_inputs([input()], keyword()) ::
+          {:ok, [String.t()]}
+          | {:error,
+             :invalid_image_input
+             | :empty_input
+             | {:image_too_large, pos_integer(), pos_integer()}
+             | {:unsafe_url, String.t()}}
+  def normalize_inputs(images, opts \\ [])
+  def normalize_inputs([], _opts), do: {:error, :empty_input}
 
-  def normalize_inputs(images) when is_list(images) do
-    refs = Enum.map(images, &image_ref/1)
-    if Enum.all?(refs, &is_binary/1), do: {:ok, refs}, else: {:error, :invalid_image_input}
+  def normalize_inputs(images, opts) when is_list(images) do
+    max = Keyword.get(opts, :max_input_bytes, HTTP.max_image_bytes())
+
+    images
+    |> Enum.reduce_while({:ok, []}, fn image, {:ok, acc} ->
+      case checked_ref(image, max) do
+        {:ok, ref} -> {:cont, {:ok, [ref | acc]}}
+        {:error, _} = error -> {:halt, error}
+      end
+    end)
+    |> case do
+      {:ok, refs} -> {:ok, Enum.reverse(refs)}
+      error -> error
+    end
   end
 
-  def normalize_inputs(_other), do: {:error, :invalid_image_input}
+  def normalize_inputs(_other, _opts), do: {:error, :invalid_image_input}
+
+  # Size is checked on the bytes we were handed; a remote URL is checked
+  # against the fetch policy (scheme, no internal hosts).
+  defp checked_ref(image, max) do
+    case {image_bytes(image), image_ref(image)} do
+      {bytes, _} when is_integer(bytes) and bytes > max ->
+        {:error, {:image_too_large, bytes, max}}
+
+      {_, nil} ->
+        {:error, :invalid_image_input}
+
+      {_, "http" <> _ = url} ->
+        if HTTP.safe_url?(url), do: {:ok, url}, else: {:error, {:unsafe_url, url}}
+
+      {_, ref} ->
+        {:ok, ref}
+    end
+  end
+
+  defp image_bytes(%{data: data}) when is_binary(data), do: byte_size(data)
+  defp image_bytes("data:" <> _), do: nil
+  defp image_bytes("http" <> _), do: nil
+  defp image_bytes(bytes) when is_binary(bytes), do: byte_size(bytes)
+  defp image_bytes(_other), do: nil
 
   defp image_ref(%{data: data, content_type: type})
        when is_binary(data) and byte_size(data) > 0 and is_binary(type) and type != "",
@@ -194,35 +251,178 @@ defmodule PhoenixKitAI.Images do
   with the given `operations` on `endpoint`. See the moduledoc.
   """
   @spec process(Endpoint.t(), [input()], [term()], keyword()) ::
-          {:ok, result()} | {:error, term()}
+          {:ok, result() | plan()} | {:error, term()}
   def process(endpoint, images, operations, opts \\ []) do
     adapter = Provider.for_endpoint(endpoint)
     options = options(endpoint, opts)
     model_id = options[:model] || endpoint.model
+    strict = Keyword.get(opts, :strict, false)
 
-    with {:ok, refs} <- normalize_inputs(images),
+    with {:ok, refs} <- normalize_inputs(images, opts),
+         {:ok, options} <- put_mask(options, opts[:mask], opts),
          {:ok, pairs} <- Operations.normalize(operations),
          :ok <- check_references(pairs, refs),
-         model = ImageModels.get(endpoint, model_id),
-         {:ok, fitted, warnings} <-
-           fit_options(
-             Map.merge(Operations.options(pairs), options),
-             model,
-             adapter.image_options(endpoint),
-             Keyword.get(opts, :strict, false)
-           ),
-         :ok <- check_reference_count(model, refs, warnings, opts),
-         {:ok, prompt} <- build_prompt(pairs, Keyword.put(opts, :warnings, warnings)),
-         {:ok, result} <- adapter.image_edit(endpoint, prompt, refs, fitted) do
-      {:ok,
-       Map.merge(result, %{
-         prompt: prompt,
-         operations: Enum.map(pairs, &elem(&1, 0)),
-         warnings: warnings,
-         model: result[:model] || model_id
-       })}
+         {model, capability_warnings} = capabilities(endpoint, model_id),
+         {merged, conflict_warnings} =
+           resolve_conflicts(Map.merge(Operations.options(pairs), options)),
+         {:ok, fitted, fit_warnings} <-
+           fit_options(merged, model, adapter.image_options(endpoint), strict),
+         :ok <- check_reference_count(model, refs),
+         warnings = capability_warnings ++ conflict_warnings ++ fit_warnings,
+         {:ok, prompt} <- build_prompt(pairs, Keyword.put(opts, :warnings, warnings)) do
+      plan = %{
+        prompt: prompt,
+        operations: Enum.map(pairs, &elem(&1, 0)),
+        warnings: warnings,
+        model: model_id,
+        options: fitted
+      }
+
+      if Keyword.get(opts, :dry_run, false),
+        do:
+          {:ok,
+           Map.merge(plan, %{images: [], text: nil, usage: %{}, latency_ms: 0, dry_run: true})},
+        else: run(adapter, endpoint, refs, plan, opts)
     end
   end
+
+  defp run(adapter, endpoint, refs, plan, opts) do
+    with {:ok, result} <- adapter.image_edit(endpoint, plan.prompt, refs, plan.options),
+         {:ok, result} <- fetch_outputs(result, opts) do
+      {:ok,
+       result
+       |> Map.merge(Map.drop(plan, [:options, :warnings]))
+       |> Map.put(:model, result[:model] || plan.model)
+       |> Map.update(:warnings, plan.warnings, &(plan.warnings ++ &1))}
+    end
+  end
+
+  # A mask travels as a request option (a data URL) so the adapter that
+  # takes one (OpenAI edits) sends it and the others drop it with a warning.
+  defp put_mask(options, nil, _opts), do: {:ok, options}
+
+  defp put_mask(options, mask, opts) do
+    with {:ok, [ref]} <- normalize_inputs([mask], opts), do: {:ok, Map.put(options, :mask, ref)}
+  end
+
+  # What the model accepts, and a warning when that could not be known:
+  # the model is missing from the listing, or the listing was unreachable.
+  defp capabilities(endpoint, model_id) do
+    case ImageModels.lookup(endpoint, model_id) do
+      {:ok, model} -> {model, []}
+      {:error, :not_supported} -> {nil, []}
+      {:error, :not_listed} -> {nil, [{:model_not_listed, model_id}]}
+      {:error, {:unavailable, reason}} -> {nil, [{:capabilities_unavailable, reason}]}
+    end
+  end
+
+  # A transparent background needs a format with alpha; a JPEG request
+  # alongside it is corrected rather than sent.
+  defp resolve_conflicts(%{background: "transparent", output_format: format} = options)
+       when format in ["jpeg", "jpg"] do
+    {Map.put(options, :output_format, "png"), [{:adjusted_option, :output_format, format, "png"}]}
+  end
+
+  defp resolve_conflicts(options), do: {options, []}
+
+  @doc """
+  Downloads output images a provider returned as URLs (xAI, OpenAI's
+  `response_format: "url"`) so callers always get bytes, and adds
+  `width` / `height` to every image whose header can be read. A URL that
+  cannot be fetched stays a URL, with an `{:output_not_fetched, url,
+  reason}` warning. `fetch_outputs: false` skips the download.
+  """
+  @spec fetch_outputs(map(), keyword()) :: {:ok, map()}
+  def fetch_outputs(%{images: images} = result, opts) when is_list(images) do
+    fetch? = Keyword.get(opts, :fetch_outputs, true)
+
+    {images, warnings} =
+      Enum.map_reduce(images, [], fn image, warnings ->
+        case image do
+          %{data: nil, url: url} when is_binary(url) and fetch? ->
+            fetch_output(image, url, warnings)
+
+          _ ->
+            {with_dimensions(image), warnings}
+        end
+      end)
+
+    {:ok,
+     result |> Map.put(:images, images) |> Map.update(:warnings, warnings, &(&1 ++ warnings))}
+  end
+
+  def fetch_outputs(result, _opts), do: {:ok, result}
+
+  defp fetch_output(image, url, warnings) do
+    case HTTP.fetch_image(url) do
+      {:ok, bytes, type} ->
+        {with_dimensions(%{image | data: bytes, content_type: image[:content_type] || type}),
+         warnings}
+
+      {:error, reason} ->
+        {image, warnings ++ [{:output_not_fetched, url, reason}]}
+    end
+  end
+
+  defp with_dimensions(%{data: data} = image) when is_binary(data) do
+    case dimensions(data) do
+      {:ok, {w, h}} -> Map.merge(image, %{width: w, height: h})
+      :error -> image
+    end
+  end
+
+  defp with_dimensions(image), do: image
+
+  @doc "Pixel dimensions from a PNG, JPEG, WebP or GIF header, without decoding."
+  @spec dimensions(binary()) :: {:ok, {pos_integer(), pos_integer()}} | :error
+  def dimensions(<<0x89, "PNG\r\n", 0x1A, "\n", _::binary-size(8), w::32, h::32, _::binary>>),
+    do: {:ok, {w, h}}
+
+  def dimensions(<<"GIF8", _::binary-size(2), w::little-16, h::little-16, _::binary>>),
+    do: {:ok, {w, h}}
+
+  def dimensions(
+        <<"RIFF", _::binary-size(4), "WEBPVP8 ", _::binary-size(10), w::little-16, h::little-16,
+          _::binary>>
+      ),
+      do: {:ok, {w &&& 0x3FFF, h &&& 0x3FFF}}
+
+  def dimensions(
+        <<"RIFF", _::binary-size(4), "WEBPVP8L", _::binary-size(5), b0, b1, b2, b3, _::binary>>
+      ) do
+    bits = b0 ||| b1 <<< 8 ||| b2 <<< 16 ||| b3 <<< 24
+    {:ok, {(bits &&& 0x3FFF) + 1, (bits >>> 14 &&& 0x3FFF) + 1}}
+  end
+
+  def dimensions(
+        <<"RIFF", _::binary-size(4), "WEBPVP8X", _::binary-size(8), w::little-24, h::little-24,
+          _::binary>>
+      ),
+      do: {:ok, {w + 1, h + 1}}
+
+  def dimensions(<<0xFF, 0xD8, rest::binary>>), do: jpeg_dimensions(rest)
+  def dimensions(_other), do: :error
+
+  # Walk JPEG segments to the first SOF marker.
+  defp jpeg_dimensions(<<0xFF, marker, len::16, rest::binary>>)
+       when marker in [0xC0, 0xC1, 0xC2] do
+    case rest do
+      <<_precision, h::16, w::16, _::binary>> when len >= 7 -> {:ok, {w, h}}
+      _ -> :error
+    end
+  end
+
+  defp jpeg_dimensions(<<0xFF, 0xD9, _::binary>>), do: :error
+  defp jpeg_dimensions(<<0xFF, 0xFF, rest::binary>>), do: jpeg_dimensions(<<0xFF, rest::binary>>)
+
+  defp jpeg_dimensions(<<0xFF, _marker, len::16, rest::binary>>) when len >= 2 do
+    case rest do
+      <<_::binary-size(len - 2), next::binary>> -> jpeg_dimensions(next)
+      _ -> :error
+    end
+  end
+
+  defp jpeg_dimensions(_), do: :error
 
   defp check_references(pairs, refs) do
     if Operations.references_required?(pairs) and length(refs) < 2,
@@ -230,19 +430,19 @@ defmodule PhoenixKitAI.Images do
       else: :ok
   end
 
-  defp check_reference_count(%ImageModel{} = model, refs, _warnings, opts) do
+  # A published maximum is a hard limit: the provider would reject the
+  # request anyway, so it is refused here regardless of strict mode.
+  defp check_reference_count(%ImageModel{} = model, refs) do
     case ImageModel.max_references(model) do
       max when is_integer(max) and length(refs) > max ->
-        if Keyword.get(opts, :strict, false),
-          do: {:error, {:too_many_images, length(refs), max}},
-          else: :ok
+        {:error, {:too_many_images, length(refs), max}}
 
       _ ->
         :ok
     end
   end
 
-  defp check_reference_count(_model, _refs, _warnings, _opts), do: :ok
+  defp check_reference_count(_model, _refs), do: :ok
 
   @preserve %{
     subject:
@@ -331,7 +531,7 @@ defmodule PhoenixKitAI.Images do
   def describe(endpoint, images, opts \\ []) do
     endpoint = if opts[:model], do: %{endpoint | model: opts[:model]}, else: endpoint
 
-    with {:ok, refs} <- normalize_inputs(images) do
+    with {:ok, refs} <- normalize_inputs(images, opts) do
       {question, response_format} = question_and_format(opts)
 
       content = [
@@ -348,12 +548,13 @@ defmodule PhoenixKitAI.Images do
             [%{role: "user", content: content}]
         end
 
-      chat_opts =
+      vision_opts =
         opts
         |> Keyword.take([:temperature, :max_tokens, :top_p, :seed])
-        |> Keyword.put(:response_format, response_format)
+        |> Map.new()
+        |> Map.put(:response_format, response_format)
 
-      with {:ok, response} <- chat_with_json_fallback(endpoint, messages, chat_opts),
+      with {:ok, response} <- vision(endpoint, messages, vision_opts),
            text = content_text(response),
            {:ok, json} <- parse_json(text, json_requested?(opts)) do
         {:ok,
@@ -370,26 +571,13 @@ defmodule PhoenixKitAI.Images do
 
   defp json_requested?(opts), do: is_map(opts[:schema]) or opts[:json] == true
 
-  # Not every model behind a chat endpoint takes `response_format`
-  # (image-output models on OpenRouter answer 400). The prompt already
-  # asks for JSON, so a 4xx on a JSON request is retried once without the
-  # field and the answer parsed as text.
-  defp chat_with_json_fallback(endpoint, messages, chat_opts) do
-    case Completion.chat_completion(endpoint, messages, chat_opts) do
-      {:error, {:api_error, status}}
-      when status in 400..499 and status != 401 and status != 402 and status != 429 ->
-        if chat_opts[:response_format],
-          do:
-            Completion.chat_completion(
-              endpoint,
-              messages,
-              Keyword.delete(chat_opts, :response_format)
-            ),
-          else: {:error, {:api_error, status}}
+  # The adapter's own vision when it has one; chat completions otherwise.
+  defp vision(endpoint, messages, options) do
+    adapter = Provider.for_endpoint(endpoint)
 
-      other ->
-        other
-    end
+    if Code.ensure_loaded?(adapter) and function_exported?(adapter, :vision, 3),
+      do: adapter.vision(endpoint, messages, options),
+      else: OpenAICompatible.vision(endpoint, messages, options)
   end
 
   defp content_text(response) do

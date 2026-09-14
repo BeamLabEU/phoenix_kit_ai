@@ -586,4 +586,218 @@ defmodule PhoenixKitAI.ImagesTest do
       assert Provider.for_endpoint(%{provider: "xai"}) == FakeXai
     end
   end
+
+  describe "round two: limits, conflicts, masks, dry runs, outputs" do
+    test "two background treatments conflict; a transparent cutout corrects a jpeg request" do
+      assert {:error, {:conflicting_operations, :clean_background, :blur_background}} =
+               Operations.normalize([:clean_background, :blur_background])
+
+      stub(image_answer())
+      ep = endpoint_fixture()
+
+      assert {:ok, %{warnings: warnings, prompt: prompt}} =
+               PhoenixKitAI.process_image(ep.uuid, [@jpeg], [:remove_background],
+                 model: "openai/gpt-image-1",
+                 output_format: "jpeg"
+               )
+
+      assert {:adjusted_option, :output_format, "jpeg", "png"} in warnings
+      assert prompt =~ "fully transparent"
+
+      assert_received {:post, "/api/v1/images",
+                       %{"background" => "transparent", "output_format" => "png"}}
+    end
+
+    test "dry_run returns the plan without a request or a usage row" do
+      stub(image_answer())
+      ep = endpoint_fixture()
+
+      assert {:ok,
+              %{
+                dry_run: true,
+                prompt: prompt,
+                options: %{aspect_ratio: "4:3"},
+                warnings: [],
+                model: model
+              }} =
+               PhoenixKitAI.process_image(ep.uuid, [@jpeg], [:enhance],
+                 aspect_ratio: "4:3",
+                 dry_run: true
+               )
+
+      assert prompt =~ "Improve the photograph"
+      assert model == "google/gemini-2.5-flash-image"
+      refute_received {:post, _, _}
+      assert [] = TestRepo.all(from(r in Request, where: r.request_type == "image_edit"))
+    end
+
+    test "oversized inputs, unsafe urls and unknown models are handled before any request" do
+      stub(image_answer())
+      ep = endpoint_fixture()
+
+      assert {:error, {:image_too_large, 20, 10}} =
+               PhoenixKitAI.process_image(
+                 ep.uuid,
+                 [String.duplicate(<<0xFF, 0xD8, 0xFF, 0xE0>>, 5)],
+                 [:enhance],
+                 max_input_bytes: 10
+               )
+
+      assert {:error, {:unsafe_url, "http://127.0.0.1/secret.png"}} =
+               PhoenixKitAI.process_image(ep.uuid, [%{url: "http://127.0.0.1/secret.png"}], [
+                 :enhance
+               ])
+
+      assert {:error, {:unsafe_url, "http://10.0.0.5/x.png"}} =
+               PhoenixKitAI.edit_image(ep.uuid, "x", ["http://10.0.0.5/x.png"])
+
+      refute_received {:post, _, _}
+
+      # A model the listing does not know is a warning, not a refusal.
+      assert {:ok, %{warnings: [{:model_not_listed, "vendor/new-model"} | _]}} =
+               PhoenixKitAI.process_image(ep.uuid, [@jpeg], [:enhance], model: "vendor/new-model")
+    end
+
+    test "a published reference maximum is enforced even when not strict" do
+      stub(image_answer())
+      ep = endpoint_fixture()
+
+      assert {:error, {:too_many_images, 4, 3}} =
+               PhoenixKitAI.process_image(ep.uuid, [@jpeg, @png, @jpeg, @png], [:enhance])
+
+      refute_received {:post, _, _}
+    end
+
+    test "a mask is sent by the OpenAI adapter and dropped with a warning elsewhere" do
+      stub(image_answer())
+      ep = endpoint_fixture()
+
+      assert {:ok, %{warnings: warnings}} =
+               PhoenixKitAI.process_image(
+                 ep.uuid,
+                 [@jpeg],
+                 [{:remove_objects, what: "the price sticker"}],
+                 mask: @png
+               )
+
+      assert Enum.any?(warnings, &match?({:dropped_option, :mask, _}, &1))
+      assert_received {:post, "/api/v1/images", body}
+      refute Map.has_key?(body, "mask")
+
+      test_pid = self()
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        conn = Plug.Parsers.call(conn, Plug.Parsers.init(parsers: [:multipart], pass: ["*/*"]))
+        send(test_pid, {:multipart, conn.request_path, conn.body_params})
+        Req.Test.json(conn, image_answer())
+      end)
+
+      openai =
+        endpoint_fixture(%{
+          provider: "openai",
+          model: "gpt-image-1",
+          base_url: "https://api.openai.com/v1"
+        })
+
+      assert {:ok, %{warnings: []}} =
+               PhoenixKitAI.process_image(
+                 openai.uuid,
+                 [@jpeg],
+                 [{:remove_objects, what: "the sticker"}],
+                 mask: @png
+               )
+
+      assert_received {:multipart, "/v1/images/edits",
+                       %{"mask" => %Plug.Upload{content_type: "image/png"}}}
+    end
+
+    test "content-policy refusals get their own error, and failures log latency + provider" do
+      Req.Test.stub(__MODULE__, fn conn ->
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(
+          400,
+          Jason.encode!(%{
+            "error" => %{"message" => "Your request was rejected by the safety system"}
+          })
+        )
+      end)
+
+      ep = endpoint_fixture()
+
+      assert {:error, {:content_policy, "Your request was rejected by the safety system"}} =
+               PhoenixKitAI.edit_image(ep.uuid, "x", [@jpeg],
+                 model: "openai/gpt-image-1",
+                 idempotency_key: "job-1"
+               )
+
+      assert [
+               %{
+                 status: "error",
+                 latency_ms: latency,
+                 model: "openai/gpt-image-1",
+                 metadata: meta
+               }
+             ] =
+               TestRepo.all(from(r in Request, where: r.request_type == "image_edit"))
+
+      assert is_integer(latency)
+      assert meta["provider"] == "openrouter"
+      assert meta["idempotency_key"] == "job-1"
+    end
+
+    test "dimensions are read from PNG and JPEG headers and attached to outputs" do
+      png = <<0x89, "PNG\r\n", 0x1A, "\n", 0, 0, 0, 13, "IHDR", 640::32, 480::32, 8, 2, 0, 0, 0>>
+      assert Images.dimensions(png) == {:ok, {640, 480}}
+
+      jpeg = <<0xFF, 0xD8, 0xFF, 0xE0, 0, 4, 0, 0, 0xFF, 0xC0, 0, 17, 8, 1024::16, 768::16, 3>>
+      assert Images.dimensions(jpeg) == {:ok, {768, 1024}}
+      assert Images.dimensions("nope") == :error
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        {:ok, _raw, conn} = Plug.Conn.read_body(conn)
+
+        Req.Test.json(conn, %{
+          "data" => [%{"b64_json" => Base.encode64(png), "media_type" => "image/png"}]
+        })
+      end)
+
+      ep = endpoint_fixture()
+
+      assert {:ok, %{images: [%{width: 640, height: 480}]}} =
+               PhoenixKitAI.edit_image(ep.uuid, "x", [@jpeg])
+    end
+
+    test "an adapter with its own vision callback is used for describe" do
+      defmodule FakeVisionAdapter do
+        @behaviour PhoenixKitAI.Provider
+        def image_edit(_e, _p, _r, _o), do: {:error, :not_supported}
+        def image_generate(_e, _p, _o), do: {:error, :not_supported}
+        def image_models(_e), do: {:error, :not_supported}
+        def image_options(_e), do: []
+
+        def vision(_endpoint, messages, options) do
+          send(self(), {:vision_called, messages, options})
+
+          {:ok,
+           %{
+             "choices" => [%{"message" => %{"content" => "A bar."}}],
+             "model" => "fake/vision",
+             "latency_ms" => 1
+           }}
+        end
+      end
+
+      Application.put_env(:phoenix_kit_ai, :provider_adapters, %{
+        "openrouter" => FakeVisionAdapter
+      })
+
+      ep = endpoint_fixture()
+
+      assert {:ok, %{text: "A bar.", model: "fake/vision"}} =
+               PhoenixKitAI.describe_image(ep.uuid, @jpeg)
+
+      assert_received {:vision_called, [%{role: "user"}], %{response_format: nil}}
+    end
+  end
 end

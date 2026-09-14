@@ -1484,7 +1484,7 @@ msgstr ""
 msgid "Type your message to the AI..."
 msgstr ""
 
-#: lib/phoenix_kit_ai/errors.ex:125
+#: lib/phoenix_kit_ai/errors.ex:144
 #, elixir-autogen, elixir-format
 msgid "Unexpected error: %{reason}"
 msgstr ""
@@ -1996,4 +1996,29 @@ msgstr ""
 #: lib/phoenix_kit_ai/errors.ex:111
 #, elixir-autogen, elixir-format
 msgid "Unknown image operation: %{operation}"
+msgstr ""
+
+#: lib/phoenix_kit_ai/errors.ex:121
+#, elixir-autogen, elixir-format
+msgid "Image operations %{first} and %{second} cannot be combined"
+msgstr ""
+
+#: lib/phoenix_kit_ai/errors.ex:132
+#, elixir-autogen, elixir-format
+msgid "Image too large: %{bytes} bytes, the limit is %{max}"
+msgstr ""
+
+#: lib/phoenix_kit_ai/errors.ex:135
+#, elixir-autogen, elixir-format
+msgid "That image URL cannot be fetched from here"
+msgstr ""
+
+#: lib/phoenix_kit_ai/errors.ex:137
+#, elixir-autogen, elixir-format
+msgid "The image could not be downloaded"
+msgstr ""
+
+#: lib/phoenix_kit_ai/errors.ex:128
+#, elixir-autogen, elixir-format
+msgid "The provider refused this content: %{reason}"
 msgstr ""

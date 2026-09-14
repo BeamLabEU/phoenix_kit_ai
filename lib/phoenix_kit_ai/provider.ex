@@ -18,6 +18,9 @@ defmodule PhoenixKitAI.Provider do
   | `"openai"` | `PhoenixKitAI.Providers.OpenAI` — multipart `/images/edits` |
   | anything else | `PhoenixKitAI.Providers.OpenAICompatible` — chat completions with image parts |
 
+  Vision (`describe` / `compare`) goes through the adapter's optional
+  `vision/3`, falling back to the chat-completions implementation.
+
   A host adds or replaces adapters without touching this module:
 
       config :phoenix_kit_ai, provider_adapters: %{"fal" => MyApp.FalAdapter}
@@ -70,6 +73,16 @@ defmodule PhoenixKitAI.Provider do
 
   @doc "Option names the adapter can send when no per-model listing exists."
   @callback image_options(Endpoint.t()) :: [atom()]
+
+  @doc """
+  Vision: a chat-shaped question about images. Optional — adapters that
+  do not implement it get `PhoenixKitAI.Providers.OpenAICompatible.vision/3`
+  (chat completions with `image_url` parts), which is right for every
+  OpenAI-shaped API. A provider with its own vision shape implements this.
+  """
+  @callback vision(Endpoint.t(), [map()], options()) :: {:ok, map()} | {:error, term()}
+
+  @optional_callbacks vision: 3
 
   @builtin %{
     "openrouter" => PhoenixKitAI.Providers.OpenRouter,

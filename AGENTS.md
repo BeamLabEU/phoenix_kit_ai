@@ -287,6 +287,7 @@ checked with `Scope.has_module_access?/2`. No sub-permissions.
 | `:realtime_module` | `Xai.Realtime` | Swappable realtime client; tests point it at a Mox mock of `Xai.RealtimeBehaviour` |
 | `:provider_adapters` | `%{}` | Provider key → `PhoenixKitAI.Provider` module, merged over the built-in adapters (add a provider without touching this module) |
 | `:image_operations` | `%{}` | Extra or replacement image operations for `PhoenixKitAI.Images.Operations` (string or atom keys) |
+| `:max_image_bytes` | `25_000_000` | Largest image accepted as input or fetched as output by the image verbs |
 
 ### Providers
 
@@ -338,7 +339,11 @@ provided the API exposes `<base_url>/chat/completions` and `/models`.
   capabilities (dropped with a warning, or refused under `strict: true`),
   and `verify: true` attaches a vision check of the result.
   `describe_image/3` / `compare_images/4` are the vision verbs (`"vision"`
-  request type). A prose-only answer is `{:error, {:no_image_in_response, text}}`.
+  request type) through the adapter's optional `vision/3`. Outputs are
+  always bytes (URL results are fetched, bounded, same host policy as
+  inputs); `dry_run: true` returns the plan without a request; a safety
+  refusal is `{:content_policy, message}`. A prose-only answer is
+  `{:error, {:no_image_in_response, text}}`.
   Logged with tokens, `usage.cost` when reported, image counts and byte
   sizes, operations and warnings; the image bytes themselves are never
   persisted. **Never send a provider a permanent Storage URL — inline the

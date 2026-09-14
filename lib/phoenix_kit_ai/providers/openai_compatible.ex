@@ -40,6 +40,35 @@ defmodule PhoenixKitAI.Providers.OpenAICompatible do
   @impl true
   def image_models(_endpoint), do: {:error, :not_supported}
 
+  @doc """
+  Vision through chat completions: `messages` already carry the image
+  parts; `options` may hold `:response_format` and the sampling keys.
+  Not every model behind a chat endpoint takes `response_format`
+  (image-output models answer 400), so a 4xx on a JSON request is retried
+  once without the field — the prompt asks for JSON anyway.
+  """
+  @impl true
+  def vision(endpoint, messages, options) do
+    chat_opts =
+      options
+      |> Map.take([:temperature, :max_tokens, :top_p, :seed, :response_format])
+      |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+
+    json? = is_map(options[:response_format])
+
+    case Completion.chat_completion(endpoint, messages, chat_opts) do
+      {:error, {:api_error, status}} when status in [400, 404, 422] and json? ->
+        Completion.chat_completion(
+          endpoint,
+          messages,
+          Keyword.delete(chat_opts, :response_format)
+        )
+
+      other ->
+        other
+    end
+  end
+
   @impl true
   def image_options(_endpoint), do: @generation_options
 

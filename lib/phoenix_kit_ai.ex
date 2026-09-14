@@ -2734,7 +2734,7 @@ defmodule PhoenixKitAI do
             prompt,
             images,
             reason,
-            {source, stacktrace, caller_context}
+            trace(source, stacktrace, caller_context, opts) |> Map.put(:model, opts[:model])
           )
 
           {:error, reason}
@@ -2773,9 +2773,12 @@ defmodule PhoenixKitAI do
       source = Keyword.get(opts, :source) || auto_source
       {verify, opts} = Keyword.pop(opts, :verify, false)
 
-      trace = {source, stacktrace, caller_context}
+      trace = trace(source, stacktrace, caller_context, opts)
 
       case PhoenixKitAI.Images.process(endpoint, images, operations, opts) do
+        {:ok, %{dry_run: true} = plan} ->
+          {:ok, Map.take(plan, [:prompt, :operations, :warnings, :model, :options, :dry_run])}
+
         {:ok, result} ->
           extra = %{
             operations: Enum.map(result.operations, &Atom.to_string/1),
@@ -2804,7 +2807,7 @@ defmodule PhoenixKitAI do
             inspect(operations),
             images,
             reason,
-            trace
+            Map.put(trace, :model, opts[:model])
           )
 
           {:error, reason}
@@ -2871,7 +2874,7 @@ defmodule PhoenixKitAI do
       source = Keyword.get(opts, :source) || auto_source
       prompt = opts[:prompt] || opts[:question] || "Describe this image in detail."
 
-      trace = {source, stacktrace, caller_context}
+      trace = trace(source, stacktrace, caller_context, opts)
 
       case PhoenixKitAI.Images.describe(endpoint, images, opts) do
         {:ok, result} ->
@@ -2904,7 +2907,7 @@ defmodule PhoenixKitAI do
       source = Keyword.get(opts, :source) || auto_source
       prompt = "compare: " <> to_string(opts[:intent] || "an edit")
 
-      trace = {source, stacktrace, caller_context}
+      trace = trace(source, stacktrace, caller_context, opts)
       images = [before, after_image]
 
       case PhoenixKitAI.Images.compare(endpoint, before, after_image, opts) do
@@ -2974,21 +2977,13 @@ defmodule PhoenixKitAI do
         images,
         result,
         %{},
-        {source, stacktrace, caller_ctx}
+        trace(source, stacktrace, caller_ctx, [])
       )
 
   # One row per image verb (`image_edit`, `vision`): tokens and cost when
   # the provider reports them, latency, counts and byte sizes of the
   # images — never the image bytes; prompt and any text under the PII gate.
-  defp log_image_op_request(
-         endpoint,
-         type,
-         prompt,
-         images,
-         result,
-         extra,
-         {source, stacktrace, ctx}
-       ) do
+  defp log_image_op_request(endpoint, type, prompt, images, result, extra, trace) do
     capture_content = capture_request_content?()
     usage = result[:usage] || %{}
     outputs = result[:images] || []
@@ -3000,10 +2995,9 @@ defmodule PhoenixKitAI do
         input_bytes: image_input_bytes(images),
         output_image_count: length(outputs),
         output_bytes: Enum.reduce(outputs, 0, &(&2 + byte_size(&1[:data] || ""))),
-        source: source,
-        stacktrace: stacktrace,
-        caller_context: ctx
+        provider: endpoint.provider
       })
+      |> Map.merge(trace_metadata(trace))
 
     metadata =
       base_metadata
@@ -3025,31 +3019,25 @@ defmodule PhoenixKitAI do
     })
   end
 
-  defp log_failed_image_op_request(
-         endpoint,
-         type,
-         prompt,
-         images,
-         reason,
-         {source, stacktrace, ctx}
-       ) do
+  defp log_failed_image_op_request(endpoint, type, prompt, images, reason, trace) do
     capture_content = capture_request_content?()
 
-    base_metadata = %{
-      error_reason: inspect(reason),
-      input_chars: String.length(prompt),
-      input_image_count: length(images),
-      input_bytes: image_input_bytes(images),
-      source: source,
-      stacktrace: stacktrace,
-      caller_context: ctx
-    }
+    base_metadata =
+      %{
+        error_reason: inspect(reason),
+        input_chars: String.length(prompt),
+        input_image_count: length(images),
+        input_bytes: image_input_bytes(images),
+        provider: endpoint.provider
+      }
+      |> Map.merge(trace_metadata(trace))
 
     create_request(%{
       endpoint_uuid: endpoint.uuid,
       endpoint_name: endpoint.name,
-      model: endpoint.model,
+      model: trace[:model] || endpoint.model,
       request_type: type,
+      latency_ms: System.monotonic_time(:millisecond) - trace.started,
       input_tokens: 0,
       output_tokens: 0,
       total_tokens: 0,
@@ -3059,9 +3047,34 @@ defmodule PhoenixKitAI do
     })
   end
 
+  # What every image row records about the call itself: who asked (source,
+  # stacktrace, caller context), when it started, the caller's idempotency
+  # key if any, and — on failures — the model override that was in play.
+  defp trace(source, stacktrace, ctx, opts) do
+    %{
+      source: source,
+      stacktrace: stacktrace,
+      ctx: ctx,
+      started: System.monotonic_time(:millisecond),
+      idempotency_key: opts[:idempotency_key],
+      model: nil
+    }
+  end
+
+  defp trace_metadata(trace) do
+    meta = %{source: trace.source, stacktrace: trace.stacktrace, caller_context: trace.ctx}
+
+    if trace[:idempotency_key],
+      do: Map.put(meta, :idempotency_key, trace.idempotency_key),
+      else: meta
+  end
+
   defp image_input_bytes(images) do
     Enum.reduce(images, 0, fn
       %{data: data}, acc when is_binary(data) -> acc + byte_size(data)
+      "data:" <> _, acc -> acc
+      "http" <> _, acc -> acc
+      bytes, acc when is_binary(bytes) -> acc + byte_size(bytes)
       _other, acc -> acc
     end)
   end

@@ -5,7 +5,9 @@ defmodule PhoenixKitAI.Providers.OpenAI do
     * Editing: `POST <base_url>/images/edits` as multipart form data —
       the GPT Image models take the sources as `image[]` files, never as
       URLs, so data URLs are decoded to bytes and http(s) references are
-      downloaded first.
+      downloaded first (`PhoenixKitAI.Providers.HTTP.fetch_image/2`). A
+      `:mask` option (PNG whose transparent pixels may be repainted) is
+      sent as the `mask` file.
     * Generation: `POST <base_url>/images/generations` (JSON).
 
   OpenAI sizes images with `size` (`1024x1024`, `1536x1024`, `1024x1536`,
@@ -28,12 +30,14 @@ defmodule PhoenixKitAI.Providers.OpenAI do
   def image_edit(endpoint, prompt, refs, options) do
     options = put_size(options)
 
-    with {:ok, files} <- files(refs) do
+    with {:ok, files} <- files(refs),
+         {:ok, mask} <- mask_file(options[:mask]) do
       form =
         [{"model", OpenAICompatible.model(endpoint, options)}, {"prompt", prompt}] ++
           Enum.map(files, fn {bytes, type} ->
             {"image[]", {bytes, filename: "image.#{extension(type)}", content_type: type}}
           end) ++
+          mask_field(mask) ++
           option_fields(options, @edit_options)
 
       url = Completion.url(endpoint, "/images/edits")
@@ -72,7 +76,17 @@ defmodule PhoenixKitAI.Providers.OpenAI do
   def image_models(_endpoint), do: {:error, :not_supported}
 
   @impl true
-  def image_options(_endpoint), do: [:aspect_ratio | @edit_options]
+  def image_options(_endpoint), do: [:aspect_ratio, :mask | @edit_options]
+
+  # The edits endpoint takes an optional PNG mask whose transparent
+  # pixels mark where the model may paint (inpainting).
+  defp mask_file(nil), do: {:ok, nil}
+  defp mask_file(ref) when is_binary(ref), do: file(ref)
+
+  defp mask_field(nil), do: []
+
+  defp mask_field({bytes, type}),
+    do: [{"mask", {bytes, filename: "mask.png", content_type: type}}]
 
   defp put_size(%{size: size} = options) when is_binary(size) and size != "", do: options
 
@@ -119,12 +133,9 @@ defmodule PhoenixKitAI.Providers.OpenAI do
   end
 
   defp file(url) when is_binary(url) do
-    case Req.get(url, receive_timeout: 30_000, decode_body: false) do
-      {:ok, %Req.Response{status: 200, body: bytes}} when is_binary(bytes) and bytes != "" ->
-        {:ok, {bytes, OpenAICompatible.sniff(bytes) || "image/png"}}
-
-      _ ->
-        {:error, :invalid_image_input}
+    case HTTP.fetch_image(url) do
+      {:ok, bytes, type} -> {:ok, {bytes, type || "image/png"}}
+      {:error, _} = error -> error
     end
   end
 

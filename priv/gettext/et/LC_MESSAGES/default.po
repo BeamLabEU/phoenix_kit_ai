@@ -1484,7 +1484,7 @@ msgstr "Sisesta tekst, mida ette lugeda…"
 msgid "Type your message to the AI..."
 msgstr "Sisesta oma sõnum AI-le…"
 
-#: lib/phoenix_kit_ai/errors.ex:125
+#: lib/phoenix_kit_ai/errors.ex:144
 #, elixir-autogen, elixir-format
 msgid "Unexpected error: %{reason}"
 msgstr "Ootamatu viga: %{reason}"
@@ -1997,3 +1997,28 @@ msgstr "Liiga palju pilte: antud %{count}, mudel võtab kuni %{max}"
 #, elixir-autogen, elixir-format
 msgid "Unknown image operation: %{operation}"
 msgstr "Tundmatu pilditoiming: %{operation}"
+
+#: lib/phoenix_kit_ai/errors.ex:121
+#, elixir-autogen, elixir-format
+msgid "Image operations %{first} and %{second} cannot be combined"
+msgstr "Pilditoiminguid %{first} ja %{second} ei saa koos kasutada"
+
+#: lib/phoenix_kit_ai/errors.ex:132
+#, elixir-autogen, elixir-format
+msgid "Image too large: %{bytes} bytes, the limit is %{max}"
+msgstr "Pilt on liiga suur: %{bytes} baiti, piir on %{max}"
+
+#: lib/phoenix_kit_ai/errors.ex:135
+#, elixir-autogen, elixir-format
+msgid "That image URL cannot be fetched from here"
+msgstr "Seda pildi URL-i ei saa siit alla laadida"
+
+#: lib/phoenix_kit_ai/errors.ex:137
+#, elixir-autogen, elixir-format
+msgid "The image could not be downloaded"
+msgstr "Pilti ei õnnestunud alla laadida"
+
+#: lib/phoenix_kit_ai/errors.ex:128
+#, elixir-autogen, elixir-format
+msgid "The provider refused this content: %{reason}"
+msgstr "Teenusepakkuja keeldus sellest sisust: %{reason}"

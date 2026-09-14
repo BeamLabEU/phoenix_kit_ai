@@ -1486,7 +1486,7 @@ msgstr "Введите текст для озвучивания…"
 msgid "Type your message to the AI..."
 msgstr "Введите сообщение для AI…"
 
-#: lib/phoenix_kit_ai/errors.ex:125
+#: lib/phoenix_kit_ai/errors.ex:144
 #, elixir-autogen, elixir-format
 msgid "Unexpected error: %{reason}"
 msgstr "Неожиданная ошибка: %{reason}"
@@ -2003,3 +2003,28 @@ msgstr "Слишком много изображений: передано %{cou
 #, elixir-autogen, elixir-format
 msgid "Unknown image operation: %{operation}"
 msgstr "Неизвестная операция с изображением: %{operation}"
+
+#: lib/phoenix_kit_ai/errors.ex:121
+#, elixir-autogen, elixir-format
+msgid "Image operations %{first} and %{second} cannot be combined"
+msgstr "Операции %{first} и %{second} нельзя сочетать"
+
+#: lib/phoenix_kit_ai/errors.ex:132
+#, elixir-autogen, elixir-format
+msgid "Image too large: %{bytes} bytes, the limit is %{max}"
+msgstr "Изображение слишком большое: %{bytes} байт, предел %{max}"
+
+#: lib/phoenix_kit_ai/errors.ex:135
+#, elixir-autogen, elixir-format
+msgid "That image URL cannot be fetched from here"
+msgstr "Этот URL изображения нельзя загрузить отсюда"
+
+#: lib/phoenix_kit_ai/errors.ex:137
+#, elixir-autogen, elixir-format
+msgid "The image could not be downloaded"
+msgstr "Не удалось загрузить изображение"
+
+#: lib/phoenix_kit_ai/errors.ex:128
+#, elixir-autogen, elixir-format
+msgid "The provider refused this content: %{reason}"
+msgstr "Провайдер отклонил этот контент: %{reason}"
