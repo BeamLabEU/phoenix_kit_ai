@@ -43,6 +43,9 @@ defmodule PhoenixKitAI.ImagesTest do
   ]
 
   setup do
+    PhoenixKitAI.RequestCache.clear()
+    on_exit(fn -> PhoenixKitAI.RequestCache.clear() end)
+
     Application.put_env(:phoenix_kit_ai, :req_options,
       plug: {Req.Test, PhoenixKitAI.ImagesTest},
       retry: false
@@ -574,6 +577,144 @@ defmodule PhoenixKitAI.ImagesTest do
       refute Map.has_key?(second, "response_format")
     end
 
+    test "extract_text transcribes with the OCR schema, pulls named fields and logs a vision row" do
+      answer = %{
+        "text" => "SNICKERS\nBest before 2027-03-01\n5000159461122",
+        "blocks" => [
+          %{"text" => "SNICKERS", "kind" => "heading", "language" => "en"},
+          %{"text" => "Best before 2027-03-01", "kind" => "label", "language" => "en"},
+          %{"text" => "5000159461122", "kind" => "label", "language" => "und"}
+        ],
+        "language" => "en",
+        "confidence" => 0.93,
+        "has_illegible_text" => true,
+        "fields" => %{"ean" => "5000159461122", "best_before" => "2027-03-01", "extra" => "x"}
+      }
+
+      stub(chat_answer(Jason.encode!(answer)))
+      ep = endpoint_fixture(%{model: "google/gemini-2.5-flash"})
+
+      assert {:ok,
+              %{
+                text: "SNICKERS\nBest before 2027-03-01\n5000159461122",
+                blocks: [%{kind: "heading", text: "SNICKERS", page: 1} | _],
+                language: "en",
+                confidence: 0.93,
+                has_illegible_text: true,
+                fields: %{"ean" => "5000159461122", "best_before" => "2027-03-01"} = fields,
+                model: "google/gemini-2.5-flash"
+              }} =
+               PhoenixKitAI.extract_text(ep.uuid, @jpeg,
+                 fields: %{ean: "the barcode digits", best_before: "expiry date as YYYY-MM-DD"},
+                 language: "en",
+                 layout: :markdown
+               )
+
+      refute Map.has_key?(fields, "extra")
+      assert_received {:post, "/api/v1/chat/completions", body}
+
+      assert %{"json_schema" => %{"schema" => schema, "strict" => true}} = body["response_format"]
+      assert %{"fields" => %{"required" => required}} = schema["properties"]
+      assert Enum.sort(required) == ["best_before", "ean"]
+
+      assert [%{"content" => [%{"text" => question}, %{"type" => "image_url"}]}] =
+               body["messages"]
+
+      assert question =~ "Transcribe all text"
+      assert question =~ "never invent plausible wording"
+      assert question =~ "Keep tables, lists and headings as Markdown"
+      assert question =~ "most likely in en"
+      assert question =~ "- ean: the barcode digits"
+
+      assert [%{request_type: "vision", metadata: %{"language" => "en", "input_chars" => chars}}] =
+               TestRepo.all(from(r in Request, where: r.request_type == "vision"))
+
+      # The row logs the real prompt, not a placeholder.
+      assert chars > 200
+    end
+
+    test "extract_text shapes a sloppy answer defensively and gates model text out of the row" do
+      # No `response_format` honoured: fields as a string, blocks as junk, a
+      # language that is free text rather than a tag, a missing flag.
+      stub(
+        chat_answer(
+          Jason.encode!(%{
+            "text" => "SNICKERS",
+            "blocks" => "n/a",
+            "language" => "Alice Smith, account 123",
+            "confidence" => "high",
+            "fields" => "n/a"
+          })
+        )
+      )
+
+      ep = endpoint_fixture(%{model: "google/gemini-2.5-flash"})
+
+      assert {:ok,
+              %{
+                text: "SNICKERS",
+                blocks: [],
+                language: "Alice Smith, account 123",
+                confidence: nil,
+                has_illegible_text: false,
+                fields: %{"ean" => nil}
+              }} = PhoenixKitAI.extract_text(ep.uuid, @jpeg, fields: ["ean"])
+
+      assert [%{metadata: metadata}] =
+               TestRepo.all(from(r in Request, where: r.request_type == "vision"))
+
+      assert metadata["language"] == nil
+      assert metadata["confidence"] == nil
+      assert_received {:post, _, body}
+
+      assert body["messages"] |> hd() |> Map.get("content") |> hd() |> Map.get("text") =~
+               "Plain text: one line"
+    end
+
+    test "extract_text merges fields into a caller schema and keeps the base one otherwise" do
+      stub(chat_answer(Jason.encode!(%{"words" => 3, "fields" => %{"brand" => "X"}})))
+      ep = endpoint_fixture(%{model: "google/gemini-2.5-flash"})
+      schema = %{"type" => "object", "properties" => %{"words" => %{"type" => "integer"}}}
+
+      assert {:ok, %{fields: %{"brand" => "X"}, json: %{"words" => 3}}} =
+               PhoenixKitAI.extract_text(ep.uuid, @jpeg,
+                 schema: schema,
+                 fields: %{brand: "brand"}
+               )
+
+      assert_received {:post, _, body}
+      sent = body["response_format"]["json_schema"]["schema"]
+      assert Map.keys(sent["properties"]) |> Enum.sort() == ["fields", "words"]
+      assert sent["required"] == ["fields"]
+
+      assert %{"required" => required} = PhoenixKitAI.Images.text_schema()
+      assert Enum.sort(required) == ~w(blocks confidence has_illegible_text language text)
+    end
+
+    test "extract_text reads several images as pages and tolerates an empty page" do
+      stub(
+        chat_answer(
+          Jason.encode!(%{
+            "text" => "",
+            "blocks" => [],
+            "language" => "und",
+            "confidence" => 0,
+            "has_illegible_text" => false
+          })
+        )
+      )
+
+      ep = endpoint_fixture(%{model: "google/gemini-2.5-flash"})
+
+      assert {:ok, %{text: "", blocks: [], fields: %{}, has_illegible_text: false}} =
+               PhoenixKitAI.extract_text(ep.uuid, [@jpeg, @jpeg])
+
+      assert_received {:post, _, body}
+      assert [%{"content" => [%{"text" => question}, _, _]}] = body["messages"]
+      assert question =~ "2 images are pages of one document"
+      refute question =~ "fields"
+    end
+
     test "compare turns the fixed-schema answer into a verdict" do
       stub(
         chat_answer(
@@ -601,6 +742,94 @@ defmodule PhoenixKitAI.ImagesTest do
       assert_received {:post, _, body}
       [%{"content" => [%{"text" => prompt}, _, _]}] = body["messages"]
       assert prompt =~ "the requested edit was: clean background"
+    end
+
+    test "compare and describe are cached; a hit's row keeps a per-call model override" do
+      stub(
+        chat_answer(
+          ~s({"same_subject": true, "text_and_logos_preserved": true, "unwanted_changes": [], "summary": "ok"})
+        )
+      )
+
+      ep = endpoint_fixture(%{model: "google/gemini-2.5-flash"})
+
+      assert {:ok, %{passed: true}} =
+               PhoenixKitAI.compare_images(ep.uuid, @jpeg, @png, cache: true)
+
+      assert_received {:post, _, _}
+
+      assert {:ok, %{passed: true}} =
+               PhoenixKitAI.compare_images(ep.uuid, @jpeg, @png, cache: true)
+
+      refute_received {:post, _, _}
+
+      # A provider echoes the model it served; the cached row must say the same.
+      test_pid = self()
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        {:ok, raw, conn} = Plug.Conn.read_body(conn)
+        body = Jason.decode!(raw)
+        send(test_pid, {:post, conn.request_path, body})
+        Req.Test.json(conn, %{chat_answer("A bar.") | "model" => body["model"]})
+      end)
+
+      assert {:ok, _} =
+               PhoenixKitAI.describe_image(ep.uuid, @jpeg,
+                 model: "openai/gpt-4o-mini",
+                 cache: true
+               )
+
+      assert {:ok, _} =
+               PhoenixKitAI.describe_image(ep.uuid, @jpeg,
+                 model: "openai/gpt-4o-mini",
+                 cache: true
+               )
+
+      # Fresh rows and their cached twins may share a millisecond, so no
+      # ordering: two paid rows, two zero-cost cached ones, the override on both.
+      rows = TestRepo.all(from(r in Request, where: r.request_type == "vision"))
+      {fresh, cached} = Enum.split_with(rows, &(&1.metadata["cached"] != true))
+      assert [%{cost_cents: 500}, %{cost_cents: 500}] = fresh
+      assert [%{cost_cents: 0}, %{cost_cents: 0}] = cached
+      assert Enum.count(fresh, &(&1.model == "openai/gpt-4o-mini")) == 1
+      assert Enum.count(cached, &(&1.model == "openai/gpt-4o-mini")) == 1
+    end
+
+    test "a dry run neither spends budget nor touches the cache" do
+      stub(image_answer())
+      ep = endpoint_fixture()
+      {:ok, _} = PhoenixKitAI.Budget.set_limit(:global, 1)
+      on_exit(fn -> PhoenixKitAI.Budget.set_limit(:global, 0) end)
+
+      TestRepo.insert!(%Request{
+        endpoint_uuid: ep.uuid,
+        endpoint_name: ep.name,
+        model: ep.model,
+        request_type: "image",
+        cost_cents: 5,
+        status: "success"
+      })
+
+      assert {:ok, %{dry_run: true}} =
+               PhoenixKitAI.process_image(ep.uuid, [@jpeg], [:enhance],
+                 dry_run: true,
+                 cache: true
+               )
+
+      assert PhoenixKitAI.RequestCache.size() == 0
+
+      assert {:error, {:budget_exceeded, :global}} =
+               PhoenixKitAI.process_image(ep.uuid, [@jpeg], [:enhance])
+    end
+
+    test "describe with prompt: nil falls back to the default question" do
+      stub(chat_answer("A bar."))
+      ep = endpoint_fixture(%{model: "google/gemini-2.5-flash"})
+      assert {:ok, %{text: "A bar."}} = PhoenixKitAI.describe_image(ep.uuid, @jpeg, prompt: nil)
+      assert_received {:post, _, body}
+
+      assert body["messages"] |> hd() |> Map.get("content") |> hd() |> Map.get("text") =~
+               "Describe this image"
     end
   end
 

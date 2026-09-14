@@ -11,6 +11,7 @@ caller  ──►  PhoenixKitAI.process_image/4 ─► PhoenixKitAI.Images ─�
              PhoenixKitAI.edit_image/4            (operations,         (OpenRouter, xAI,
              PhoenixKitAI.generate_image/3         options, fitting)    OpenAI, generic)
              PhoenixKitAI.describe_image/3
+             PhoenixKitAI.extract_text/3
              PhoenixKitAI.compare_images/4
 ```
 
@@ -67,7 +68,8 @@ untouched), `:provider_routing` (OpenRouter's `provider` object),
 `:image_config` (legacy passthrough for the chat path), `:strict`,
 `:preserve`, `:finish`, `:prompt_overrides`, `:verify`, `:dry_run`,
 `:fetch_outputs`, `:max_input_bytes`, `:idempotency_key`, `:user_uuid`
-(recorded on the usage row).
+(recorded on the usage row and selecting the per-user spend cap),
+`:cache` (see `spend-caps-and-caching.md`).
 
 Three layers, later wins: the endpoint's stored defaults
 (`provider_settings["aspect_ratio"]` / `["resolution"]`, the `image_size`
@@ -155,6 +157,31 @@ original and its edit: `passed`, `same_subject`,
 `text_and_logos_preserved`, `unwanted_changes`, `summary`.
 `process_image(…, verify: true)` runs it on the same endpoint and
 attaches the verdict as `:verification` without changing the outcome.
+
+`extract_text/3` is text extraction (OCR) through the same path: a
+fixed strict schema — `text` (everything, reading order), `blocks`
+(heading / paragraph / label / list / table / caption / code /
+handwriting / other, each with a BCP-47 `language`), the dominant
+`language`, a 0–1 `confidence`, `has_illegible_text` — extended with a
+`fields` object when the caller passes `fields: %{name => description}`
+(each nullable, values copied as printed). `language:` hints the
+script, `layout: :markdown` keeps tables and lists, `instructions:` adds
+wording, and several images are read as pages of one document. No OCR
+engine is involved: quality is the vision model's, so pick the model by
+testing on your own photos and treat `confidence` as the model's own
+estimate, not a measurement. The prompt forbids guessing because models
+differ sharply here: on a product photo whose fine print was noise, one
+model returned the legible word and `has_illegible_text: true`; another
+returned the product's real ingredients line from memory at confidence
+0.9, twice, instruction or not — none of it in the image. When
+`has_illegible_text` is true the answer is to retake the photo, not to
+trust the gaps; when a field matters, cross-check it with a second model
+rather than a higher confidence. `blocks` come back atom-keyed
+(`%{text, kind, language, page}`), `fields` string-keyed as requested with
+`nil` for a value the model did not find, and every model-supplied value
+is type-checked, so a sloppy answer on the no-`response_format` retry
+degrades to empty lists and `nil`s rather than raising. Only a valid
+BCP-47 tag is recorded as `language` on the usage row.
 
 ## Adapters
 

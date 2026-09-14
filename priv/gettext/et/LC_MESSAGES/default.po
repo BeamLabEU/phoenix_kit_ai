@@ -47,7 +47,7 @@ msgid "AI Usage"
 msgstr "AI kasutus"
 
 #: lib/phoenix_kit_ai/web/endpoint_form.ex:416
-#: lib/phoenix_kit_ai/web/playground.ex:125
+#: lib/phoenix_kit_ai/web/playground.ex:126
 #: lib/phoenix_kit_ai/web/prompt_form.ex:97
 #, elixir-autogen, elixir-format
 msgid "AI module is not enabled"
@@ -176,7 +176,7 @@ msgstr "Vali mudel allolevast loendist"
 #: lib/phoenix_kit_ai/web/endpoint_form.html.heex:642
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:563
 #: lib/phoenix_kit_ai/web/playground.html.heex:138
-#: lib/phoenix_kit_ai/web/playground.html.heex:266
+#: lib/phoenix_kit_ai/web/playground.html.heex:265
 #, elixir-autogen, elixir-format
 msgid "Clear"
 msgstr "Tühjenda"
@@ -255,7 +255,7 @@ msgstr "Kopeeri"
 msgid "Cost"
 msgstr "Maksumus"
 
-#: lib/phoenix_kit_ai/web/playground.ex:358
+#: lib/phoenix_kit_ai/web/playground.ex:359
 #, elixir-autogen, elixir-format
 msgid "Could not connect to xAI realtime voice"
 msgstr "xAI reaalajas hääle ühendus ebaõnnestus"
@@ -507,17 +507,17 @@ msgstr "Lubatud"
 msgid "Endpoint"
 msgstr "Lõpp-punkt"
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:319
+#: lib/phoenix_kit_ai/web/endpoints.ex:321
 #, elixir-autogen, elixir-format
 msgid "Endpoint deleted"
 msgstr "Lõpp-punkt kustutatud"
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:296
+#: lib/phoenix_kit_ai/web/endpoints.ex:298
 #, elixir-autogen, elixir-format
 msgid "Endpoint disabled"
 msgstr "Lõpp-punkt keelatud"
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:295
+#: lib/phoenix_kit_ai/web/endpoints.ex:297
 #, elixir-autogen, elixir-format
 msgid "Endpoint enabled"
 msgstr "Lõpp-punkt lubatud"
@@ -554,7 +554,7 @@ msgid "Enter your prompt template...\n\nUse {{VariableName}} for dynamic content
 msgstr "Sisesta prompti mall…\n\nDünaamilise sisu jaoks kasuta {{VariableName}}.\n\nNäide:\nTõlgi järgnev tekst keelde {{Language}}:\n\n{{Text}}"
 
 #: lib/phoenix_kit_ai/request.ex:214
-#: lib/phoenix_kit_ai/web/playground.html.heex:459
+#: lib/phoenix_kit_ai/web/playground.html.heex:458
 #, elixir-autogen, elixir-format
 msgid "Error"
 msgstr "Viga"
@@ -564,7 +564,7 @@ msgstr "Viga"
 msgid "Existing translations in every non-primary language will be overwritten on completion."
 msgstr "Valmimisel kirjutatakse kõigi mitte-põhikeelte olemasolevad tõlked üle."
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:322
+#: lib/phoenix_kit_ai/web/endpoints.ex:324
 #, elixir-autogen, elixir-format
 msgid "Failed to delete endpoint"
 msgstr "Lõpp-punkti kustutamine ebaõnnestus"
@@ -574,7 +574,7 @@ msgstr "Lõpp-punkti kustutamine ebaõnnestus"
 msgid "Failed to delete prompt"
 msgstr "Prompti kustutamine ebaõnnestus"
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:304
+#: lib/phoenix_kit_ai/web/endpoints.ex:306
 #, elixir-autogen, elixir-format
 msgid "Failed to update endpoint"
 msgstr "Lõpp-punkti uuendamine ebaõnnestus"
@@ -976,11 +976,11 @@ msgstr "Vali ülal integratsioon, et näha teenusepakkujaspetsiifilisi valikulis
 msgid "Pick an integration above, then a model, to configure generation parameters."
 msgstr "Vali ülal integratsioon ja seejärel mudel, et seadistada genereerimise parameetrid."
 
-#: lib/phoenix_kit_ai/web/playground.ex:145
-#: lib/phoenix_kit_ai/web/playground.ex:193
-#: lib/phoenix_kit_ai/web/playground.ex:222
-#: lib/phoenix_kit_ai/web/playground.ex:256
-#: lib/phoenix_kit_ai/web/playground.ex:294
+#: lib/phoenix_kit_ai/web/playground.ex:146
+#: lib/phoenix_kit_ai/web/playground.ex:194
+#: lib/phoenix_kit_ai/web/playground.ex:223
+#: lib/phoenix_kit_ai/web/playground.ex:257
+#: lib/phoenix_kit_ai/web/playground.ex:295
 #, elixir-autogen, elixir-format
 msgid "Please select an endpoint"
 msgstr "Palun vali lõpp-punkt"
@@ -1119,7 +1119,7 @@ msgid "Requests / Tokens today"
 msgstr "Päringud / tokenid täna"
 
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:854
-#: lib/phoenix_kit_ai/web/playground.html.heex:468
+#: lib/phoenix_kit_ai/web/playground.html.heex:467
 #, elixir-autogen, elixir-format
 msgid "Response"
 msgstr "Vastus"
@@ -1180,7 +1180,7 @@ msgstr "Vali lõpp-punkt…"
 msgid "Select provider (%{count} available)"
 msgstr "Vali teenusepakkuja (saadaval %{count})"
 
-#: lib/phoenix_kit_ai/web/playground.ex:301
+#: lib/phoenix_kit_ai/web/playground.ex:302
 #, elixir-autogen, elixir-format
 msgid "Selected endpoint does not support realtime voice"
 msgstr "Valitud lõpp-punkt ei toeta reaalajas häält"
@@ -1401,7 +1401,7 @@ msgstr "Tokenite piirmäär"
 msgid "Tokens"
 msgstr "Tokenid"
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:389
+#: lib/phoenix_kit_ai/web/endpoints.ex:391
 #, elixir-autogen, elixir-format
 msgid "Too many endpoints to reorder at once."
 msgstr "Korraga on liiga palju lõpp-punkte, et järjekorda muuta."
@@ -1486,7 +1486,7 @@ msgstr "Sisesta tekst, mida ette lugeda…"
 msgid "Type your message to the AI..."
 msgstr "Sisesta oma sõnum AI-le…"
 
-#: lib/phoenix_kit_ai/errors.ex:157
+#: lib/phoenix_kit_ai/errors.ex:166
 #, elixir-autogen, elixir-format
 msgid "Unexpected error: %{reason}"
 msgstr "Ootamatu viga: %{reason}"
@@ -1519,7 +1519,7 @@ msgstr "Uuenda oma AI lõpp-punkti seadistust"
 msgid "Updating…"
 msgstr "Uuendamine…"
 
-#: lib/phoenix_kit_ai.ex:1052
+#: lib/phoenix_kit_ai.ex:1069
 #: lib/phoenix_kit_ai/web/prompts.ex:39
 #, elixir-autogen, elixir-format
 msgid "Usage"
@@ -1587,7 +1587,7 @@ msgstr "Nähtavus"
 msgid "Voice"
 msgstr "Hääl"
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:438
+#: lib/phoenix_kit_ai/web/playground.html.heex:437
 #, elixir-autogen, elixir-format
 msgid "Waiting for response..."
 msgstr "Ootan vastust…"
@@ -1627,7 +1627,7 @@ msgstr "nt Claude Fast"
 msgid "e.g., Translator, Code Reviewer"
 msgstr "nt Tõlkija, Koodiülevaataja"
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:479
+#: lib/phoenix_kit_ai/web/playground.html.heex:478
 #, elixir-autogen, elixir-format
 msgid "in"
 msgstr "sisend"
@@ -1647,7 +1647,7 @@ msgstr "puudub"
 msgid "or"
 msgstr "või"
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:485
+#: lib/phoenix_kit_ai/web/playground.html.heex:484
 #, elixir-autogen, elixir-format
 msgid "out"
 msgstr "väljund"
@@ -1667,7 +1667,7 @@ msgstr "põhikeel"
 msgid "to use it as the default."
 msgstr "et kasutada seda vaikimisi."
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:489
+#: lib/phoenix_kit_ai/web/playground.html.heex:488
 #, elixir-autogen, elixir-format
 msgid "total"
 msgstr "kokku"
@@ -1786,22 +1786,22 @@ msgid_plural "tokens"
 msgstr[0] "token"
 msgstr[1] "tokenit"
 
-#: lib/phoenix_kit_ai.ex:1048
+#: lib/phoenix_kit_ai.ex:1065
 #, elixir-autogen, elixir-format
 msgid "AI"
 msgstr "AI"
 
-#: lib/phoenix_kit_ai.ex:1049
+#: lib/phoenix_kit_ai.ex:1066
 #, elixir-autogen, elixir-format
 msgid "Endpoints"
 msgstr "Lõpp-punktid"
 
-#: lib/phoenix_kit_ai.ex:1051
+#: lib/phoenix_kit_ai.ex:1068
 #, elixir-autogen, elixir-format
 msgid "Playground"
 msgstr "Liivakast"
 
-#: lib/phoenix_kit_ai.ex:1050
+#: lib/phoenix_kit_ai.ex:1067
 #, elixir-autogen, elixir-format
 msgid "Prompts"
 msgstr "Promptid"
@@ -1836,27 +1836,27 @@ msgstr "Uus AI lõpp-punkt"
 msgid "New AI Prompt"
 msgstr "Uus AI prompt"
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:257
+#: lib/phoenix_kit_ai/web/playground.html.heex:256
 #, elixir-autogen, elixir-format
 msgid "Add image"
 msgstr "Lisa pilt"
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:366
+#: lib/phoenix_kit_ai/web/playground.html.heex:365
 #, elixir-autogen, elixir-format
 msgid "Edit image"
 msgstr "Muuda pilti"
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:399
+#: lib/phoenix_kit_ai/web/playground.html.heex:398
 #, elixir-autogen, elixir-format
 msgid "Edited image"
 msgstr "Muudetud pilt"
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:364
+#: lib/phoenix_kit_ai/web/playground.html.heex:363
 #, elixir-autogen, elixir-format
 msgid "Editing…"
 msgstr "Muudame…"
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:240
+#: lib/phoenix_kit_ai/web/playground.html.heex:239
 #, elixir-autogen, elixir-format
 msgid "Image edit"
 msgstr "Pildi muutmine"
@@ -1866,60 +1866,60 @@ msgstr "Pildi muutmine"
 msgid "Invalid image input"
 msgstr "Vigane pildisisend"
 
-#: lib/phoenix_kit_ai/web/playground.ex:225
-#: lib/phoenix_kit_ai/web/playground.ex:259
+#: lib/phoenix_kit_ai/web/playground.ex:226
+#: lib/phoenix_kit_ai/web/playground.ex:260
 #, elixir-autogen, elixir-format
 msgid "Please add at least one image"
 msgstr "Palun lisa vähemalt üks pilt"
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:282
+#: lib/phoenix_kit_ai/web/playground.html.heex:281
 #, elixir-autogen, elixir-format
 msgid "Remove"
 msgstr "Eemalda"
 
 #: lib/phoenix_kit_ai/errors.ex:53
-#: lib/phoenix_kit_ai/web/playground.ex:721
+#: lib/phoenix_kit_ai/web/playground.ex:727
 #, elixir-autogen, elixir-format
 msgid "The model returned no image"
 msgstr "Mudel ei tagastanud pilti"
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:380
+#: lib/phoenix_kit_ai/web/playground.html.heex:379
 #, elixir-autogen, elixir-format
 msgid "Usually 10–40 seconds…"
 msgstr "Tavaliselt 10–40 sekundit…"
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:321
+#: lib/phoenix_kit_ai/web/playground.html.heex:320
 #, elixir-autogen, elixir-format
 msgid "e.g. Repaint the cabinet fronts in matte sage green; keep everything else as it is"
 msgstr "nt Värvi kapiuksed matiks salveiroheliseks; jäta kõik muu samaks"
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:374
+#: lib/phoenix_kit_ai/web/playground.html.heex:373
 #, elixir-autogen, elixir-format
 msgid "Asking…"
 msgstr "Küsime…"
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:403
+#: lib/phoenix_kit_ai/web/playground.html.heex:402
 #, elixir-autogen, elixir-format
 msgid "Check flagged changes"
 msgstr "Kontroll leidis muudatusi"
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:403
+#: lib/phoenix_kit_ai/web/playground.html.heex:402
 #, elixir-autogen, elixir-format
 msgid "Check passed"
 msgstr "Kontroll läbitud"
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:359
+#: lib/phoenix_kit_ai/web/playground.html.heex:358
 #, elixir-autogen, elixir-format
 msgid "Check the result against the original with the same endpoint (one more call)"
 msgstr "Võrdle tulemust originaaliga sama lõpp-punktiga (üks lisapäring)"
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:377
-#: lib/phoenix_kit_ai/web/playground.html.heex:385
+#: lib/phoenix_kit_ai/web/playground.html.heex:376
+#: lib/phoenix_kit_ai/web/playground.html.heex:384
 #, elixir-autogen, elixir-format
 msgid "Describe"
 msgstr "Kirjelda"
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:345
+#: lib/phoenix_kit_ai/web/playground.html.heex:344
 #, elixir-autogen, elixir-format
 msgid "Endpoint's model"
 msgstr "Lõpp-punkti mudel"
@@ -1929,17 +1929,17 @@ msgstr "Lõpp-punkti mudel"
 msgid "Image operation %{operation} needs %{key}"
 msgstr "Pilditoiming %{operation} vajab parameetrit %{key}"
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:318
+#: lib/phoenix_kit_ai/web/playground.html.heex:317
 #, elixir-autogen, elixir-format
 msgid "Instruction (optional with operations; the question for Describe)"
 msgstr "Juhis (toimingutega valikuline; kirjeldamisel küsimus)"
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:335
+#: lib/phoenix_kit_ai/web/playground.html.heex:334
 #, elixir-autogen, elixir-format
 msgid "Load model list"
 msgstr "Laadi mudelite loend"
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:343
+#: lib/phoenix_kit_ai/web/playground.html.heex:342
 #, elixir-autogen, elixir-format
 msgid "Model (override)"
 msgstr "Mudel (asendus)"
@@ -1949,23 +1949,23 @@ msgstr "Mudel (asendus)"
 msgid "Not supported by this provider"
 msgstr "See teenusepakkuja ei toeta seda"
 
+#: lib/phoenix_kit_ai/web/playground.html.heex:292
 #: lib/phoenix_kit_ai/web/playground.html.heex:293
-#: lib/phoenix_kit_ai/web/playground.html.heex:294
 #, elixir-autogen, elixir-format
 msgid "Operations"
 msgstr "Toimingud"
 
-#: lib/phoenix_kit_ai/web/playground.ex:263
+#: lib/phoenix_kit_ai/web/playground.ex:264
 #, elixir-autogen, elixir-format
 msgid "Pick an operation or write an instruction"
 msgstr "Vali toiming või kirjuta juhis"
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:417
+#: lib/phoenix_kit_ai/web/playground.html.heex:416
 #, elixir-autogen, elixir-format
 msgid "Prompt sent"
 msgstr "Saadetud prompt"
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:246
+#: lib/phoenix_kit_ai/web/playground.html.heex:245
 #, elixir-autogen, elixir-format
 msgid "Send one or more images to an image-capable endpoint. The first image is the one being edited; the rest are references. Pick operations, add an instruction, or both — they become one prompt, and options are fitted to what the model accepts."
 msgstr "Saada üks või mitu pilti pilte toetavale lõpp-punktile. Esimene pilt on see, mida muudetakse; ülejäänud on viited. Vali toimingud, lisa juhis või mõlemad — neist saab üks prompt ja valikud sobitatakse sellega, mida mudel toetab."
@@ -1985,7 +1985,7 @@ msgstr "Mudel ei toeta valikut %{option} = %{value}"
 msgid "This operation needs a reference image"
 msgstr "See toiming vajab viitepilti"
 
-#: lib/phoenix_kit_ai/web/playground.ex:696
+#: lib/phoenix_kit_ai/web/playground.ex:702
 #, elixir-autogen, elixir-format
 msgid "This provider publishes no image model list"
 msgstr "See teenusepakkuja ei avalda pildimudelite loendit"
@@ -2000,66 +2000,65 @@ msgstr "Liiga palju pilte: antud %{count}, mudel võtab kuni %{max}"
 msgid "Unknown image operation: %{operation}"
 msgstr "Tundmatu pilditoiming: %{operation}"
 
-#: lib/phoenix_kit_ai/errors.ex:133
+#: lib/phoenix_kit_ai/errors.ex:142
 #, elixir-autogen, elixir-format
 msgid "Image operations %{first} and %{second} cannot be combined"
 msgstr "Pilditoiminguid %{first} ja %{second} ei saa koos kasutada"
 
-#: lib/phoenix_kit_ai/errors.ex:144
+#: lib/phoenix_kit_ai/errors.ex:153
 #, elixir-autogen, elixir-format
 msgid "Image too large: %{bytes} bytes, the limit is %{max}"
 msgstr "Pilt on liiga suur: %{bytes} baiti, piir on %{max}"
 
-#: lib/phoenix_kit_ai/errors.ex:147
+#: lib/phoenix_kit_ai/errors.ex:156
 #, elixir-autogen, elixir-format
 msgid "That image URL cannot be fetched from here"
 msgstr "Seda pildi URL-i ei saa siit alla laadida"
 
-#: lib/phoenix_kit_ai/errors.ex:149
-#: lib/phoenix_kit_ai/errors.ex:150
+#: lib/phoenix_kit_ai/errors.ex:158
+#: lib/phoenix_kit_ai/errors.ex:159
 #, elixir-autogen, elixir-format
 msgid "The image could not be downloaded"
 msgstr "Pilti ei õnnestunud alla laadida"
 
-#: lib/phoenix_kit_ai/errors.ex:140
+#: lib/phoenix_kit_ai/errors.ex:149
 #, elixir-autogen, elixir-format
 msgid "The provider refused this content: %{reason}"
 msgstr "Teenusepakkuja keeldus sellest sisust: %{reason}"
 
-#: lib/phoenix_kit_ai/web/playground.ex:880
+#: lib/phoenix_kit_ai/web/playground.ex:905
 #, elixir-autogen, elixir-format
 msgid "%{count} bytes of image data"
 msgstr "%{count} baiti pildiandmeid"
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:264
+#: lib/phoenix_kit_ai/web/playground.html.heex:263
 #, elixir-autogen, elixir-format
 msgid "%{count} image kept from the last run"
 msgid_plural "%{count} images kept from the last run"
 msgstr[0] "%{count} pilt jäi eelmisest käivitusest alles"
 msgstr[1] "%{count} pilti jäi eelmisest käivitusest alles"
 
-
-#: lib/phoenix_kit_ai/web/playground.ex:860
+#: lib/phoenix_kit_ai/web/playground.ex:885
 #, elixir-autogen, elixir-format
 msgid "%{option} was changed from %{from} to %{to}"
 msgstr "%{option} muudeti: %{from} → %{to}"
 
-#: lib/phoenix_kit_ai/web/playground.ex:853
+#: lib/phoenix_kit_ai/web/playground.ex:878
 #, elixir-autogen, elixir-format
 msgid "%{option} was dropped: the model does not accept %{value}"
 msgstr "%{option} jäeti välja: mudel ei toeta väärtust %{value}"
 
-#: lib/phoenix_kit_ai/web/playground.ex:876
+#: lib/phoenix_kit_ai/web/playground.ex:901
 #, elixir-autogen, elixir-format
 msgid "An output image could not be downloaded and is shown from the provider's link"
 msgstr "Väljundpilti ei õnnestunud alla laadida; see kuvatakse teenusepakkuja lingilt"
 
-#: lib/phoenix_kit_ai/web/playground.ex:842
+#: lib/phoenix_kit_ai/web/playground.ex:867
 #, elixir-autogen, elixir-format
 msgid "Aspect ratio"
 msgstr "Külgede suhe"
 
-#: lib/phoenix_kit_ai/web/playground.ex:845
+#: lib/phoenix_kit_ai/web/playground.ex:870
 #, elixir-autogen, elixir-format
 msgid "Background"
 msgstr "Taust"
@@ -2094,17 +2093,17 @@ msgstr "Paranda fotot"
 msgid "Free-form instruction"
 msgstr "Vabas vormis juhis"
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:333
+#: lib/phoenix_kit_ai/web/playground.html.heex:332
 #, elixir-autogen, elixir-format
 msgid "Loading…"
 msgstr "Laadimine…"
 
-#: lib/phoenix_kit_ai/web/playground.ex:889
+#: lib/phoenix_kit_ai/web/playground.ex:914
 #, elixir-autogen, elixir-format
 msgid "Only JPEG, PNG and WebP images are accepted"
 msgstr "Lubatud on ainult JPEG, PNG ja WebP pildid"
 
-#: lib/phoenix_kit_ai/web/playground.ex:846
+#: lib/phoenix_kit_ai/web/playground.ex:871
 #, elixir-autogen, elixir-format
 msgid "Output format"
 msgstr "Väljundvorming"
@@ -2114,7 +2113,7 @@ msgstr "Väljundvorming"
 msgid "Plain studio background"
 msgstr "Lihtne stuudiotaust"
 
-#: lib/phoenix_kit_ai/web/playground.ex:844
+#: lib/phoenix_kit_ai/web/playground.ex:869
 #, elixir-autogen, elixir-format
 msgid "Quality"
 msgstr "Kvaliteet"
@@ -2139,7 +2138,7 @@ msgstr "Eemalda midagi"
 msgid "Replace the background"
 msgstr "Asenda taust"
 
-#: lib/phoenix_kit_ai/web/playground.ex:843
+#: lib/phoenix_kit_ai/web/playground.ex:868
 #, elixir-autogen, elixir-format
 msgid "Resolution"
 msgstr "Eraldusvõime"
@@ -2149,7 +2148,7 @@ msgstr "Eraldusvõime"
 msgid "Restyle after reference images"
 msgstr "Kujunda ümber näidispiltide järgi"
 
-#: lib/phoenix_kit_ai/web/playground.ex:749
+#: lib/phoenix_kit_ai/web/playground.ex:770
 #, elixir-autogen, elixir-format
 msgid "Something went wrong on our side. Please try again."
 msgstr "Meie poolel läks midagi valesti. Palun proovi uuesti."
@@ -2159,17 +2158,17 @@ msgstr "Meie poolel läks midagi valesti. Palun proovi uuesti."
 msgid "Straighten"
 msgstr "Sirgesta"
 
-#: lib/phoenix_kit_ai/web/playground.ex:886
+#: lib/phoenix_kit_ai/web/playground.ex:911
 #, elixir-autogen, elixir-format
 msgid "That file is too large (8 MB at most)"
 msgstr "See fail on liiga suur (kuni 8 MB)"
 
-#: lib/phoenix_kit_ai/errors.ex:130
+#: lib/phoenix_kit_ai/errors.ex:139
 #, elixir-autogen, elixir-format
 msgid "The provider's model list could not be fetched"
 msgstr "Teenusepakkuja mudelite loendit ei õnnestunud laadida"
 
-#: lib/phoenix_kit_ai/web/playground.ex:873
+#: lib/phoenix_kit_ai/web/playground.ex:898
 #, elixir-autogen, elixir-format
 msgid "The provider's model list could not be fetched; options were not checked"
 msgstr "Teenusepakkuja mudelite loendit ei õnnestunud laadida; valikuid ei kontrollitud"
@@ -2179,17 +2178,17 @@ msgstr "Teenusepakkuja mudelite loendit ei õnnestunud laadida; valikuid ei kont
 msgid "The provider's model list does not include %{model}"
 msgstr "Teenusepakkuja mudelite loend ei sisalda mudelit %{model}"
 
-#: lib/phoenix_kit_ai/web/playground.ex:868
+#: lib/phoenix_kit_ai/web/playground.ex:893
 #, elixir-autogen, elixir-format
 msgid "The provider's model list does not include %{model}; options were not checked"
 msgstr "Teenusepakkuja mudelite loend ei sisalda mudelit %{model}; valikuid ei kontrollitud"
 
-#: lib/phoenix_kit_ai/web/playground.ex:891
+#: lib/phoenix_kit_ai/web/playground.ex:916
 #, elixir-autogen, elixir-format
 msgid "Two images at most"
 msgstr "Kuni kaks pilti"
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:270
+#: lib/phoenix_kit_ai/web/playground.html.heex:269
 #, elixir-autogen, elixir-format
 msgid "Uploaded image"
 msgstr "Üleslaaditud pilt"
@@ -2198,3 +2197,18 @@ msgstr "Üleslaaditud pilt"
 #, elixir-autogen, elixir-format
 msgid "Upscale"
 msgstr "Suurenda eraldusvõimet"
+
+#: lib/phoenix_kit_ai/errors.ex:130
+#, elixir-autogen, elixir-format
+msgid "The AI budget for the last 24 hours has been used up"
+msgstr "Viimase 24 tunni AI eelarve on ära kasutatud"
+
+#: lib/phoenix_kit_ai/errors.ex:133
+#, elixir-autogen, elixir-format
+msgid "This endpoint's budget for the last 24 hours has been used up"
+msgstr "Selle otspunkti viimase 24 tunni eelarve on ära kasutatud"
+
+#: lib/phoenix_kit_ai/errors.ex:136
+#, elixir-autogen, elixir-format
+msgid "You have used your AI allowance for the last 24 hours"
+msgstr "Sinu viimase 24 tunni AI limiit on ära kasutatud"

@@ -12,6 +12,8 @@ defmodule PhoenixKitAI.ActivityLoggingTest do
   # phoenix_kit_activities table must be isolated per test.
   use PhoenixKitAI.DataCase, async: false
 
+  alias PhoenixKit.Test.Fixtures
+
   describe "endpoint mutations" do
     test "create_endpoint logs `endpoint.created` with name + actor" do
       actor = Ecto.UUID.generate()
@@ -413,6 +415,29 @@ defmodule PhoenixKitAI.ActivityLoggingTest do
         resource_uuid: endpoint.uuid,
         metadata_has: %{"actor_role" => "user"}
       )
+    end
+  end
+
+  describe "reorder audit resource" do
+    test "the resource is the first id that names an existing row, not a stray first element" do
+      actor = Fixtures.confirmed_user_fixture().uuid
+
+      {:ok, a} =
+        PhoenixKitAI.create_prompt(%{
+          name: "Reorder A #{System.unique_integer([:positive])}",
+          content: "x"
+        })
+
+      {:ok, b} =
+        PhoenixKitAI.create_prompt(%{
+          name: "Reorder B #{System.unique_integer([:positive])}",
+          content: "y"
+        })
+
+      :ok =
+        PhoenixKitAI.reorder_prompts([Ecto.UUID.generate(), b.uuid, a.uuid], actor_uuid: actor)
+
+      assert_activity_logged("prompt.reordered", resource_uuid: b.uuid, actor_uuid: actor)
     end
   end
 end
