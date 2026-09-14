@@ -11,6 +11,7 @@ caller  ──►  PhoenixKitAI.process_image/4 ─► PhoenixKitAI.Images ─�
              PhoenixKitAI.edit_image/4            (operations,         (OpenRouter, xAI,
              PhoenixKitAI.generate_image/3         options, fitting)    OpenAI, generic)
              PhoenixKitAI.describe_image/3
+             PhoenixKitAI.extract_text/3
              PhoenixKitAI.compare_images/4
 ```
 
@@ -155,6 +156,26 @@ original and its edit: `passed`, `same_subject`,
 `text_and_logos_preserved`, `unwanted_changes`, `summary`.
 `process_image(…, verify: true)` runs it on the same endpoint and
 attaches the verdict as `:verification` without changing the outcome.
+
+`extract_text/3` is text extraction (OCR) through the same path: a
+fixed strict schema — `text` (everything, reading order), `blocks`
+(heading / paragraph / label / list / table / caption / code /
+handwriting / other, each with a BCP-47 `language`), the dominant
+`language`, a 0–1 `confidence`, `has_illegible_text` — extended with a
+`fields` object when the caller passes `fields: %{name => description}`
+(each nullable, values copied as printed). `language:` hints the
+script, `layout: :markdown` keeps tables and lists, `instructions:` adds
+wording, and several images are read as pages of one document. No OCR
+engine is involved: quality is the vision model's, so pick the model by
+testing on your own photos and treat `confidence` as the model's own
+estimate, not a measurement. The prompt forbids guessing because models
+differ sharply here: on a generated Snickers photo whose fine print was
+noise, Gemini 2.5 Flash returned "SNICKERS", `has_illegible_text: true`;
+GPT-4o mini returned the real Snickers ingredients line from memory at
+confidence 0.9, twice, even with the instruction — none of it in the
+image. When `has_illegible_text` is true the answer is to retake the
+photo, not to trust the gaps; when a field matters, cross-check it with
+a second model rather than a higher confidence.
 
 ## Adapters
 

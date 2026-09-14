@@ -668,6 +668,174 @@ defmodule PhoenixKitAI.Images do
     end
   end
 
+  @text_schema %{
+    "type" => "object",
+    "properties" => %{
+      "text" => %{
+        "type" => "string",
+        "description" =>
+          "Every piece of text visible in the image, transcribed exactly as printed, in natural reading order, one line per line of text. Empty string when there is none."
+      },
+      "blocks" => %{
+        "type" => "array",
+        "description" => "The text split into visually distinct blocks, in reading order",
+        "items" => %{
+          "type" => "object",
+          "properties" => %{
+            "text" => %{"type" => "string"},
+            "kind" => %{
+              "type" => "string",
+              "enum" => ~w(heading paragraph label list table caption code handwriting other)
+            },
+            "language" => %{"type" => "string", "description" => "BCP-47 tag, e.g. et, en-GB"}
+          },
+          "required" => ["text", "kind", "language"],
+          "additionalProperties" => false
+        }
+      },
+      "language" => %{
+        "type" => "string",
+        "description" => "BCP-47 tag of the dominant language, or \"und\" when there is no text"
+      },
+      "confidence" => %{
+        "type" => "number",
+        "minimum" => 0,
+        "maximum" => 1,
+        "description" => "How legible the text was overall, 1 = crisp print, 0 = unreadable"
+      },
+      "has_illegible_text" => %{
+        "type" => "boolean",
+        "description" =>
+          "True when some text is visible but too small, blurred, glared or occluded to read with certainty (and so was left out)"
+      }
+    },
+    "required" => ["text", "blocks", "language", "confidence", "has_illegible_text"],
+    "additionalProperties" => false
+  }
+
+  @doc "The JSON Schema `extract_text/3` asks the model to fill (before `fields:` are added)."
+  @spec text_schema() :: map()
+  def text_schema, do: @text_schema
+
+  @doc """
+  Reads the text in `images` with a vision model (OCR without an OCR
+  engine): a product label, a receipt, a sign, a page of a document.
+
+  Returns `{:ok, %{text, blocks, language, confidence, has_illegible_text,
+  fields, json, usage, latency_ms, model}}` — `text` is everything
+  transcribed in reading order, `blocks` splits it into typed pieces
+  (heading, paragraph, label, table, …) each with its language, `fields`
+  holds the named values the caller asked for, `has_illegible_text` says
+  some print was visible but unreadable (retake the photo rather than
+  trust the gaps). Several images are read as pages of one document, in
+  order.
+
+  The prompt forbids guessing: vision models will otherwise invent
+  plausible label text (an ingredients line, a net weight) for print
+  they cannot resolve, at full confidence.
+
+  Options: `fields:` — a map of name → description of a value to pull
+  out (`%{"ean" => "the barcode digits", "best_before" => "expiry date as
+  YYYY-MM-DD"}`; missing ones come back `nil`), `language:` — a hint
+  when the script is ambiguous, `layout: :markdown` — keep tables and
+  lists as Markdown instead of plain lines, `instructions:` — extra
+  wording for the prompt, `schema:` — replace the whole schema, plus
+  `describe/3`'s `:model`, `:system` and sampling options.
+  """
+  @spec extract_text(Endpoint.t(), [input()] | input(), keyword()) ::
+          {:ok, map()} | {:error, error()}
+  def extract_text(endpoint, images, opts \\ []) do
+    images = List.wrap(images)
+    fields = normalize_fields(opts[:fields])
+    schema = opts[:schema] || text_schema_with_fields(fields)
+
+    describe_opts =
+      opts
+      |> Keyword.drop([:fields, :language, :layout, :instructions, :question, :json])
+      |> Keyword.put(:prompt, text_prompt(images, fields, opts))
+      |> Keyword.put(:schema, schema)
+
+    with {:ok, result} <- describe(endpoint, images, describe_opts) do
+      json = result.json || %{}
+
+      {:ok,
+       %{
+         text: json["text"] || result.text || "",
+         blocks: json["blocks"] || [],
+         language: json["language"],
+         confidence: json["confidence"],
+         has_illegible_text: json["has_illegible_text"] == true,
+         fields: Map.take(json["fields"] || %{}, Map.keys(fields)),
+         json: json,
+         usage: result.usage,
+         latency_ms: result.latency_ms,
+         model: result.model
+       }}
+    end
+  end
+
+  defp normalize_fields(nil), do: %{}
+
+  defp normalize_fields(fields) when is_map(fields),
+    do: Map.new(fields, fn {k, v} -> {to_string(k), to_string(v)} end)
+
+  defp normalize_fields(fields) when is_list(fields),
+    do: fields |> Map.new(fn {k, v} -> {k, v} end) |> normalize_fields()
+
+  defp text_schema_with_fields(fields) when map_size(fields) == 0, do: @text_schema
+
+  defp text_schema_with_fields(fields) do
+    props =
+      Map.new(fields, fn {name, description} ->
+        {name, %{"type" => ["string", "null"], "description" => description}}
+      end)
+
+    fields_schema = %{
+      "type" => "object",
+      "properties" => props,
+      "required" => Map.keys(props),
+      "additionalProperties" => false
+    }
+
+    @text_schema
+    |> put_in(["properties", "fields"], fields_schema)
+    |> Map.update!("required", &(&1 ++ ["fields"]))
+  end
+
+  defp text_prompt(images, fields, opts) do
+    pages =
+      if length(images) > 1,
+        do: "The #{length(images)} images are pages of one document, in order.",
+        else: nil
+
+    layout =
+      case opts[:layout] do
+        :markdown -> "Keep tables, lists and headings as Markdown."
+        _ -> "Plain text: one line of the image per line, no Markdown."
+      end
+
+    language = if l = opts[:language], do: "The text is most likely in #{l}.", else: nil
+
+    field_lines =
+      if map_size(fields) > 0,
+        do:
+          "Also fill `fields` with these values, exactly as printed, or null when absent:\n" <>
+            Enum.map_join(fields, "\n", fn {name, desc} -> "- #{name}: #{desc}" end),
+        else: nil
+
+    [
+      "Transcribe all text visible in the image exactly as printed — every word, number and symbol, in natural reading order. Do not translate, correct or summarise; keep the original spelling, case and punctuation. Use `text` for the full transcription and `blocks` for its visually distinct parts.",
+      "Only transcribe what you can actually read. If text is too small, blurred, glared or occluded to read with certainty, leave it out, set `has_illegible_text` to true and lower `confidence` — never invent plausible wording (ingredients, weights, addresses) that is not legible in the image.",
+      pages,
+      layout,
+      language,
+      field_lines,
+      opts[:instructions]
+    ]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join("\n")
+  end
+
   # The adapter's own vision when it has one; chat completions otherwise.
   defp vision(endpoint, messages, options) do
     adapter = Provider.for_endpoint(endpoint)

@@ -574,6 +574,77 @@ defmodule PhoenixKitAI.ImagesTest do
       refute Map.has_key?(second, "response_format")
     end
 
+    test "extract_text transcribes with the OCR schema, pulls named fields and logs a vision row" do
+      answer = %{
+        "text" => "SNICKERS\nBest before 2027-03-01\n5000159461122",
+        "blocks" => [
+          %{"text" => "SNICKERS", "kind" => "heading", "language" => "en"},
+          %{"text" => "Best before 2027-03-01", "kind" => "label", "language" => "en"},
+          %{"text" => "5000159461122", "kind" => "label", "language" => "und"}
+        ],
+        "language" => "en",
+        "confidence" => 0.93,
+        "has_illegible_text" => true,
+        "fields" => %{"ean" => "5000159461122", "best_before" => "2027-03-01", "extra" => "x"}
+      }
+
+      stub(chat_answer(Jason.encode!(answer)))
+      ep = endpoint_fixture(%{model: "google/gemini-2.5-flash"})
+
+      assert {:ok,
+              %{
+                text: "SNICKERS\nBest before 2027-03-01\n5000159461122",
+                blocks: [%{"kind" => "heading"} | _],
+                language: "en",
+                confidence: 0.93,
+                has_illegible_text: true,
+                fields: %{"ean" => "5000159461122", "best_before" => "2027-03-01"} = fields,
+                model: "google/gemini-2.5-flash"
+              }} =
+               PhoenixKitAI.extract_text(ep.uuid, @jpeg,
+                 fields: %{ean: "the barcode digits", best_before: "expiry date as YYYY-MM-DD"},
+                 language: "en",
+                 layout: :markdown
+               )
+
+      refute Map.has_key?(fields, "extra")
+      assert_received {:post, "/api/v1/chat/completions", body}
+
+      assert %{"json_schema" => %{"schema" => schema, "strict" => true}} = body["response_format"]
+      assert %{"fields" => %{"required" => required}} = schema["properties"]
+      assert Enum.sort(required) == ["best_before", "ean"]
+
+      assert [%{"content" => [%{"text" => question}, %{"type" => "image_url"}]}] =
+               body["messages"]
+
+      assert question =~ "Transcribe all text"
+      assert question =~ "never invent plausible wording"
+      assert question =~ "Markdown"
+      assert question =~ "most likely in en"
+      assert question =~ "- ean: the barcode digits"
+
+      assert [%{request_type: "vision", metadata: %{"language" => "en"}}] =
+               TestRepo.all(from(r in Request, where: r.request_type == "vision"))
+    end
+
+    test "extract_text reads several images as pages and tolerates an empty page" do
+      stub(
+        chat_answer(
+          Jason.encode!(%{"text" => "", "blocks" => [], "language" => "und", "confidence" => 0})
+        )
+      )
+
+      ep = endpoint_fixture(%{model: "google/gemini-2.5-flash"})
+
+      assert {:ok, %{text: "", blocks: [], fields: %{}, has_illegible_text: false}} =
+               PhoenixKitAI.extract_text(ep.uuid, [@jpeg, @jpeg])
+
+      assert_received {:post, _, body}
+      assert [%{"content" => [%{"text" => question}, _, _]}] = body["messages"]
+      assert question =~ "2 images are pages of one document"
+      refute question =~ "fields"
+    end
+
     test "compare turns the fixed-schema answer into a verdict" do
       stub(
         chat_answer(

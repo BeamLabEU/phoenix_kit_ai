@@ -2315,6 +2315,26 @@ defmodule PhoenixKitAI do
     end
   end
 
+  defp run_extract_text(endpoint, images, opts, prompt, trace) do
+    with {:ok, result} <- PhoenixKitAI.Images.extract_text(endpoint, images, opts) do
+      log_image_op_request(
+        endpoint,
+        "vision",
+        prompt,
+        images,
+        result,
+        %{
+          language: result.language,
+          confidence: result.confidence,
+          has_illegible_text: result.has_illegible_text
+        },
+        trace
+      )
+
+      {:ok, Map.drop(result, [:usage, :latency_ms])}
+    end
+  end
+
   # A cache hit is still a logical request the host made: a zero-cost row
   # marked cached keeps attribution, budgets and "what did this SKU cost"
   # truthful without pretending a provider was called.
@@ -3214,6 +3234,80 @@ defmodule PhoenixKitAI do
           end,
           %{
             verb: :describe_image,
+            endpoint_uuid: endpoint.uuid,
+            on_hit: cached_row(endpoint, "vision", source, caller_context)
+          }
+        )
+
+      case result do
+        {:ok, result} ->
+          {:ok, result}
+
+        {:error, reason} ->
+          log_failed_unless_input_error(endpoint, "vision", prompt, images, reason, trace)
+          {:error, reason}
+      end
+    end
+  end
+
+  @doc """
+  Reads the text in one or more images with a vision endpoint — a label,
+  a receipt, a sign, a document page — and returns it transcribed in
+  reading order with typed blocks, the language, a legibility score and
+  any named `fields:` the caller asked for. See
+  `PhoenixKitAI.Images.extract_text/3` for the options. Logged as a
+  `"vision"` request; `cache:` and the spend caps apply.
+
+      {:ok, %{text: text, fields: %{"ean" => ean}}} =
+        PhoenixKitAI.extract_text(endpoint_uuid, label_jpeg,
+          fields: %{"ean" => "the barcode digits", "best_before" => "expiry date as YYYY-MM-DD"})
+  """
+  @spec extract_text(
+          String.t() | Endpoint.t(),
+          [PhoenixKitAI.Images.input()] | PhoenixKitAI.Images.input(),
+          keyword()
+        ) ::
+          {:ok,
+           %{
+             text: String.t(),
+             blocks: [map()],
+             language: String.t() | nil,
+             confidence: number() | nil,
+             has_illegible_text: boolean(),
+             fields: map(),
+             json: map(),
+             model: String.t() | nil
+           }}
+          | {:error, term()}
+  def extract_text(endpoint_uuid, images, opts \\ []) do
+    images = List.wrap(images)
+
+    with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
+         {:ok, _} <- authorize(endpoint, opts) do
+      {auto_source, stacktrace, caller_context} = capture_caller_info()
+      source = Keyword.get(opts, :source) || auto_source
+      caller_context = Map.put(caller_context, :user_uuid, opts[:user_uuid])
+      prompt = "extract_text"
+
+      trace = trace(source, stacktrace, caller_context, opts)
+
+      cache_key =
+        RequestCache.key(
+          :extract_text,
+          endpoint,
+          opts[:model] || endpoint.model,
+          RequestCache.caller_key(opts) || {images, cacheable(opts)}
+        )
+
+      result =
+        RequestCache.fetch(
+          cache_key,
+          opts,
+          fn ->
+            run_extract_text(endpoint, images, opts, prompt, trace)
+          end,
+          %{
+            verb: :extract_text,
             endpoint_uuid: endpoint.uuid,
             on_hit: cached_row(endpoint, "vision", source, caller_context)
           }

@@ -352,8 +352,10 @@ provided the API exposes `<base_url>/chat/completions` and `/models`.
   operations become one prompt, options are fitted to the model's published
   capabilities (dropped with a warning, or refused under `strict: true`),
   and `verify: true` attaches a vision check of the result.
-  `describe_image/3` / `compare_images/4` are the vision verbs (`"vision"`
-  request type) through the adapter's optional `vision/3`. Outputs are
+  `describe_image/3` / `extract_text/3` / `compare_images/4` are the
+  vision verbs (`"vision"` request type) through the adapter's optional
+  `vision/3`; `extract_text/3` is OCR by vision model — a fixed schema
+  (text, typed blocks, language, confidence) plus caller `fields:`. Outputs are
   always bytes (URL results are fetched, bounded, same host policy as
   inputs); `dry_run: true` returns the plan without a request; a safety
   refusal is `{:content_policy, message}`. A prose-only answer is

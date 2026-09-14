@@ -182,6 +182,11 @@ transport:
     prompt: "Read the label.",
     schema: %{"type" => "object", "properties" => %{"brand" => %{"type" => "string"}}})
 
+# Text extraction (OCR through the vision model): full transcription,
+# typed blocks, language, legibility, plus any named values you want pulled out
+{:ok, %{text: text, fields: %{"ean" => ean, "best_before" => date}}} =
+  PhoenixKitAI.extract_text(endpoint_uuid, label_jpeg,
+    fields: %{"ean" => "the barcode digits", "best_before" => "expiry date as YYYY-MM-DD"})
 ```
 
 Operations (`PhoenixKitAI.Images.Operations`): `:clean_background`,
