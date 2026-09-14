@@ -54,19 +54,7 @@ defmodule PhoenixKitAI.Providers.OpenAICompatible do
       |> Map.take([:temperature, :max_tokens, :top_p, :seed, :response_format])
       |> Enum.reject(fn {_k, v} -> is_nil(v) end)
 
-    json? = is_map(options[:response_format])
-
-    case Completion.chat_completion(endpoint, messages, chat_opts) do
-      {:error, {:api_error, status}} when status in [400, 422] and json? ->
-        Completion.chat_completion(
-          endpoint,
-          messages,
-          Keyword.delete(chat_opts, :response_format)
-        )
-
-      other ->
-        other
-    end
+    Completion.chat_completion(endpoint, messages, chat_opts)
   end
 
   @impl true

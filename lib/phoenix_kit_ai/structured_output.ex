@@ -10,10 +10,15 @@ defmodule PhoenixKitAI.StructuredOutput do
     * `json: true` — any JSON object (`response_format: json_object`).
 
   The schema also rides in the prompt, so a model that rejects
-  `response_format` (the request is retried once without it on 400/422)
-  still knows the shape. The parsed object comes back under `"json"` on a
-  chat response and `:json` on a vision result; an answer that does not
-  parse is `{:error, {:no_json_in_response, text}}`.
+  `response_format` (the request is retried once without it on 400/422 —
+  any 400, so an unrelated bad request costs one extra call) still knows
+  the shape. The parsed object comes back under `"json"` on a chat
+  response and `:json` on a vision result; an answer that does not parse
+  is `{:error, {:no_json_in_response, text}}` and is never cached, though
+  the provider call is logged with its usage. Nothing validates the
+  object against the schema locally: `strict` schemas are enforced by the
+  provider on the first attempt and advisory on the retry, so check the
+  keys you depend on.
   """
 
   @type format :: %{String.t() => term()} | nil
@@ -81,27 +86,63 @@ defmodule PhoenixKitAI.StructuredOutput do
   end
 
   @doc """
-  Parses the model's text as a JSON object (code fences tolerated). With
+  Parses the model's text as a JSON object (or array): the whole text
+  first, then a fenced block anywhere in it, then the outermost `{…}` —
+  models wrap answers in prose and fences however they were told. With
   `requested?` false returns `{:ok, nil}`.
   """
   @spec parse(String.t() | nil, boolean()) ::
-          {:ok, map() | nil} | {:error, {:no_json_in_response, String.t() | nil}}
+          {:ok, map() | list() | nil} | {:error, {:no_json_in_response, String.t() | nil}}
   def parse(_text, false), do: {:ok, nil}
 
   def parse(text, true) when is_binary(text) do
-    cleaned =
-      text
-      |> String.trim()
-      |> String.replace(~r/\A```(?:json)?\s*/i, "")
-      |> String.replace(~r/\s*```\z/, "")
+    candidates = [String.trim(text), fenced(text), braced(text)]
 
-    case Jason.decode(cleaned) do
-      {:ok, json} when is_map(json) -> {:ok, json}
-      _ -> {:error, {:no_json_in_response, text}}
-    end
+    Enum.find_value(candidates, {:error, {:no_json_in_response, text}}, fn
+      nil -> nil
+      candidate -> decode(candidate)
+    end)
   end
 
   def parse(text, true), do: {:error, {:no_json_in_response, text}}
+
+  defp decode(candidate) do
+    case Jason.decode(candidate) do
+      {:ok, json} when is_map(json) or is_list(json) -> {:ok, json}
+      _ -> nil
+    end
+  end
+
+  defp fenced(text) do
+    case Regex.run(~r/```(?:json)?\s*(.*?)\s*```/is, text) do
+      [_, inner] -> inner
+      _ -> nil
+    end
+  end
+
+  defp braced(text) do
+    with first when first != nil <- first_index(text, ["{", "["]),
+         last when last != nil <- last_index(text, ["}", "]"]),
+         true <- last > first do
+      binary_part(text, first, last - first + 1)
+    else
+      _ -> nil
+    end
+  end
+
+  defp first_index(text, chars) do
+    case :binary.match(text, chars) do
+      {index, _} -> index
+      :nomatch -> nil
+    end
+  end
+
+  defp last_index(text, chars) do
+    case :binary.matches(text, chars) do
+      [] -> nil
+      matches -> matches |> List.last() |> elem(0)
+    end
+  end
 
   @doc """
   Runs `fun.(response_format)`; when a JSON answer was requested and the

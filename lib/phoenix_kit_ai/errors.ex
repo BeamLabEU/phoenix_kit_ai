@@ -126,12 +126,14 @@ defmodule PhoenixKitAI.Errors do
     gettext("The provider's model list does not include %{model}", model: model)
   end
 
-  def message({:budget_exceeded, :global}), do: gettext("Today's AI budget has been used up")
+  def message({:budget_exceeded, :global}),
+    do: gettext("The AI budget for the last 24 hours has been used up")
 
   def message({:budget_exceeded, :endpoint}),
-    do: gettext("Today's budget for this endpoint has been used up")
+    do: gettext("This endpoint's budget for the last 24 hours has been used up")
 
-  def message({:budget_exceeded, :user}), do: gettext("You have used today's AI allowance")
+  def message({:budget_exceeded, :user}),
+    do: gettext("You have used your AI allowance for the last 24 hours")
 
   def message({:capabilities_unavailable, _reason}),
     do: gettext("The provider's model list could not be fetched")

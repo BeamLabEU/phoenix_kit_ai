@@ -14,11 +14,17 @@ defmodule PhoenixKitAI.TTSTest do
 
   use PhoenixKitAI.DataCase, async: false
 
-  alias PhoenixKitAI.Completion
+  import Ecto.Query
+
+  alias PhoenixKitAI.{Completion, Request}
+  alias PhoenixKitAI.Test.Repo, as: TestRepo
 
   @audio_bytes <<0xFF, 0xF3, 0x44, 0x00, 0x01, 0x02, 0x03>>
 
   setup do
+    PhoenixKitAI.RequestCache.clear()
+    on_exit(fn -> PhoenixKitAI.RequestCache.clear() end)
+
     Application.put_env(:phoenix_kit_ai, :req_options,
       plug: {Req.Test, PhoenixKitAI.TTSTest},
       retry: false
@@ -100,6 +106,22 @@ defmodule PhoenixKitAI.TTSTest do
 
       assert {:ok, %{audio: @audio_bytes, format: "wav"}} =
                PhoenixKitAI.speak(ep.uuid, "Bonjour", response_format: "wav")
+    end
+
+    test "cache: true answers the second identical request from memory" do
+      stub_raw(200, @audio_bytes)
+      ep = endpoint_fixture()
+
+      assert {:ok, %{audio: @audio_bytes}} = PhoenixKitAI.speak(ep.uuid, "Bonjour", cache: true)
+      assert {:ok, %{audio: @audio_bytes}} = PhoenixKitAI.speak(ep.uuid, "Bonjour", cache: true)
+
+      rows =
+        TestRepo.all(from(r in Request, where: r.endpoint_uuid == ^ep.uuid, order_by: r.uuid))
+
+      assert [
+               %{request_type: "tts"},
+               %{request_type: "tts", cost_cents: 0, metadata: %{"cached" => true}}
+             ] = rows
     end
 
     test "returns :audio, :format and :timestamps (latency stays internal)" do

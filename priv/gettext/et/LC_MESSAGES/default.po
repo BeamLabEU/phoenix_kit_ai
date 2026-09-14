@@ -1486,7 +1486,7 @@ msgstr "Sisesta tekst, mida ette lugeda…"
 msgid "Type your message to the AI..."
 msgstr "Sisesta oma sõnum AI-le…"
 
-#: lib/phoenix_kit_ai/errors.ex:164
+#: lib/phoenix_kit_ai/errors.ex:166
 #, elixir-autogen, elixir-format
 msgid "Unexpected error: %{reason}"
 msgstr "Ootamatu viga: %{reason}"
@@ -1519,7 +1519,7 @@ msgstr "Uuenda oma AI lõpp-punkti seadistust"
 msgid "Updating…"
 msgstr "Uuendamine…"
 
-#: lib/phoenix_kit_ai.ex:1053
+#: lib/phoenix_kit_ai.ex:1069
 #: lib/phoenix_kit_ai/web/prompts.ex:39
 #, elixir-autogen, elixir-format
 msgid "Usage"
@@ -1786,22 +1786,22 @@ msgid_plural "tokens"
 msgstr[0] "token"
 msgstr[1] "tokenit"
 
-#: lib/phoenix_kit_ai.ex:1049
+#: lib/phoenix_kit_ai.ex:1065
 #, elixir-autogen, elixir-format
 msgid "AI"
 msgstr "AI"
 
-#: lib/phoenix_kit_ai.ex:1050
+#: lib/phoenix_kit_ai.ex:1066
 #, elixir-autogen, elixir-format
 msgid "Endpoints"
 msgstr "Lõpp-punktid"
 
-#: lib/phoenix_kit_ai.ex:1052
+#: lib/phoenix_kit_ai.ex:1068
 #, elixir-autogen, elixir-format
 msgid "Playground"
 msgstr "Liivakast"
 
-#: lib/phoenix_kit_ai.ex:1051
+#: lib/phoenix_kit_ai.ex:1067
 #, elixir-autogen, elixir-format
 msgid "Prompts"
 msgstr "Promptid"
@@ -2000,28 +2000,28 @@ msgstr "Liiga palju pilte: antud %{count}, mudel võtab kuni %{max}"
 msgid "Unknown image operation: %{operation}"
 msgstr "Tundmatu pilditoiming: %{operation}"
 
-#: lib/phoenix_kit_ai/errors.ex:140
+#: lib/phoenix_kit_ai/errors.ex:142
 #, elixir-autogen, elixir-format
 msgid "Image operations %{first} and %{second} cannot be combined"
 msgstr "Pilditoiminguid %{first} ja %{second} ei saa koos kasutada"
 
-#: lib/phoenix_kit_ai/errors.ex:151
+#: lib/phoenix_kit_ai/errors.ex:153
 #, elixir-autogen, elixir-format
 msgid "Image too large: %{bytes} bytes, the limit is %{max}"
 msgstr "Pilt on liiga suur: %{bytes} baiti, piir on %{max}"
 
-#: lib/phoenix_kit_ai/errors.ex:154
+#: lib/phoenix_kit_ai/errors.ex:156
 #, elixir-autogen, elixir-format
 msgid "That image URL cannot be fetched from here"
 msgstr "Seda pildi URL-i ei saa siit alla laadida"
 
-#: lib/phoenix_kit_ai/errors.ex:156
-#: lib/phoenix_kit_ai/errors.ex:157
+#: lib/phoenix_kit_ai/errors.ex:158
+#: lib/phoenix_kit_ai/errors.ex:159
 #, elixir-autogen, elixir-format
 msgid "The image could not be downloaded"
 msgstr "Pilti ei õnnestunud alla laadida"
 
-#: lib/phoenix_kit_ai/errors.ex:147
+#: lib/phoenix_kit_ai/errors.ex:149
 #, elixir-autogen, elixir-format
 msgid "The provider refused this content: %{reason}"
 msgstr "Teenusepakkuja keeldus sellest sisust: %{reason}"
@@ -2163,7 +2163,7 @@ msgstr "Sirgesta"
 msgid "That file is too large (8 MB at most)"
 msgstr "See fail on liiga suur (kuni 8 MB)"
 
-#: lib/phoenix_kit_ai/errors.ex:137
+#: lib/phoenix_kit_ai/errors.ex:139
 #, elixir-autogen, elixir-format
 msgid "The provider's model list could not be fetched"
 msgstr "Teenusepakkuja mudelite loendit ei õnnestunud laadida"
@@ -2198,17 +2198,17 @@ msgstr "Üleslaaditud pilt"
 msgid "Upscale"
 msgstr "Suurenda eraldusvõimet"
 
-#: lib/phoenix_kit_ai/errors.ex:129
+#: lib/phoenix_kit_ai/errors.ex:130
 #, elixir-autogen, elixir-format
-msgid "Today's AI budget has been used up"
-msgstr "Tänane AI eelarve on ära kasutatud"
+msgid "The AI budget for the last 24 hours has been used up"
+msgstr "Viimase 24 tunni AI eelarve on ära kasutatud"
 
-#: lib/phoenix_kit_ai/errors.ex:132
+#: lib/phoenix_kit_ai/errors.ex:133
 #, elixir-autogen, elixir-format
-msgid "Today's budget for this endpoint has been used up"
-msgstr "Selle lõpp-punkti tänane eelarve on ära kasutatud"
+msgid "This endpoint's budget for the last 24 hours has been used up"
+msgstr "Selle otspunkti viimase 24 tunni eelarve on ära kasutatud"
 
-#: lib/phoenix_kit_ai/errors.ex:134
+#: lib/phoenix_kit_ai/errors.ex:136
 #, elixir-autogen, elixir-format
-msgid "You have used today's AI allowance"
-msgstr "Oled tänase AI limiidi ära kasutanud"
+msgid "You have used your AI allowance for the last 24 hours"
+msgstr "Sinu viimase 24 tunni AI limiit on ära kasutatud"

@@ -1488,7 +1488,7 @@ msgstr "Введите текст для озвучивания…"
 msgid "Type your message to the AI..."
 msgstr "Введите сообщение для AI…"
 
-#: lib/phoenix_kit_ai/errors.ex:164
+#: lib/phoenix_kit_ai/errors.ex:166
 #, elixir-autogen, elixir-format
 msgid "Unexpected error: %{reason}"
 msgstr "Неожиданная ошибка: %{reason}"
@@ -1521,7 +1521,7 @@ msgstr "Обновите конфигурацию конечной точки AI
 msgid "Updating…"
 msgstr "Обновление…"
 
-#: lib/phoenix_kit_ai.ex:1053
+#: lib/phoenix_kit_ai.ex:1069
 #: lib/phoenix_kit_ai/web/prompts.ex:39
 #, elixir-autogen, elixir-format
 msgid "Usage"
@@ -1792,22 +1792,22 @@ msgstr[0] "токен"
 msgstr[1] "токена"
 msgstr[2] "токенов"
 
-#: lib/phoenix_kit_ai.ex:1049
+#: lib/phoenix_kit_ai.ex:1065
 #, elixir-autogen, elixir-format
 msgid "AI"
 msgstr "AI"
 
-#: lib/phoenix_kit_ai.ex:1050
+#: lib/phoenix_kit_ai.ex:1066
 #, elixir-autogen, elixir-format
 msgid "Endpoints"
 msgstr "Конечные точки"
 
-#: lib/phoenix_kit_ai.ex:1052
+#: lib/phoenix_kit_ai.ex:1068
 #, elixir-autogen, elixir-format
 msgid "Playground"
 msgstr "Песочница"
 
-#: lib/phoenix_kit_ai.ex:1051
+#: lib/phoenix_kit_ai.ex:1067
 #, elixir-autogen, elixir-format
 msgid "Prompts"
 msgstr "Промпты"
@@ -2006,28 +2006,28 @@ msgstr "Слишком много изображений: передано %{cou
 msgid "Unknown image operation: %{operation}"
 msgstr "Неизвестная операция с изображением: %{operation}"
 
-#: lib/phoenix_kit_ai/errors.ex:140
+#: lib/phoenix_kit_ai/errors.ex:142
 #, elixir-autogen, elixir-format
 msgid "Image operations %{first} and %{second} cannot be combined"
 msgstr "Операции %{first} и %{second} нельзя сочетать"
 
-#: lib/phoenix_kit_ai/errors.ex:151
+#: lib/phoenix_kit_ai/errors.ex:153
 #, elixir-autogen, elixir-format
 msgid "Image too large: %{bytes} bytes, the limit is %{max}"
 msgstr "Изображение слишком большое: %{bytes} байт, предел %{max}"
 
-#: lib/phoenix_kit_ai/errors.ex:154
+#: lib/phoenix_kit_ai/errors.ex:156
 #, elixir-autogen, elixir-format
 msgid "That image URL cannot be fetched from here"
 msgstr "Этот URL изображения нельзя загрузить отсюда"
 
-#: lib/phoenix_kit_ai/errors.ex:156
-#: lib/phoenix_kit_ai/errors.ex:157
+#: lib/phoenix_kit_ai/errors.ex:158
+#: lib/phoenix_kit_ai/errors.ex:159
 #, elixir-autogen, elixir-format
 msgid "The image could not be downloaded"
 msgstr "Не удалось загрузить изображение"
 
-#: lib/phoenix_kit_ai/errors.ex:147
+#: lib/phoenix_kit_ai/errors.ex:149
 #, elixir-autogen, elixir-format
 msgid "The provider refused this content: %{reason}"
 msgstr "Провайдер отклонил этот контент: %{reason}"
@@ -2170,7 +2170,7 @@ msgstr "Выровнять"
 msgid "That file is too large (8 MB at most)"
 msgstr "Файл слишком большой (не более 8 МБ)"
 
-#: lib/phoenix_kit_ai/errors.ex:137
+#: lib/phoenix_kit_ai/errors.ex:139
 #, elixir-autogen, elixir-format
 msgid "The provider's model list could not be fetched"
 msgstr "Не удалось получить список моделей провайдера"
@@ -2205,17 +2205,17 @@ msgstr "Загруженное изображение"
 msgid "Upscale"
 msgstr "Увеличить разрешение"
 
-#: lib/phoenix_kit_ai/errors.ex:129
+#: lib/phoenix_kit_ai/errors.ex:130
 #, elixir-autogen, elixir-format
-msgid "Today's AI budget has been used up"
-msgstr "Дневной бюджет ИИ исчерпан"
+msgid "The AI budget for the last 24 hours has been used up"
+msgstr "Бюджет ИИ за последние 24 часа исчерпан"
 
-#: lib/phoenix_kit_ai/errors.ex:132
+#: lib/phoenix_kit_ai/errors.ex:133
 #, elixir-autogen, elixir-format
-msgid "Today's budget for this endpoint has been used up"
-msgstr "Дневной бюджет этой конечной точки исчерпан"
+msgid "This endpoint's budget for the last 24 hours has been used up"
+msgstr "Бюджет этого эндпоинта за последние 24 часа исчерпан"
 
-#: lib/phoenix_kit_ai/errors.ex:134
+#: lib/phoenix_kit_ai/errors.ex:136
 #, elixir-autogen, elixir-format
-msgid "You have used today's AI allowance"
-msgstr "Вы исчерпали дневной лимит ИИ"
+msgid "You have used your AI allowance for the last 24 hours"
+msgstr "Вы исчерпали свой лимит ИИ за последние 24 часа"

@@ -3,6 +3,29 @@ defmodule PhoenixKitAI.ErrorsTest do
 
   alias PhoenixKitAI.Errors
 
+  describe "message/1 — spend caps" do
+    test "{:budget_exceeded, scope} — one sentence per scope, rolling window" do
+      assert Errors.message({:budget_exceeded, :global}) ==
+               "The AI budget for the last 24 hours has been used up"
+
+      assert Errors.message({:budget_exceeded, :endpoint}) ==
+               "This endpoint's budget for the last 24 hours has been used up"
+
+      assert Errors.message({:budget_exceeded, :user}) ==
+               "You have used your AI allowance for the last 24 hours"
+    end
+
+    test "the three are translated" do
+      for locale <- ["et", "ru"], scope <- [:global, :endpoint, :user] do
+        Gettext.with_locale(PhoenixKitAI.Gettext, locale, fn ->
+          text = Errors.message({:budget_exceeded, scope})
+          refute text =~ "24 hours", "#{locale}/#{scope} fell back to English"
+          assert text != ""
+        end)
+      end
+    end
+  end
+
   describe "message/1 — plain atoms" do
     # Pin the EXACT translated string for every atom in the public
     # error vocabulary. `assert is_binary/1` is the wrong bar — every

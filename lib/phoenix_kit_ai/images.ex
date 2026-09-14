@@ -627,7 +627,7 @@ defmodule PhoenixKitAI.Images do
   @spec describe(Endpoint.t(), [input()], keyword()) :: {:ok, map()} | {:error, error()}
   def describe(endpoint, images, opts \\ []) do
     endpoint = if opts[:model], do: %{endpoint | model: opts[:model]}, else: endpoint
-    opts = Keyword.put_new(opts, :prompt, opts[:question] || default_question())
+    opts = Keyword.put(opts, :prompt, opts[:prompt] || opts[:question] || default_question())
 
     with {:ok, refs} <- normalize_inputs(images, opts) do
       {suffix, response_format} = StructuredOutput.request(opts)
@@ -653,7 +653,10 @@ defmodule PhoenixKitAI.Images do
         |> Map.new()
         |> Map.put(:response_format, response_format)
 
-      with {:ok, response} <- vision(endpoint, messages, vision_opts),
+      # The retry without `response_format` lives here, not in the adapter,
+      # so a provider with its own `vision/3` keeps it.
+      with {:ok, response} <-
+             vision_with_fallback(endpoint, messages, vision_opts, response_format),
            text = content_text(response),
            {:ok, json} <- StructuredOutput.parse(text, StructuredOutput.requested?(opts)) do
         {:ok,
@@ -687,9 +690,14 @@ defmodule PhoenixKitAI.Images do
               "type" => "string",
               "enum" => ~w(heading paragraph label list table caption code handwriting other)
             },
-            "language" => %{"type" => "string", "description" => "BCP-47 tag, e.g. et, en-GB"}
+            "language" => %{"type" => "string", "description" => "BCP-47 tag, e.g. et, en-GB"},
+            "page" => %{
+              "type" => "integer",
+              "minimum" => 1,
+              "description" => "Which image the block is on, 1 = the first"
+            }
           },
-          "required" => ["text", "kind", "language"],
+          "required" => ["text", "kind", "language", "page"],
           "additionalProperties" => false
         }
       },
@@ -722,13 +730,15 @@ defmodule PhoenixKitAI.Images do
   engine): a product label, a receipt, a sign, a page of a document.
 
   Returns `{:ok, %{text, blocks, language, confidence, has_illegible_text,
-  fields, json, usage, latency_ms, model}}` — `text` is everything
+  fields, json, prompt, usage, latency_ms, model}}` — `text` is everything
   transcribed in reading order, `blocks` splits it into typed pieces
-  (heading, paragraph, label, table, …) each with its language, `fields`
-  holds the named values the caller asked for, `has_illegible_text` says
-  some print was visible but unreadable (retake the photo rather than
-  trust the gaps). Several images are read as pages of one document, in
-  order.
+  (`%{text, kind, language, page}`, kind one of heading / paragraph /
+  label / list / table / caption / code / handwriting / other), `fields`
+  holds every requested name (`nil` when the model found nothing, string
+  keys as given), `has_illegible_text` says some print was visible but
+  unreadable (retake the photo rather than trust the gaps), `json` is the
+  raw object. Several images are read as pages of one document, in order;
+  `page` says which image a block came from.
 
   The prompt forbids guessing: vision models will otherwise invent
   plausible label text (an ingredients line, a net weight) for print
@@ -736,37 +746,41 @@ defmodule PhoenixKitAI.Images do
 
   Options: `fields:` — a map of name → description of a value to pull
   out (`%{"ean" => "the barcode digits", "best_before" => "expiry date as
-  YYYY-MM-DD"}`; missing ones come back `nil`), `language:` — a hint
-  when the script is ambiguous, `layout: :markdown` — keep tables and
-  lists as Markdown instead of plain lines, `instructions:` — extra
-  wording for the prompt, `schema:` — replace the whole schema, plus
-  `describe/3`'s `:model`, `:system` and sampling options.
+  YYYY-MM-DD"}`, or a list of names), `language:` — a hint when the
+  script is ambiguous, `layout: :markdown` — keep tables and lists as
+  Markdown instead of plain lines, `instructions:` — extra wording for the
+  prompt, `schema:` — replace the base schema (`fields:` is still added to
+  it), plus `describe/3`'s `:model`, `:system` and sampling options.
   """
   @spec extract_text(Endpoint.t(), [input()] | input(), keyword()) ::
           {:ok, map()} | {:error, error()}
   def extract_text(endpoint, images, opts \\ []) do
     images = List.wrap(images)
     fields = normalize_fields(opts[:fields])
-    schema = opts[:schema] || text_schema_with_fields(fields)
+    prompt = text_prompt(images, fields, opts)
 
     describe_opts =
       opts
       |> Keyword.drop([:fields, :language, :layout, :instructions, :question, :json])
-      |> Keyword.put(:prompt, text_prompt(images, fields, opts))
-      |> Keyword.put(:schema, schema)
+      |> Keyword.put(:prompt, prompt)
+      |> Keyword.put(:schema, text_schema_with_fields(opts[:schema] || @text_schema, fields))
 
     with {:ok, result} <- describe(endpoint, images, describe_opts) do
+      # Shaped defensively: on the no-`response_format` retry the schema is
+      # advisory, so every model-supplied value is checked before use.
       json = result.json || %{}
+      found = if is_map(json["fields"]), do: json["fields"], else: %{}
 
       {:ok,
        %{
-         text: json["text"] || result.text || "",
-         blocks: json["blocks"] || [],
-         language: json["language"],
-         confidence: json["confidence"],
+         text: string_or(json["text"], result.text || ""),
+         blocks: blocks(json["blocks"]),
+         language: string_or(json["language"], nil),
+         confidence: if(is_number(json["confidence"]), do: json["confidence"]),
          has_illegible_text: json["has_illegible_text"] == true,
-         fields: Map.take(json["fields"] || %{}, Map.keys(fields)),
+         fields: Map.new(fields, fn {name, _} -> {name, string_or(found[name], nil)} end),
          json: json,
+         prompt: prompt,
          usage: result.usage,
          latency_ms: result.latency_ms,
          model: result.model
@@ -774,17 +788,50 @@ defmodule PhoenixKitAI.Images do
     end
   end
 
+  defp string_or(value, _default) when is_binary(value), do: value
+  defp string_or(_value, default), do: default
+
+  defp blocks(list) when is_list(list) do
+    for %{} = block <- list do
+      %{
+        text: string_or(block["text"], ""),
+        kind: string_or(block["kind"], "other"),
+        language: string_or(block["language"], nil),
+        page: if(is_integer(block["page"]) and block["page"] >= 1, do: block["page"], else: 1)
+      }
+    end
+  end
+
+  defp blocks(_other), do: []
+
+  # `fields:` as a map of name → description, a list of names, or a
+  # keyword list; anything else describing a field is inspected, not
+  # crashed on.
   defp normalize_fields(nil), do: %{}
 
   defp normalize_fields(fields) when is_map(fields),
-    do: Map.new(fields, fn {k, v} -> {to_string(k), to_string(v)} end)
+    do:
+      Map.new(fields, fn {name, description} ->
+        {to_string(name), field_description(description)}
+      end)
 
-  defp normalize_fields(fields) when is_list(fields),
-    do: fields |> Map.new(fn {k, v} -> {k, v} end) |> normalize_fields()
+  defp normalize_fields(fields) when is_list(fields) do
+    Map.new(fields, fn
+      {name, description} -> {to_string(name), field_description(description)}
+      name -> {to_string(name), to_string(name)}
+    end)
+  end
 
-  defp text_schema_with_fields(fields) when map_size(fields) == 0, do: @text_schema
+  defp normalize_fields(_other), do: %{}
 
-  defp text_schema_with_fields(fields) do
+  defp field_description(description) when is_binary(description), do: description
+  defp field_description(nil), do: ""
+  defp field_description(description) when is_atom(description), do: Atom.to_string(description)
+  defp field_description(description), do: inspect(description)
+
+  defp text_schema_with_fields(schema, fields) when map_size(fields) == 0, do: schema
+
+  defp text_schema_with_fields(schema, fields) do
     props =
       Map.new(fields, fn {name, description} ->
         {name, %{"type" => ["string", "null"], "description" => description}}
@@ -797,9 +844,10 @@ defmodule PhoenixKitAI.Images do
       "additionalProperties" => false
     }
 
-    @text_schema
+    schema
+    |> Map.put_new("properties", %{})
     |> put_in(["properties", "fields"], fields_schema)
-    |> Map.update!("required", &(&1 ++ ["fields"]))
+    |> Map.update("required", ["fields"], &Enum.uniq(&1 ++ ["fields"]))
   end
 
   defp text_prompt(images, fields, opts) do
@@ -834,6 +882,12 @@ defmodule PhoenixKitAI.Images do
     ]
     |> Enum.reject(&is_nil/1)
     |> Enum.join("\n")
+  end
+
+  defp vision_with_fallback(endpoint, messages, vision_opts, response_format) do
+    StructuredOutput.with_fallback(response_format, fn format ->
+      vision(endpoint, messages, Map.put(vision_opts, :response_format, format))
+    end)
   end
 
   # The adapter's own vision when it has one; chat completions otherwise.

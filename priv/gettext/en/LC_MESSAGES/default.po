@@ -1486,7 +1486,7 @@ msgstr "Type text to speak..."
 msgid "Type your message to the AI..."
 msgstr "Type your message to the AI..."
 
-#: lib/phoenix_kit_ai/errors.ex:164
+#: lib/phoenix_kit_ai/errors.ex:166
 #, elixir-autogen, elixir-format
 msgid "Unexpected error: %{reason}"
 msgstr "Unexpected error: %{reason}"
@@ -1519,7 +1519,7 @@ msgstr "Update your AI endpoint configuration"
 msgid "Updating…"
 msgstr "Updating…"
 
-#: lib/phoenix_kit_ai.ex:1053
+#: lib/phoenix_kit_ai.ex:1069
 #: lib/phoenix_kit_ai/web/prompts.ex:39
 #, elixir-autogen, elixir-format
 msgid "Usage"
@@ -1786,22 +1786,22 @@ msgid_plural "tokens"
 msgstr[0] "token"
 msgstr[1] "tokens"
 
-#: lib/phoenix_kit_ai.ex:1049
+#: lib/phoenix_kit_ai.ex:1065
 #, elixir-autogen, elixir-format
 msgid "AI"
 msgstr "AI"
 
-#: lib/phoenix_kit_ai.ex:1050
+#: lib/phoenix_kit_ai.ex:1066
 #, elixir-autogen, elixir-format
 msgid "Endpoints"
 msgstr "Endpoints"
 
-#: lib/phoenix_kit_ai.ex:1052
+#: lib/phoenix_kit_ai.ex:1068
 #, elixir-autogen, elixir-format
 msgid "Playground"
 msgstr "Playground"
 
-#: lib/phoenix_kit_ai.ex:1051
+#: lib/phoenix_kit_ai.ex:1067
 #, elixir-autogen, elixir-format
 msgid "Prompts"
 msgstr "Prompts"
@@ -2000,28 +2000,28 @@ msgstr "Too many images: %{count} given, the model takes at most %{max}"
 msgid "Unknown image operation: %{operation}"
 msgstr "Unknown image operation: %{operation}"
 
-#: lib/phoenix_kit_ai/errors.ex:140
+#: lib/phoenix_kit_ai/errors.ex:142
 #, elixir-autogen, elixir-format
 msgid "Image operations %{first} and %{second} cannot be combined"
 msgstr "Image operations %{first} and %{second} cannot be combined"
 
-#: lib/phoenix_kit_ai/errors.ex:151
+#: lib/phoenix_kit_ai/errors.ex:153
 #, elixir-autogen, elixir-format
 msgid "Image too large: %{bytes} bytes, the limit is %{max}"
 msgstr "Image too large: %{bytes} bytes, the limit is %{max}"
 
-#: lib/phoenix_kit_ai/errors.ex:154
+#: lib/phoenix_kit_ai/errors.ex:156
 #, elixir-autogen, elixir-format
 msgid "That image URL cannot be fetched from here"
 msgstr "That image URL cannot be fetched from here"
 
-#: lib/phoenix_kit_ai/errors.ex:156
-#: lib/phoenix_kit_ai/errors.ex:157
+#: lib/phoenix_kit_ai/errors.ex:158
+#: lib/phoenix_kit_ai/errors.ex:159
 #, elixir-autogen, elixir-format
 msgid "The image could not be downloaded"
 msgstr "The image could not be downloaded"
 
-#: lib/phoenix_kit_ai/errors.ex:147
+#: lib/phoenix_kit_ai/errors.ex:149
 #, elixir-autogen, elixir-format
 msgid "The provider refused this content: %{reason}"
 msgstr "The provider refused this content: %{reason}"
@@ -2163,7 +2163,7 @@ msgstr "Straighten"
 msgid "That file is too large (8 MB at most)"
 msgstr "That file is too large (8 MB at most)"
 
-#: lib/phoenix_kit_ai/errors.ex:137
+#: lib/phoenix_kit_ai/errors.ex:139
 #, elixir-autogen, elixir-format
 msgid "The provider's model list could not be fetched"
 msgstr "The provider's model list could not be fetched"
@@ -2198,17 +2198,17 @@ msgstr "Uploaded image"
 msgid "Upscale"
 msgstr "Upscale"
 
-#: lib/phoenix_kit_ai/errors.ex:129
+#: lib/phoenix_kit_ai/errors.ex:130
 #, elixir-autogen, elixir-format
-msgid "Today's AI budget has been used up"
-msgstr "Today's AI budget has been used up"
+msgid "The AI budget for the last 24 hours has been used up"
+msgstr "The AI budget for the last 24 hours has been used up"
 
-#: lib/phoenix_kit_ai/errors.ex:132
+#: lib/phoenix_kit_ai/errors.ex:133
 #, elixir-autogen, elixir-format
-msgid "Today's budget for this endpoint has been used up"
-msgstr "Today's budget for this endpoint has been used up"
+msgid "This endpoint's budget for the last 24 hours has been used up"
+msgstr "This endpoint's budget for the last 24 hours has been used up"
 
-#: lib/phoenix_kit_ai/errors.ex:134
+#: lib/phoenix_kit_ai/errors.ex:136
 #, elixir-autogen, elixir-format
-msgid "You have used today's AI allowance"
-msgstr "You have used today's AI allowance"
+msgid "You have used your AI allowance for the last 24 hours"
+msgstr "You have used your AI allowance for the last 24 hours"

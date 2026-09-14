@@ -1,9 +1,12 @@
 defmodule PhoenixKitAI.StructuredOutputTest do
-  @moduledoc "JSON answers on ask/3 and complete/3, and the host translatables seam."
+  @moduledoc "JSON answers on ask/3 and complete/3."
 
   use PhoenixKitAI.DataCase, async: false
 
-  alias PhoenixKitAI.{StructuredOutput, Translatables}
+  import Ecto.Query
+
+  alias PhoenixKitAI.{Request, StructuredOutput}
+  alias PhoenixKitAI.Test.Repo, as: TestRepo
 
   setup do
     Application.put_env(:phoenix_kit_ai, :req_options,
@@ -19,7 +22,6 @@ defmodule PhoenixKitAI.StructuredOutputTest do
 
     on_exit(fn ->
       Application.delete_env(:phoenix_kit_ai, :req_options)
-      Application.delete_env(:phoenix_kit_ai, :translatables)
     end)
 
     {:ok, ep} =
@@ -84,7 +86,17 @@ defmodule PhoenixKitAI.StructuredOutputTest do
 
     test "parse tolerates fences and refuses non-objects" do
       assert {:ok, %{"a" => 1}} = StructuredOutput.parse(~s(```json\n{"a": 1}\n```), true)
-      assert {:error, {:no_json_in_response, "[1,2]"}} = StructuredOutput.parse("[1,2]", true)
+      assert {:ok, [1, 2]} = StructuredOutput.parse("[1,2]", true)
+      assert {:error, {:no_json_in_response, "42"}} = StructuredOutput.parse("42", true)
+
+      # Prose around a fence, and prose around bare braces, both parse.
+      assert {:ok, %{"a" => 1}} =
+               StructuredOutput.parse(
+                 "Here you go:\n```json\n{\"a\": 1}\n```\nHope it helps",
+                 true
+               )
+
+      assert {:ok, %{"a" => 1}} = StructuredOutput.parse("Sure — {\"a\": 1} — done.", true)
       assert {:ok, nil} = StructuredOutput.parse("anything", false)
     end
   end
@@ -133,6 +145,50 @@ defmodule PhoenixKitAI.StructuredOutputTest do
       refute Map.has_key?(second, "response_format")
     end
 
+    test "422 also retries once; a 500 does not; the caller's own response_format passes through",
+         %{endpoint: ep} do
+      stub(fn body ->
+        if Map.has_key?(body, "response_format"),
+          do: {422, %{"error" => %{"message" => "no"}}},
+          else: {200, chat(~s({"ok": true}))}
+      end)
+
+      assert {:ok, %{"json" => %{"ok" => true}}} = PhoenixKitAI.ask(ep.uuid, "x", json: true)
+      assert_received {:post, %{"response_format" => _}}
+      assert_received {:post, _second}
+
+      stub(fn _ -> {500, %{"error" => %{"message" => "boom"}}} end)
+      assert {:error, _} = PhoenixKitAI.ask(ep.uuid, "x", json: true)
+      assert_received {:post, _only}
+      refute_received {:post, _}
+
+      stub(fn _ -> {200, chat("plain")} end)
+      custom = %{"type" => "json_object"}
+      assert {:ok, response} = PhoenixKitAI.ask(ep.uuid, "x", response_format: custom)
+      refute Map.has_key?(response, "json")
+      assert_received {:post, %{"response_format" => ^custom}}
+    end
+
+    test "a prose answer to a JSON request is logged but never cached", %{endpoint: ep} do
+      stub(fn _ -> {200, chat("Sure! Here you go.")} end)
+
+      assert {:error, {:no_json_in_response, _}} =
+               PhoenixKitAI.ask(ep.uuid, "again", json: true, cache: true)
+
+      assert_received {:post, _}
+
+      stub(fn _ -> {200, chat(~s({"ok": 1}))} end)
+
+      assert {:ok, %{"json" => %{"ok" => 1}}} =
+               PhoenixKitAI.ask(ep.uuid, "again", json: true, cache: true)
+
+      assert_received {:post, _}
+
+      # One success row per provider call, none for the parse failure itself.
+      assert 2 =
+               TestRepo.aggregate(from(r in Request, where: r.endpoint_uuid == ^ep.uuid), :count)
+    end
+
     test "prose where JSON was asked for is an error; without schema/json nothing changes", %{
       endpoint: ep
     } do
@@ -145,21 +201,6 @@ defmodule PhoenixKitAI.StructuredOutputTest do
       refute Map.has_key?(response, "json")
       assert_received {:post, %{"messages" => [%{"content" => "x"}]} = plain}
       refute Map.has_key?(plain, "response_format")
-    end
-  end
-
-  describe "Translatables from config" do
-    test "a host's {type, module} pairs join discovery and come first" do
-      Application.put_env(:phoenix_kit_ai, :translatables, [
-        {"product", Ratelia.Fake.ProductTranslatable},
-        {"bad", "no"},
-        :junk
-      ])
-
-      all = Translatables.all()
-      assert all["product"] == Ratelia.Fake.ProductTranslatable
-      assert Translatables.find("product") == Ratelia.Fake.ProductTranslatable
-      refute Map.has_key?(all, "bad")
     end
   end
 end
