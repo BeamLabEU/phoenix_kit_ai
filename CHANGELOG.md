@@ -1,3 +1,52 @@
+## 0.22.0 - 2026-09-14
+
+### Added
+
+- **Spend caps** (PR #26). `PhoenixKitAI.Budget` enforces daily caps over
+  the trailing 24 hours, globally, per endpoint and per `user_uuid:`, set
+  as nanodollar settings (`ai_daily_budget`, `ai_daily_budget_per_endpoint`,
+  `ai_daily_budget_per_user`; `0` = no cap). Every provider-calling verb
+  returns `{:error, {:budget_exceeded, scope}}` once a cap is reached,
+  cached answers included. A `[:phoenix_kit_ai, :budget, :warning]` event
+  and a log line fire once per crossing of `ai_budget_warn_percent`
+  (default 80). `Budget.status/2` reads spend without side effects.
+- **Request cache.** `PhoenixKitAI.RequestCache` (ETS, supervised by
+  `children/0`): `cache: true | [ttl:, key:, refresh:] | :refresh` on every
+  verb, configured through `config :phoenix_kit_ai, request_cache: [...]`.
+  A hit calls no provider and writes a zero-cost usage row marked
+  `cached: true`, keeping the attribution and prompt link.
+- **Structured output.** `schema:` / `json: true` on `ask/3`, `complete/3`
+  and `describe_image/3` return the parsed JSON under `"json"` / `:json`.
+  A model that rejects `response_format` gets one retry without it.
+- `extract_text/3`: OCR by vision model, with typed blocks, the language,
+  a legibility score, `has_illegible_text` and caller-named `fields:`.
+- Host apps join the AI-translation pipeline via
+  `config :phoenix_kit_ai, translatables: [{type, module}]`.
+- A `[:phoenix_kit_ai, :request]` telemetry event fires per usage row.
+- `user_uuid:` is recorded on every verb's usage row.
+- Saved-prompt rows carry `metadata.prompt_snapshot.hash`.
+- `get_usage_stats/1` accepts `until:`.
+- Guide: `dev_docs/guides/spend-caps-and-caching.md`.
+
+### Fixed
+
+- **`dry_run:` no longer lifts the spend cap on verbs that ignore it.**
+  Only `process_image/4` honours `dry_run:`. Any other verb given the
+  option skipped the cap and still called the provider.
+- **A prose answer to a JSON vision request keeps its cost.** It covers
+  `describe_image/3`, `extract_text/3` and `compare_images/4`. The paid call
+  used to leave only a zero-cost error row, invisible to the spend caps.
+  It now writes its normal success row, usage included, and the verb still
+  returns `{:error, {:no_json_in_response, text}}`. `Images.describe/3`
+  takes an `:on_no_json` callback for this.
+- A caller cache key (`cache: [key: …]`) on `extract_text/3` now includes
+  `fields:`. A different field set no longer gets another set's stored
+  answer.
+- A usage row that fails to insert, such as one with an unknown
+  `user_uuid:`, is logged as a warning instead of vanishing.
+- The reorder audit rows name the first id that exists, not the first one
+  given.
+
 ## 0.21.0 - 2026-09-14
 
 ### Added
