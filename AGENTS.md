@@ -467,6 +467,31 @@ folder with no `FOLLOW_UP.md` means "not triaged yet"; a stub file is what
 
 ## TODOs
 
+- Image layer follow-ups from the 2026-09 reviews, in rough order of value:
+  async execution (an Oban worker with progress and cancellation for
+  batch jobs); retries with backoff and idempotent replay on top of the
+  `idempotency_key` already recorded; per-tenant cost ceilings and a
+  `dry_run` price estimate; input roles (`subject` / `reference` / `mask`)
+  instead of positional inputs once a second provider takes masks;
+  media normalisation (EXIF rotation, colour profiles) before dispatch.
+  Trigger: the first consumer that batches, or a second mask-capable
+  provider.
+- `PhoenixKitAI.Completion` is both the bottom of the stack (`url/2`,
+  `handle_error_status/2`, `decode_image_url/1`) and the top (the image
+  verbs delegating to adapters). Split the shared helpers into
+  `PhoenixKitAI.Providers.Shared` and leave `Completion` the chat /
+  embeddings / TTS client. Trigger: the next provider adapter, or the next
+  time a compile-time cycle bites.
+- `PhoenixKitAI.Images.ImageModels` caches in `:persistent_term`; an ETS
+  table with single-flight refresh would avoid the global GC on refills
+  and unbounded key growth across endpoints. Trigger: more than a handful
+  of image endpoints per install.
+- The SSRF policy in `Providers.HTTP` resolves hostnames at check time;
+  DNS rebinding between check and connect is out of its reach. Trigger:
+  an install that cannot firewall egress.
+- No automated `mix test` run (`precommit` stops at dialyzer; no CI
+  workflow) — PR #21's open item, waiting on a policy call.
+
 - `metadata.error_reason` is stored via `inspect/1` in `log_failed_request/7`
   and `log_failed_embedding_request/5`. A raw `reason` value would filter better
   through JSONB, but no consumer filters on it yet. Trigger: the first consumer

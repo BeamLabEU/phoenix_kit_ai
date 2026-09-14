@@ -196,7 +196,9 @@ defmodule PhoenixKitAI.Web.Endpoints do
     SortHelpers.parse_sort_params(params,
       valid_fields: @valid_sort_fields,
       default_sort: :inserted_at,
-      default_dir: :asc
+      # Newest first, matching the value mount assigns before handle_params
+      # runs (PR #9 review, L2: the two defaults disagreed).
+      default_dir: :desc
     )
   end
 

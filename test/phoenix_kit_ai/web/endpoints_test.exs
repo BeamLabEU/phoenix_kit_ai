@@ -243,12 +243,12 @@ defmodule PhoenixKitAI.Web.EndpointsTest do
     test "Manual sort_order option renders in the sort dropdown", %{conn: conn} do
       fixture_endpoint(name: "Sort Manual A")
 
-      {:ok, _view, html} = live(conn, "/en/admin/ai/endpoints")
+      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints")
 
       # Pin the gettext-wrapped Manual label in the sort selector — a
       # regression that drops the option (or breaks extraction) is
       # invisible without this assertion.
-      assert html =~ ~s(value="sort_order">Manual)
+      assert has_element?(view, ~s(select[name="sort_by"] option[value="sort_order"]), "Manual")
     end
 
     test "oversized payload flashes the error message", %{conn: conn} do
