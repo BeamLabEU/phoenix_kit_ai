@@ -463,6 +463,36 @@ defmodule PhoenixKitAI.ImagesTest do
                PhoenixKitAI.describe_image(ep.uuid, [@jpeg], json: true)
     end
 
+    test "a model that rejects response_format gets one retry without it" do
+      test_pid = self()
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        {:ok, raw, conn} = Plug.Conn.read_body(conn)
+        body = Jason.decode!(raw)
+        send(test_pid, {:post, conn.request_path, body})
+
+        if Map.has_key?(body, "response_format") do
+          conn
+          |> Plug.Conn.put_resp_content_type("application/json")
+          |> Plug.Conn.send_resp(
+            400,
+            Jason.encode!(%{"error" => %{"message" => "response_format is not supported"}})
+          )
+        else
+          Req.Test.json(conn, chat_answer(~s({"brand": "Snickers"})))
+        end
+      end)
+
+      ep = endpoint_fixture(%{model: "google/gemini-2.5-flash-image"})
+
+      assert {:ok, %{json: %{"brand" => "Snickers"}}} =
+               PhoenixKitAI.describe_image(ep.uuid, [@jpeg], json: true)
+
+      assert_received {:post, "/api/v1/chat/completions", %{"response_format" => _}}
+      assert_received {:post, "/api/v1/chat/completions", second}
+      refute Map.has_key?(second, "response_format")
+    end
+
     test "compare turns the fixed-schema answer into a verdict" do
       stub(
         chat_answer(

@@ -2752,10 +2752,12 @@ defmodule PhoenixKitAI do
           [:remove_reflections, {:clean_background, color: "white"}])
 
   Logged as an `"image_edit"` request with the operations, the model
-  used and any option warnings in the metadata. With `verify: true` the
-  result is checked against the original by `compare_images/4` on the
-  same endpoint (or `verify: other_endpoint_uuid`), and the verdict comes
-  back under `:verification` without changing the outcome.
+  used and any option warnings in the metadata. With `verify:` the result
+  is checked against the original by `compare_images/4` and the verdict
+  comes back under `:verification` without changing the outcome — give it
+  a vision-capable endpoint uuid (`verify: text_endpoint_uuid`); `true`
+  uses the same endpoint, which works only when its model also answers
+  in text (an image-only model returns a `:verification` error instead).
   """
   @spec process_image(
           String.t() | Endpoint.t(),

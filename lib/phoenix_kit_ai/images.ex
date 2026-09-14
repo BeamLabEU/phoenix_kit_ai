@@ -353,7 +353,7 @@ defmodule PhoenixKitAI.Images do
         |> Keyword.take([:temperature, :max_tokens, :top_p, :seed])
         |> Keyword.put(:response_format, response_format)
 
-      with {:ok, response} <- Completion.chat_completion(endpoint, messages, chat_opts),
+      with {:ok, response} <- chat_with_json_fallback(endpoint, messages, chat_opts),
            text = content_text(response),
            {:ok, json} <- parse_json(text, json_requested?(opts)) do
         {:ok,
@@ -369,6 +369,28 @@ defmodule PhoenixKitAI.Images do
   end
 
   defp json_requested?(opts), do: is_map(opts[:schema]) or opts[:json] == true
+
+  # Not every model behind a chat endpoint takes `response_format`
+  # (image-output models on OpenRouter answer 400). The prompt already
+  # asks for JSON, so a 4xx on a JSON request is retried once without the
+  # field and the answer parsed as text.
+  defp chat_with_json_fallback(endpoint, messages, chat_opts) do
+    case Completion.chat_completion(endpoint, messages, chat_opts) do
+      {:error, {:api_error, status}}
+      when status in 400..499 and status != 401 and status != 402 and status != 429 ->
+        if chat_opts[:response_format],
+          do:
+            Completion.chat_completion(
+              endpoint,
+              messages,
+              Keyword.delete(chat_opts, :response_format)
+            ),
+          else: {:error, {:api_error, status}}
+
+      other ->
+        other
+    end
+  end
 
   defp content_text(response) do
     case Completion.extract_content(response) do
