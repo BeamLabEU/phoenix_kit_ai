@@ -375,11 +375,17 @@ defmodule PhoenixKitAI.Images.Operations do
     end)
   end
 
+  # Parameter keys may be atoms or (unknown, caller-supplied) strings.
   defp lookup(params, key) do
+    wanted = String.downcase(key)
+
     Enum.find_value(params, fn {k, v} ->
-      if String.downcase(Atom.to_string(k)) == String.downcase(key), do: v
+      if String.downcase(key_name(k)) == wanted, do: v
     end)
   end
+
+  defp key_name(key) when is_atom(key), do: Atom.to_string(key)
+  defp key_name(key) when is_binary(key), do: key
 
   # Config may arrive with string keys and string parameter names
   # (runtime.exs from env, say); everything internal is atoms.
@@ -392,6 +398,8 @@ defmodule PhoenixKitAI.Images.Operations do
         |> Map.update(:defaults, %{}, &atom_keys/1)
         |> Map.update(:options, %{}, &atom_keys/1)
         |> Map.update(:presets, %{}, &atom_keys/1)
+        |> Map.update(:group, nil, &to_atom_or_nil/1)
+        |> Map.update(:references, :none, &to_atom_or_nil/1)
 
       {to_atom(name), spec}
     end)
@@ -399,6 +407,10 @@ defmodule PhoenixKitAI.Images.Operations do
 
   defp atom_keys(map) when is_map(map), do: Map.new(map, fn {k, v} -> {to_atom(k), v} end)
   defp atom_keys(_other), do: %{}
+
+  defp to_atom_or_nil(nil), do: nil
+  defp to_atom_or_nil(""), do: nil
+  defp to_atom_or_nil(value), do: to_atom(value)
 
   # Host config is trusted (it is code); caller parameters are not.
   defp to_atom(key) when is_atom(key), do: key

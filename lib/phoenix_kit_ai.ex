@@ -2824,6 +2824,11 @@ defmodule PhoenixKitAI do
   defp input_error?({:missing_parameter, _, _}), do: true
   defp input_error?({:unsupported_option, _, _}), do: true
   defp input_error?({:too_many_images, _, _}), do: true
+  defp input_error?({:image_too_large, _, _}), do: true
+  defp input_error?({:unsafe_url, _}), do: true
+  defp input_error?({:conflicting_operations, _, _}), do: true
+  defp input_error?({:model_not_listed, _}), do: true
+  defp input_error?({:capabilities_unavailable, _}), do: true
   defp input_error?(_reason), do: false
 
   defp log_failed_unless_input_error(endpoint, type, prompt, images, reason, trace) do
@@ -3057,7 +3062,7 @@ defmodule PhoenixKitAI do
       ctx: ctx,
       started: System.monotonic_time(:millisecond),
       idempotency_key: opts[:idempotency_key],
-      model: nil
+      model: opts[:model]
     }
   end
 

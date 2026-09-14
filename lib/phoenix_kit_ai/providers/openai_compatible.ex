@@ -57,7 +57,7 @@ defmodule PhoenixKitAI.Providers.OpenAICompatible do
     json? = is_map(options[:response_format])
 
     case Completion.chat_completion(endpoint, messages, chat_opts) do
-      {:error, {:api_error, status}} when status in [400, 404, 422] and json? ->
+      {:error, {:api_error, status}} when status in [400, 422] and json? ->
         Completion.chat_completion(
           endpoint,
           messages,
@@ -127,15 +127,25 @@ defmodule PhoenixKitAI.Providers.OpenAICompatible do
     latency_ms = System.monotonic_time(:millisecond) - started
 
     with {:ok, map} <- HTTP.body_map(response),
-         {:ok, entries} <- data_entries(map) do
+         {:ok, entries} <- data_entries(map),
+         {:ok, images} <- usable(Enum.map(entries, &decode_data_entry/1)) do
       {:ok,
        %{
-         images: Enum.map(entries, &decode_data_entry/1),
+         images: images,
          text: nil,
          usage: Completion.extract_usage(map),
          latency_ms: latency_ms,
          model: map["model"] || model
        }}
+    end
+  end
+
+  # An entry with neither bytes nor a URL (undecodable base64, an empty
+  # object) is dropped; a response with none left is not a success.
+  defp usable(images) do
+    case Enum.filter(images, &(is_binary(&1.data) or is_binary(&1.url))) do
+      [] -> {:error, :invalid_response_format}
+      images -> {:ok, images}
     end
   end
 
@@ -167,22 +177,7 @@ defmodule PhoenixKitAI.Providers.OpenAICompatible do
 
     case HTTP.body_map(response) do
       {:ok, %{"choices" => [%{"message" => message} | _]} = map} when is_map(message) ->
-        text = message_text(message)
-
-        case message_image_urls(message) do
-          [] ->
-            {:error, {:no_image_in_response, text}}
-
-          urls ->
-            {:ok,
-             %{
-               images: Enum.map(urls, &Completion.decode_image_url/1),
-               text: text,
-               usage: Completion.extract_usage(map),
-               latency_ms: latency_ms,
-               model: map["model"] || model
-             }}
-        end
+        chat_images(message, map, latency_ms, model)
 
       {:ok, %{"choices" => []}} ->
         {:error, :no_choices_in_response}
@@ -192,6 +187,25 @@ defmodule PhoenixKitAI.Providers.OpenAICompatible do
 
       {:error, _} = error ->
         error
+    end
+  end
+
+  defp chat_images(message, map, latency_ms, model) do
+    text = message_text(message)
+
+    with urls when urls != [] <- message_image_urls(message),
+         {:ok, images} <- usable(Enum.map(urls, &Completion.decode_image_url/1)) do
+      {:ok,
+       %{
+         images: images,
+         text: text,
+         usage: Completion.extract_usage(map),
+         latency_ms: latency_ms,
+         model: map["model"] || model
+       }}
+    else
+      [] -> {:error, {:no_image_in_response, text}}
+      {:error, _} = error -> error
     end
   end
 

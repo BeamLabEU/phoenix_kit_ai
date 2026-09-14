@@ -443,7 +443,8 @@ defmodule PhoenixKitAI.ImagesTest do
              ] = body["messages"]
 
       assert question =~ "Read the label."
-      assert question =~ "JSON object matching the given schema"
+      assert question =~ "JSON object matching this JSON Schema"
+      assert question =~ ~s("brand")
 
       assert [%{request_type: "vision", cost_cents: 500, input_tokens: 300}] =
                TestRepo.all(from(r in Request, where: r.request_type == "vision"))

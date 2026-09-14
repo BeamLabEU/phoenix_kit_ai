@@ -105,16 +105,20 @@ defmodule PhoenixKitAI.Providers.HTTP do
 
   @doc """
   Whether an http(s) URL may be fetched on the caller's behalf: http or
-  https, a host that is not loopback, link-local, RFC 1918 or `.local`
-  — unless `:allow_internal_endpoint_urls` is set, the same switch the
-  endpoint base-URL guard honours.
+  https, and a host that neither is nor resolves to a loopback,
+  link-local, RFC 1918 or unique-local address (IPv4-mapped IPv6 forms
+  included), nor ends in `.local` / `.internal`. Hostnames are resolved
+  here so a public name pointing at an internal address is refused too.
+  `:allow_internal_image_urls` lifts the policy (tests, air-gapped
+  installs); it is deliberately separate from the endpoint base-URL
+  switch, because a caller's image URL is not an operator's setting.
   """
   @spec safe_url?(String.t()) :: boolean()
   def safe_url?(url) when is_binary(url) do
     case URI.parse(url) do
       %URI{scheme: scheme, host: host}
       when scheme in ["http", "https"] and is_binary(host) and host != "" ->
-        Application.get_env(:phoenix_kit_ai, :allow_internal_endpoint_urls, false) or
+        Application.get_env(:phoenix_kit_ai, :allow_internal_image_urls, false) or
           not internal_host?(host)
 
       _ ->
@@ -125,53 +129,90 @@ defmodule PhoenixKitAI.Providers.HTTP do
   def safe_url?(_url), do: false
 
   defp internal_host?(host) do
-    host = String.downcase(host)
+    host = host |> String.downcase() |> String.trim_leading("[") |> String.trim_trailing("]")
 
     cond do
-      host in ["localhost", "0.0.0.0", "::1"] -> true
+      host in ["localhost", "0.0.0.0"] -> true
       String.ends_with?(host, ".local") or String.ends_with?(host, ".internal") -> true
-      true -> private_ip?(host)
+      true -> Enum.any?(addresses(host), &private_address?/1)
     end
   end
 
-  defp private_ip?(host) do
-    case :inet.parse_address(String.to_charlist(host)) do
-      {:ok, address} -> private_address?(address)
-      {:error, _} -> false
+  # A literal address is itself; a name is every address it resolves to
+  # right now. This is a best-effort check — a host that changes its
+  # answer between this lookup and the connection (DNS rebinding) is out
+  # of its reach; production installs should also firewall egress.
+  defp addresses(host) do
+    chars = String.to_charlist(host)
+
+    case :inet.parse_address(chars) do
+      {:ok, address} -> [address]
+      {:error, _} -> resolve(chars)
     end
   end
 
-  # IPv4: loopback, RFC 1918, link-local. IPv6: loopback, unique-local, link-local.
+  defp resolve(chars) do
+    resolved =
+      Enum.flat_map([:inet, :inet6], fn family ->
+        case :inet.getaddrs(chars, family) do
+          {:ok, list} -> list
+          {:error, _} -> []
+        end
+      end)
+
+    # A name that does not resolve is not internal — there is nothing to
+    # connect to, and the fetch fails on its own.
+    resolved
+  end
+
+  # IPv4: loopback, RFC 1918, link-local, "this" network. IPv6: loopback,
+  # unspecified, unique-local, link-local, and IPv4-mapped forms.
   defp private_address?({a, b, _, _}),
     do:
-      a in [10, 127] or {a, b} == {169, 254} or {a, b} == {192, 168} or (a == 172 and b in 16..31)
+      a in [0, 10, 127] or {a, b} == {169, 254} or {a, b} == {192, 168} or
+        (a == 172 and b in 16..31)
 
-  defp private_address?({0, 0, 0, 0, 0, 0, 0, 1}), do: true
+  defp private_address?({0, 0, 0, 0, 0, 0xFFFF, hi, lo}),
+    do: private_address?({div(hi, 256), rem(hi, 256), div(lo, 256), rem(lo, 256)})
+
+  defp private_address?({0, 0, 0, 0, 0, 0, 0, x}) when x in [0, 1], do: true
   defp private_address?({a, _, _, _, _, _, _, _}), do: a in [0xFC00, 0xFD00, 0xFE80]
 
   @doc """
   Downloads an image the module was handed a URL for (a caller's input
-  on providers that need bytes, or a provider's output URL), bounded by
-  `max_image_bytes/0`, two redirects, 60 s. Returns the bytes and the
-  sniffed content type.
+  on providers that need bytes, or a provider's output URL). Every hop is
+  checked with `safe_url?/1` — redirects are followed by hand, two at
+  most, so a public URL cannot bounce to an internal one — the body is
+  streamed and abandoned the moment it passes `max_image_bytes/0`, and
+  the connection has a 10 s connect / 60 s receive budget. Returns the
+  bytes and the sniffed content type.
   """
   @spec fetch_image(String.t(), keyword()) ::
           {:ok, binary(), String.t() | nil} | {:error, term()}
-  def fetch_image(url, opts \\ []) do
+  def fetch_image(url, opts \\ []), do: fetch_image(url, opts, 2)
+
+  defp fetch_image(url, opts, hops_left) do
     max = Keyword.get(opts, :max_bytes, max_image_bytes())
 
     if safe_url?(url) do
       req_opts =
-        [decode_body: false, max_redirects: 2, receive_timeout: 60_000] ++
-          Application.get_env(:phoenix_kit_ai, :req_options, [])
+        [
+          redirect: false,
+          receive_timeout: 60_000,
+          connect_options: [timeout: 10_000],
+          into: bounded_collector(max)
+        ] ++ Application.get_env(:phoenix_kit_ai, :req_options, [])
 
       case Req.get(url, req_opts) do
-        {:ok, %Req.Response{status: 200, body: bytes}}
-        when is_binary(bytes) and byte_size(bytes) > max ->
-          {:error, {:image_too_large, byte_size(bytes), max}}
-
         {:ok, %Req.Response{status: 200, body: bytes}} when is_binary(bytes) and bytes != "" ->
           {:ok, bytes, OpenAICompatible.sniff(bytes)}
+
+        {:ok, %Req.Response{status: 200, body: {:too_large, seen}}} ->
+          {:error, {:image_too_large, seen, max}}
+
+        {:ok, %Req.Response{status: status} = response}
+        when status in [301, 302, 303, 307, 308] ->
+          follow_redirect(url, response, opts, hops_left)
 
         {:ok, %Req.Response{status: status}} ->
           {:error, {:fetch_failed, url, status}}
@@ -183,4 +224,35 @@ defmodule PhoenixKitAI.Providers.HTTP do
       {:error, {:unsafe_url, url}}
     end
   end
+
+  defp follow_redirect(_url, _response, _opts, 0),
+    do: {:error, {:fetch_failed, :too_many_redirects}}
+
+  defp follow_redirect(url, response, opts, hops_left) do
+    case Req.Response.get_header(response, "location") do
+      [location | _] ->
+        url |> URI.merge(location) |> URI.to_string() |> fetch_image(opts, hops_left - 1)
+
+      [] ->
+        {:error, {:fetch_failed, url, :redirect_without_location}}
+    end
+  end
+
+  # Streams the body into the response, halting once it outgrows `max`;
+  # a halted download leaves `{:too_large, bytes_seen}` as the body.
+  defp bounded_collector(max) do
+    fn {:data, chunk}, {req, resp} ->
+      {verdict, body} = collect(resp.body, chunk, max)
+      {verdict, {req, %{resp | body: body}}}
+    end
+  end
+
+  defp collect({:too_large, _} = marker, _chunk, _max), do: {:halt, marker}
+
+  defp collect(body, chunk, max) when is_binary(body) do
+    seen = byte_size(body) + byte_size(chunk)
+    if seen > max, do: {:halt, {:too_large, seen}}, else: {:cont, body <> chunk}
+  end
+
+  defp collect(_body, chunk, _max), do: {:cont, chunk}
 end

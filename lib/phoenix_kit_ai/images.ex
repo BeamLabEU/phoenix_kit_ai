@@ -77,6 +77,33 @@ defmodule PhoenixKitAI.Images do
           warnings: [term()]
         }
 
+  @typedoc """
+  Every error the image verbs return, so a caller can match exhaustively.
+  Transport and provider errors come from `PhoenixKitAI.Completion`
+  (`:rate_limited`, `:request_timeout`, `{:api_error, status}`,
+  `{:connection_error, reason}`, …).
+  """
+  @type error ::
+          :empty_input
+          | :invalid_image_input
+          | :reference_image_required
+          | :not_supported
+          | {:image_too_large, pos_integer(), pos_integer()}
+          | {:unsafe_url, String.t()}
+          | {:fetch_failed, String.t(), term()}
+          | {:unknown_operation, term()}
+          | {:missing_parameter, atom(), atom()}
+          | {:conflicting_operations, atom(), atom()}
+          | {:unsupported_option, atom(), term()}
+          | {:too_many_images, pos_integer(), pos_integer()}
+          | {:model_not_listed, String.t()}
+          | {:capabilities_unavailable, term()}
+          | {:no_image_in_response, String.t() | nil}
+          | {:no_json_in_response, String.t() | nil}
+          | {:content_policy, String.t()}
+          | atom()
+          | {atom(), term()}
+
   @typedoc "What `process/4` returns for `dry_run: true`: the plan, no images."
   @type plan :: %{
           prompt: String.t(),
@@ -150,7 +177,9 @@ defmodule PhoenixKitAI.Images do
   end
 
   defp image_bytes(%{data: data}) when is_binary(data), do: byte_size(data)
-  defp image_bytes("data:" <> _), do: nil
+  defp image_bytes(%{url: "data:" <> _ = url}), do: image_bytes(url)
+  # A base64 data URL carries three bytes for every four characters.
+  defp image_bytes("data:" <> rest), do: div(byte_size(rest) * 3, 4)
   defp image_bytes("http" <> _), do: nil
   defp image_bytes(bytes) when is_binary(bytes), do: byte_size(bytes)
   defp image_bytes(_other), do: nil
@@ -262,7 +291,7 @@ defmodule PhoenixKitAI.Images do
          {:ok, options} <- put_mask(options, opts[:mask], opts),
          {:ok, pairs} <- Operations.normalize(operations),
          :ok <- check_references(pairs, refs),
-         {model, capability_warnings} = capabilities(endpoint, model_id),
+         {:ok, model, capability_warnings} <- capabilities(endpoint, model_id, strict),
          {merged, conflict_warnings} =
            resolve_conflicts(Map.merge(Operations.options(pairs), options)),
          {:ok, fitted, fit_warnings} <-
@@ -307,12 +336,27 @@ defmodule PhoenixKitAI.Images do
 
   # What the model accepts, and a warning when that could not be known:
   # the model is missing from the listing, or the listing was unreachable.
-  defp capabilities(endpoint, model_id) do
+  # Under strict the unknown fails closed instead of falling back to the
+  # adapter's static option set.
+  defp capabilities(endpoint, model_id, strict) do
     case ImageModels.lookup(endpoint, model_id) do
-      {:ok, model} -> {model, []}
-      {:error, :not_supported} -> {nil, []}
-      {:error, :not_listed} -> {nil, [{:model_not_listed, model_id}]}
-      {:error, {:unavailable, reason}} -> {nil, [{:capabilities_unavailable, reason}]}
+      {:ok, model} ->
+        {:ok, model, []}
+
+      {:error, :not_supported} ->
+        {:ok, nil, []}
+
+      {:error, :not_listed} when strict ->
+        {:error, {:model_not_listed, model_id}}
+
+      {:error, :not_listed} ->
+        {:ok, nil, [{:model_not_listed, model_id}]}
+
+      {:error, {:unavailable, reason}} when strict ->
+        {:error, {:capabilities_unavailable, reason}}
+
+      {:error, {:unavailable, reason}} ->
+        {:ok, nil, [{:capabilities_unavailable, reason}]}
     end
   end
 
@@ -592,7 +636,11 @@ defmodule PhoenixKitAI.Images do
 
     cond do
       is_map(opts[:schema]) ->
-        {question <> "\n\nAnswer only with a JSON object matching the given schema.",
+        # The schema rides in the prompt as well as in response_format, so
+        # the fallback without response_format still knows the shape.
+        {question <>
+           "\n\nAnswer only with a JSON object matching this JSON Schema:\n" <>
+           Jason.encode!(opts[:schema]),
          %{
            "type" => "json_schema",
            "json_schema" => %{
@@ -620,7 +668,7 @@ defmodule PhoenixKitAI.Images do
       |> String.replace(~r/\s*```\z/, "")
 
     case Jason.decode(cleaned) do
-      {:ok, json} when is_map(json) or is_list(json) -> {:ok, json}
+      {:ok, json} when is_map(json) -> {:ok, json}
       _ -> {:error, {:no_json_in_response, text}}
     end
   end

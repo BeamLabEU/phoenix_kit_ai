@@ -87,8 +87,16 @@ Guards that run before any request, on every verb:
 
 - inputs above `max_input_bytes` (default 25 MB, app env
   `:max_image_bytes`) → `{:error, {:image_too_large, bytes, max}}`
-- an http(s) input on a loopback / link-local / RFC 1918 / `.local` host
-  → `{:error, {:unsafe_url, url}}` (lifted by `:allow_internal_endpoint_urls`)
+- an http(s) input whose host is, or resolves to, a loopback / link-local /
+  RFC 1918 / unique-local address (IPv4-mapped IPv6 included), or ends in
+  `.local` / `.internal` → `{:error, {:unsafe_url, url}}`. The same check
+  runs on every redirect hop of every fetch the module makes (two hops
+  at most), and bodies are abandoned the moment they pass the size cap.
+  `:allow_internal_image_urls` lifts it (tests, air-gapped installs) — a
+  separate switch from the endpoint base-URL one, because a caller's image
+  URL is not an operator's setting. It is a best-effort policy: a host that
+  changes its DNS answer between the check and the connection is out of
+  its reach, so production installs should firewall egress as well.
 - two operations from one exclusive group (the background treatments)
   → `{:error, {:conflicting_operations, a, b}}`
 - more inputs than the model's published maximum → `{:error, {:too_many_images, n, max}}`,
@@ -97,8 +105,12 @@ Guards that run before any request, on every verb:
   PNG with an `{:adjusted_option, …}` warning
 
 `dry_run: true` returns the plan — prompt, fitted options, warnings,
-model — with no request and no usage row. A batch job can price and
-inspect before it spends.
+model — with no provider request and no usage row (it may still read the
+model listing, which is cached for 30 minutes). A batch job can price and
+inspect before it spends. `strict: true` also fails closed when the
+model's capabilities are unknown (`{:model_not_listed, id}` /
+`{:capabilities_unavailable, reason}`) instead of falling back to the
+adapter's static option set.
 
 Outputs always come back as bytes: a provider that answers with a URL
 (xAI, OpenAI's `response_format: "url"`) has it fetched — bounded, two
@@ -171,4 +183,10 @@ options, and return the uniform result
   `idempotency_key:` and it lands in the row's metadata, so a retried job
   can find its earlier attempt.
 - A provider's safety refusal is `{:error, {:content_policy, message}}`,
-  not a generic `{:api_error, 400}` — do not retry it.
+  not a generic `{:api_error, 400}` — do not retry it. Every error the
+  verbs can return is listed in `PhoenixKitAI.Images`'s `error` type.
+- Every provider call the image verbs make emits
+  `[:phoenix_kit_ai, :image, :request]` (measurements: latency, input and
+  output bytes and counts; metadata: type, outcome, provider, model,
+  endpoint uuid, operation names, warning tags, source) — tags only, no
+  prompts, no bytes.

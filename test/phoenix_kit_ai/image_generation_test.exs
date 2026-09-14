@@ -166,12 +166,11 @@ defmodule PhoenixKitAI.ImageGenerationTest do
       assert {:error, :invalid_json_response} = PhoenixKitAI.generate_image(ep.uuid, "hi")
     end
 
-    test "un-decodable base64 in an entry decodes to a nil-data entry, not a hard error" do
-      stub_json(200, %{"data" => [%{"b64_json" => "!!!not-base64!!!"}]})
+    test "un-decodable base64 leaves no usable image, which is an invalid response" do
+      stub_json(200, %{"data" => [%{"b64_json" => "%%%not-base64%%%"}]})
       ep = endpoint_fixture()
 
-      assert {:ok, %{images: [%{url: nil, data: nil}]}} =
-               PhoenixKitAI.generate_image(ep.uuid, "hi")
+      assert {:error, :invalid_response_format} = PhoenixKitAI.generate_image(ep.uuid, "hi")
     end
   end
 
