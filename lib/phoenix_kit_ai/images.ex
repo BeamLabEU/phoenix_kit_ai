@@ -32,7 +32,7 @@ defmodule PhoenixKitAI.Images do
   Canonical request options, mapped per provider by the adapter:
   `:aspect_ratio`, `:resolution`, `:size`, `:quality`, `:background`,
   `:output_format`, `:output_compression`, `:n`, `:seed`,
-  `:response_format`. Control options: `:model` (override the endpoint's
+  `:response_format`, `:style`, `:mask`. Control options: `:model` (override the endpoint's
   model — e.g. to compare two OpenRouter models on one endpoint),
   `:transport`, `:provider_options` (passed through untouched),
   `:provider_routing` (OpenRouter), `:strict`, `:preserve`, `:finish`,
@@ -130,33 +130,33 @@ defmodule PhoenixKitAI.Images do
   `%{url}`, and bare `data:` / `http(s):` strings. Never hand a provider a
   permanent URL it could cache — pass bytes.
   """
-  @spec normalize_inputs([input()], keyword()) ::
-          {:ok, [String.t()]}
-          | {:error,
-             :invalid_image_input
-             | :empty_input
-             | {:image_too_large, pos_integer(), pos_integer()}
-             | {:unsafe_url, String.t()}}
+  @spec normalize_inputs([input()], keyword()) :: {:ok, [String.t()]} | {:error, error()}
   def normalize_inputs(images, opts \\ [])
   def normalize_inputs([], _opts), do: {:error, :empty_input}
 
   def normalize_inputs(images, opts) when is_list(images) do
     max = Keyword.get(opts, :max_input_bytes, HTTP.max_image_bytes())
+    # All inputs together may take four times one image's allowance.
+    total_max = Keyword.get(opts, :max_total_input_bytes, max * 4)
 
     images
-    |> Enum.reduce_while({:ok, []}, fn image, {:ok, acc} ->
-      case checked_ref(image, max) do
-        {:ok, ref} -> {:cont, {:ok, [ref | acc]}}
-        {:error, _} = error -> {:halt, error}
-      end
+    |> Enum.reduce_while({:ok, [], 0}, fn image, {:ok, acc, total} ->
+      total = total + (image_bytes(image) || 0)
+
+      if total > total_max,
+        do: {:halt, {:error, {:image_too_large, total, total_max}}},
+        else: collect_ref(checked_ref(image, max), acc, total)
     end)
     |> case do
-      {:ok, refs} -> {:ok, Enum.reverse(refs)}
+      {:ok, refs, _total} -> {:ok, Enum.reverse(refs)}
       error -> error
     end
   end
 
   def normalize_inputs(_other, _opts), do: {:error, :invalid_image_input}
+
+  defp collect_ref({:ok, ref}, acc, total), do: {:cont, {:ok, [ref | acc], total}}
+  defp collect_ref({:error, _} = error, _acc, _total), do: {:halt, error}
 
   # Size is checked on the bytes we were handed; a remote URL is checked
   # against the fetch policy (scheme, no internal hosts).
@@ -220,14 +220,18 @@ defmodule PhoenixKitAI.Images do
     endpoint |> endpoint_defaults() |> Map.merge(given)
   end
 
+  # Stored defaults only where the provider can take them: an xAI endpoint
+  # with an `image_size` column set must not grow a `size` it cannot send.
   defp endpoint_defaults(endpoint) do
     settings = endpoint.provider_settings || %{}
+    accepted = Provider.for_endpoint(endpoint).image_options(endpoint)
 
     %{}
     |> put_default(:aspect_ratio, settings["aspect_ratio"])
     |> put_default(:resolution, settings["resolution"])
     |> put_default(:size, Map.get(endpoint, :image_size))
     |> put_default(:quality, Map.get(endpoint, :image_quality))
+    |> Map.take(accepted)
   end
 
   defp put_default(map, key, value) when is_binary(value) and value != "",
@@ -241,10 +245,13 @@ defmodule PhoenixKitAI.Images do
   per change, `{:dropped_option, key, value}`, in the canonical option
   order; with `strict: true` the first offender is an error instead.
   """
+  @adapter_controls ~w(model transport provider_options provider_routing image_config)a
+
   @spec fit_options(map(), ImageModel.t() | nil, [atom()], boolean()) ::
           {:ok, map(), [term()]} | {:error, {:unsupported_option, atom(), term()}}
   def fit_options(options, model, adapter_options, strict) do
     {request, control} = Map.split(options, @request_options)
+    control = Map.take(control, @adapter_controls)
 
     {kept, warnings} =
       Enum.reduce(@request_options, {%{}, []}, fn key, acc ->
@@ -262,7 +269,7 @@ defmodule PhoenixKitAI.Images do
   defp fit_option({kept, warnings}, key, {:ok, value}, model, adapter_options) do
     if option_ok?(model, adapter_options, key, value),
       do: {Map.put(kept, key, value), warnings},
-      else: {kept, [{:dropped_option, key, value} | warnings]}
+      else: {kept, [redact_warning({:dropped_option, key, value}) | warnings]}
   end
 
   # With a model listing, both the key and the value must be listed —
@@ -280,7 +287,7 @@ defmodule PhoenixKitAI.Images do
   with the given `operations` on `endpoint`. See the moduledoc.
   """
   @spec process(Endpoint.t(), [input()], [term()], keyword()) ::
-          {:ok, result() | plan()} | {:error, term()}
+          {:ok, result() | plan()} | {:error, error()}
   def process(endpoint, images, operations, opts \\ []) do
     adapter = Provider.for_endpoint(endpoint)
     options = options(endpoint, opts)
@@ -288,12 +295,12 @@ defmodule PhoenixKitAI.Images do
     strict = Keyword.get(opts, :strict, false)
 
     with {:ok, refs} <- normalize_inputs(images, opts),
-         {:ok, options} <- put_mask(options, opts[:mask], opts),
+         {:ok, options} <- normalize_mask(options, opts[:mask], opts),
          {:ok, pairs} <- Operations.normalize(operations),
          :ok <- check_references(pairs, refs),
          {:ok, model, capability_warnings} <- capabilities(endpoint, model_id, strict),
          {merged, conflict_warnings} =
-           resolve_conflicts(Map.merge(Operations.options(pairs), options)),
+           resolve_conflicts(layer_options(endpoint, pairs, opts, options)),
          {:ok, fitted, fit_warnings} <-
            fit_options(merged, model, adapter.image_options(endpoint), strict),
          :ok <- check_reference_count(model, refs),
@@ -326,13 +333,54 @@ defmodule PhoenixKitAI.Images do
     end
   end
 
-  # A mask travels as a request option (a data URL) so the adapter that
-  # takes one (OpenAI edits) sends it and the others drop it with a warning.
-  defp put_mask(options, nil, _opts), do: {:ok, options}
+  # Endpoint defaults underneath, the operations' implied options on top of
+  # those, the caller's own options on top of everything — an operation's
+  # `resolution: "4K"` beats a stored "1K", and a caller beats both.
+  defp layer_options(endpoint, pairs, opts, options) do
+    # The caller's own request options (a normalised mask is not "given").
+    given = opts |> Map.new() |> Map.take(Map.keys(options) -- [:mask])
 
-  defp put_mask(options, mask, opts) do
+    endpoint
+    |> endpoint_defaults()
+    |> Map.merge(Operations.options(pairs))
+    |> Map.merge(Map.drop(options, Map.keys(endpoint_defaults(endpoint))))
+    |> Map.merge(Map.reject(given, fn {_k, v} -> v in [nil, ""] end))
+  end
+
+  @doc """
+  Normalises a `mask:` input into the request option adapters receive (a
+  data URL) — the OpenAI adapter sends it as the `mask` file, the others
+  drop it with a `{:dropped_option, :mask, _}` warning. Used by
+  `process/4` and by the thin `PhoenixKitAI.Completion.edit_image/4`.
+  """
+  @spec normalize_mask(map(), input() | nil, keyword()) :: {:ok, map()} | {:error, error()}
+  def normalize_mask(options, nil, _opts), do: {:ok, Map.delete(options, :mask)}
+
+  def normalize_mask(options, mask, opts) do
     with {:ok, [ref]} <- normalize_inputs([mask], opts), do: {:ok, Map.put(options, :mask, ref)}
   end
+
+  @doc "The question `describe/3` asks when the caller gives none."
+  @spec default_question() :: String.t()
+  def default_question, do: "Describe this image in detail."
+
+  @doc """
+  A warning with any long binary payload replaced by its size — a dropped
+  `:mask` carries a whole data URL; logs and screens get
+  `{:dropped_option, :mask, {:bytes, 12345}}` instead.
+  """
+  @spec redact_warning(term()) :: term()
+  def redact_warning(warning) when is_tuple(warning) do
+    warning
+    |> Tuple.to_list()
+    |> Enum.map(fn
+      value when is_binary(value) and byte_size(value) > 120 -> {:bytes, byte_size(value)}
+      value -> value
+    end)
+    |> List.to_tuple()
+  end
+
+  def redact_warning(warning), do: warning
 
   # What the model accepts, and a warning when that could not be known:
   # the model is missing from the listing, or the listing was unreachable.
@@ -571,9 +619,10 @@ defmodule PhoenixKitAI.Images do
   unless requested. A JSON answer that does not parse is
   `{:error, {:no_json_in_response, text}}`.
   """
-  @spec describe(Endpoint.t(), [input()], keyword()) :: {:ok, map()} | {:error, term()}
+  @spec describe(Endpoint.t(), [input()], keyword()) :: {:ok, map()} | {:error, error()}
   def describe(endpoint, images, opts \\ []) do
     endpoint = if opts[:model], do: %{endpoint | model: opts[:model]}, else: endpoint
+    opts = Keyword.put_new(opts, :prompt, opts[:question] || default_question())
 
     with {:ok, refs} <- normalize_inputs(images, opts) do
       {question, response_format} = question_and_format(opts)
@@ -632,7 +681,7 @@ defmodule PhoenixKitAI.Images do
   end
 
   defp question_and_format(opts) do
-    question = opts[:prompt] || opts[:question] || "Describe this image in detail."
+    question = opts[:prompt]
 
     cond do
       is_map(opts[:schema]) ->
@@ -706,7 +755,7 @@ defmodule PhoenixKitAI.Images do
   Returns `{:ok, %{passed: boolean, same_subject, text_and_logos_preserved,
   unwanted_changes, summary, usage, latency_ms, model}}`.
   """
-  @spec compare(Endpoint.t(), input(), input(), keyword()) :: {:ok, map()} | {:error, term()}
+  @spec compare(Endpoint.t(), input(), input(), keyword()) :: {:ok, map()} | {:error, error()}
   def compare(endpoint, before, after_image, opts \\ []) do
     intent = opts[:intent] || "an edit"
 

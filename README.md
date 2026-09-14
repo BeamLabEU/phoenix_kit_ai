@@ -313,6 +313,11 @@ All of this is stored in `phoenix_kit_ai_requests.metadata` (JSONB) and
 surfaced in the admin Usage page's request-details modal.
 
 ### Privacy / retention controls
+  # Image processing (see dev_docs/guides/image-processing.md)
+  provider_adapters: %{},              # provider key => PhoenixKitAI.Provider module
+  image_operations: %{},               # extra / replacement named operations
+  max_image_bytes: 25_000_000,         # largest input or fetched output
+  allow_internal_image_urls: false     # lift the image-fetch host policy (tests only)
 
 ```elixir
 # config/config.exs (defaults shown)

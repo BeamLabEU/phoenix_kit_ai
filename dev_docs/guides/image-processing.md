@@ -60,14 +60,19 @@ Two ways to change wording without a release:
 Canonical option names, mapped per provider by the adapter:
 `:aspect_ratio`, `:resolution`, `:size`, `:quality`, `:background`,
 `:output_format`, `:output_compression`, `:n`, `:seed`,
-`:response_format`. Control options: `:model` (override the endpoint's
-model — the way to compare two OpenRouter models on one endpoint),
-`:transport`, `:provider_options` (passed through untouched),
-`:provider_routing` (OpenRouter's `provider` object), `:strict`,
-`:preserve`, `:finish`, `:prompt_overrides`, `:verify`.
+`:response_format`, `:style`, `:mask`. Control options: `:model`
+(override the endpoint's model — the way to compare two OpenRouter models
+on one endpoint), `:transport`, `:provider_options` (passed through
+untouched), `:provider_routing` (OpenRouter's `provider` object),
+`:image_config` (legacy passthrough for the chat path), `:strict`,
+`:preserve`, `:finish`, `:prompt_overrides`, `:verify`, `:dry_run`,
+`:fetch_outputs`, `:max_input_bytes`, `:idempotency_key`, `:user_uuid`
+(recorded on the usage row).
 
-Endpoint defaults sit underneath: `provider_settings["aspect_ratio"]` /
-`["resolution"]` and the `image_size` / `image_quality` columns.
+Three layers, later wins: the endpoint's stored defaults
+(`provider_settings["aspect_ratio"]` / `["resolution"]`, the `image_size`
+/ `image_quality` columns — only those the adapter can send), then the
+options the operations imply, then the caller's own.
 
 Before sending, `PhoenixKitAI.Images.fit_options/4` keeps the request
 inside what the model accepts. OpenRouter publishes a per-model listing
@@ -165,7 +170,10 @@ Adding a provider: implement `PhoenixKitAI.Provider` (four callbacks:
 config :phoenix_kit_ai, provider_adapters: %{"fal" => MyApp.FalAdapter}
 ```
 
-The key is the Integrations provider key the endpoint carries. Adapters
+The key is the Integrations provider key the endpoint carries — its
+*base* key, everything before the first colon (`"openrouter:custom"`
+rows resolve to `"openrouter"`), so a key containing a colon cannot be
+registered. Adapters
 receive normalised inputs (data URLs or http(s) URLs) and canonical
 options, and return the uniform result
 `%{images: [%{data, url, content_type}], text, usage, latency_ms, model}`.

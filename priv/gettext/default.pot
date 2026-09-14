@@ -47,7 +47,7 @@ msgid "AI Usage"
 msgstr ""
 
 #: lib/phoenix_kit_ai/web/endpoint_form.ex:416
-#: lib/phoenix_kit_ai/web/playground.ex:123
+#: lib/phoenix_kit_ai/web/playground.ex:125
 #: lib/phoenix_kit_ai/web/prompt_form.ex:97
 #, elixir-autogen, elixir-format
 msgid "AI module is not enabled"
@@ -176,6 +176,7 @@ msgstr ""
 #: lib/phoenix_kit_ai/web/endpoint_form.html.heex:642
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:563
 #: lib/phoenix_kit_ai/web/playground.html.heex:138
+#: lib/phoenix_kit_ai/web/playground.html.heex:266
 #, elixir-autogen, elixir-format
 msgid "Clear"
 msgstr ""
@@ -254,7 +255,7 @@ msgstr ""
 msgid "Cost"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.ex:344
+#: lib/phoenix_kit_ai/web/playground.ex:358
 #, elixir-autogen, elixir-format
 msgid "Could not connect to xAI realtime voice"
 msgstr ""
@@ -553,7 +554,7 @@ msgid "Enter your prompt template...\n\nUse {{VariableName}} for dynamic content
 msgstr ""
 
 #: lib/phoenix_kit_ai/request.ex:214
-#: lib/phoenix_kit_ai/web/playground.html.heex:446
+#: lib/phoenix_kit_ai/web/playground.html.heex:459
 #, elixir-autogen, elixir-format
 msgid "Error"
 msgstr ""
@@ -975,10 +976,11 @@ msgstr ""
 msgid "Pick an integration above, then a model, to configure generation parameters."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.ex:143
-#: lib/phoenix_kit_ai/web/playground.ex:221
-#: lib/phoenix_kit_ai/web/playground.ex:249
-#: lib/phoenix_kit_ai/web/playground.ex:280
+#: lib/phoenix_kit_ai/web/playground.ex:145
+#: lib/phoenix_kit_ai/web/playground.ex:193
+#: lib/phoenix_kit_ai/web/playground.ex:222
+#: lib/phoenix_kit_ai/web/playground.ex:256
+#: lib/phoenix_kit_ai/web/playground.ex:294
 #, elixir-autogen, elixir-format
 msgid "Please select an endpoint"
 msgstr ""
@@ -1117,7 +1119,7 @@ msgid "Requests / Tokens today"
 msgstr ""
 
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:854
-#: lib/phoenix_kit_ai/web/playground.html.heex:455
+#: lib/phoenix_kit_ai/web/playground.html.heex:468
 #, elixir-autogen, elixir-format
 msgid "Response"
 msgstr ""
@@ -1178,7 +1180,7 @@ msgstr ""
 msgid "Select provider (%{count} available)"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.ex:287
+#: lib/phoenix_kit_ai/web/playground.ex:301
 #, elixir-autogen, elixir-format
 msgid "Selected endpoint does not support realtime voice"
 msgstr ""
@@ -1484,7 +1486,7 @@ msgstr ""
 msgid "Type your message to the AI..."
 msgstr ""
 
-#: lib/phoenix_kit_ai/errors.ex:144
+#: lib/phoenix_kit_ai/errors.ex:157
 #, elixir-autogen, elixir-format
 msgid "Unexpected error: %{reason}"
 msgstr ""
@@ -1585,7 +1587,7 @@ msgstr ""
 msgid "Voice"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:425
+#: lib/phoenix_kit_ai/web/playground.html.heex:438
 #, elixir-autogen, elixir-format
 msgid "Waiting for response..."
 msgstr ""
@@ -1625,7 +1627,7 @@ msgstr ""
 msgid "e.g., Translator, Code Reviewer"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:466
+#: lib/phoenix_kit_ai/web/playground.html.heex:479
 #, elixir-autogen, elixir-format
 msgid "in"
 msgstr ""
@@ -1645,7 +1647,7 @@ msgstr ""
 msgid "or"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:472
+#: lib/phoenix_kit_ai/web/playground.html.heex:485
 #, elixir-autogen, elixir-format
 msgid "out"
 msgstr ""
@@ -1665,7 +1667,7 @@ msgstr ""
 msgid "to use it as the default."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:476
+#: lib/phoenix_kit_ai/web/playground.html.heex:489
 #, elixir-autogen, elixir-format
 msgid "total"
 msgstr ""
@@ -1839,17 +1841,17 @@ msgstr ""
 msgid "Add image"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:350
+#: lib/phoenix_kit_ai/web/playground.html.heex:366
 #, elixir-autogen, elixir-format
 msgid "Edit image"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:386
+#: lib/phoenix_kit_ai/web/playground.html.heex:399
 #, elixir-autogen, elixir-format
 msgid "Edited image"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:348
+#: lib/phoenix_kit_ai/web/playground.html.heex:364
 #, elixir-autogen, elixir-format
 msgid "Editing…"
 msgstr ""
@@ -1864,80 +1866,80 @@ msgstr ""
 msgid "Invalid image input"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.ex:224
-#: lib/phoenix_kit_ai/web/playground.ex:252
+#: lib/phoenix_kit_ai/web/playground.ex:225
+#: lib/phoenix_kit_ai/web/playground.ex:259
 #, elixir-autogen, elixir-format
 msgid "Please add at least one image"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:274
+#: lib/phoenix_kit_ai/web/playground.html.heex:282
 #, elixir-autogen, elixir-format
 msgid "Remove"
 msgstr ""
 
 #: lib/phoenix_kit_ai/errors.ex:53
-#: lib/phoenix_kit_ai/web/playground.ex:554
+#: lib/phoenix_kit_ai/web/playground.ex:721
 #, elixir-autogen, elixir-format
 msgid "The model returned no image"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:364
+#: lib/phoenix_kit_ai/web/playground.html.heex:380
 #, elixir-autogen, elixir-format
 msgid "Usually 10–40 seconds…"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:313
+#: lib/phoenix_kit_ai/web/playground.html.heex:321
 #, elixir-autogen, elixir-format
 msgid "e.g. Repaint the cabinet fronts in matte sage green; keep everything else as it is"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:358
+#: lib/phoenix_kit_ai/web/playground.html.heex:374
 #, elixir-autogen, elixir-format
 msgid "Asking…"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:390
+#: lib/phoenix_kit_ai/web/playground.html.heex:403
 #, elixir-autogen, elixir-format
 msgid "Check flagged changes"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:390
+#: lib/phoenix_kit_ai/web/playground.html.heex:403
 #, elixir-autogen, elixir-format
 msgid "Check passed"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:343
+#: lib/phoenix_kit_ai/web/playground.html.heex:359
 #, elixir-autogen, elixir-format
 msgid "Check the result against the original with the same endpoint (one more call)"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:361
-#: lib/phoenix_kit_ai/web/playground.html.heex:369
+#: lib/phoenix_kit_ai/web/playground.html.heex:377
+#: lib/phoenix_kit_ai/web/playground.html.heex:385
 #, elixir-autogen, elixir-format
 msgid "Describe"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:329
+#: lib/phoenix_kit_ai/web/playground.html.heex:345
 #, elixir-autogen, elixir-format
 msgid "Endpoint's model"
 msgstr ""
 
-#: lib/phoenix_kit_ai/errors.ex:115
+#: lib/phoenix_kit_ai/errors.ex:120
 #, elixir-autogen, elixir-format
 msgid "Image operation %{operation} needs %{key}"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:310
+#: lib/phoenix_kit_ai/web/playground.html.heex:318
 #, elixir-autogen, elixir-format
 msgid "Instruction (optional with operations; the question for Describe)"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:320
+#: lib/phoenix_kit_ai/web/playground.html.heex:335
 #, elixir-autogen, elixir-format
 msgid "Load model list"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:327
+#: lib/phoenix_kit_ai/web/playground.html.heex:343
 #, elixir-autogen, elixir-format
 msgid "Model (override)"
 msgstr ""
@@ -1947,18 +1949,18 @@ msgstr ""
 msgid "Not supported by this provider"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:285
-#: lib/phoenix_kit_ai/web/playground.html.heex:286
+#: lib/phoenix_kit_ai/web/playground.html.heex:293
+#: lib/phoenix_kit_ai/web/playground.html.heex:294
 #, elixir-autogen, elixir-format
 msgid "Operations"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.ex:256
+#: lib/phoenix_kit_ai/web/playground.ex:263
 #, elixir-autogen, elixir-format
 msgid "Pick an operation or write an instruction"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:404
+#: lib/phoenix_kit_ai/web/playground.html.heex:417
 #, elixir-autogen, elixir-format
 msgid "Prompt sent"
 msgstr ""
@@ -1968,12 +1970,12 @@ msgstr ""
 msgid "Send one or more images to an image-capable endpoint. The first image is the one being edited; the rest are references. Pick operations, add an instruction, or both — they become one prompt, and options are fitted to what the model accepts."
 msgstr ""
 
-#: lib/phoenix_kit_ai/errors.ex:118
+#: lib/phoenix_kit_ai/errors.ex:123
 #, elixir-autogen, elixir-format
 msgid "The model did not answer with JSON"
 msgstr ""
 
-#: lib/phoenix_kit_ai/errors.ex:100
+#: lib/phoenix_kit_ai/errors.ex:105
 #, elixir-autogen, elixir-format
 msgid "The model does not accept %{option} = %{value}"
 msgstr ""
@@ -1983,42 +1985,215 @@ msgstr ""
 msgid "This operation needs a reference image"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.ex:196
+#: lib/phoenix_kit_ai/web/playground.ex:696
 #, elixir-autogen, elixir-format
 msgid "This provider publishes no image model list"
 msgstr ""
 
-#: lib/phoenix_kit_ai/errors.ex:104
+#: lib/phoenix_kit_ai/errors.ex:109
 #, elixir-autogen, elixir-format
 msgid "Too many images: %{count} given, the model takes at most %{max}"
 msgstr ""
 
-#: lib/phoenix_kit_ai/errors.ex:111
+#: lib/phoenix_kit_ai/errors.ex:116
 #, elixir-autogen, elixir-format
 msgid "Unknown image operation: %{operation}"
 msgstr ""
 
-#: lib/phoenix_kit_ai/errors.ex:121
+#: lib/phoenix_kit_ai/errors.ex:133
 #, elixir-autogen, elixir-format
 msgid "Image operations %{first} and %{second} cannot be combined"
 msgstr ""
 
-#: lib/phoenix_kit_ai/errors.ex:132
+#: lib/phoenix_kit_ai/errors.ex:144
 #, elixir-autogen, elixir-format
 msgid "Image too large: %{bytes} bytes, the limit is %{max}"
 msgstr ""
 
-#: lib/phoenix_kit_ai/errors.ex:135
+#: lib/phoenix_kit_ai/errors.ex:147
 #, elixir-autogen, elixir-format
 msgid "That image URL cannot be fetched from here"
 msgstr ""
 
-#: lib/phoenix_kit_ai/errors.ex:137
+#: lib/phoenix_kit_ai/errors.ex:149
+#: lib/phoenix_kit_ai/errors.ex:150
 #, elixir-autogen, elixir-format
 msgid "The image could not be downloaded"
 msgstr ""
 
-#: lib/phoenix_kit_ai/errors.ex:128
+#: lib/phoenix_kit_ai/errors.ex:140
 #, elixir-autogen, elixir-format
 msgid "The provider refused this content: %{reason}"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/playground.ex:880
+#, elixir-autogen, elixir-format
+msgid "%{count} bytes of image data"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/playground.html.heex:264
+#, elixir-autogen, elixir-format
+msgid "%{count} image kept from the last run"
+msgid_plural "%{count} images kept from the last run"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/phoenix_kit_ai/web/playground.ex:860
+#, elixir-autogen, elixir-format
+msgid "%{option} was changed from %{from} to %{to}"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/playground.ex:853
+#, elixir-autogen, elixir-format
+msgid "%{option} was dropped: the model does not accept %{value}"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/playground.ex:876
+#, elixir-autogen, elixir-format
+msgid "An output image could not be downloaded and is shown from the provider's link"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/playground.ex:842
+#, elixir-autogen, elixir-format
+msgid "Aspect ratio"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/playground.ex:845
+#, elixir-autogen, elixir-format
+msgid "Background"
+msgstr ""
+
+#: lib/phoenix_kit_ai/images/operations.ex:388
+#, elixir-autogen, elixir-format
+msgid "Blur the background"
+msgstr ""
+
+#: lib/phoenix_kit_ai/images/operations.ex:395
+#, elixir-autogen, elixir-format
+msgid "Change the lighting or time of day"
+msgstr ""
+
+#: lib/phoenix_kit_ai/images/operations.ex:398
+#, elixir-autogen, elixir-format
+msgid "Crop to the subject"
+msgstr ""
+
+#: lib/phoenix_kit_ai/images/operations.ex:389
+#, elixir-autogen, elixir-format
+msgid "Cut out on a transparent background"
+msgstr ""
+
+#: lib/phoenix_kit_ai/images/operations.ex:393
+#, elixir-autogen, elixir-format
+msgid "Enhance the photo"
+msgstr ""
+
+#: lib/phoenix_kit_ai/images/operations.ex:386
+#, elixir-autogen, elixir-format
+msgid "Free-form instruction"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/playground.html.heex:333
+#, elixir-autogen, elixir-format
+msgid "Loading…"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/playground.ex:889
+#, elixir-autogen, elixir-format
+msgid "Only JPEG, PNG and WebP images are accepted"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/playground.ex:846
+#, elixir-autogen, elixir-format
+msgid "Output format"
+msgstr ""
+
+#: lib/phoenix_kit_ai/images/operations.ex:387
+#, elixir-autogen, elixir-format
+msgid "Plain studio background"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/playground.ex:844
+#, elixir-autogen, elixir-format
+msgid "Quality"
+msgstr ""
+
+#: lib/phoenix_kit_ai/images/operations.ex:396
+#, elixir-autogen, elixir-format
+msgid "Recolour one element"
+msgstr ""
+
+#: lib/phoenix_kit_ai/images/operations.ex:391
+#, elixir-autogen, elixir-format
+msgid "Remove glare and reflections"
+msgstr ""
+
+#: lib/phoenix_kit_ai/images/operations.ex:392
+#, elixir-autogen, elixir-format
+msgid "Remove something"
+msgstr ""
+
+#: lib/phoenix_kit_ai/images/operations.ex:390
+#, elixir-autogen, elixir-format
+msgid "Replace the background"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/playground.ex:843
+#, elixir-autogen, elixir-format
+msgid "Resolution"
+msgstr ""
+
+#: lib/phoenix_kit_ai/images/operations.ex:399
+#, elixir-autogen, elixir-format
+msgid "Restyle after reference images"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/playground.ex:749
+#, elixir-autogen, elixir-format
+msgid "Something went wrong on our side. Please try again."
+msgstr ""
+
+#: lib/phoenix_kit_ai/images/operations.ex:397
+#, elixir-autogen, elixir-format
+msgid "Straighten"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/playground.ex:886
+#, elixir-autogen, elixir-format
+msgid "That file is too large (8 MB at most)"
+msgstr ""
+
+#: lib/phoenix_kit_ai/errors.ex:130
+#, elixir-autogen, elixir-format
+msgid "The provider's model list could not be fetched"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/playground.ex:873
+#, elixir-autogen, elixir-format
+msgid "The provider's model list could not be fetched; options were not checked"
+msgstr ""
+
+#: lib/phoenix_kit_ai/errors.ex:126
+#, elixir-autogen, elixir-format
+msgid "The provider's model list does not include %{model}"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/playground.ex:868
+#, elixir-autogen, elixir-format
+msgid "The provider's model list does not include %{model}; options were not checked"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/playground.ex:891
+#, elixir-autogen, elixir-format
+msgid "Two images at most"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/playground.html.heex:270
+#, elixir-autogen, elixir-format
+msgid "Uploaded image"
+msgstr ""
+
+#: lib/phoenix_kit_ai/images/operations.ex:394
+#, elixir-autogen, elixir-format
+msgid "Upscale"
 msgstr ""

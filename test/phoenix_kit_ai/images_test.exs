@@ -801,4 +801,100 @@ defmodule PhoenixKitAI.ImagesTest do
       assert_received {:vision_called, [%{role: "user"}], %{response_format: nil}}
     end
   end
+
+  describe "pins" do
+    test "preflight refusals never write a usage row" do
+      stub(image_answer())
+      ep = endpoint_fixture()
+
+      {:error, _} =
+        PhoenixKitAI.process_image(ep.uuid, [%{url: "http://127.0.0.1/x.png"}], [:enhance])
+
+      {:error, _} =
+        PhoenixKitAI.process_image(ep.uuid, [@jpeg], [:clean_background, :blur_background])
+
+      {:error, _} =
+        PhoenixKitAI.process_image(ep.uuid, [@jpeg], [:enhance], model: "vendor/x", strict: true)
+
+      {:error, _} =
+        PhoenixKitAI.process_image(ep.uuid, [String.duplicate("x", 30)], [:enhance],
+          max_input_bytes: 10
+        )
+
+      assert [] = TestRepo.all(from(r in Request, where: r.request_type == "image_edit"))
+    end
+
+    test "image_operations/0 lists the built-ins and a host's additions" do
+      assert %{enhance: %{prompt: _}, restyle: %{references: :required}} =
+               PhoenixKitAI.image_operations()
+
+      Application.put_env(:phoenix_kit_ai, :image_operations, %{
+        clean_background: %{prompt: "Studio sweep, {{color}}."}
+      })
+
+      # A host spec for a built-in keeps the built-in's group and defaults.
+      assert %{
+               clean_background: %{
+                 prompt: "Studio sweep, {{color}}.",
+                 group: :background,
+                 defaults: %{color: "white"}
+               }
+             } =
+               PhoenixKitAI.image_operations()
+    end
+
+    test "verify: true attaches a verdict, and an error instead when the check cannot run" do
+      test_pid = self()
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        case {conn.method, conn.request_path} do
+          {"GET", _} ->
+            Req.Test.json(conn, %{"data" => @listing})
+
+          {"POST", "/api/v1/images"} ->
+            Req.Test.json(conn, image_answer())
+
+          {"POST", "/api/v1/chat/completions"} ->
+            send(test_pid, :compared)
+
+            Req.Test.json(
+              conn,
+              chat_answer(
+                Jason.encode!(%{
+                  "same_subject" => true,
+                  "text_and_logos_preserved" => true,
+                  "unwanted_changes" => [],
+                  "summary" => "Clean."
+                })
+              )
+            )
+        end
+      end)
+
+      ep = endpoint_fixture()
+
+      assert {:ok, %{verification: %{passed: true, summary: "Clean."}}} =
+               PhoenixKitAI.process_image(ep.uuid, [@jpeg], [:enhance], verify: true)
+
+      assert_received :compared
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        case {conn.method, conn.request_path} do
+          {"GET", _} ->
+            Req.Test.json(conn, %{"data" => @listing})
+
+          {"POST", "/api/v1/images"} ->
+            Req.Test.json(conn, image_answer())
+
+          {"POST", "/api/v1/chat/completions"} ->
+            conn
+            |> Plug.Conn.put_resp_content_type("application/json")
+            |> Plug.Conn.send_resp(500, "{}")
+        end
+      end)
+
+      assert {:ok, %{images: [_], verification: %{error: {:api_error, 500}}}} =
+               PhoenixKitAI.process_image(ep.uuid, [@jpeg], [:enhance], verify: true)
+    end
+  end
 end

@@ -257,9 +257,17 @@
               {gettext("Add image")}
               <.live_file_input upload={@uploads.edit_images} class="sr-only" />
             </label>
+            <p :for={err <- upload_errors(@uploads.edit_images)} class="text-xs text-error" role="alert">
+              {PhoenixKitAI.Web.Playground.upload_error_message(err)}
+            </p>
+            <p :if={@edit_inputs != [] and @uploads.edit_images.entries == []} class="text-xs text-base-content/60">
+              {ngettext("%{count} image kept from the last run", "%{count} images kept from the last run", length(@edit_inputs), count: length(@edit_inputs))}
+              ·
+              <button type="button" class="link" phx-click="edit_clear_inputs">{gettext("Clear")}</button>
+            </p>
             <div :if={@uploads.edit_images.entries != []} class="flex flex-wrap gap-3">
               <div :for={entry <- @uploads.edit_images.entries} class="relative w-32">
-                <.live_img_preview entry={entry} class="w-32 h-24 object-cover rounded bg-base-300" />
+                <.live_img_preview entry={entry} alt={gettext("Uploaded image")} class="w-32 h-24 object-cover rounded bg-base-300" />
                 <progress
                   :if={!entry.done?}
                   class="progress progress-primary w-full mt-1"
@@ -276,7 +284,7 @@
                   <.icon name="hero-x-mark" class="w-3 h-3" />
                 </button>
                 <p :for={err <- upload_errors(@uploads.edit_images, entry)} class="text-xs text-error mt-1">
-                  {inspect(err)}
+                  {PhoenixKitAI.Web.Playground.upload_error_message(err)}
                 </p>
               </div>
             </div>
@@ -285,12 +293,12 @@
               <span class="label-text text-sm">{gettext("Operations")}</span>
               <div class="flex flex-wrap gap-2 mt-1" role="group" aria-label={gettext("Operations")}>
                 <label
-                  :for={{name, spec} <- PhoenixKitAI.image_operations() |> Enum.reject(fn {n, _} -> n == :instruction end) |> Enum.sort_by(fn {n, _} -> Atom.to_string(n) end)}
+                  :for={{name, _spec} <- PhoenixKitAI.image_operations() |> Enum.reject(fn {n, _} -> n == :instruction end) |> Enum.sort_by(fn {n, _} -> Atom.to_string(n) end)}
                   class={[
                     "btn btn-xs rounded-full normal-case",
                     if(Atom.to_string(name) in @edit_operations, do: "btn-primary", else: "btn-ghost bg-base-100")
                   ]}
-                  title={spec[:description]}
+                  title={PhoenixKitAI.Images.Operations.label(name)}
                 >
                   <input
                     type="checkbox"
@@ -299,7 +307,7 @@
                     checked={Atom.to_string(name) in @edit_operations}
                     class="sr-only"
                   />
-                  {spec[:description] || Atom.to_string(name)}
+                  {PhoenixKitAI.Images.Operations.label(name)}
                 </label>
               </div>
             </div>
@@ -316,9 +324,17 @@
 
             <div class="flex flex-wrap items-end gap-3">
               <div :if={@image_models == []} class="flex items-center gap-2">
-                <.button type="button" variant="ghost" size="sm" phx-click="load_image_models">
+                <.button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  phx-click="load_image_models"
+                  disabled={@image_models_loading}
+                  phx-disable-with={gettext("Loading…")}
+                >
                   <.icon name="hero-list-bullet" class="w-4 h-4" /> {gettext("Load model list")}
                 </.button>
+                <span :if={@image_models_loading} class="loading loading-spinner loading-xs" aria-hidden="true"></span>
                 <span :if={@image_models_error} class="text-xs text-base-content/60">{@image_models_error}</span>
               </div>
               <.select
@@ -332,7 +348,7 @@
                 :for={key <- ~w(aspect_ratio resolution quality background output_format)a}
                 :if={PhoenixKitAI.Images.ImageModel.values(capabilities, key) != []}
                 name={"opt[#{key}]"}
-                label={key |> Atom.to_string() |> String.replace("_", " ")}
+                label={PhoenixKitAI.Web.Playground.option_label(key)}
                 value={Map.get(@edit_options, Atom.to_string(key), "")}
                 options={[{"—", ""} | Enum.map(PhoenixKitAI.Images.ImageModel.values(capabilities, key), &{&1, &1})]}
               />
@@ -375,12 +391,9 @@
               <span :if={@edit_result.model}>
                 <.icon name="hero-cpu-chip" class="w-3 h-3 inline" /> {@edit_result.model}
               </span>
-              <span :if={@edit_result.latency_ms}>
-                <.icon name="hero-clock" class="w-3 h-3 inline" /> {@edit_result.latency_ms} ms
-              </span>
             </div>
             <p :for={warning <- @edit_result.warnings} class="text-xs text-warning">
-              {inspect(warning)}
+              {PhoenixKitAI.Web.Playground.warning_message(warning)}
             </p>
             <a :if={@edit_result.src} href={@edit_result.src} target="_blank" rel="noopener" class="block max-w-xl">
               <img src={@edit_result.src} alt={gettext("Edited image")} class="rounded-lg w-full" />

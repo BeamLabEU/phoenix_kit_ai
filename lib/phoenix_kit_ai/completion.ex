@@ -496,6 +496,8 @@ defmodule PhoenixKitAI.Completion do
   - `{:error, reason}` - Error atom or tagged tuple. See
     `PhoenixKitAI.Errors` for the full reason vocabulary and translation.
   """
+  @spec generate_image(Endpoint.t(), String.t(), keyword()) ::
+          {:ok, Provider.image_result()} | {:error, term()}
   def generate_image(endpoint, prompt, opts \\ []) do
     adapter = Provider.for_endpoint(endpoint)
     options = Images.options(endpoint, opts)
@@ -533,6 +535,8 @@ defmodule PhoenixKitAI.Completion do
   latency_ms, model}}`; a prose-only answer is
   `{:error, {:no_image_in_response, text}}`.
   """
+  @spec edit_image(Endpoint.t(), String.t(), [PhoenixKitAI.Images.input()], keyword()) ::
+          {:ok, Provider.image_result()} | {:error, term()}
   def edit_image(endpoint, prompt, images, opts \\ [])
 
   def edit_image(_endpoint, _prompt, [], _opts), do: {:error, :empty_input}
@@ -542,6 +546,7 @@ defmodule PhoenixKitAI.Completion do
     options = Images.options(endpoint, opts)
 
     with {:ok, refs} <- Images.normalize_inputs(images, opts),
+         {:ok, options} <- Images.normalize_mask(options, opts[:mask], opts),
          {:ok, result} <- adapter.image_edit(endpoint, prompt, refs, options),
          {:ok, result} <- Images.fetch_outputs(result, opts) do
       {:ok, Map.put_new(result, :model, options[:model] || endpoint.model)}

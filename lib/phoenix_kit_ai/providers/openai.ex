@@ -107,7 +107,7 @@ defmodule PhoenixKitAI.Providers.OpenAI do
   end
 
   # Multipart wants bytes: inline data URLs decode locally, http(s)
-  # references are fetched (30 s, no redirects off-host trickery beyond Req's).
+  # references go through the shared bounded, host-checked fetcher.
   defp files(refs) do
     refs
     |> Enum.reduce_while({:ok, []}, fn ref, {:ok, acc} ->

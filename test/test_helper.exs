@@ -163,6 +163,7 @@ Application.put_env(:phoenix_kit_ai, :test_repo_available, repo_available)
 # via `live/2` with real URLs. Runs with `server: false` so no port is
 # opened.
 if repo_available do
+  {:ok, _} = Phoenix.PubSub.Supervisor.start_link(name: PhoenixKitAI.Test.PubSub)
   {:ok, _} = PhoenixKitAI.Test.Endpoint.start_link()
 end
 

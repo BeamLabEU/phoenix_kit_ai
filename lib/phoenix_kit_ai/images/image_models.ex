@@ -18,6 +18,8 @@ defmodule PhoenixKitAI.Images.ImageModels do
   alias PhoenixKitAI.Images.ImageModel
 
   @ttl_ms :timer.minutes(30)
+  @error_ttl_ms :timer.minutes(1)
+  @keys {__MODULE__, :keys}
 
   @doc "All image models the endpoint's provider offers."
   @spec list(PhoenixKitAI.Endpoint.t(), keyword()) :: {:ok, [ImageModel.t()]} | {:error, term()}
@@ -27,19 +29,30 @@ defmodule PhoenixKitAI.Images.ImageModels do
     now = System.monotonic_time(:millisecond)
 
     case {Keyword.get(opts, :refresh, false), :persistent_term.get(key, nil)} do
-      {false, {fetched_at, models}} when now - fetched_at < @ttl_ms ->
-        {:ok, models}
-
-      _ ->
-        case adapter.image_models(endpoint) do
-          {:ok, models} ->
-            :persistent_term.put(key, {now, models})
-            {:ok, models}
-
-          {:error, _} = error ->
-            error
-        end
+      {false, {fetched_at, {:ok, _} = ok}} when now - fetched_at < @ttl_ms -> ok
+      # A failing listing is remembered briefly so a provider outage does
+      # not cost every image request a 15 s round trip.
+      {false, {fetched_at, {:error, _} = error}} when now - fetched_at < @error_ttl_ms -> error
+      _ -> fetch(adapter, endpoint, key, now)
     end
+  end
+
+  defp fetch(adapter, endpoint, key, now) do
+    result =
+      case adapter.image_models(endpoint) do
+        {:ok, models} -> {:ok, models}
+        {:error, :not_supported} = unsupported -> unsupported
+        {:error, _} = error -> error
+      end
+
+    :persistent_term.put(key, {now, result})
+    remember_key(key)
+    result
+  end
+
+  defp remember_key(key) do
+    keys = :persistent_term.get(@keys, MapSet.new())
+    unless MapSet.member?(keys, key), do: :persistent_term.put(@keys, MapSet.put(keys, key))
   end
 
   @doc "One model by id, or nil (also nil when the provider has no listing)."
@@ -80,10 +93,8 @@ defmodule PhoenixKitAI.Images.ImageModels do
   @doc "Drops every cached listing (tests, or after a provider change)."
   @spec clear() :: :ok
   def clear do
-    for {key, _} <- :persistent_term.get(), match?({__MODULE__, _, _, _}, key) do
-      :persistent_term.erase(key)
-    end
-
+    for key <- :persistent_term.get(@keys, MapSet.new()), do: :persistent_term.erase(key)
+    :persistent_term.erase(@keys)
     :ok
   end
 

@@ -58,7 +58,7 @@ defmodule PhoenixKitAI.Images.ImageModel do
   def allows?(%__MODULE__{params: params}, option, value) when is_atom(option) do
     case Map.fetch(params, option) do
       {:ok, {:enum, values}} -> to_string(value) in values
-      {:ok, {:range, min, max}} -> is_integer(value) and value >= min and value <= max
+      {:ok, {:range, min, max}} -> in_range?(value, min, max)
       {:ok, :boolean} -> true
       {:ok, :any} -> true
       :error -> false
@@ -66,6 +66,18 @@ defmodule PhoenixKitAI.Images.ImageModel do
   end
 
   def allows?(_model, _option, _value), do: false
+
+  # Forms hand over "2"; the API wants 2.
+  defp in_range?(value, min, max) when is_integer(value), do: value >= min and value <= max
+
+  defp in_range?(value, min, max) when is_binary(value) do
+    case Integer.parse(value) do
+      {int, ""} -> in_range?(int, min, max)
+      _ -> false
+    end
+  end
+
+  defp in_range?(_value, _min, _max), do: false
 
   @doc "The values an enum option accepts, or `[]`."
   @spec values(t() | nil, atom()) :: [String.t()]
@@ -90,11 +102,12 @@ defmodule PhoenixKitAI.Images.ImageModel do
   `%{"type" => "range", "min" => m, "max" => n}` /
   `%{"type" => "boolean"}`).
   """
-  @spec from_openrouter(map()) :: t()
-  def from_openrouter(%{"id" => id} = entry) do
+  @spec from_openrouter(map()) :: t() | nil
+  def from_openrouter(%{"id" => id} = entry) when is_binary(id) do
     params =
       entry
       |> Map.get("supported_parameters", %{})
+      |> parameter_pairs()
       |> Enum.reduce(%{}, fn {key, spec}, acc ->
         case {option_key(key), constraint(spec)} do
           {nil, _} -> acc
@@ -113,6 +126,17 @@ defmodule PhoenixKitAI.Images.ImageModel do
       raw: entry
     }
   end
+
+  def from_openrouter(_entry), do: nil
+
+  # `/images/models` publishes a map of typed parameters; the general
+  # `/models` listing publishes a bare list of names — accepted as `:any`.
+  defp parameter_pairs(map) when is_map(map), do: Map.to_list(map)
+
+  defp parameter_pairs(list) when is_list(list),
+    do: Enum.map(list, &{to_string(&1), %{"type" => "any"}})
+
+  defp parameter_pairs(_other), do: []
 
   @known_options ~w(aspect_ratio resolution size quality background output_format output_compression n seed input_references)
 

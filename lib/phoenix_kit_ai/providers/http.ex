@@ -35,7 +35,7 @@ defmodule PhoenixKitAI.Providers.HTTP do
     all =
       [method: method, url: url] ++
         req_opts ++
-        [receive_timeout: timeout, connect_options: [timeout: timeout]] ++
+        [receive_timeout: timeout, connect_options: [timeout: min(timeout, 10_000)]] ++
         Application.get_env(:phoenix_kit_ai, :req_options, [])
 
     case Req.request(all) do
@@ -152,17 +152,14 @@ defmodule PhoenixKitAI.Providers.HTTP do
   end
 
   defp resolve(chars) do
-    resolved =
-      Enum.flat_map([:inet, :inet6], fn family ->
-        case :inet.getaddrs(chars, family) do
-          {:ok, list} -> list
-          {:error, _} -> []
-        end
-      end)
-
-    # A name that does not resolve is not internal — there is nothing to
-    # connect to, and the fetch fails on its own.
-    resolved
+    # A name that does not resolve yields [] — not internal; there is
+    # nothing to connect to, and the fetch fails on its own.
+    Enum.flat_map([:inet, :inet6], fn family ->
+      case :inet.getaddrs(chars, family) do
+        {:ok, list} -> list
+        {:error, _} -> []
+      end
+    end)
   end
 
   # IPv4: loopback, RFC 1918, link-local, "this" network. IPv6: loopback,
@@ -170,13 +167,15 @@ defmodule PhoenixKitAI.Providers.HTTP do
   defp private_address?({a, b, _, _}),
     do:
       a in [0, 10, 127] or {a, b} == {169, 254} or {a, b} == {192, 168} or
-        (a == 172 and b in 16..31)
+        (a == 172 and b in 16..31) or (a == 100 and b in 64..127)
 
   defp private_address?({0, 0, 0, 0, 0, 0xFFFF, hi, lo}),
     do: private_address?({div(hi, 256), rem(hi, 256), div(lo, 256), rem(lo, 256)})
 
   defp private_address?({0, 0, 0, 0, 0, 0, 0, x}) when x in [0, 1], do: true
-  defp private_address?({a, _, _, _, _, _, _, _}), do: a in [0xFC00, 0xFD00, 0xFE80]
+  # fc00::/7 (unique local), fe80::/10 (link local)
+  defp private_address?({a, _, _, _, _, _, _, _}),
+    do: a in 0xFC00..0xFDFF or a in 0xFE80..0xFEBF
 
   @doc """
   Downloads an image the module was handed a URL for (a caller's input

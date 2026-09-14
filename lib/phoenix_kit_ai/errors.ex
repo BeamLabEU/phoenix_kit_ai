@@ -97,7 +97,12 @@ defmodule PhoenixKitAI.Errors do
   def message(:reference_image_required), do: gettext("This operation needs a reference image")
 
   def message({:unsupported_option, key, value}) do
-    gettext("The model does not accept %{option} = %{value}", option: key, value: inspect(value))
+    shown =
+      if is_binary(value) and byte_size(value) > 120,
+        do: "<#{byte_size(value)} bytes>",
+        else: inspect(value)
+
+    gettext("The model does not accept %{option} = %{value}", option: key, value: shown)
   end
 
   def message({:too_many_images, count, max}) do
@@ -117,6 +122,13 @@ defmodule PhoenixKitAI.Errors do
 
   def message({:no_json_in_response, _text}), do: gettext("The model did not answer with JSON")
 
+  def message({:model_not_listed, model}) do
+    gettext("The provider's model list does not include %{model}", model: model)
+  end
+
+  def message({:capabilities_unavailable, _reason}),
+    do: gettext("The provider's model list could not be fetched")
+
   def message({:conflicting_operations, first, second}) do
     gettext("Image operations %{first} and %{second} cannot be combined",
       first: first,
@@ -135,6 +147,7 @@ defmodule PhoenixKitAI.Errors do
   def message({:unsafe_url, _url}), do: gettext("That image URL cannot be fetched from here")
 
   def message({:fetch_failed, _url, _reason}), do: gettext("The image could not be downloaded")
+  def message({:fetch_failed, _reason}), do: gettext("The image could not be downloaded")
 
   # Passthrough for strings so legacy callers returning {:error, "..."}
   # still render something. New code should return atoms/tuples.

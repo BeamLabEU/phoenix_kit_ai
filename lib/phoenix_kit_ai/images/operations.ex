@@ -47,6 +47,10 @@ defmodule PhoenixKitAI.Images.Operations do
   `{{Variables}}` are filled from the operation's parameters.
   """
 
+  use Gettext, backend: PhoenixKitAI.Gettext
+
+  require Logger
+
   alias PhoenixKitAI.Prompt
 
   @type name :: atom()
@@ -169,8 +173,13 @@ defmodule PhoenixKitAI.Images.Operations do
   @spec all() :: %{name() => spec()}
   def all do
     case Application.get_env(:phoenix_kit_ai, :image_operations, %{}) do
-      extra when is_map(extra) -> Map.merge(@builtin, normalize_specs(extra))
-      _ -> @builtin
+      # A host spec for a built-in name merges onto it — a new prompt keeps
+      # the built-in's group, fallback wording and implied options.
+      extra when is_map(extra) ->
+        Map.merge(@builtin, normalize_specs(extra), fn _k, a, b -> Map.merge(a, b) end)
+
+      _ ->
+        @builtin
     end
   end
 
@@ -359,9 +368,41 @@ defmodule PhoenixKitAI.Images.Operations do
   defp safe_prompt(slug) do
     PhoenixKitAI.get_prompt_by_slug(slug)
   rescue
-    _ -> nil
+    error ->
+      Logger.debug("[PhoenixKitAI] prompt override lookup for #{slug} failed: #{inspect(error)}")
+      nil
   catch
-    :exit, _ -> nil
+    :exit, reason ->
+      Logger.debug("[PhoenixKitAI] prompt override lookup for #{slug} exited: #{inspect(reason)}")
+      nil
+  end
+
+  @doc """
+  The translated label of a built-in operation (its `description` for a
+  host-defined one). The literals here are what the extractor sees, so
+  every built-in name lands in the catalogue.
+  """
+  @spec label(name()) :: String.t()
+  def label(:instruction), do: gettext("Free-form instruction")
+  def label(:clean_background), do: gettext("Plain studio background")
+  def label(:blur_background), do: gettext("Blur the background")
+  def label(:remove_background), do: gettext("Cut out on a transparent background")
+  def label(:replace_background), do: gettext("Replace the background")
+  def label(:remove_reflections), do: gettext("Remove glare and reflections")
+  def label(:remove_objects), do: gettext("Remove something")
+  def label(:enhance), do: gettext("Enhance the photo")
+  def label(:upscale), do: gettext("Upscale")
+  def label(:relight), do: gettext("Change the lighting or time of day")
+  def label(:recolor), do: gettext("Recolour one element")
+  def label(:straighten), do: gettext("Straighten")
+  def label(:crop_to_subject), do: gettext("Crop to the subject")
+  def label(:restyle), do: gettext("Restyle after reference images")
+
+  def label(name) do
+    case fetch(name) do
+      {:ok, %{description: description}} when is_binary(description) -> description
+      _ -> Atom.to_string(name)
+    end
   end
 
   @doc false
@@ -391,18 +432,27 @@ defmodule PhoenixKitAI.Images.Operations do
   # (runtime.exs from env, say); everything internal is atoms.
   defp normalize_specs(extra) do
     Map.new(extra, fn {name, spec} ->
+      # Only the keys the host gave are normalised — no defaults are added,
+      # so a partial spec for a built-in name leaves the rest of it intact.
       spec =
         spec
         |> Map.new(fn {k, v} -> {to_atom(k), v} end)
-        |> Map.update(:params, [], fn params -> Enum.map(List.wrap(params), &to_atom/1) end)
-        |> Map.update(:defaults, %{}, &atom_keys/1)
-        |> Map.update(:options, %{}, &atom_keys/1)
-        |> Map.update(:presets, %{}, &atom_keys/1)
-        |> Map.update(:group, nil, &to_atom_or_nil/1)
-        |> Map.update(:references, :none, &to_atom_or_nil/1)
+        |> update_present(:params, fn params -> Enum.map(List.wrap(params), &to_atom/1) end)
+        |> update_present(:defaults, &atom_keys/1)
+        |> update_present(:options, &atom_keys/1)
+        |> update_present(:presets, &atom_keys/1)
+        |> update_present(:group, &to_atom_or_nil/1)
+        |> update_present(:references, &to_atom_or_nil/1)
 
       {to_atom(name), spec}
     end)
+  end
+
+  defp update_present(map, key, fun) do
+    case Map.fetch(map, key) do
+      {:ok, value} -> Map.put(map, key, fun.(value))
+      :error -> map
+    end
   end
 
   defp atom_keys(map) when is_map(map), do: Map.new(map, fn {k, v} -> {to_atom(k), v} end)

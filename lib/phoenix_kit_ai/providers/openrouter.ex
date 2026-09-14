@@ -52,7 +52,11 @@ defmodule PhoenixKitAI.Providers.OpenRouter do
     with {:ok, %{status: 200, body: response}} <-
            HTTP.get_json(url, OpenAICompatible.headers(endpoint), timeout: 15_000),
          {:ok, %{"data" => entries}} when is_list(entries) <- HTTP.body_map(response) do
-      {:ok, entries |> Enum.filter(&is_map/1) |> Enum.map(&ImageModel.from_openrouter/1)}
+      {:ok,
+       entries
+       |> Enum.filter(&is_map/1)
+       |> Enum.map(&ImageModel.from_openrouter/1)
+       |> Enum.reject(&is_nil/1)}
     else
       {:ok, %{status: status, body: response}} -> HTTP.error(status, response)
       {:ok, _other} -> {:error, :invalid_response_format}

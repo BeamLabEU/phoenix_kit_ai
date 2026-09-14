@@ -349,11 +349,12 @@ provided the API exposes `<base_url>/chat/completions` and `/models`.
   sizes, operations and warnings; the image bytes themselves are never
   persisted. **Never send a provider a permanent Storage URL — inline the
   bytes.** `dev_docs/guides/image-processing.md` has the full picture.
-- **Image generation**: `generate_image/3` posts to
-  `<base_url>/images/generations` and fills omitted options from the endpoint's
-  stored defaults — `image_size` / `image_quality` columns for OpenAI and
-  OpenRouter, `provider_settings["aspect_ratio"]` / `["resolution"]` for xAI,
-  which does not accept OpenAI's size and quality fields.
+- **Image generation**: `generate_image/3` goes through the endpoint's
+  adapter (OpenRouter `POST /images`, everyone else `/images/generations`)
+  and fills omitted options from the endpoint's stored defaults —
+  `image_size` / `image_quality` columns and `provider_settings["aspect_ratio"]`
+  / `["resolution"]` — but only the ones the adapter can send (xAI takes no
+  `size`).
 - **TTS**: `speak/3` posts to `<base_url>/audio/speech` and decodes both
   Mistral's base64 JSON and raw binary, returning `{:ok, %{audio, format}}`.
   The endpoint form has a `:text`/`:tts` model-type selector (heuristic: a

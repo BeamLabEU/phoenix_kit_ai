@@ -120,12 +120,12 @@ defmodule PhoenixKitAI.ImageGenerationTest do
                PhoenixKitAI.generate_image(ep.uuid, "two cats", n: 2)
     end
 
-    test "returns only :images (latency stays internal)" do
+    test "returns images, model and warnings (latency stays internal)" do
       stub_json(200, %{"data" => [%{"b64_json" => Base.encode64(@image_bytes)}]})
       ep = endpoint_fixture()
 
       assert {:ok, result} = PhoenixKitAI.generate_image(ep.uuid, "a cat")
-      assert Map.keys(result) == [:images]
+      assert Enum.sort(Map.keys(result)) == [:images, :model, :warnings]
     end
   end
 
@@ -205,8 +205,8 @@ defmodule PhoenixKitAI.ImageGenerationTest do
       assert is_nil(row.cost_cents)
 
       assert row.metadata["input_chars"] == String.length("a cat on a skateboard")
-      assert row.metadata["image_count"] == 1
-      assert row.metadata["total_bytes"] == byte_size(@image_bytes)
+      assert row.metadata["output_image_count"] == 1
+      assert row.metadata["output_bytes"] == byte_size(@image_bytes)
       assert row.metadata["input"] == "a cat on a skateboard"
     end
 
@@ -221,7 +221,7 @@ defmodule PhoenixKitAI.ImageGenerationTest do
         |> elem(0)
         |> Enum.find(&(&1.endpoint_uuid == ep.uuid))
 
-      assert row.metadata["total_bytes"] == 0
+      assert row.metadata["output_bytes"] == 0
     end
 
     test "writes an image error row on failure" do

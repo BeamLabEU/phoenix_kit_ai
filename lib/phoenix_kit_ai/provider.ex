@@ -45,17 +45,20 @@ defmodule PhoenixKitAI.Provider do
   alias PhoenixKitAI.Images.ImageModel
 
   @type image :: %{
-          data: binary() | nil,
-          url: String.t() | nil,
-          content_type: String.t() | nil
+          required(:data) => binary() | nil,
+          required(:url) => String.t() | nil,
+          required(:content_type) => String.t() | nil,
+          optional(:width) => pos_integer(),
+          optional(:height) => pos_integer()
         }
 
   @type image_result :: %{
-          images: [image()],
-          text: String.t() | nil,
-          usage: map(),
-          latency_ms: non_neg_integer(),
-          model: String.t() | nil
+          required(:images) => [image()],
+          required(:text) => String.t() | nil,
+          required(:usage) => map(),
+          required(:latency_ms) => non_neg_integer(),
+          required(:model) => String.t() | nil,
+          optional(:warnings) => [term()]
         }
 
   @type options :: %{optional(atom()) => term()}

@@ -18,7 +18,7 @@ defmodule PhoenixKitAI.Providers.OpenAICompatible do
 
   @behaviour PhoenixKitAI.Provider
 
-  alias PhoenixKitAI.{Completion, OpenRouterClient}
+  alias PhoenixKitAI.{Completion, Endpoint, OpenRouterClient}
   alias PhoenixKitAI.Providers.HTTP
 
   @generation_options ~w(n response_format size quality style background output_format aspect_ratio resolution seed)a
@@ -77,6 +77,8 @@ defmodule PhoenixKitAI.Providers.OpenAICompatible do
   @doc false
   # Chat-completions image editing. `extra` is merged into the body for
   # gateways with request extensions (OpenRouter's `modalities`).
+  @spec chat_edit(Endpoint.t(), String.t(), [String.t()], map(), map()) ::
+          {:ok, PhoenixKitAI.Provider.image_result()} | {:error, term()}
   def chat_edit(endpoint, prompt, refs, options, extra) when is_map(extra) do
     url = Completion.url(endpoint, "/chat/completions")
     used_model = model(endpoint, options)
@@ -103,6 +105,8 @@ defmodule PhoenixKitAI.Providers.OpenAICompatible do
 
   @doc false
   # POSTs an images-API body and decodes a `data[]` response.
+  @spec post_images(Endpoint.t(), String.t(), map(), map()) ::
+          {:ok, PhoenixKitAI.Provider.image_result()} | {:error, term()}
   def post_images(endpoint, path, body, _options) do
     url = Completion.url(endpoint, path)
     started = System.monotonic_time(:millisecond)
@@ -123,6 +127,8 @@ defmodule PhoenixKitAI.Providers.OpenAICompatible do
 
   @doc false
   # `{"data": [{"b64_json": …, "media_type": …} | {"url": …}], "usage": …}`
+  @spec decode_data_images(term(), integer(), String.t() | nil) ::
+          {:ok, PhoenixKitAI.Provider.image_result()} | {:error, term()}
   def decode_data_images(response, started, model) do
     latency_ms = System.monotonic_time(:millisecond) - started
 
@@ -172,6 +178,8 @@ defmodule PhoenixKitAI.Providers.OpenAICompatible do
   @doc false
   # A chat completion whose message carries images (OpenRouter puts them
   # on `message.images`; some gateways use content parts).
+  @spec decode_chat_images(term(), integer(), String.t() | nil) ::
+          {:ok, PhoenixKitAI.Provider.image_result()} | {:error, term()}
   def decode_chat_images(response, started, model) do
     latency_ms = System.monotonic_time(:millisecond) - started
 
@@ -247,25 +255,30 @@ defmodule PhoenixKitAI.Providers.OpenAICompatible do
   # ── Small helpers shared by the adapters ───────────────────────────────
 
   @doc false
+  @spec model(Endpoint.t(), map()) :: String.t() | nil
   def model(endpoint, options), do: options[:model] || endpoint.model
 
   @doc false
+  @spec headers(Endpoint.t()) :: [{String.t(), String.t()}]
   def headers(endpoint), do: OpenRouterClient.build_headers_from_endpoint(endpoint)
 
   @doc false
   # Copies the listed option keys onto the body under their string names,
   # skipping nils.
+  @spec put_options(map(), map(), [atom()]) :: map()
   def put_options(body, options, keys) do
     Enum.reduce(keys, body, fn key, acc -> maybe_put(acc, Atom.to_string(key), options[key]) end)
   end
 
   @doc false
+  @spec merge_provider_options(map(), map()) :: map()
   def merge_provider_options(body, %{provider_options: extra}) when is_map(extra),
     do: Map.merge(body, Map.new(extra, fn {k, v} -> {to_string(k), v} end))
 
   def merge_provider_options(body, _options), do: body
 
   @doc false
+  @spec maybe_put(map(), String.t(), term()) :: map()
   def maybe_put(map, _key, nil), do: map
   def maybe_put(map, _key, ""), do: map
   def maybe_put(map, key, value), do: Map.put(map, key, value)
@@ -288,6 +301,7 @@ defmodule PhoenixKitAI.Providers.OpenAICompatible do
   end
 
   @doc false
+  @spec sniff(binary()) :: String.t() | nil
   def sniff(<<0xFF, 0xD8, 0xFF, _::binary>>), do: "image/jpeg"
   def sniff(<<0x89, "PNG\r\n", 0x1A, "\n", _::binary>>), do: "image/png"
   def sniff(<<"RIFF", _::binary-size(4), "WEBP", _::binary>>), do: "image/webp"
