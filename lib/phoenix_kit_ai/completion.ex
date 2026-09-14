@@ -22,8 +22,7 @@ defmodule PhoenixKitAI.Completion do
 
   require Logger
 
-  alias PhoenixKitAI.Endpoint
-  alias PhoenixKitAI.OpenRouterClient
+  alias PhoenixKitAI.{Endpoint, Images, OpenRouterClient, Provider}
 
   @timeout 120_000
 
@@ -497,64 +496,83 @@ defmodule PhoenixKitAI.Completion do
   - `{:error, reason}` - Error atom or tagged tuple. See
     `PhoenixKitAI.Errors` for the full reason vocabulary and translation.
   """
+  @spec generate_image(Endpoint.t(), String.t(), keyword()) ::
+          {:ok, Provider.image_result()} | {:error, term()}
   def generate_image(endpoint, prompt, opts \\ []) do
-    url = build_url(endpoint, "/images/generations")
-    headers = OpenRouterClient.build_headers_from_endpoint(endpoint)
+    adapter = Provider.for_endpoint(endpoint)
+    options = Images.options(endpoint, opts)
 
-    body =
-      %{"model" => endpoint.model, "prompt" => prompt}
-      |> maybe_add("n", Keyword.get(opts, :n))
-      |> maybe_add("response_format", Keyword.get(opts, :response_format))
-      |> maybe_add("size", Keyword.get(opts, :size))
-      |> maybe_add("quality", Keyword.get(opts, :quality))
-      |> maybe_add("style", Keyword.get(opts, :style))
-      |> maybe_add("background", Keyword.get(opts, :background))
-      |> maybe_add("output_format", Keyword.get(opts, :output_format))
-      |> maybe_add("aspect_ratio", Keyword.get(opts, :aspect_ratio))
-      |> maybe_add("resolution", Keyword.get(opts, :resolution))
-
-    start_time = System.monotonic_time(:millisecond)
-
-    case http_post(url, headers, body) do
-      {:ok, %{status_code: 200, body: response_body}} ->
-        decode_images(response_body, start_time)
-
-      {:ok, %{status_code: status, body: response_body}} ->
-        handle_error_status(status, response_body)
-
-      {:error, :timeout} ->
-        {:error, :request_timeout}
-
-      {:error, reason} ->
-        Logger.warning("Image generation transport error: #{inspect(reason)}")
-        {:error, {:connection_error, reason}}
+    with {:ok, result} <- adapter.image_generate(endpoint, prompt, options),
+         {:ok, result} <- Images.fetch_outputs(result, opts) do
+      {:ok, Map.put_new(result, :model, options[:model] || endpoint.model)}
     end
   end
 
-  defp decode_images(response_body, start_time) do
-    latency_ms = System.monotonic_time(:millisecond) - start_time
+  @doc """
+  Edits or restyles one or more input images according to `prompt`,
+  through the endpoint's `PhoenixKitAI.Provider` adapter:
 
-    case Jason.decode(response_body) do
-      {:ok, %{"data" => images}} when is_list(images) and images != [] ->
-        {:ok, %{images: Enum.map(images, &decode_image_entry/1), latency_ms: latency_ms}}
+    * OpenRouter — `POST /images` with `input_references` (the unified
+      Images API; `transport: :chat` keeps the chat-completions path)
+    * xAI — `POST /images/edits` as JSON
+    * OpenAI — `POST /images/edits` as multipart
+    * anything else — `POST /chat/completions` with `image_url` parts
 
-      {:ok, _} ->
-        {:error, :invalid_response_format}
+  `images` is a non-empty list of raw bytes, `%{data:, content_type:}`
+  maps, `%{url:}` maps or bare `data:` / `http(s):` strings
+  (`PhoenixKitAI.Images.normalize_inputs/1`). Bytes are inlined; never
+  hand a provider a permanent URL it could cache. The image to change
+  goes first, references after it.
 
-      {:error, _} ->
-        {:error, :invalid_json_response}
+  `opts` are the canonical options of `PhoenixKitAI.Images` —
+  `:aspect_ratio`, `:resolution`, `:size`, `:quality`, `:background`,
+  `:output_format`, `:output_compression`, `:n`, `:seed` — plus `:model`,
+  `:transport`, `:provider_options`, and the legacy `:image_config`
+  passthrough for the chat path. They are sent as given; use
+  `PhoenixKitAI.Images.process/4` to have them fitted to the model.
+
+  Returns `{:ok, %{images: [%{data, url, content_type}], text, usage,
+  latency_ms, model}}`; a prose-only answer is
+  `{:error, {:no_image_in_response, text}}`.
+  """
+  @spec edit_image(Endpoint.t(), String.t(), [PhoenixKitAI.Images.input()], keyword()) ::
+          {:ok, Provider.image_result()} | {:error, term()}
+  def edit_image(endpoint, prompt, images, opts \\ [])
+
+  def edit_image(_endpoint, _prompt, [], _opts), do: {:error, :empty_input}
+
+  def edit_image(endpoint, prompt, images, opts) when is_binary(prompt) and is_list(images) do
+    adapter = Provider.for_endpoint(endpoint)
+    options = Images.options(endpoint, opts)
+
+    with {:ok, refs} <- Images.normalize_inputs(images, opts),
+         {:ok, options} <- Images.normalize_mask(options, opts[:mask], opts),
+         {:ok, result} <- adapter.image_edit(endpoint, prompt, refs, options),
+         {:ok, result} <- Images.fetch_outputs(result, opts) do
+      {:ok, Map.put_new(result, :model, options[:model] || endpoint.model)}
     end
   end
 
-  defp decode_image_entry(%{"b64_json" => b64}) when is_binary(b64) do
-    case Base.decode64(b64) do
-      {:ok, bytes} -> %{url: nil, data: bytes}
-      :error -> %{url: nil, data: nil}
+  @doc false
+  # Public for tests. Splits a data URL into bytes + MIME type; passes an
+  # http(s) URL through with no bytes.
+  def decode_image_url("data:" <> rest) do
+    with [meta, payload] <- String.split(rest, ",", parts: 2),
+         {:ok, bytes} <- decode_data_payload(meta, payload) do
+      content_type = meta |> String.split(";") |> List.first()
+      %{data: bytes, url: nil, content_type: if(content_type == "", do: nil, else: content_type)}
+    else
+      _ -> %{data: nil, url: nil, content_type: nil}
     end
   end
 
-  defp decode_image_entry(%{"url" => url}) when is_binary(url), do: %{url: url, data: nil}
-  defp decode_image_entry(_entry), do: %{url: nil, data: nil}
+  def decode_image_url(url) when is_binary(url), do: %{data: nil, url: url, content_type: nil}
+
+  defp decode_data_payload(meta, payload) do
+    if String.contains?(meta, ";base64"),
+      do: Base.decode64(payload, ignore: :whitespace),
+      else: {:ok, URI.decode(payload)}
+  end
 
   @doc """
   Extracts the text content from a chat completion response.
@@ -679,6 +697,7 @@ defmodule PhoenixKitAI.Completion do
     |> maybe_add("stop", Keyword.get(opts, :stop))
     |> maybe_add("seed", Keyword.get(opts, :seed))
     |> maybe_add("stream", Keyword.get(opts, :stream))
+    |> maybe_add("response_format", Keyword.get(opts, :response_format))
     |> maybe_add_reasoning(opts)
   end
 
@@ -759,6 +778,11 @@ defmodule PhoenixKitAI.Completion do
       _ -> nil
     end
   end
+
+  @doc false
+  # The endpoint's base URL plus `path`; adapters build every request
+  # with it. Raises when neither the row nor its provider has a base URL.
+  def url(endpoint, path), do: build_url(endpoint, path)
 
   defp build_url(endpoint, path) do
     # Falls back to the provider's canonical default base url when the

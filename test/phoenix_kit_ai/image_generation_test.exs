@@ -46,6 +46,19 @@ defmodule PhoenixKitAI.ImageGenerationTest do
     end)
   end
 
+  # JSON for the API call, PNG bytes for a GET of an output URL.
+  defp stub_json_with_png(status, body, png) do
+    Req.Test.stub(__MODULE__, fn conn ->
+      if conn.method == "GET" do
+        conn |> Plug.Conn.put_resp_content_type("image/png") |> Plug.Conn.send_resp(200, png)
+      else
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(status, Jason.encode!(body))
+      end
+    end)
+  end
+
   defp stub_raw(status, raw_body) do
     Req.Test.stub(__MODULE__, fn conn ->
       Plug.Conn.send_resp(conn, status, raw_body)
@@ -73,12 +86,24 @@ defmodule PhoenixKitAI.ImageGenerationTest do
                PhoenixKitAI.generate_image(ep.uuid, "a cat on a skateboard")
     end
 
-    test "returns a url image untouched (no auto-download)" do
-      stub_json(200, %{"data" => [%{"url" => "https://example.com/cat.png"}]})
+    test "a url image is fetched into bytes; fetch_outputs: false keeps the url" do
+      png = <<0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A>>
+      stub_json_with_png(200, %{"data" => [%{"url" => "https://example.com/cat.png"}]}, png)
       ep = endpoint_fixture()
 
-      assert {:ok, %{images: [%{url: "https://example.com/cat.png", data: nil}]}} =
+      assert {:ok,
+              %{
+                images: [
+                  %{url: "https://example.com/cat.png", data: ^png, content_type: "image/png"}
+                ]
+              }} =
                PhoenixKitAI.generate_image(ep.uuid, "a cat", response_format: "url")
+
+      assert {:ok, %{images: [%{url: "https://example.com/cat.png", data: nil}]}} =
+               PhoenixKitAI.generate_image(ep.uuid, "a cat",
+                 response_format: "url",
+                 fetch_outputs: false
+               )
     end
 
     test "decodes multiple images (n > 1)" do
@@ -95,12 +120,12 @@ defmodule PhoenixKitAI.ImageGenerationTest do
                PhoenixKitAI.generate_image(ep.uuid, "two cats", n: 2)
     end
 
-    test "returns only :images (latency stays internal)" do
+    test "returns images, model and warnings (latency stays internal)" do
       stub_json(200, %{"data" => [%{"b64_json" => Base.encode64(@image_bytes)}]})
       ep = endpoint_fixture()
 
       assert {:ok, result} = PhoenixKitAI.generate_image(ep.uuid, "a cat")
-      assert Map.keys(result) == [:images]
+      assert Enum.sort(Map.keys(result)) == [:images, :model, :warnings]
     end
   end
 
@@ -141,12 +166,11 @@ defmodule PhoenixKitAI.ImageGenerationTest do
       assert {:error, :invalid_json_response} = PhoenixKitAI.generate_image(ep.uuid, "hi")
     end
 
-    test "un-decodable base64 in an entry decodes to a nil-data entry, not a hard error" do
-      stub_json(200, %{"data" => [%{"b64_json" => "!!!not-base64!!!"}]})
+    test "un-decodable base64 leaves no usable image, which is an invalid response" do
+      stub_json(200, %{"data" => [%{"b64_json" => "%%%not-base64%%%"}]})
       ep = endpoint_fixture()
 
-      assert {:ok, %{images: [%{url: nil, data: nil}]}} =
-               PhoenixKitAI.generate_image(ep.uuid, "hi")
+      assert {:error, :invalid_response_format} = PhoenixKitAI.generate_image(ep.uuid, "hi")
     end
   end
 
@@ -181,23 +205,23 @@ defmodule PhoenixKitAI.ImageGenerationTest do
       assert is_nil(row.cost_cents)
 
       assert row.metadata["input_chars"] == String.length("a cat on a skateboard")
-      assert row.metadata["image_count"] == 1
-      assert row.metadata["total_bytes"] == byte_size(@image_bytes)
+      assert row.metadata["output_image_count"] == 1
+      assert row.metadata["output_bytes"] == byte_size(@image_bytes)
       assert row.metadata["input"] == "a cat on a skateboard"
     end
 
-    test "url-only response logs zero total_bytes (nothing decoded)" do
+    test "url-only response logs zero total_bytes when nothing is fetched" do
       stub_json(200, %{"data" => [%{"url" => "https://example.com/cat.png"}]})
       ep = endpoint_fixture()
 
-      assert {:ok, _} = PhoenixKitAI.generate_image(ep.uuid, "a cat")
+      assert {:ok, _} = PhoenixKitAI.generate_image(ep.uuid, "a cat", fetch_outputs: false)
 
       row =
         PhoenixKitAI.list_requests()
         |> elem(0)
         |> Enum.find(&(&1.endpoint_uuid == ep.uuid))
 
-      assert row.metadata["total_bytes"] == 0
+      assert row.metadata["output_bytes"] == 0
     end
 
     test "writes an image error row on failure" do

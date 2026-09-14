@@ -90,7 +90,9 @@ defmodule PhoenixKitAI do
   alias PhoenixKit.Utils.Reorder
   alias PhoenixKit.Utils.UUID, as: UUIDUtils
   alias PhoenixKitAI.Endpoint
+  alias PhoenixKitAI.Images.{ImageModel, ImageModels, Operations}
   alias PhoenixKitAI.Prompt
+  alias PhoenixKitAI.Provider
   alias PhoenixKitAI.Request
   alias PhoenixKitAI.TtsPricing
 
@@ -2674,96 +2676,440 @@ defmodule PhoenixKitAI do
       {auto_source, stacktrace, caller_context} = capture_caller_info()
       source = Keyword.get(opts, :source) || auto_source
 
-      opts = maybe_put_default_image_opts(endpoint, opts)
+      trace = trace(source, stacktrace, caller_context, opts)
 
       case Completion.generate_image(endpoint, prompt, opts) do
         {:ok, result} ->
-          log_image_request(endpoint, prompt, result, source, stacktrace, caller_context)
-          {:ok, Map.take(result, [:images])}
+          log_image_op_request(endpoint, "image", prompt, [], result, %{}, trace)
+          {:ok, result |> Map.put_new(:warnings, []) |> Map.take([:images, :model, :warnings])}
 
         {:error, reason} ->
-          log_failed_image_request(endpoint, prompt, reason, source, stacktrace, caller_context)
+          log_failed_image_op_request(endpoint, "image", prompt, [], reason, trace)
           {:error, reason}
       end
     end
   end
 
-  # An explicit caller value always wins; a blank/absent stored default
-  # is a no-op (Completion sends no size/quality/aspect fields at all then).
-  # xAI's /images/generations takes aspect_ratio/resolution, not OpenAI's
-  # size/quality — applying the wrong pair either no-ops or 400s upstream.
-  defp maybe_put_default_image_opts(endpoint, opts) do
-    if xai_endpoint?(endpoint) do
-      settings = endpoint.provider_settings || %{}
+  @doc """
+  Edits or restyles images via `Completion.edit_image/4` and logs the call
+  as an `"image_edit"` request: tokens and cost when the provider reports
+  them, latency, and input/output image counts and byte sizes. The image
+  bytes themselves are never persisted in the log.
 
-      opts
-      |> maybe_put_default_opt(:aspect_ratio, settings["aspect_ratio"])
-      |> maybe_put_default_opt(:resolution, settings["resolution"])
-    else
-      opts
-      |> maybe_put_default_opt(:size, endpoint.image_size)
-      |> maybe_put_default_opt(:quality, endpoint.image_quality)
+  See `Completion.edit_image/4` for the accepted input shapes and the
+  options; the transport is the endpoint's `PhoenixKitAI.Provider`
+  adapter. Options are sent as given — `process_image/4` is the verb that
+  fits them to the model.
+
+      {:ok, %{images: [%{data: png, content_type: "image/png"}]}} =
+        PhoenixKitAI.edit_image(endpoint.uuid,
+          "Restyle the first photo in the style of the second.",
+          [%{data: room_jpeg, content_type: "image/jpeg"},
+           %{data: reference_jpeg, content_type: "image/jpeg"}])
+  """
+  @spec edit_image(String.t() | Endpoint.t(), String.t(), [map() | String.t()], keyword()) ::
+          {:ok,
+           %{images: [map()], text: String.t() | nil, model: String.t() | nil, warnings: [term()]}}
+          | {:error, term()}
+  def edit_image(endpoint_uuid, prompt, images, opts \\ [])
+      when is_binary(prompt) and is_list(images) do
+    with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
+         {:ok, _} <- validate_endpoint(endpoint) do
+      {auto_source, stacktrace, caller_context} = capture_caller_info()
+      source = Keyword.get(opts, :source) || auto_source
+
+      trace = trace(source, stacktrace, caller_context, opts)
+
+      case Completion.edit_image(endpoint, prompt, images, opts) do
+        {:ok, result} ->
+          log_image_op_request(endpoint, "image_edit", prompt, images, result, %{}, trace)
+
+          {:ok,
+           result |> Map.put_new(:warnings, []) |> Map.take([:images, :text, :model, :warnings])}
+
+        {:error, reason} ->
+          log_failed_unless_input_error(endpoint, "image_edit", prompt, images, reason, trace)
+          {:error, reason}
+      end
     end
   end
 
-  defp maybe_put_default_opt(opts, key, value) do
-    if Keyword.has_key?(opts, key) or not is_binary(value) or value == "" do
-      opts
-    else
-      Keyword.put(opts, key, value)
+  @doc """
+  Edits `images` with named operations — the generic, provider-neutral
+  entry point for image processing. See `PhoenixKitAI.Images` for the
+  operations, options and the fitting of options to the model.
+
+      {:ok, %{images: [%{data: png}], warnings: []}} =
+        PhoenixKitAI.process_image(endpoint_uuid, [photo],
+          [:remove_reflections, {:clean_background, color: "white"}])
+
+  Logged as an `"image_edit"` request with the operations, the model
+  used and any option warnings in the metadata. With `verify:` the result
+  is checked against the original by `compare_images/4` and the verdict
+  comes back under `:verification` without changing the outcome — give it
+  a vision-capable endpoint uuid (`verify: text_endpoint_uuid`); `true`
+  uses the same endpoint, which works only when its model also answers
+  in text (an image-only model returns a `:verification` error instead).
+  """
+  @spec process_image(
+          String.t() | Endpoint.t(),
+          [PhoenixKitAI.Images.input()],
+          [term()],
+          keyword()
+        ) ::
+          {:ok, map()} | {:error, term()}
+  def process_image(endpoint_uuid, images, operations, opts \\ []) when is_list(images) do
+    with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
+         {:ok, _} <- validate_endpoint(endpoint) do
+      {auto_source, stacktrace, caller_context} = capture_caller_info()
+      source = Keyword.get(opts, :source) || auto_source
+      {verify, opts} = Keyword.pop(opts, :verify, false)
+
+      trace = trace(source, stacktrace, caller_context, opts)
+
+      case PhoenixKitAI.Images.process(endpoint, images, operations, opts) do
+        {:ok, %{dry_run: true} = plan} ->
+          {:ok, Map.take(plan, [:prompt, :operations, :warnings, :model, :options, :dry_run])}
+
+        {:ok, result} ->
+          extra = %{
+            operations: Enum.map(result.operations, &Atom.to_string/1),
+            warnings:
+              result.warnings |> Enum.map(&PhoenixKitAI.Images.redact_warning/1) |> inspect(),
+            warning_tags: Enum.map(result.warnings, &elem(&1, 0))
+          }
+
+          log_image_op_request(
+            endpoint,
+            "image_edit",
+            result.prompt,
+            images,
+            result,
+            extra,
+            trace
+          )
+
+          {:ok,
+           result
+           |> Map.take([:images, :text, :prompt, :operations, :warnings, :model])
+           |> maybe_verify(endpoint, verify, images, opts)}
+
+        {:error, reason} ->
+          log_failed_unless_input_error(
+            endpoint,
+            "image_edit",
+            inspect(operations),
+            images,
+            reason,
+            trace
+          )
+
+          {:error, reason}
+      end
     end
   end
 
-  defp xai_endpoint?(%{provider: provider}) when is_binary(provider) do
-    Endpoint.base_provider(provider) == "xai"
+  # A caller mistake (bad input, unknown operation) never reached a
+  # provider, so it is not a request worth a usage row.
+  defp input_error?(:empty_input), do: true
+  defp input_error?(:invalid_image_input), do: true
+  defp input_error?(:reference_image_required), do: true
+  defp input_error?({:unknown_operation, _}), do: true
+  defp input_error?({:missing_parameter, _, _}), do: true
+  defp input_error?({:unsupported_option, _, _}), do: true
+  defp input_error?({:too_many_images, _, _}), do: true
+  defp input_error?({:image_too_large, _, _}), do: true
+  defp input_error?({:unsafe_url, _}), do: true
+  defp input_error?({:conflicting_operations, _, _}), do: true
+  defp input_error?({:model_not_listed, _}), do: true
+  defp input_error?({:capabilities_unavailable, _}), do: true
+  defp input_error?(_reason), do: false
+
+  defp log_failed_unless_input_error(endpoint, type, prompt, images, reason, trace) do
+    if input_error?(reason),
+      do: :ok,
+      else: log_failed_image_op_request(endpoint, type, prompt, images, reason, trace)
   end
 
-  defp xai_endpoint?(_), do: false
+  defp maybe_verify(result, _endpoint, false, _images, _opts), do: result
 
-  defp log_image_request(endpoint, prompt, result, source, stacktrace, caller_context) do
-    capture_content = capture_request_content?()
-    images = result[:images] || []
+  defp maybe_verify(
+         %{images: [%{data: data} | _]} = result,
+         endpoint,
+         verify,
+         [original | _],
+         opts
+       )
+       when is_binary(data) do
+    checker = if verify == true, do: endpoint, else: verify
+    intent = Enum.map_join(result.operations, ", ", &Atom.to_string/1)
 
-    base_metadata = %{
-      input_chars: String.length(prompt),
-      image_count: length(images),
-      total_bytes: Enum.reduce(images, 0, fn img, acc -> acc + byte_size(img[:data] || "") end),
+    case compare_images(checker, original, data, intent: intent, source: opts[:source]) do
+      {:ok, verdict} -> Map.put(result, :verification, verdict)
+      {:error, reason} -> Map.put(result, :verification, %{error: reason})
+    end
+  end
+
+  defp maybe_verify(result, _endpoint, _verify, _images, _opts), do: result
+
+  @doc """
+  Asks a vision-capable endpoint about `images`: free text, or a parsed
+  JSON object with `schema:` / `json: true`. See `PhoenixKitAI.Images.describe/3`.
+  Logged as a `"vision"` request.
+  """
+  @spec describe_image(
+          String.t() | Endpoint.t(),
+          [PhoenixKitAI.Images.input()] | PhoenixKitAI.Images.input(),
+          keyword()
+        ) ::
+          {:ok, %{text: String.t() | nil, json: map() | nil, model: String.t() | nil}}
+          | {:error, term()}
+  def describe_image(endpoint_uuid, images, opts \\ []) do
+    images = List.wrap(images)
+
+    with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
+         {:ok, _} <- validate_endpoint(endpoint) do
+      {auto_source, stacktrace, caller_context} = capture_caller_info()
+      source = Keyword.get(opts, :source) || auto_source
+      prompt = opts[:prompt] || opts[:question] || PhoenixKitAI.Images.default_question()
+
+      trace = trace(source, stacktrace, caller_context, opts)
+
+      case PhoenixKitAI.Images.describe(endpoint, images, opts) do
+        {:ok, result} ->
+          log_image_op_request(endpoint, "vision", prompt, images, result, %{}, trace)
+          {:ok, Map.take(result, [:text, :json, :model])}
+
+        {:error, reason} ->
+          log_failed_unless_input_error(endpoint, "vision", prompt, images, reason, trace)
+          {:error, reason}
+      end
+    end
+  end
+
+  @doc """
+  Checks an edited image against its original with a vision endpoint:
+  same subject, text and logos intact, unwanted changes. See
+  `PhoenixKitAI.Images.compare/4`. Logged as a `"vision"` request.
+  """
+  @spec compare_images(
+          String.t() | Endpoint.t(),
+          PhoenixKitAI.Images.input(),
+          PhoenixKitAI.Images.input(),
+          keyword()
+        ) ::
+          {:ok, map()} | {:error, term()}
+  def compare_images(endpoint_uuid, before, after_image, opts \\ []) do
+    with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
+         {:ok, _} <- validate_endpoint(endpoint) do
+      {auto_source, stacktrace, caller_context} = capture_caller_info()
+      source = Keyword.get(opts, :source) || auto_source
+      prompt = "compare: " <> to_string(opts[:intent] || "an edit")
+
+      trace = trace(source, stacktrace, caller_context, opts)
+      images = [before, after_image]
+
+      case PhoenixKitAI.Images.compare(endpoint, before, after_image, opts) do
+        {:ok, result} ->
+          logged = Map.put(result, :text, result.summary)
+
+          log_image_op_request(
+            endpoint,
+            "vision",
+            prompt,
+            images,
+            logged,
+            %{passed: result.passed},
+            trace
+          )
+
+          {:ok, Map.drop(result, [:usage, :latency_ms])}
+
+        {:error, reason} ->
+          log_failed_unless_input_error(endpoint, "vision", prompt, images, reason, trace)
+          {:error, reason}
+      end
+    end
+  end
+
+  @doc """
+  The image models the endpoint's provider offers, with what each accepts
+  (`PhoenixKitAI.Images.ImageModel`). `{:error, :not_supported}` when the
+  provider publishes no listing. `refresh: true` bypasses the cache.
+  """
+  @spec image_models(String.t() | Endpoint.t(), keyword()) ::
+          {:ok, [ImageModel.t()]} | {:error, term()}
+  def image_models(endpoint_uuid, opts \\ []) do
+    with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid) do
+      ImageModels.list(endpoint, opts)
+    end
+  end
+
+  @doc "The endpoint's own model's capabilities, or nil when the provider publishes none."
+  @spec image_model(String.t() | Endpoint.t()) :: ImageModel.t() | nil
+  def image_model(endpoint_uuid) do
+    case resolve_endpoint(endpoint_uuid) do
+      {:ok, endpoint} -> ImageModels.get(endpoint, endpoint.model)
+      _ -> nil
+    end
+  end
+
+  @doc "The option names an endpoint's adapter can send when no model listing exists."
+  @spec image_options(String.t() | Endpoint.t()) :: [atom()]
+  def image_options(endpoint_uuid) do
+    case resolve_endpoint(endpoint_uuid) do
+      {:ok, endpoint} -> Provider.for_endpoint(endpoint).image_options(endpoint)
+      _ -> []
+    end
+  end
+
+  @doc "Every image operation `process_image/4` understands (built-ins plus the host's)."
+  @spec image_operations() :: %{atom() => map()}
+  def image_operations, do: Operations.all()
+
+  # What every image row records about the call itself: who asked (source,
+  # stacktrace, caller context), when it started, the caller's idempotency
+  # key if any, and — on failures — the model override that was in play.
+  defp trace(source, stacktrace, ctx, opts) do
+    %{
       source: source,
       stacktrace: stacktrace,
-      caller_context: caller_context
+      ctx: ctx,
+      started: System.monotonic_time(:millisecond),
+      idempotency_key: opts[:idempotency_key],
+      model: opts[:model],
+      user_uuid: opts[:user_uuid]
     }
+  end
+
+  defp trace_metadata(trace) do
+    meta = %{source: trace.source, stacktrace: trace.stacktrace, caller_context: trace.ctx}
+
+    if trace[:idempotency_key],
+      do: Map.put(meta, :idempotency_key, trace.idempotency_key),
+      else: meta
+  end
+
+  # One row per image verb (`image`, `image_edit`, `vision`): tokens and
+  # cost when the provider reports them, latency, counts and byte sizes of
+  # the images — never the image bytes; prompt and any text under the PII
+  # gate. `trace` comes from `trace/4`.
+  defp log_image_op_request(endpoint, type, prompt, images, result, extra, trace) do
+    capture_content = capture_request_content?()
+    usage = result[:usage] || %{}
+    outputs = result[:images] || []
+    prompt = to_string(prompt)
+    emit_image_telemetry(type, endpoint, result, extra, trace, images, outputs, :ok)
+
+    base_metadata =
+      extra
+      |> Map.delete(:warning_tags)
+      |> Map.merge(%{
+        input_chars: String.length(prompt),
+        input_image_count: length(images),
+        input_bytes: image_input_bytes(images),
+        output_image_count: length(outputs),
+        output_bytes: Enum.reduce(outputs, 0, &(&2 + byte_size(&1[:data] || ""))),
+        provider: endpoint.provider
+      })
+      |> Map.merge(trace_metadata(trace))
+
+    metadata =
+      base_metadata
+      |> maybe_add_content(:input, capture_content, fn -> prompt end)
+      |> maybe_add_content(:response, capture_content, fn -> result[:text] end)
 
     create_request(%{
       endpoint_uuid: endpoint.uuid,
       endpoint_name: endpoint.name,
-      model: endpoint.model,
-      request_type: "image",
+      model: result[:model] || trace[:model] || endpoint.model,
+      request_type: type,
+      input_tokens: usage[:prompt_tokens] || 0,
+      output_tokens: usage[:completion_tokens] || 0,
+      total_tokens: usage[:total_tokens] || 0,
+      cost_cents: usage[:cost_cents],
       latency_ms: result[:latency_ms],
       status: "success",
-      metadata: maybe_add_content(base_metadata, :input, capture_content, fn -> prompt end)
+      user_uuid: trace[:user_uuid],
+      metadata: metadata
     })
   end
 
-  defp log_failed_image_request(endpoint, prompt, reason, source, stacktrace, caller_context) do
+  defp log_failed_image_op_request(endpoint, type, prompt, images, reason, trace) do
     capture_content = capture_request_content?()
+    prompt = to_string(prompt)
+    emit_image_telemetry(type, endpoint, %{}, %{error: reason}, trace, images, [], :error)
 
-    base_metadata = %{
-      error_reason: inspect(reason),
-      input_chars: String.length(prompt),
-      source: source,
-      stacktrace: stacktrace,
-      caller_context: caller_context
-    }
+    # The reason's shape is always recorded; its payload (a refusal's
+    # prose about the user's image, say) only under the PII gate.
+    base_metadata =
+      %{
+        error_reason: if(capture_content, do: inspect(reason), else: inspect(error_tag(reason))),
+        input_chars: String.length(prompt),
+        input_image_count: length(images),
+        input_bytes: image_input_bytes(images),
+        provider: endpoint.provider
+      }
+      |> Map.merge(trace_metadata(trace))
 
     create_request(%{
       endpoint_uuid: endpoint.uuid,
       endpoint_name: endpoint.name,
-      model: endpoint.model,
-      request_type: "image",
+      model: trace[:model] || endpoint.model,
+      request_type: type,
+      latency_ms: System.monotonic_time(:millisecond) - trace.started,
+      input_tokens: 0,
+      output_tokens: 0,
+      total_tokens: 0,
       status: "error",
-      error_message: error_reason_to_string(reason),
-      metadata: maybe_add_content(base_metadata, :input, capture_content, fn -> prompt end)
+      user_uuid: trace[:user_uuid],
+      error_message: PhoenixKitAI.Errors.message(reason),
+      metadata: base_metadata |> maybe_add_content(:input, capture_content, fn -> prompt end)
     })
+  end
+
+  # `[:phoenix_kit_ai, :image, :request]` — one event per provider call the
+  # image verbs make, with sizes and timing in the measurements and only
+  # tags (no prompts, no bytes) in the metadata.
+  defp emit_image_telemetry(type, endpoint, result, extra, trace, images, outputs, outcome) do
+    :telemetry.execute(
+      [:phoenix_kit_ai, :image, :request],
+      %{
+        latency_ms: result[:latency_ms] || System.monotonic_time(:millisecond) - trace.started,
+        input_bytes: image_input_bytes(images),
+        output_bytes: Enum.reduce(outputs, 0, &(&2 + byte_size(&1[:data] || ""))),
+        input_images: length(images),
+        output_images: length(outputs)
+      },
+      %{
+        type: type,
+        outcome: outcome,
+        provider: endpoint.provider,
+        model: result[:model] || trace[:model] || endpoint.model,
+        endpoint_uuid: endpoint.uuid,
+        operations: extra[:operations] || [],
+        warnings: extra[:warning_tags] || [],
+        error: extra[:error] && error_tag(extra[:error]),
+        source: trace.source
+      }
+    )
+  rescue
+    _ -> :ok
+  end
+
+  # The shape of an error without its payload (a refusal's prose, a URL).
+  defp error_tag(reason) when is_atom(reason), do: reason
+  defp error_tag(reason) when is_tuple(reason) and tuple_size(reason) > 0, do: elem(reason, 0)
+  defp error_tag(_reason), do: :unknown
+
+  defp image_input_bytes(images) do
+    Enum.reduce(images, 0, fn
+      %{data: data}, acc when is_binary(data) -> acc + byte_size(data)
+      "data:" <> _, acc -> acc
+      "http" <> _, acc -> acc
+      bytes, acc when is_binary(bytes) -> acc + byte_size(bytes)
+      _other, acc -> acc
+    end)
   end
 
   @doc """

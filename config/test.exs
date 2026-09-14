@@ -50,6 +50,9 @@ config :phoenix_kit, repo: PhoenixKitAI.Test.Repo
 config :phoenix_kit_ai, PhoenixKitAI.Test.Endpoint,
   secret_key_base: String.duplicate("t", 64),
   live_view: [signing_salt: "ai-test-salt"],
+  # LiveView uploads (the playground's image card) need the endpoint's
+  # PubSub; started in test_helper.exs.
+  pubsub_server: PhoenixKitAI.Test.PubSub,
   server: false,
   url: [host: "localhost"],
   render_errors: [formats: [html: PhoenixKitAI.Test.Layouts]]

@@ -123,4 +123,56 @@ defmodule PhoenixKitAI.ErrorsTest do
       assert msg =~ ":something_new"
     end
   end
+
+  describe "image layer" do
+    test "every image-era atom and tuple has its own sentence" do
+      assert Errors.message(:invalid_image_input) == "Invalid image input"
+      assert Errors.message(:not_supported) == "Not supported by this provider"
+      assert Errors.message(:reference_image_required) == "This operation needs a reference image"
+
+      assert Errors.message({:unsupported_option, :background, "transparent"}) ==
+               ~s(The model does not accept background = "transparent")
+
+      assert Errors.message({:unsupported_option, :mask, String.duplicate("x", 200)}) ==
+               "The model does not accept mask = <200 bytes>"
+
+      assert Errors.message({:too_many_images, 4, 3}) ==
+               "Too many images: 4 given, the model takes at most 3"
+
+      assert Errors.message({:unknown_operation, :teleport}) ==
+               "Unknown image operation: :teleport"
+
+      assert Errors.message({:missing_parameter, :remove_objects, :what}) ==
+               "Image operation remove_objects needs what"
+
+      assert Errors.message({:no_json_in_response, "nope"}) ==
+               "The model did not answer with JSON"
+
+      assert Errors.message({:no_image_in_response, "nope"}) == "The model returned no image"
+
+      assert Errors.message({:conflicting_operations, :clean_background, :blur_background}) ==
+               "Image operations clean_background and blur_background cannot be combined"
+
+      assert Errors.message({:content_policy, "unsafe"}) ==
+               "The provider refused this content: unsafe"
+
+      assert Errors.message({:image_too_large, 30, 25}) ==
+               "Image too large: 30 bytes, the limit is 25"
+
+      assert Errors.message({:unsafe_url, "http://127.0.0.1/x"}) ==
+               "That image URL cannot be fetched from here"
+
+      assert Errors.message({:fetch_failed, "https://x", 502}) ==
+               "The image could not be downloaded"
+
+      assert Errors.message({:fetch_failed, :too_many_redirects}) ==
+               "The image could not be downloaded"
+
+      assert Errors.message({:model_not_listed, "vendor/x"}) ==
+               "The provider's model list does not include vendor/x"
+
+      assert Errors.message({:capabilities_unavailable, :timeout}) ==
+               "The provider's model list could not be fetched"
+    end
+  end
 end

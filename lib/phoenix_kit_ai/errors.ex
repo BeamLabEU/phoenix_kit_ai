@@ -45,6 +45,12 @@ defmodule PhoenixKitAI.Errors do
   def message(:invalid_json_response), do: gettext("Invalid JSON response")
   def message(:no_choices_in_response), do: gettext("No choices in response")
   def message(:invalid_response_format), do: gettext("Invalid response format")
+  def message(:invalid_image_input), do: gettext("Invalid image input")
+
+  # The model answered with prose (usually a refusal) instead of an image.
+  # The prose travels in the tuple so the request log keeps the reason;
+  # the user-facing message stays generic.
+  def message({:no_image_in_response, _text}), do: gettext("The model returned no image")
 
   def message(:invalid_audio_response) do
     gettext("The TTS provider returned an unreadable audio response.")
@@ -86,6 +92,62 @@ defmodule PhoenixKitAI.Errors do
   def message({:prompt_error, reason}) do
     gettext("Prompt error: %{reason}", reason: inspect(reason))
   end
+
+  def message(:not_supported), do: gettext("Not supported by this provider")
+  def message(:reference_image_required), do: gettext("This operation needs a reference image")
+
+  def message({:unsupported_option, key, value}) do
+    shown =
+      if is_binary(value) and byte_size(value) > 120,
+        do: "<#{byte_size(value)} bytes>",
+        else: inspect(value)
+
+    gettext("The model does not accept %{option} = %{value}", option: key, value: shown)
+  end
+
+  def message({:too_many_images, count, max}) do
+    gettext("Too many images: %{count} given, the model takes at most %{max}",
+      count: count,
+      max: max
+    )
+  end
+
+  def message({:unknown_operation, operation}) do
+    gettext("Unknown image operation: %{operation}", operation: inspect(operation))
+  end
+
+  def message({:missing_parameter, operation, key}) do
+    gettext("Image operation %{operation} needs %{key}", operation: operation, key: key)
+  end
+
+  def message({:no_json_in_response, _text}), do: gettext("The model did not answer with JSON")
+
+  def message({:model_not_listed, model}) do
+    gettext("The provider's model list does not include %{model}", model: model)
+  end
+
+  def message({:capabilities_unavailable, _reason}),
+    do: gettext("The provider's model list could not be fetched")
+
+  def message({:conflicting_operations, first, second}) do
+    gettext("Image operations %{first} and %{second} cannot be combined",
+      first: first,
+      second: second
+    )
+  end
+
+  def message({:content_policy, reason}) do
+    gettext("The provider refused this content: %{reason}", reason: reason)
+  end
+
+  def message({:image_too_large, bytes, max}) do
+    gettext("Image too large: %{bytes} bytes, the limit is %{max}", bytes: bytes, max: max)
+  end
+
+  def message({:unsafe_url, _url}), do: gettext("That image URL cannot be fetched from here")
+
+  def message({:fetch_failed, _url, _reason}), do: gettext("The image could not be downloaded")
+  def message({:fetch_failed, _reason}), do: gettext("The image could not be downloaded")
 
   # Passthrough for strings so legacy callers returning {:error, "..."}
   # still render something. New code should return atoms/tuples.

@@ -5,7 +5,7 @@ Guidance for AI agents working on `phoenix_kit_ai`.
 ## Overview
 
 AI endpoint management, prompt templates, chat completions, embeddings,
-text-to-speech, image generation, realtime voice, and per-request
+text-to-speech, image generation and editing, realtime voice, and per-request
 usage tracking. Providers are OpenAI-compatible and are discovered at runtime
 from core's `PhoenixKit.Integrations` registry
 (`PhoenixKit.Integrations.Providers.with_capability(:ai_completions)`), so there
@@ -48,6 +48,9 @@ host supplies endpoint and router (`config/` exists only for tests).
   `Application.start/2`, which invokes `PhoenixKitAI.migrate_legacy/0`.
 - **No public HTTP/API surface.** Admin-only; consumers call the `PhoenixKitAI`
   context module.
+- **No file storage.** Image verbs take bytes or URLs in and hand bytes back;
+  the caller stores results (core's Storage, usually). Only the request row
+  is kept, and never the image bytes.
 - **No Oban for completions.** Chat, TTS, embeddings and image calls run
   synchronously. Oban is used only by the AI-translation pipeline
   (`PhoenixKitAI.TranslateWorker`).
@@ -81,6 +84,11 @@ Other useful invocations:
 mix test test/phoenix_kit_ai/completion_test.exs:25   # one test by line
 mix test --include destructive                        # opt-in destructive-rescue LV test
 ```
+
+Repo-local aliases:
+
+- `mix quality` — `format` + `credo --strict` + `dialyzer` (applies formatting).
+- `mix quality.ci` — `format --check-formatted` + `credo --strict` + `dialyzer`: it CHECKS formatting rather than applying it, so run `mix format` first.
 
 ## Conventions
 
@@ -203,7 +211,10 @@ Mistral, DeepSeek, OpenAI and xAI also work but are not required.
 lib/phoenix_kit_ai.ex            PhoenixKitAI — Module behaviour + the whole public context
 lib/phoenix_kit_ai/
   endpoint.ex prompt.ex request.ex   Ecto schemas
-  completion.ex                  provider-agnostic HTTP client (chat, embeddings, TTS, images)
+  completion.ex                  provider-agnostic HTTP client (chat, embeddings, TTS); image verbs delegate to adapters
+  provider.ex                    PhoenixKitAI.Provider behaviour + adapter resolution by provider key
+  providers/                     adapters: openrouter (unified /images), xai, openai (multipart), openai_compatible (chat parts), http (shared Req door)
+  images.ex images/              generic image layer: operations → prompt, option fitting, describe/compare, model-capability cache
   openrouter_client.ex           generic across providers despite the name
   errors.ex                      error atom -> gettext string
   ai_model.ex routes.ex          model struct; admin sub-routes
@@ -274,6 +285,10 @@ checked with `Scope.has_module_access?/2`. No sub-permissions.
 | `:embedding_models` | `[]` | Extra embedding models appended to `OpenRouterClient.fetch_embedding_models/2`; non-list values are warned about and ignored |
 | `:req_options` | `[]` | Extra `Req` opts appended to every HTTP call — tests use it for `Req.Test` plug stubs |
 | `:realtime_module` | `Xai.Realtime` | Swappable realtime client; tests point it at a Mox mock of `Xai.RealtimeBehaviour` |
+| `:provider_adapters` | `%{}` | Provider key → `PhoenixKitAI.Provider` module, merged over the built-in adapters (add a provider without touching this module) |
+| `:image_operations` | `%{}` | Extra or replacement image operations for `PhoenixKitAI.Images.Operations` (string or atom keys) |
+| `:max_image_bytes` | `25_000_000` | Largest image accepted as input or fetched as output by the image verbs |
+| `:allow_internal_image_urls` | `false` | Lift the image-fetch host policy (loopback / link-local / RFC 1918 / `.local`, resolved addresses included) — tests and air-gapped installs only; separate from the endpoint base-URL switch |
 
 ### Providers
 
@@ -300,6 +315,10 @@ provided the API exposes `<base_url>/chat/completions` and `/models`.
   (missing/error/not-connected), and a masked key via
   `Endpoint.masked_api_key/1`. `integrations_by_uuid` is loaded once per render
   to avoid an N+1.
+- **Image verbs pick an adapter by provider key** (`PhoenixKitAI.Provider.for_endpoint/1`):
+  OpenRouter, xAI and OpenAI have their own; everything else gets the
+  OpenAI-compatible default. A new image provider is an adapter module plus
+  a `:provider_adapters` entry — no edits to `Completion` or `Images`.
 - Endpoint-form model fetching drives `models_loading` /
   `models_loading_slow` (10s hint) / `models_error` with Retry, all consolidated
   in `start/stop_model_fetch_indicators/1`.
@@ -309,11 +328,33 @@ provided the API exposes `<base_url>/chat/completions` and `/models`.
 - **Reasoning capture**: `extract_reasoning/1` is persisted to
   `phoenix_kit_ai_requests.metadata.response_reasoning` by `log_request/8` and
   rendered collapsed in the Usage modal, behind the PII gate.
-- **Image generation**: `generate_image/3` posts to
-  `<base_url>/images/generations` and fills omitted options from the endpoint's
-  stored defaults — `image_size` / `image_quality` columns for OpenAI and
-  OpenRouter, `provider_settings["aspect_ratio"]` / `["resolution"]` for xAI,
-  which does not accept OpenAI's size and quality fields.
+- **Image editing and processing**: `edit_image/4` takes reference images
+  (bytes, `%{data:, content_type:}`, `%{url:}`, or data/http URL strings,
+  all inlined as data URLs) plus a prompt and canonical options, and hands
+  them to the endpoint's adapter: OpenRouter → `POST /images` with
+  `input_references` (`transport: :chat` keeps the chat-completions path
+  with `modalities`/`usage.include`); xAI → JSON `/images/edits`; OpenAI →
+  multipart `/images/edits`; anything else → chat completions with
+  `image_url` parts. `process_image/4` is the generic entry point: named
+  operations become one prompt, options are fitted to the model's published
+  capabilities (dropped with a warning, or refused under `strict: true`),
+  and `verify: true` attaches a vision check of the result.
+  `describe_image/3` / `compare_images/4` are the vision verbs (`"vision"`
+  request type) through the adapter's optional `vision/3`. Outputs are
+  always bytes (URL results are fetched, bounded, same host policy as
+  inputs); `dry_run: true` returns the plan without a request; a safety
+  refusal is `{:content_policy, message}`. A prose-only answer is
+  `{:error, {:no_image_in_response, text}}`.
+  Logged with tokens, `usage.cost` when reported, image counts and byte
+  sizes, operations and warnings; the image bytes themselves are never
+  persisted. **Never send a provider a permanent Storage URL — inline the
+  bytes.** `dev_docs/guides/image-processing.md` has the full picture.
+- **Image generation**: `generate_image/3` goes through the endpoint's
+  adapter (OpenRouter `POST /images`, everyone else `/images/generations`)
+  and fills omitted options from the endpoint's stored defaults —
+  `image_size` / `image_quality` columns and `provider_settings["aspect_ratio"]`
+  / `["resolution"]` — but only the ones the adapter can send (xAI takes no
+  `size`).
 - **TTS**: `speak/3` posts to `<base_url>/audio/speech` and decodes both
   Mistral's base64 JSON and raw binary, returning `{:ok, %{audio, format}}`.
   The endpoint form has a `:text`/`:tts` model-type selector (heuristic: a
@@ -392,7 +433,10 @@ Test database `phoenix_kit_ai_test`.
 
 ## Feature notes
 
-None. Feature behaviour is documented in `@moduledoc`s.
+- Image processing is provider-neutral by construction: callers name an
+  endpoint and operations, adapters own the HTTP shape, and options are
+  fitted to the model's published capabilities before anything is sent —
+  `dev_docs/guides/image-processing.md`.
 
 ## Versioning & releases
 
@@ -422,6 +466,31 @@ folder with no `FOLLOW_UP.md` means "not triaged yet"; a stub file is what
 "triaged, no findings" looks like.
 
 ## TODOs
+
+- Image layer follow-ups from the 2026-09 reviews, in rough order of value:
+  async execution (an Oban worker with progress and cancellation for
+  batch jobs); retries with backoff and idempotent replay on top of the
+  `idempotency_key` already recorded; per-tenant cost ceilings and a
+  `dry_run` price estimate; input roles (`subject` / `reference` / `mask`)
+  instead of positional inputs once a second provider takes masks;
+  media normalisation (EXIF rotation, colour profiles) before dispatch.
+  Trigger: the first consumer that batches, or a second mask-capable
+  provider.
+- `PhoenixKitAI.Completion` is both the bottom of the stack (`url/2`,
+  `handle_error_status/2`, `decode_image_url/1`) and the top (the image
+  verbs delegating to adapters). Split the shared helpers into
+  `PhoenixKitAI.Providers.Shared` and leave `Completion` the chat /
+  embeddings / TTS client. Trigger: the next provider adapter, or the next
+  time a compile-time cycle bites.
+- `PhoenixKitAI.Images.ImageModels` caches in `:persistent_term`; an ETS
+  table with single-flight refresh would avoid the global GC on refills
+  and unbounded key growth across endpoints. Trigger: more than a handful
+  of image endpoints per install.
+- The SSRF policy in `Providers.HTTP` resolves hostnames at check time;
+  DNS rebinding between check and connect is out of its reach. Trigger:
+  an install that cannot firewall egress.
+- No automated `mix test` run (`precommit` stops at dialyzer; no CI
+  workflow) — PR #21's open item, waiting on a policy call.
 
 - `metadata.error_reason` is stored via `inspect/1` in `log_failed_request/7`
   and `log_failed_embedding_request/5`. A raw `reason` value would filter better

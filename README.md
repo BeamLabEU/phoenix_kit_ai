@@ -114,6 +114,46 @@ Run `mix deps.get` and start the server. The module appears in:
 {:ok, response} = PhoenixKitAI.embed(endpoint.uuid, "Hello", dimensions: 512)
 ```
 
+### Image editing and processing
+
+Image-in, image-out through any provider, with the endpoint choosing the
+transport:
+
+```elixir
+# Named operations, fitted to what the model accepts:
+{:ok, %{images: [%{data: png, content_type: "image/png"}], warnings: warnings}} =
+  PhoenixKitAI.process_image(endpoint_uuid, [photo_jpeg], [
+    :remove_reflections,
+    {:clean_background, color: "white"},
+    {:upscale, resolution: "2K"}
+  ])
+
+# Or a plain instruction with reference images:
+{:ok, %{images: [%{data: png}]}} =
+  PhoenixKitAI.edit_image(endpoint_uuid, "Restyle the first photo like the second.",
+    [%{data: room_jpeg, content_type: "image/jpeg"}, %{data: reference_jpeg, content_type: "image/jpeg"}],
+    aspect_ratio: "4:3")
+
+# Vision: free text, or a parsed JSON object per schema
+{:ok, %{json: %{"brand" => brand}}} =
+  PhoenixKitAI.describe_image(endpoint_uuid, label_jpeg,
+    prompt: "Read the label.",
+    schema: %{"type" => "object", "properties" => %{"brand" => %{"type" => "string"}}})
+```
+
+Operations (`PhoenixKitAI.Images.Operations`): `:clean_background`,
+`:blur_background`, `:remove_background`, `:replace_background`,
+`:remove_reflections`, `:remove_objects`, `:enhance`, `:upscale`,
+`:relight`, `:recolor`, `:straighten`, `:crop_to_subject`, `:restyle`,
+plus free text — extendable from config, and any operation's wording can
+be overridden by a saved prompt named `Image op <name>`.
+
+Providers: OpenRouter's unified Images API (every image model on the
+gateway, with per-model capabilities), xAI, OpenAI, and any
+OpenAI-compatible API through chat completions. Adding one is a
+`PhoenixKitAI.Provider` adapter plus a config entry. The module stores no
+files: results come back as bytes for the caller to keep.
+
 ### Extracting response data
 
 ```elixir
@@ -273,6 +313,11 @@ All of this is stored in `phoenix_kit_ai_requests.metadata` (JSONB) and
 surfaced in the admin Usage page's request-details modal.
 
 ### Privacy / retention controls
+  # Image processing (see dev_docs/guides/image-processing.md)
+  provider_adapters: %{},              # provider key => PhoenixKitAI.Provider module
+  image_operations: %{},               # extra / replacement named operations
+  max_image_bytes: 25_000_000,         # largest input or fetched output
+  allow_internal_image_urls: false     # lift the image-fetch host policy (tests only)
 
 ```elixir
 # config/config.exs (defaults shown)
