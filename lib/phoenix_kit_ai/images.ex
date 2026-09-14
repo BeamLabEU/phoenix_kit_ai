@@ -622,7 +622,9 @@ defmodule PhoenixKitAI.Images do
 
   Returns `{:ok, %{text, json, usage, latency_ms, model}}`; `json` is nil
   unless requested. A JSON answer that does not parse is
-  `{:error, {:no_json_in_response, text}}`.
+  `{:error, {:no_json_in_response, text}}`; `:on_no_json`, a one-arity
+  function, first receives the unparsed result (usage and `:prompt`
+  included) so the paid call can still be logged.
   """
   @spec describe(Endpoint.t(), [input()], keyword()) :: {:ok, map()} | {:error, error()}
   def describe(endpoint, images, opts \\ []) do
@@ -656,18 +658,32 @@ defmodule PhoenixKitAI.Images do
       # The retry without `response_format` lives here, not in the adapter,
       # so a provider with its own `vision/3` keeps it.
       with {:ok, response} <-
-             vision_with_fallback(endpoint, messages, vision_opts, response_format),
-           text = content_text(response),
-           {:ok, json} <- StructuredOutput.parse(text, StructuredOutput.requested?(opts)) do
-        {:ok,
-         %{
-           text: text,
-           json: json,
-           usage: Completion.extract_usage(response),
-           latency_ms: response["latency_ms"],
-           model: response["model"] || endpoint.model
-         }}
+             vision_with_fallback(endpoint, messages, vision_opts, response_format) do
+        described(response, endpoint, opts)
       end
+    end
+  end
+
+  # The answer shaped, and parsed when JSON was asked for. The result is
+  # built first so a prose answer's usage can still reach `:on_no_json`.
+  defp described(response, endpoint, opts) do
+    text = content_text(response)
+
+    result = %{
+      text: text,
+      json: nil,
+      usage: Completion.extract_usage(response),
+      latency_ms: response["latency_ms"],
+      model: response["model"] || endpoint.model
+    }
+
+    case StructuredOutput.parse(text, StructuredOutput.requested?(opts)) do
+      {:ok, json} ->
+        {:ok, %{result | json: json}}
+
+      {:error, _} = error ->
+        notify_no_json(opts, result)
+        error
     end
   end
 
@@ -906,6 +922,17 @@ defmodule PhoenixKitAI.Images do
     end
   end
 
+  # The provider answered, and was paid, but not with JSON: `:on_no_json`
+  # still gets the usage (and the prompt that was sent) before the error.
+  defp notify_no_json(opts, result) do
+    case opts[:on_no_json] do
+      fun when is_function(fun, 1) -> fun.(Map.put(result, :prompt, opts[:prompt]))
+      _ -> :ok
+    end
+
+    :ok
+  end
+
   @compare_schema %{
     "type" => "object",
     "properties" => %{
@@ -947,13 +974,20 @@ defmodule PhoenixKitAI.Images do
 
     describe_opts =
       opts
-      |> Keyword.take([:model, :temperature, :max_tokens])
+      |> Keyword.take([:model, :temperature, :max_tokens, :on_no_json])
       |> Keyword.merge(prompt: prompt, schema: @compare_schema, schema_name: "edit_check")
 
     case describe(endpoint, [before, after_image], describe_opts) do
-      {:ok, %{json: json} = result} when is_map(json) -> {:ok, verdict(json, result)}
-      {:ok, %{text: text}} -> {:error, {:no_json_in_response, text}}
-      {:error, _} = error -> error
+      {:ok, %{json: json} = result} when is_map(json) ->
+        {:ok, verdict(json, result)}
+
+      # A JSON array parses, but it is no verdict.
+      {:ok, %{text: text} = result} ->
+        notify_no_json(describe_opts, result)
+        {:error, {:no_json_in_response, text}}
+
+      {:error, _} = error ->
+        error
     end
   end
 

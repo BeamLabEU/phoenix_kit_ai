@@ -2298,6 +2298,8 @@ defmodule PhoenixKitAI do
   end
 
   defp run_compare_images(endpoint, before, after_image, opts, prompt, trace) do
+    opts = log_unparsed_answer(opts, endpoint, prompt, [before, after_image], trace)
+
     with {:ok, result} <- PhoenixKitAI.Images.compare(endpoint, before, after_image, opts) do
       logged = Map.put(result, :text, result.summary)
 
@@ -2374,13 +2376,28 @@ defmodule PhoenixKitAI do
   end
 
   defp run_describe_image(endpoint, images, opts, prompt, trace) do
+    opts = log_unparsed_answer(opts, endpoint, prompt, images, trace)
+
     with {:ok, result} <- PhoenixKitAI.Images.describe(endpoint, images, opts) do
       log_image_op_request(endpoint, "vision", prompt, images, result, %{}, trace)
       {:ok, Map.take(result, [:text, :json, :model])}
     end
   end
 
+  # A JSON request answered in prose still cost a provider call. The vision
+  # layer hands that answer to `:on_no_json` before returning the error, so
+  # its usage row is written (the spend caps sum those rows) and the verb's
+  # error branch does not log the same call again as a zero-cost failure.
+  # A nil `prompt` takes the one the vision layer actually sent.
+  defp log_unparsed_answer(opts, endpoint, prompt, images, trace) do
+    Keyword.put(opts, :on_no_json, fn raw ->
+      log_image_op_request(endpoint, "vision", prompt || raw[:prompt], images, raw, %{}, trace)
+    end)
+  end
+
   defp run_extract_text(endpoint, images, opts, _prompt, trace) do
+    opts = log_unparsed_answer(opts, endpoint, nil, images, trace)
+
     with {:ok, result} <- PhoenixKitAI.Images.extract_text(endpoint, images, opts) do
       # Model-derived values are normalised before they reach the row: a
       # language tag is a tag or nothing, never free text.
@@ -2422,7 +2439,8 @@ defmodule PhoenixKitAI do
 
   # The cache wrapper every verb shares: the key over `material` (built
   # only when caching is on — image bytes are not free to hash) or the
-  # caller's own `cache: [key: …]` plus the JSON shape asked for, the
+  # caller's own `cache: [key: …]` plus the JSON shape asked for (`schema:`,
+  # `json:`, `extract_text/3`'s `fields:`), the
   # fetch, and the zero-cost row a hit writes. Logging stays in the run_*
   # functions and the verbs' error branches.
   defp with_cache(verb, endpoint, opts, material, row, fun) do
@@ -2431,8 +2449,11 @@ defmodule PhoenixKitAI do
     key = fn ->
       material =
         case RequestCache.caller_key(opts) do
-          nil -> material.()
-          caller_key -> {:caller_key, caller_key, opts[:schema], opts[:json] == true}
+          nil ->
+            material.()
+
+          caller_key ->
+            {:caller_key, caller_key, opts[:schema], opts[:json] == true, opts[:fields]}
         end
 
       RequestCache.key(verb, endpoint, model, material)
@@ -3194,7 +3215,7 @@ defmodule PhoenixKitAI do
           {:ok, map()} | {:error, term()}
   def process_image(endpoint_uuid, images, operations, opts \\ []) when is_list(images) do
     with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
-         {:ok, _} <- authorize(endpoint, opts) do
+         {:ok, _} <- authorize(endpoint, opts, !Keyword.get(opts, :dry_run, false)) do
       {auto_source, stacktrace, caller_context} = capture_caller_info()
       source = Keyword.get(opts, :source) || auto_source
       caller_context = Map.put(caller_context, :user_uuid, opts[:user_uuid])
@@ -3249,6 +3270,18 @@ defmodule PhoenixKitAI do
   defp input_error?({:model_not_listed, _}), do: true
   defp input_error?({:capabilities_unavailable, _}), do: true
   defp input_error?(_reason), do: false
+
+  # A prose answer to a JSON request is already logged, with its usage, by
+  # `log_unparsed_answer/5`.
+  defp log_failed_unless_input_error(
+         _endpoint,
+         _type,
+         _prompt,
+         _images,
+         {:no_json_in_response, _},
+         _trace
+       ),
+       do: :ok
 
   defp log_failed_unless_input_error(endpoint, type, prompt, images, reason, trace) do
     if input_error?(reason),
@@ -3644,9 +3677,12 @@ defmodule PhoenixKitAI do
 
   # Every provider-calling verb passes here: the endpoint must be usable
   # and, when caps are set, the last 24 hours of spend must leave room.
-  defp authorize(endpoint, opts) do
+  # `spends?` is false only for a `process_image/4` dry run, the one verb
+  # that honours `dry_run:` — reading the option here let every other verb
+  # skip the cap and still call the provider.
+  defp authorize(endpoint, opts, spends? \\ true) do
     with {:ok, endpoint} <- validate_endpoint(endpoint),
-         :ok <- if(opts[:dry_run], do: :ok, else: Budget.check(endpoint, opts)) do
+         :ok <- if(spends?, do: Budget.check(endpoint, opts), else: :ok) do
       {:ok, endpoint}
     end
   end

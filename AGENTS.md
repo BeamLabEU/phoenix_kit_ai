@@ -292,7 +292,8 @@ trailing 24 hours, `0` = no cap — and `ai_budget_warn_percent` (default 80),
 read through the settings cache. Every provider-calling verb (not the
 realtime voice session) checks them first and returns
 `{:error, {:budget_exceeded, scope}}` once one is reached, cached answers
-included; dry runs skip the check.
+included; only a `process_image/4` dry run skips the check (no other verb
+honours `dry_run:`).
 
 Permissions: a single module permission `"ai"` from `permission_metadata/0`,
 checked with `Scope.has_module_access?/2`. No sub-permissions.

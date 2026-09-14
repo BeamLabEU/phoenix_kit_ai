@@ -106,6 +106,19 @@ defmodule PhoenixKitAI.BudgetCacheTest do
                TestRepo.aggregate(from(r in Request, where: r.endpoint_uuid == ^ep.uuid), :count)
     end
 
+    test "dry_run: does not lift the cap on a verb that ignores it", %{endpoint: ep} do
+      stub_chat(self())
+      {:ok, _} = Budget.set_limit(:global, 500_000)
+      assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "spend it")
+      assert_received :provider_called
+
+      # Only process_image/4 honours dry_run:; ask/3 would still reach the provider.
+      assert {:error, {:budget_exceeded, :global}} =
+               PhoenixKitAI.ask(ep.uuid, "again", dry_run: true)
+
+      refute_received :provider_called
+    end
+
     test "only success rows inside the trailing 24 hours count", %{endpoint: ep} do
       stub_chat(self())
       {:ok, _} = Budget.set_limit(:global, 600_000)

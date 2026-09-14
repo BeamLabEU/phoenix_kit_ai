@@ -37,8 +37,9 @@ Semantics, in order of how often they surprise:
   the amount spent is not room for one more call.
 - **Cached answers are refused too.** A cap is a stop switch: once spent,
   the module answers nothing, so a runaway site goes quiet rather than
-  half-quiet. Dry runs (`dry_run: true`) skip the check — they spend
-  nothing and never reach a provider.
+  half-quiet. `process_image/4` dry runs (`dry_run: true`) skip the check
+  — they spend nothing and never reach a provider. No other verb honours
+  `dry_run:`, so on those it lifts nothing.
 - **No reservation.** The check reads the table; concurrent callers can
   overshoot by their in-flight calls. Atomic reservation is a TODO.
 - **Fails open.** A database error reads as zero spend and no cap, so a
@@ -86,8 +87,12 @@ model, material}`:
   `image_size` or a provider setting starts fresh.
 - **`key:`** replaces the material with the caller's term — a re-rendered
   prompt for the same product still hits — but the verb, endpoint, model
-  and JSON shape stay in, so a prose entry is never served to a `json:
-  true` call under the same key.
+  and JSON shape (`schema:`, `json:`, `extract_text/3`'s `fields:`) stay
+  in, so a prose entry is never served to a `json: true` call, nor one
+  field set's answer to another, under the same key. Everything else — a
+  describe prompt, which image — is the caller's to put in the key.
+- An `%{url:}` image input keys on the URL, not the bytes behind it: a
+  changed image at the same URL is served the old answer until the TTL.
 - **Entries are shared across users.** Two users asking the same thing
   get the same answer, and a caller key is global to the endpoint. Scope
   it yourself (`cache: [key: {user_uuid, "profile"}]`) when the answer is
@@ -134,7 +139,11 @@ vision result.
 
 The same retry serves `describe_image/3` and `extract_text/3` from
 `Images.describe/3`, not from the adapter, so a provider with its own
-`vision/3` keeps it.
+`vision/3` keeps it. A prose answer there is logged the same way as on
+chat: `Images.describe/3` hands the unparsed result, usage included, to an
+`:on_no_json` callback before returning the error, so the vision verbs
+(`compare_images/4` too) write the paid call's success row and no failure
+row.
 
 ## Telemetry
 

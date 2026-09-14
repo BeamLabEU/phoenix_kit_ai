@@ -545,6 +545,21 @@ defmodule PhoenixKitAI.ImagesTest do
 
       assert {:error, {:no_json_in_response, "A chocolate bar on a desk."}} =
                PhoenixKitAI.describe_image(ep.uuid, [@jpeg], json: true)
+
+      assert {:error, {:no_json_in_response, _}} = PhoenixKitAI.extract_text(ep.uuid, @jpeg)
+
+      assert {:error, {:no_json_in_response, _}} =
+               PhoenixKitAI.compare_images(ep.uuid, @jpeg, @jpeg)
+
+      # Every prose answer was a paid call: it keeps its usage row as a
+      # success (the spend caps sum those), and no error row doubles it.
+      assert [{"success", 500}, {"success", 500}, {"success", 500}, {"success", 500}] =
+               TestRepo.all(
+                 from(r in Request,
+                   where: r.request_type == "vision",
+                   select: {r.status, r.cost_cents}
+                 )
+               )
     end
 
     test "a model that rejects response_format gets one retry without it" do
@@ -713,6 +728,39 @@ defmodule PhoenixKitAI.ImagesTest do
       assert [%{"content" => [%{"text" => question}, _, _]}] = body["messages"]
       assert question =~ "2 images are pages of one document"
       refute question =~ "fields"
+    end
+
+    test "extract_text under one caller cache key still asks again when the fields change" do
+      stub(
+        chat_answer(
+          Jason.encode!(%{
+            "text" => "X",
+            "blocks" => [],
+            "language" => "en",
+            "confidence" => 1,
+            "has_illegible_text" => false,
+            "fields" => %{"ean" => "1", "weight" => "2"}
+          })
+        )
+      )
+
+      ep = endpoint_fixture(%{model: "google/gemini-2.5-flash"})
+      cache = [cache: [key: "label:1"]]
+
+      assert {:ok, %{fields: %{"ean" => "1"}}} =
+               PhoenixKitAI.extract_text(ep.uuid, @jpeg, [fields: ["ean"]] ++ cache)
+
+      assert_received {:post, _, _}
+
+      assert {:ok, %{fields: %{"ean" => "1"}}} =
+               PhoenixKitAI.extract_text(ep.uuid, @jpeg, [fields: ["ean"]] ++ cache)
+
+      refute_received {:post, _, _}
+
+      assert {:ok, %{fields: %{"weight" => "2"}}} =
+               PhoenixKitAI.extract_text(ep.uuid, @jpeg, [fields: ["weight"]] ++ cache)
+
+      assert_received {:post, _, _}
     end
 
     test "compare turns the fixed-schema answer into a verdict" do
@@ -918,9 +966,22 @@ defmodule PhoenixKitAI.ImagesTest do
                        %{"background" => "transparent", "output_format" => "png"}}
     end
 
-    test "dry_run returns the plan without a request or a usage row" do
+    test "dry_run returns the plan without a request or a usage row, even at a reached cap" do
       stub(image_answer())
       ep = endpoint_fixture()
+
+      # A dry run spends nothing, so a spent cap does not refuse it.
+      on_exit(fn -> {:ok, _} = PhoenixKitAI.Budget.set_limit(:global, 0) end)
+      {:ok, _} = PhoenixKitAI.Budget.set_limit(:global, 1)
+
+      TestRepo.insert!(%Request{
+        endpoint_uuid: ep.uuid,
+        endpoint_name: ep.name,
+        model: ep.model,
+        request_type: "chat",
+        cost_cents: 10,
+        status: "success"
+      })
 
       assert {:ok,
               %{
