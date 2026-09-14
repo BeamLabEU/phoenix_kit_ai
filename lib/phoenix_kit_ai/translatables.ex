@@ -9,8 +9,14 @@ defmodule PhoenixKitAI.Translatables do
   the function is **not** a `PhoenixKit.Module` callback, so feature modules
   declare AI-translatability without core knowing anything about AI).
 
+  A host application that is not a kit module joins the same pipeline
+  through config:
+
+      config :phoenix_kit_ai, translatables: [{"product", MyApp.AI.ProductTranslatable}]
+
   `resource_type` strings must be globally unique; on a collision the first
-  registered module wins.
+  registered module wins — configured entries come first, so a host can
+  also override a module's adapter for a type.
   """
 
   require Logger
@@ -21,8 +27,7 @@ defmodule PhoenixKitAI.Translatables do
   """
   @spec all() :: %{String.t() => module()}
   def all do
-    PhoenixKit.ModuleRegistry.all_modules()
-    |> Enum.flat_map(&safe_translatables/1)
+    (configured() ++ Enum.flat_map(PhoenixKit.ModuleRegistry.all_modules(), &safe_translatables/1))
     |> Enum.reduce(%{}, fn
       {type, adapter}, acc when is_binary(type) and is_atom(adapter) ->
         case acc do
@@ -47,6 +52,32 @@ defmodule PhoenixKitAI.Translatables do
   @spec find(String.t()) :: module() | nil
   def find(resource_type) when is_binary(resource_type) do
     Map.get(all(), resource_type)
+  end
+
+  # `config :phoenix_kit_ai, translatables: [{type, module}]` — a host app's
+  # own schemas, which have no module to export `ai_translatables/0` from.
+  defp configured do
+    case Application.get_env(:phoenix_kit_ai, :translatables, []) do
+      list when is_list(list) ->
+        Enum.filter(list, fn
+          {type, adapter} when is_binary(type) and is_atom(adapter) ->
+            true
+
+          other ->
+            Logger.warning(
+              "[PhoenixKitAI] ignoring :translatables entry #{inspect(other)} (want {type, module})"
+            )
+
+            false
+        end)
+
+      other ->
+        Logger.warning(
+          "[PhoenixKitAI] :translatables must be a list of {type, module}, got #{inspect(other)}"
+        )
+
+        []
+    end
   end
 
   # function_exported? is false for not-yet-loaded modules; ensure_loaded first.
