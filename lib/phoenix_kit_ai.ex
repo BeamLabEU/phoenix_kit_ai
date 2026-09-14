@@ -1929,8 +1929,9 @@ defmodule PhoenixKitAI do
   `{:error, :too_many_uuids}` when the payload exceeds the cap.
 
   On success, logs one `prompt.reordered` activity row with the actual
-  updated count + first uuid so the audit feed records the
-  drag-to-reorder action without per-row noise. `opts` is forwarded to
+  updated count and, as the resource, the first uuid in the new order that
+  names an existing row (`Reorder` skips ids it does not know) so the audit
+  feed records the drag-to-reorder action without per-row noise. `opts` is forwarded to
   `log_activity/5` so callers can thread `actor_uuid` / `actor_role`.
   """
   @spec reorder_prompts([String.t()], keyword()) :: :ok | {:error, :too_many_uuids}
@@ -1940,12 +1941,10 @@ defmodule PhoenixKitAI do
         :ok
 
       {:ok, count} ->
-        first_uuid = Enum.find(ordered_ids, &is_binary/1)
-
         log_activity(
           "prompt.reordered",
           "prompt",
-          first_uuid,
+          first_existing_uuid(Prompt, ordered_ids),
           opts,
           %{"count" => count}
         )
@@ -1960,6 +1959,24 @@ defmodule PhoenixKitAI do
     end
   end
 
+  # The audit row's resource: the first id in the caller's order that is a
+  # real row. `Reorder.reorder/4` filters unknown ids silently, so the raw
+  # first element could name a row that was never touched (PR #9 review).
+  defp first_existing_uuid(schema, ordered_ids) do
+    import Ecto.Query, only: [from: 2]
+
+    uuids = for id <- ordered_ids, is_binary(id), match?({:ok, _}, Ecto.UUID.cast(id)), do: id
+
+    case uuids do
+      [] ->
+        nil
+
+      uuids ->
+        existing = repo().all(from(r in schema, where: r.uuid in ^uuids, select: r.uuid))
+        Enum.find(uuids, &(&1 in existing))
+    end
+  end
+
   @doc """
   Reorders endpoints based on a list of UUIDs in their new display order.
 
@@ -1968,8 +1985,10 @@ defmodule PhoenixKitAI do
   `{:error, :too_many_uuids}` when the payload exceeds the cap.
 
   On success, logs one `endpoint.reordered` activity row with the
-  actual updated count + first uuid so the audit feed records the
-  drag-to-reorder action without per-row noise. `opts` is forwarded
+  actual updated count and, as the resource, the first uuid in the new
+  order that names an existing row (`Reorder` skips ids it does not
+  know) so the audit feed records the drag-to-reorder action without
+  per-row noise. `opts` is forwarded
   to `log_activity/5` so callers can thread `actor_uuid` / `mode`.
   """
   @spec reorder_endpoints([String.t()], keyword()) :: :ok | {:error, :too_many_uuids}
@@ -1979,12 +1998,10 @@ defmodule PhoenixKitAI do
         :ok
 
       {:ok, count} ->
-        first_uuid = Enum.find(ordered_ids, &is_binary/1)
-
         log_activity(
           "endpoint.reordered",
           "endpoint",
-          first_uuid,
+          first_existing_uuid(Endpoint, ordered_ids),
           opts,
           %{"count" => count}
         )
