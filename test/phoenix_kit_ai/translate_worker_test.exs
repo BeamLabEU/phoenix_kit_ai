@@ -11,10 +11,20 @@ defmodule PhoenixKitAI.TranslateWorkerTest do
   The success path (the real `ask_with_prompt/4` round-trip + persist) needs a
   seeded endpoint + prompt + a registered adapter, so it's covered by each
   consumer's browser/integration verification.
+
+  `PhoenixKitAI.DataCase` (not a plain `ExUnit.Case`) because `perform/1`'s
+  setup-failure branch now writes an `ai.translation_failed` activity entry
+  (best-effort) alongside its broadcast — without a checked-out sandbox
+  connection, that Ecto call can race a concurrently-shutting-down async
+  test's owner process and take this test process down with an unrescuable
+  `:exit` (a link-level kill signal, not something `try/rescue/catch` can
+  intercept — see `translate_worker_failure_logging_test.exs` for the
+  deterministic, changeset-level version of "the logger itself fails" this
+  race isn't needed to prove).
   """
 
   # async: false — perform's failure path broadcasts on the shared global topic.
-  use ExUnit.Case, async: false
+  use PhoenixKitAI.DataCase, async: false
 
   alias PhoenixKitAI.{TranslateWorker, Translations}
 

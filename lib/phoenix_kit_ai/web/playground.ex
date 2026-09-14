@@ -48,7 +48,7 @@ defmodule PhoenixKitAI.Web.Playground do
       socket
       |> assign(:project_title, nil)
       |> assign(:current_path, Routes.path("/admin/ai/playground"))
-      |> assign(:page_title, "AI Playground")
+      |> assign(:page_title, gettext("AI Playground"))
       |> assign(:page_subtitle, gettext("Test endpoints and prompts interactively"))
       |> assign(:endpoints, [])
       |> assign(:prompts, [])

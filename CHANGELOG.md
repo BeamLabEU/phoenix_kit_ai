@@ -1,3 +1,47 @@
+## 0.20.1 - 2026-09-13
+
+### Fixed
+
+- **Admin page titles are translated again.** 0.19.3 moved every page's
+  title into a plain-string `page_title` assign, which core's admin layout
+  renders as the header — so the Playground and Prompts titles lost their
+  Estonian and Russian translations (the next `gettext.merge` would have
+  deleted them), and the endpoint/prompt form titles were never translated
+  at all. Every title assign now goes through `gettext/1`; the catalogues are
+  re-extracted with `et` and `ru` entries for the six new form-title msgids.
+- The Endpoints LiveView derives its mount title/subtitle from the same
+  helper `handle_params/3` uses instead of duplicating the strings.
+- `test/test_helper.exs`'s connect-failure messages had lost their line
+  breaks and pointed at a preflight diagnostic that isn't printed on that
+  path; they carry the `createdb` hint again.
+- `AGENTS.md` now documents the `ai.translation_added` /
+  `ai.translation_failed` activity entries added in 0.20.0.
+
+## 0.20.0 - 2026-09-10
+
+### Added
+
+- **`TranslateWorker` now writes an `ai.translation_failed` activity entry on
+  every terminal failure**, mirroring the existing `ai.translation_added`
+  success entry. Covers both `perform/1`'s setup-failure branch (bad args,
+  unknown adapter, missing resource) and `fail/3`'s two terminal clauses
+  (deterministic discard, or a retryable reason with attempts exhausted) —
+  never on a pending retry, matching the existing PubSub broadcast's own
+  silence there. The raw failure reason is never persisted verbatim; a new
+  `classify_reason/1` reduces it to a short, static classification tag first,
+  since some failure shapes can embed resource content (#24).
+
+### Fixed
+
+- **`classify_reason/1`'s persist-failure detail was unreachable.** The
+  generic `{:persist_error, _reason}` clause matched before the specific
+  `{:bad_put_translation, _other}` clause, which only ever matched a shape
+  nothing in the module produces at the top level in production —
+  `persist/2` always wraps it as `{:persist_error, {:bad_put_translation,
+  _}}`. Every persist failure logged with `reason_detail: nil` instead of
+  distinguishing "adapter returned a malformed shape." Reordered the clauses
+  and added the analogous `{:persist_error, {:exception, _}}` case.
+
 ## 0.19.3 - 2026-09-07
 
 ### Fixed
