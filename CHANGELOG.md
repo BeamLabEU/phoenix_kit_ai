@@ -47,6 +47,13 @@
   so the existing retry classification picks up a transient failure
   (observed: a 504 reported in the body by OpenRouter) instead of
   discarding it on the first attempt.
+- **`PK_AI_SKIP_DB=1` is reachable through `mix test` again.** The `test`
+  alias ran `ecto.create --quiet` unconditionally, so on a machine with no
+  reachable Postgres `ecto.create` itself exited nonzero before
+  `test/test_helper.exs` ever loaded — the soft-skip documented there
+  could never actually trigger via `mix test`. The alias is now a
+  function that checks the same env var before deciding whether to
+  provision the database at all.
 
 No action is required from an existing consumer, `phoenix_kit_publishing`
 included — every change above is additive: a new template variable, a
