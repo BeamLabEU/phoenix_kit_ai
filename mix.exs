@@ -1,7 +1,7 @@
 defmodule PhoenixKitAI.MixProject do
   use Mix.Project
 
-  @version "0.22.0"
+  @version "0.23.0"
   @source_url "https://github.com/BeamLabEU/phoenix_kit_ai"
 
   def project do
@@ -88,9 +88,22 @@ defmodule PhoenixKitAI.MixProject do
   # Backs the `test` alias above. Skips `ecto.create` under `PK_AI_SKIP_DB=1`
   # so the run reaches test/test_helper.exs — which does the actual
   # unit-vs-integration split — instead of dying on the database step first.
+  #
+  # Provisioning is best-effort: `ecto.create` connects to the `postgres`
+  # maintenance database, which a role that owns only its test database (a
+  # shared CI or container Postgres) may not be allowed to reach, even though
+  # the test database itself exists and works. test_helper.exs's preflight
+  # stays the authority and still aborts the run on a database it can't use.
   defp run_tests(args) do
     unless System.get_env("PK_AI_SKIP_DB") in ["1", "true"] do
-      Mix.Task.run("ecto.create", ["--quiet"])
+      try do
+        Mix.Task.run("ecto.create", ["--quiet"])
+      rescue
+        error in Mix.Error ->
+          Mix.shell().info(
+            "ecto.create skipped (#{Exception.message(error)}); test_helper.exs checks the database"
+          )
+      end
     end
 
     Mix.Task.run("test", args)

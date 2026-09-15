@@ -51,7 +51,7 @@ defmodule PhoenixKitAI.TranslateWorker do
 
   require Logger
 
-  alias PhoenixKitAI.{Translation, Translations}
+  alias PhoenixKitAI.{RequestCache, Translation, Translations}
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: args} = job) do
@@ -142,7 +142,8 @@ defmodule PhoenixKitAI.TranslateWorker do
                  "resource_type" => ctx.type,
                  "resource_uuid" => ctx.uuid,
                  "actor_uuid" => ctx.actor
-               }
+               },
+               cache: retry_cache_mode(ctx.attempt)
              ) do
           {:ok, translated} ->
             persist(ctx, translated, fields)
@@ -502,6 +503,20 @@ defmodule PhoenixKitAI.TranslateWorker do
   def retryable?({:parse_error, {:missing_fields, _}}), do: true
 
   def retryable?(_), do: false
+
+  @doc false
+  # A retry has to reach the model again. With the host's request cache on
+  # (`request_cache: [default: true]`), attempt 2 would otherwise replay
+  # attempt 1's stored answer — the one whose missing marker made it
+  # retryable — and burn every attempt on the same text. So retries refresh
+  # the entry; the first attempt, and a host with caching off, keep the
+  # host's own mode (`:refresh` would store even when caching is off).
+  @spec retry_cache_mode(pos_integer()) :: boolean() | :refresh
+  def retry_cache_mode(attempt) when attempt > 1 do
+    if RequestCache.mode([]) == false, do: false, else: :refresh
+  end
+
+  def retry_cache_mode(_attempt), do: RequestCache.mode([]) != false
 
   # ── Args ─────────────────────────────────────────────────────────
 

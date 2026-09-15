@@ -1709,7 +1709,8 @@ defmodule PhoenixKitAI do
       # error. Logged now; recorded into the request's metadata below via
       # `:unbound_placeholders` so it shows up next to the request that
       # actually rendered it, not just in the log stream.
-      unbound = detect_unbound_placeholders(prompt, rendered, system_prompt)
+      unbound =
+        detect_unbound_placeholders(prompt, [prompt.content, prompt.system_prompt], variables)
 
       # Pass prompt info to ask for request logging
       opts_with_prompt =
@@ -1747,17 +1748,17 @@ defmodule PhoenixKitAI do
     %{hash: :crypto.hash(:sha256, body) |> Base.encode16(case: :lower) |> binary_part(0, 16)}
   end
 
-  # §9.2: scans both the rendered user prompt and the rendered system
-  # prompt (when present) for leftover `{{...}}` placeholders and logs a
-  # warning when any are found. Returns the deduplicated list so the
-  # caller can thread it into request metadata. Kept out of
-  # `Prompt.unbound_placeholders/1` itself — that function stays a pure,
-  # single-string scan; combining the two rendered strings and deciding
-  # to log is specific to this call site.
-  defp detect_unbound_placeholders(prompt, rendered, system_prompt) do
+  # §9.2: finds the `{{...}}` placeholders the given templates (user prompt,
+  # system prompt) leave unbound and logs a warning when any are found.
+  # Returns the deduplicated list so the caller can thread it into request
+  # metadata. Scans the templates, not the rendered text: a variable's value
+  # is caller content (source text to translate), and a `{{...}}` inside it
+  # is neither a template defect nor something to copy into logs and
+  # metadata outside the `capture_request_content?/0` gate.
+  defp detect_unbound_placeholders(prompt, templates, variables) do
     unbound =
-      (Prompt.unbound_placeholders(rendered) ++
-         Prompt.unbound_placeholders(system_prompt || ""))
+      templates
+      |> Enum.flat_map(&Prompt.unbound_placeholders(&1, variables))
       |> Enum.uniq()
 
     if unbound != [] do
@@ -1789,8 +1790,8 @@ defmodule PhoenixKitAI do
       # §9.2 guard — the same net `ask_with_prompt/4` applies. This is the
       # module's other render-a-template-then-call-the-model path, so an
       # unbound `{{...}}` reaching a model through it has to be just as
-      # visible; there's only one rendered string here (the system prompt).
-      unbound = detect_unbound_placeholders(prompt, system_prompt, nil)
+      # visible; only `content` is rendered here (as the system message).
+      unbound = detect_unbound_placeholders(prompt, [prompt.content], variables)
 
       # Pass prompt info to complete for request logging
       opts_with_prompt =
@@ -2529,6 +2530,7 @@ defmodule PhoenixKitAI do
         %{cached: true, source: row.source, caller_context: row.caller_context}
         |> maybe_put_attribution(prompt_info[:attribution])
         |> maybe_put_prompt_snapshot(prompt_info[:prompt_snapshot])
+        |> maybe_put_unbound_placeholders(prompt_info[:unbound_placeholders])
 
       create_request(%{
         endpoint_uuid: endpoint.uuid,
@@ -2897,6 +2899,7 @@ defmodule PhoenixKitAI do
       :prompt_uuid,
       :prompt_name,
       :prompt_snapshot,
+      :unbound_placeholders,
       :verify
     ])
     |> Enum.sort()

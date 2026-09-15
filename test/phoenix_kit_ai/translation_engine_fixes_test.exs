@@ -184,6 +184,48 @@ defmodule PhoenixKitAI.TranslationEngineFixesTest do
       refute Map.has_key?(row.metadata, "unbound_placeholders")
     end
 
+    test "a {{...}} inside a bound value is caller content, not an unbound slot" do
+      ep = endpoint_fixture()
+      prompt = prompt_fixture("Translate to {{TargetLanguage}}:\n\n{{SourceFields}}")
+
+      stub_response(200, success_payload("---BODY---\nUsa {{sku}}"))
+
+      log =
+        capture_log(fn ->
+          assert {:ok, _} =
+                   Translation.translate_fields(ep.uuid, prompt.uuid, "en", "es", %{
+                     "body" => "Use {{sku}}"
+                   })
+        end)
+
+      refute log =~ "unbound"
+      refute Map.has_key?(latest_request_for(ep).metadata, "unbound_placeholders")
+    end
+
+    test "a cache hit's row carries the same unbound_placeholders as the fresh row" do
+      ep = endpoint_fixture()
+      prompt = prompt_fixture("Say hi to {{Name}} from {{campaign_slug}}")
+
+      stub_response(200, success_payload("hi"))
+
+      capture_log(fn ->
+        for _ <- 1..2 do
+          assert {:ok, _} =
+                   PhoenixKitAI.ask_with_prompt(ep.uuid, prompt.uuid, %{"Name" => "Ann"},
+                     cache: true
+                   )
+        end
+      end)
+
+      rows =
+        PhoenixKitAI.list_requests()
+        |> elem(0)
+        |> Enum.filter(&(&1.endpoint_uuid == ep.uuid))
+
+      assert [cached] = Enum.filter(rows, &(&1.metadata["cached"] == true))
+      assert cached.metadata["unbound_placeholders"] == ["{{campaign_slug}}"]
+    end
+
     test "the guard also covers complete_with_system_prompt/5, the other render path" do
       # §9.2 says "after rendering, check" — not "after rendering in
       # ask_with_prompt/4". `complete_with_system_prompt/5` renders the same
@@ -286,12 +328,70 @@ defmodule PhoenixKitAI.TranslationEngineFixesTest do
       # already classifies as transient — no new rule needed (see
       # translate_worker_test.exs for the classification itself).
       #
-      # Note the logged Request row is still "success": the HTTP layer
-      # (`PhoenixKitAI.complete/3`) only sees a 200 status, so it logs
-      # success and hands the body to `Translation`, which is where the
-      # §9.6 normalisation happens — one layer up from request logging.
+      # `Completion` classifies the body before request logging, so the row
+      # is a failure, not a zero-token success.
       row = latest_request_for(ep)
-      assert row.status == "success"
+      assert row.status == "error"
+    end
+
+    test "a 429 in a 200 body is :rate_limited, which the worker snoozes" do
+      ep = endpoint_fixture()
+      prompt = prompt_fixture("Translate to {{TargetLanguage}}: {{SourceFields}}")
+
+      stub_response(200, %{"error" => %{"code" => 429, "message" => "Slow down"}})
+
+      assert {:error, {:ai_error, :rate_limited}} =
+               Translation.translate_fields(ep.uuid, prompt.uuid, "en", "es", %{
+                 "title" => "Widget"
+               })
+    end
+
+    test "an error body is never cached, so the retry reaches the provider" do
+      ep = endpoint_fixture()
+      prompt = prompt_fixture("Translate to {{TargetLanguage}}: {{SourceFields}}")
+      fields = %{"title" => "Widget"}
+
+      stub_response(200, %{"error" => %{"code" => 504, "message" => "Upstream timeout"}})
+
+      capture_log(fn ->
+        assert {:error, {:ai_error, {:api_error, 504}}} =
+                 Translation.translate_fields(ep.uuid, prompt.uuid, "en", "es", fields,
+                   cache: true
+                 )
+      end)
+
+      stub_response(200, success_payload("---TITLE---\nArtilugio"))
+
+      assert {:ok, %{"title" => "Artilugio"}} =
+               Translation.translate_fields(ep.uuid, prompt.uuid, "en", "es", fields, cache: true)
+    end
+  end
+
+  describe "§9.5 — a retried parse failure reaches the model again" do
+    test "a cached missing-fields answer replays until the caller refreshes it" do
+      ep = endpoint_fixture()
+      prompt = prompt_fixture("Translate to {{TargetLanguage}}:\n\n{{SourceFields}}")
+      fields = %{"title" => "Widget", "body" => "A fine widget."}
+
+      stub_response(200, success_payload("---TITLE---\nArtilugio"))
+
+      assert {:error, {:parse_error, {:missing_fields, ["body"]}}} =
+               Translation.translate_fields(ep.uuid, prompt.uuid, "en", "es", fields, cache: true)
+
+      stub_response(
+        200,
+        success_payload("---TITLE---\nArtilugio\n---BODY---\nUn buen artilugio.")
+      )
+
+      # What a plain retry would see: the stored answer that failed.
+      assert {:error, {:parse_error, {:missing_fields, ["body"]}}} =
+               Translation.translate_fields(ep.uuid, prompt.uuid, "en", "es", fields, cache: true)
+
+      # What `TranslateWorker` sends from attempt 2 on (`retry_cache_mode/1`).
+      assert {:ok, %{"body" => "Un buen artilugio."}} =
+               Translation.translate_fields(ep.uuid, prompt.uuid, "en", "es", fields,
+                 cache: :refresh
+               )
     end
   end
 end

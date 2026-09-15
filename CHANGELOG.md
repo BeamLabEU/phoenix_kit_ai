@@ -1,4 +1,4 @@
-## Unreleased
+## 0.23.0 - 2026-09-15
 
 ### Added
 
@@ -54,6 +54,30 @@
   could never actually trigger via `mix test`. The alias is now a
   function that checks the same env var before deciding whether to
   provision the database at all.
+
+### Fixed (post-merge review of #27)
+
+- **A provider error in a 200 body is classified where the request is
+  logged, not only in `Translation`.** `Completion.chat_completion/3` maps
+  `{"error": {"code": N}}` through the same `handle_error_status/2` a non-2xx
+  status uses, so the usage row is a failure (not a zero-token success), a
+  429 comes back `:rate_limited` (snoozed by `TranslateWorker`, not retried
+  against its attempts), 401/402 keep their own atoms, and the request cache
+  never stores the error for a retry to replay.
+- **Translation retries reach the model again with the request cache on.**
+  `Translation.translate_fields/6` now passes `:cache` through, and
+  `TranslateWorker` sends `cache: :refresh` from attempt 2 when the host's
+  cache is enabled. Before, a `missing_fields` answer was stored on attempt 1
+  and every retry replayed it.
+- **The unbound-placeholder guard scans the template, not the rendered
+  text.** New `Prompt.unbound_placeholders/2` (template, variables). A `{{...}}`
+  inside source content is no longer reported as an unbound slot, logged, or
+  written to request metadata outside the `capture_request_content` gate. A
+  cache hit's row now carries `unbound_placeholders` like the fresh row, and
+  the key is kept out of the cache key.
+- **`mix test` no longer aborts when the database role cannot connect to
+  `postgres`.** The alias's `ecto.create` is best-effort; `test_helper.exs`
+  still aborts the run on a test database it cannot use.
 
 No action is required from an existing consumer, `phoenix_kit_publishing`
 included — every change above is additive: a new template variable, a

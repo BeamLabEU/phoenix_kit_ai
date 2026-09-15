@@ -303,6 +303,32 @@ defmodule PhoenixKitAI.Prompt do
   def unbound_placeholders(_), do: []
 
   @doc """
+  Returns the `{{...}}` placeholders in `template` that `variables` leaves
+  unbound — the ones `render_content/2` would leave as-is.
+
+  Only the template is scanned, never the values: a bound variable whose
+  own text contains `{{...}}` (a product description quoting a Liquid
+  snippet, say) is not reported, so the result names template slots only
+  and carries none of the caller's content.
+
+  ## Examples
+
+      iex> PhoenixKitAI.Prompt.unbound_placeholders("{{A}} and {{B}}", %{"A" => "{{x}}"})
+      ["{{B}}"]
+  """
+  @spec unbound_placeholders(String.t() | nil, map()) :: [String.t()]
+  def unbound_placeholders(template, variables)
+      when is_binary(template) and is_map(variables) do
+    # Rendered with every bound value blanked, so whatever `{{...}}` is left
+    # came from the template — and the lookup stays `render_content/2`'s own.
+    blanked = Map.new(variables, fn {name, value} -> {name, value && ""} end)
+    {:ok, rendered} = render_content(template, blanked)
+    unbound_placeholders(rendered)
+  end
+
+  def unbound_placeholders(template, _variables), do: unbound_placeholders(template)
+
+  @doc """
   Validates that all required variables are provided.
 
   Returns `:ok` if all variables are present, or `{:error, missing}` with

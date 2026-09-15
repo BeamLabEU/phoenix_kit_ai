@@ -104,6 +104,10 @@ defmodule PhoenixKitAI.Translation do
   - `:source` — string identifier for the calling module (e.g.
     `"Publishing.TranslatePostWorker"`); included in the
     `PhoenixKitAI` request log so usage reports break down by caller.
+  - `:attribution` — opaque map recorded into the request's metadata.
+  - `:cache` — passed to the completion as-is (see `PhoenixKitAI.RequestCache`).
+    A caller retrying a failed parse passes `cache: :refresh`, or the retry
+    replays the cached answer that failed.
   """
   @spec translate_fields(
           String.t(),
@@ -175,7 +179,7 @@ defmodule PhoenixKitAI.Translation do
 
     ai_opts =
       opts
-      |> Keyword.take([:source, :attribution])
+      |> Keyword.take([:source, :attribution, :cache])
       |> Keyword.put_new(:source, "PhoenixKitAI.Translation")
 
     log_request(source_lang, target_lang, Map.keys(fields), opts)
@@ -284,6 +288,10 @@ defmodule PhoenixKitAI.Translation do
   # same `{:api_error, code}` shape the transport-error path already produces
   # (`Completion.handle_error_status/2`) means the existing classification
   # in `retryable?/1` handles it with no new rule needed.
+  #
+  # `Completion.chat_completion/3` now classifies this shape itself, before
+  # the request is logged or cached, so the built-in path never reaches this
+  # clause; it stays for a response handed back by any other route.
   def handle_ai_response(%{"error" => %{"code" => code}}, _fields) do
     {:error, {:ai_error, {:api_error, code}}}
   end

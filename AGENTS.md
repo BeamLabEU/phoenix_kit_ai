@@ -67,8 +67,8 @@ host supplies endpoint and router (`config/` exists only for tests).
 
 ```bash
 mix deps.get
-createdb phoenix_kit_ai_test # once; DB-backed tests are tagged :integration and auto-skip without it
-mix test
+mix test                     # the alias tries `ecto.create` first; aborts if the test database is unusable
+PK_AI_SKIP_DB=1 mix test     # no Postgres on this machine: unit tests only (never in CI or before a release)
 mix precommit                # compile --warnings-as-errors + format + credo --strict + dialyzer; run before every commit
 ```
 
@@ -416,8 +416,12 @@ Test database `phoenix_kit_ai_test`.
 
 - **Unit tests** (schemas, changesets, pure functions) always run. **Integration
   tests** need PostgreSQL — `PhoenixKitAI.DataCase` and `LiveCase` auto-tag
-  `:integration`, and `test_helper.exs` excludes that tag when the database is
-  absent, after probing with `psql -lqt` and falling back to a connect attempt.
+  `:integration`. The `test` alias in `mix.exs` tries `ecto.create` (best
+  effort: a role without CONNECT on `postgres` skips it), then
+  `test_helper.exs` preflights the database and **raises** when it is
+  unusable rather than quietly excluding the tag — a broken database used to
+  report "0 failures" with most of the suite skipped. `:integration` is
+  excluded only under the explicit `PK_AI_SKIP_DB=1` opt-out.
 - The schema is built by `PhoenixKit.Migration.ensure_current(TestRepo, log: false)`
   — core's own chain, the same call a host makes. It re-applies newly shipped
   migrations on every boot; the older `Ecto.Migrator.run(TestRepo, [{0, PhoenixKit.Migration}], …)`

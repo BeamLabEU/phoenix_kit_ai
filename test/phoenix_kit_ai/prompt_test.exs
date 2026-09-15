@@ -177,6 +177,27 @@ defmodule PhoenixKitAI.PromptTest do
     end
   end
 
+  describe "unbound_placeholders/2" do
+    test "reports the template slots the variables leave unbound" do
+      assert Prompt.unbound_placeholders("Title: {{title}}. SEO: {{seo_title}}.", %{
+               "title" => "Widget"
+             }) == ["{{seo_title}}"]
+    end
+
+    test "ignores {{...}} inside a bound value" do
+      assert Prompt.unbound_placeholders("Body: {{body}}", %{"body" => "Use {{sku}} here"}) == []
+    end
+
+    test "follows render's lookup: atom keys bind, nil values don't" do
+      assert Prompt.unbound_placeholders("{{A}} {{B}}", %{A: "a", B: nil}) == ["{{B}}"]
+    end
+
+    test "a nil template or non-map variables don't raise" do
+      assert Prompt.unbound_placeholders(nil, %{}) == []
+      assert Prompt.unbound_placeholders("{{A}}", nil) == ["{{A}}"]
+    end
+  end
+
   # ============================================================================
   # changeset/2 - variable extraction from both fields
   # ============================================================================

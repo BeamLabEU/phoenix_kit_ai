@@ -69,6 +69,33 @@ defmodule PhoenixKitAI.TranslateWorkerTest do
     end
   end
 
+  describe "retry_cache_mode/1" do
+    setup do
+      previous = Application.get_env(:phoenix_kit_ai, :request_cache)
+
+      on_exit(fn ->
+        if previous,
+          do: Application.put_env(:phoenix_kit_ai, :request_cache, previous),
+          else: Application.delete_env(:phoenix_kit_ai, :request_cache)
+      end)
+    end
+
+    test "with the cache on, the first attempt uses it and a retry refreshes it" do
+      Application.put_env(:phoenix_kit_ai, :request_cache, default: true)
+
+      assert TranslateWorker.retry_cache_mode(1) == true
+      assert TranslateWorker.retry_cache_mode(2) == :refresh
+      assert TranslateWorker.retry_cache_mode(3) == :refresh
+    end
+
+    test "with the cache off, no attempt turns it on" do
+      Application.put_env(:phoenix_kit_ai, :request_cache, default: false)
+
+      assert TranslateWorker.retry_cache_mode(1) == false
+      assert TranslateWorker.retry_cache_mode(2) == false
+    end
+  end
+
   describe "safe_put_translation/3 — §9.3 source_fields threading" do
     # Public-for-testing seam (see the `@doc false` on the function itself).
     # A hand-rolled ctx map exercises exactly the four keys the function

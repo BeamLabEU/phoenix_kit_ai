@@ -103,10 +103,25 @@ defmodule PhoenixKitAI.Completion do
     latency_ms = System.monotonic_time(:millisecond) - start_time
 
     case Jason.decode(response_body) do
-      {:ok, response} -> {:ok, Map.put(response, "latency_ms", latency_ms)}
-      {:error, _} -> {:error, :invalid_json_response}
+      # A provider error delivered with a 200 (OpenRouter does this for an
+      # upstream timeout: `{"error": {"code": 504, ...}}`) is an error, not an
+      # answer. Classified like the status it names, so it is logged as a
+      # failed request and never stored by the request cache, where a retry
+      # would replay it.
+      {:ok, %{"error" => %{"code" => code}} = response}
+      when not is_map_key(response, "choices") ->
+        error_in_body(code, response_body)
+
+      {:ok, response} ->
+        {:ok, Map.put(response, "latency_ms", latency_ms)}
+
+      {:error, _} ->
+        {:error, :invalid_json_response}
     end
   end
+
+  defp error_in_body(code, body) when is_integer(code), do: handle_error_status(code, body)
+  defp error_in_body(_code, _body), do: {:error, :invalid_response_format}
 
   @doc false
   # Public for testability. Maps an HTTP status + response body to a
