@@ -145,7 +145,7 @@ defmodule PhoenixKitAI.TranslateWorker do
                }
              ) do
           {:ok, translated} ->
-            persist(ctx, translated)
+            persist(ctx, translated, fields)
 
           # Rate-limited: snooze instead of consuming a retry attempt, so a
           # burst of concurrent jobs (enqueue_all_missing) backs off and
@@ -160,8 +160,8 @@ defmodule PhoenixKitAI.TranslateWorker do
     end
   end
 
-  defp persist(ctx, translated) do
-    case safe_put_translation(ctx, translated) do
+  defp persist(ctx, translated, source_fields) do
+    case safe_put_translation(ctx, translated, source_fields) do
       {:ok, _updated} ->
         log_added(ctx, translated)
         broadcast(ctx, :translation_completed, %{fields: translated})
@@ -227,8 +227,28 @@ defmodule PhoenixKitAI.TranslateWorker do
     end
   end
 
-  defp safe_put_translation(ctx, translated) do
-    case ctx.adapter.put_translation(ctx.resource, ctx.target, translated, actor_uuid: ctx.actor) do
+  @doc false
+  # Public-for-testing (same rationale as `TranslateWorker.retryable?/1`
+  # below — a pure-ish seam that doesn't need a live `PhoenixKitAI` plugin
+  # or a registered adapter to unit-test).
+  #
+  # §9.3 fix: `do_translate/1` already computes `source_fields` (the
+  # `%{field => text}` this job actually sent to the AI, read BEFORE the
+  # translation happened) but used to drop it here — `opts` only ever
+  # carried `:actor_uuid`, so `put_translation/4` had no way to know what
+  # the source looked like at translation time. Without it, a consumer
+  # can't correctly stamp a source-fingerprint on the row it just wrote
+  # (see the translation-control design doc §4.1/§9.3): the `resource`
+  # struct handed to this worker was loaded before the (multi-second) AI
+  # call, so hashing `resource`'s current fields at persist time risks
+  # fingerprinting content that already changed again. Threading the
+  # exact fields translated closes that gap. Adapters that don't need a
+  # fingerprint simply ignore the key — additive, not a contract break.
+  def safe_put_translation(ctx, translated, source_fields) do
+    case ctx.adapter.put_translation(ctx.resource, ctx.target, translated,
+           actor_uuid: ctx.actor,
+           source_fields: source_fields
+         ) do
       {:ok, updated} -> {:ok, updated}
       {:error, reason} -> {:error, reason}
       other -> {:error, {:bad_put_translation, other}}
@@ -470,6 +490,16 @@ defmodule PhoenixKitAI.TranslateWorker do
   def retryable?({:ai_error, {:api_error, status}})
       when status in [500, 502, 503, 504, 522, 524, 529],
       do: true
+
+  # §9.5 — insurance, not a fix: §2 of the translation-control design doc
+  # diagnosed the ACTUAL cause of missing_fields discards (a self-defeating
+  # prompt rule substituting into `{{title}}`) and §9.1 removes it. This
+  # clause covers ordinary model non-determinism after that — a forgotten
+  # marker on an otherwise-fine attempt — within the existing
+  # `max_attempts: 3` ceiling. It must not be read as "missing_fields means
+  # retry always fixes it"; a prompt that structurally can't produce a given
+  # marker will just burn all 3 attempts.
+  def retryable?({:parse_error, {:missing_fields, _}}), do: true
 
   def retryable?(_), do: false
 

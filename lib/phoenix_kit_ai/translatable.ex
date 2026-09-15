@@ -87,7 +87,15 @@ defmodule PhoenixKitAI.Translatable do
 
   @doc """
   Persist `fields` into `resource` for `target_lang`. Must merge (not
-  clobber other languages). `opts` carries `:actor_uuid`.
+  clobber other languages). `opts` carries `:actor_uuid` and
+  `:source_fields` — the `%{field_name => text}` this same job read via
+  `source_fields/2` and actually sent for translation (read BEFORE the
+  AI call, so it reflects what was translated, not necessarily
+  `resource`'s current content by persist time). Adapters that don't
+  need it — most don't — ignore the key; it exists so an adapter that
+  wants to fingerprint what was translated (e.g. to detect the source
+  changing again before the translation lands) doesn't have to
+  reconstruct it from a possibly-stale `resource`.
   """
   @callback put_translation(
               resource :: struct(),

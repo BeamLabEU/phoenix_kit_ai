@@ -127,6 +127,36 @@ defmodule PhoenixKitAI.TranslationTest do
                Translation.handle_ai_response(%{"choices" => [%{}]}, %{"a" => "b"})
     end
 
+    test "handle_ai_response/2 normalises a provider error delivered inside a 200 body" do
+      # §9.6: OpenRouter (and others) sometimes wrap a genuine provider-side
+      # error — including timeouts — in a 200-status response body instead
+      # of a non-2xx status. Observed live on 2026-08-31:
+      # `%{"error" => %{"code" => 504, "message" => "..."}}`. Must come out
+      # in the SAME `{:api_error, code}` shape the transport-error path
+      # produces, so `TranslateWorker.retryable?/1` classifies it without a
+      # new rule.
+      response = %{"error" => %{"code" => 504, "message" => "Upstream timeout"}}
+
+      assert {:error, {:ai_error, {:api_error, 504}}} =
+               Translation.handle_ai_response(response, %{"title" => "Hello"})
+    end
+
+    test "handle_ai_response/2 normalises a provider error regardless of extra keys" do
+      response = %{"error" => %{"code" => 429, "message" => "rate limited", "type" => "x"}}
+
+      assert {:error, {:ai_error, {:api_error, 429}}} =
+               Translation.handle_ai_response(response, %{"title" => "Hello"})
+    end
+
+    test "handle_ai_response/2 does not mistake a bare 'error' string for the coded shape" do
+      # Guards the clause's shape guard: `%{"error" => %{"code" => _}}` must
+      # NOT match `%{"error" => "some string"}` — that's a different,
+      # unrecognised error envelope and should still fall through to
+      # `:unexpected_response` rather than crash or silently succeed.
+      assert {:error, {:ai_error, {:unexpected_response, _}}} =
+               Translation.handle_ai_response(%{"error" => "boom"}, %{"a" => "b"})
+    end
+
     # NOTE: the old "valid inputs + missing plugin → :ai_not_installed" case was
     # removed in the move into phoenix_kit_ai. That guard only fired when the
     # PhoenixKitAI plugin module wasn't loaded — impossible now that this code
@@ -173,6 +203,86 @@ defmodule PhoenixKitAI.TranslationTest do
       # Whitespace-only prompt — same trim-then-check contract.
       assert {:error, :missing_prompt} =
                Translation.translate_fields("ep", "   ", "en", "es", %{"a" => "b"})
+    end
+  end
+
+  describe "build_variables/3 — §9.1 dynamic source section" do
+    test "still binds each field verbatim by name (old per-field-slot prompts keep working)" do
+      variables = Translation.build_variables(%{"title" => "Widget"}, "en", "es")
+
+      assert variables["title"] == "Widget"
+    end
+
+    test "binds SourceLanguage and TargetLanguage" do
+      variables = Translation.build_variables(%{"title" => "Widget"}, "en", "es")
+
+      assert variables["SourceLanguage"] == "en"
+      assert variables["TargetLanguage"] == "es"
+    end
+
+    test "SourceFields contains one ---MARKER--- section per field actually passed" do
+      variables =
+        Translation.build_variables(
+          %{"title" => "Widget", "body" => "A fine widget."},
+          "en",
+          "es"
+        )
+
+      assert variables["SourceFields"] ==
+               "---BODY---\nA fine widget.\n\n---TITLE---\nWidget"
+    end
+
+    test "field names normalise to markers the same way parse_response/2 expects back" do
+      # `parse_response/2` upcases + collapses non-alnum to `_` via the same
+      # `marker/1`. A field like `seo_title` becomes `SEO_TITLE` on both the
+      # way in (this function) and the way out (parse_response/2) — one
+      # marker vocabulary, not two.
+      variables = Translation.build_variables(%{"seo_title" => "Best Widget"}, "en", "es")
+
+      assert variables["SourceFields"] == "---SEO_TITLE---\nBest Widget"
+    end
+
+    test "an absent field has no slot at all — nothing left to mistake for a placeholder" do
+      # The §2 defect: a hardcoded `{{seo_title}}` slot with no bound value
+      # rendered as the literal text `{{seo_title}}`, which a "skip
+      # placeholders" prompt rule then told the model to treat as
+      # instructional. `SourceFields` only ever contains fields that were
+      # actually passed, so there is no slot to leave unbound.
+      variables = Translation.build_variables(%{"title" => "Widget"}, "en", "es")
+
+      refute variables["SourceFields"] =~ "SEO_TITLE"
+      refute Map.has_key?(variables, "seo_title")
+    end
+
+    test "SourceFields ordering is deterministic across calls with the same fields" do
+      fields = %{"zeta" => "z", "alpha" => "a", "mid" => "m"}
+
+      first = Translation.build_variables(fields, "en", "es")["SourceFields"]
+      second = Translation.build_variables(fields, "en", "es")["SourceFields"]
+
+      assert first == second
+      # Alphabetical by field name.
+      assert first == "---ALPHA---\na\n\n---MID---\nm\n\n---ZETA---\nz"
+    end
+
+    test "round-trips through Prompt.render/2 — a template can use {{SourceFields}} alone" do
+      prompt = %PhoenixKitAI.Prompt{
+        content:
+          "Translate the following from {{SourceLanguage}} to {{TargetLanguage}}:\n\n" <>
+            "{{SourceFields}}"
+      }
+
+      variables = Translation.build_variables(%{"title" => "Widget"}, "en", "es")
+      assert {:ok, rendered} = PhoenixKitAI.Prompt.render(prompt, variables)
+
+      assert rendered ==
+               "Translate the following from en to es:\n\n---TITLE---\nWidget"
+
+      # And critically: nothing left unbound (the §9.2 guard would fire on
+      # a template that mixed {{SourceFields}} with an un-passed per-field
+      # slot, but a template using ONLY {{SourceFields}} never has that
+      # problem in the first place).
+      assert PhoenixKitAI.Prompt.unbound_placeholders(rendered) == []
     end
   end
 

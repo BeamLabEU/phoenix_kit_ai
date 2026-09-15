@@ -56,6 +56,21 @@ defmodule PhoenixKitAI.MixProject do
 
   defp aliases do
     [
+      # Standard Phoenix/Ecto contract: `mix test` provisions its own
+      # database before running. Without this, `config/test.exs`'s
+      # `PhoenixKitAI.Test.Repo` names a database that never gets created,
+      # and `test/test_helper.exs` has nothing to connect to. `ecto.create
+      # --quiet` is idempotent (no-op against an existing database), so
+      # this is safe on every invocation, including repeated local runs.
+      #
+      # A plain `["ecto.create --quiet", "test"]` list runs `ecto.create`
+      # unconditionally, even under the `PK_AI_SKIP_DB=1` opt-out documented
+      # in test/test_helper.exs. On a machine with no reachable Postgres,
+      # `ecto.create` itself exits nonzero before test_helper.exs ever
+      # loads, so that soft-skip could never actually be reached through
+      # `mix test`. The alias is a function instead so it can honor the same
+      # env var before deciding whether to provision the database at all.
+      test: &run_tests/1,
       quality: ["format", "credo --strict", "dialyzer"],
       "quality.ci": ["format --check-formatted", "credo --strict", "dialyzer"],
       precommit: [
@@ -68,6 +83,17 @@ defmodule PhoenixKitAI.MixProject do
         "quality.ci"
       ]
     ]
+  end
+
+  # Backs the `test` alias above. Skips `ecto.create` under `PK_AI_SKIP_DB=1`
+  # so the run reaches test/test_helper.exs — which does the actual
+  # unit-vs-integration split — instead of dying on the database step first.
+  defp run_tests(args) do
+    unless System.get_env("PK_AI_SKIP_DB") in ["1", "true"] do
+      Mix.Task.run("ecto.create", ["--quiet"])
+    end
+
+    Mix.Task.run("test", args)
   end
 
   # phoenix_kit deps resolve from Hex by default. For cross-repo work against a

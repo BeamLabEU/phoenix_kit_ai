@@ -267,6 +267,42 @@ defmodule PhoenixKitAI.Prompt do
   def render_content(content, _) when is_binary(content), do: {:ok, content}
 
   @doc """
+  Returns the literal `{{...}}` placeholders still present in already-
+  *rendered* text — i.e. variables the caller didn't bind, so `render/2`
+  left them untouched (see the "Variables not found ... remain as-is"
+  contract above).
+
+  Non-fatal signal, not a validation failure: a prompt may legitimately
+  contain a literal `{{...}}` sequence unrelated to this templating
+  engine (documentation, code samples). `PhoenixKitAI.ask_with_prompt/4`
+  uses this after rendering to warn and record what leaked through,
+  without failing the request — this is the guard from the
+  translation-control design doc §9.2, added after a *bound* `{{title}}`
+  turned out to be the easy failure mode to miss (§9.1 fixes the root
+  cause; this is the safety net for every other prompt).
+
+  ## Examples
+
+      iex> PhoenixKitAI.Prompt.unbound_placeholders("Hello World!")
+      []
+
+      iex> PhoenixKitAI.Prompt.unbound_placeholders("Hi {{Name}}, your code is {{Code}}")
+      ["{{Name}}", "{{Code}}"]
+
+      iex> PhoenixKitAI.Prompt.unbound_placeholders("{{A}} twice: {{A}}")
+      ["{{A}}"]
+  """
+  @spec unbound_placeholders(String.t()) :: [String.t()]
+  def unbound_placeholders(text) when is_binary(text) do
+    @variable_regex
+    |> Regex.scan(text)
+    |> Enum.map(fn [full, _name] -> full end)
+    |> Enum.uniq()
+  end
+
+  def unbound_placeholders(_), do: []
+
+  @doc """
   Validates that all required variables are provided.
 
   Returns `:ok` if all variables are present, or `{:error, missing}` with

@@ -15,7 +15,11 @@ defmodule PhoenixKitAI.Translation do
   ## What lives here
 
   - Prompt rendering with `{{SourceLanguage}}` / `{{TargetLanguage}}`
-    / arbitrary field-name variables.
+    / arbitrary field-name variables, plus the computed `{{SourceFields}}`
+    block (one `---MARKER---` section per field actually passed — see
+    `build_variables/3`). A prompt template can use either mechanism:
+    the old per-field slots keep working unchanged, `{{SourceFields}}`
+    is additive.
   - The `PhoenixKitAI.ask_with_prompt/4` call, wrapped so provider
     errors and unexpected response shapes normalize to tagged errors.
   - A structured-response parser for the `---FIELD_NAME---` shape
@@ -167,15 +171,7 @@ defmodule PhoenixKitAI.Translation do
   end
 
   defp do_translate(endpoint_uuid, prompt_uuid, source_lang, target_lang, fields, opts) do
-    # Field names are used verbatim as prompt-variable keys (unlike markers,
-    # which are upcased) so existing TitleCase/original-casing prompts keep
-    # working. `fields` keys are strings per the contract, so they merge in
-    # directly alongside the language slots.
-    variables =
-      Map.merge(fields, %{
-        "SourceLanguage" => source_lang,
-        "TargetLanguage" => target_lang
-      })
+    variables = build_variables(fields, source_lang, target_lang)
 
     ai_opts =
       opts
@@ -207,6 +203,48 @@ defmodule PhoenixKitAI.Translation do
     end
   end
 
+  @doc false
+  # Public-for-testing entry point (same rationale as `handle_ai_response/2`
+  # below) for the prompt-variable map `do_translate/6` renders with.
+  #
+  # §9.1 fix (see §2 of the translation-control design doc for the defect
+  # this addresses): alongside the per-field variables and the language
+  # slots, this now also binds `{{SourceFields}}` to a single computed
+  # block built from the fields actually passed — `source_fields_section/1`
+  # below. A prompt template built around `{{SourceFields}}` never has a
+  # slot for a field the caller didn't supply, so there is no way for an
+  # unbound `{{fieldname}}` to survive rendering and get mistaken by the
+  # model for a literal instruction (the `{{title}}`-as-placeholder defect).
+  #
+  # This is additive, not a replacement: field names are still merged in
+  # verbatim (unlike markers, which are upcased) so an existing prompt
+  # written against the old one-slot-per-field contract (`{{title}}`,
+  # `{{Title}}`, …) keeps rendering exactly as before.
+  @spec build_variables(field_map(), String.t(), String.t()) :: field_map()
+  def build_variables(fields, source_lang, target_lang) when is_map(fields) do
+    Map.merge(fields, %{
+      "SourceLanguage" => source_lang,
+      "TargetLanguage" => target_lang,
+      "SourceFields" => source_fields_section(fields)
+    })
+  end
+
+  # Builds the `{{SourceFields}}` block: one `---MARKER---` section per
+  # field actually passed. Sorted by field name — map iteration order is
+  # not insertion order, and a stable order keeps the rendered prompt
+  # (and this function's output) deterministic and diffable.
+  #
+  # Deliberately reuses `marker/1` — the same marker vocabulary
+  # `parse_response/2` expects back in the response — so a prompt author
+  # templating `{{SourceFields}}` is working with one marker format
+  # end-to-end, not learning a second shape for "what goes in" versus
+  # "what comes out".
+  defp source_fields_section(fields) do
+    fields
+    |> Enum.sort_by(fn {name, _text} -> name end)
+    |> Enum.map_join("\n\n", fn {name, text} -> "---#{marker(name)}---\n#{text}" end)
+  end
+
   # `PhoenixKitAI.ask_with_prompt/4` returns the full OpenAI-shaped
   # response map (`%{"choices" => [%{"message" => %{"content" => "..."}}]}`),
   # not a raw string. We extract the assistant's content inline rather
@@ -234,6 +272,20 @@ defmodule PhoenixKitAI.Translation do
 
   def handle_ai_response(response, fields) when is_binary(response) do
     parse_response(response, Map.keys(fields))
+  end
+
+  # §9.6 fix: some providers (observed via OpenRouter, 2026-08-31 run) return
+  # a provider-side error — timeouts included — INSIDE a 200 response body
+  # instead of as a non-2xx status, e.g. `%{"error" => %{"code" => 504, ...}}`.
+  # That shape used to fall through to the catch-all below and get reported
+  # as `{:unexpected_response, _}`, which `TranslateWorker.retryable?/1`
+  # doesn't recognise — a by-nature-retryable transient error (504) was
+  # discarded on the first attempt instead of retried. Normalising it to the
+  # same `{:api_error, code}` shape the transport-error path already produces
+  # (`Completion.handle_error_status/2`) means the existing classification
+  # in `retryable?/1` handles it with no new rule needed.
+  def handle_ai_response(%{"error" => %{"code" => code}}, _fields) do
+    {:error, {:ai_error, {:api_error, code}}}
   end
 
   def handle_ai_response(other, _fields) do
