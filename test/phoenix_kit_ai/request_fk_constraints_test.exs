@@ -18,6 +18,7 @@ defmodule PhoenixKitAI.RequestFkConstraintsTest do
   use PhoenixKitAI.DataCase, async: false
 
   alias PhoenixKitAI.Request
+  alias PhoenixKitAI.Test.Repo
 
   defp endpoint_fixture do
     {:ok, ep} =
@@ -35,25 +36,79 @@ defmodule PhoenixKitAI.RequestFkConstraintsTest do
     %{status: "success", model: "a/b", input_tokens: 1, output_tokens: 1, total_tokens: 2}
   end
 
-  test "a non-existent prompt_uuid returns a changeset error, not a raise" do
-    attrs = Map.put(base_attrs(), :prompt_uuid, Ecto.UUID.generate())
+  # The changeset-level guard: a bad reference is a changeset error, never a
+  # raised Ecto.ConstraintError (a 500).
+  for field <- [:prompt_uuid, :user_uuid, :endpoint_uuid] do
+    test "a non-existent #{field} is a changeset error at insert, not a raise" do
+      attrs = Map.put(base_attrs(), unquote(field), Ecto.UUID.generate())
 
-    assert {:error, %Ecto.Changeset{} = changeset} = PhoenixKitAI.create_request(attrs)
-    assert Keyword.has_key?(changeset.errors, :prompt_uuid)
+      assert {:error, %Ecto.Changeset{} = changeset} =
+               %Request{} |> Request.changeset(attrs) |> Repo.insert()
+
+      assert Keyword.has_key?(changeset.errors, unquote(field))
+    end
   end
 
-  test "a non-existent user_uuid returns a changeset error, not a raise" do
-    attrs = Map.put(base_attrs(), :user_uuid, Ecto.UUID.generate())
+  # The usage log above it: a call that happened is still recorded. The
+  # unresolvable reference is left empty and the submitted id is kept, so the
+  # row counts toward every cap it can still be attributed to.
+  for field <- [:prompt_uuid, :user_uuid, :endpoint_uuid] do
+    test "create_request/1 writes the row without a non-existent #{field}" do
+      ghost = Ecto.UUID.generate()
+      attrs = Map.put(base_attrs(), unquote(field), ghost)
 
-    assert {:error, %Ecto.Changeset{} = changeset} = PhoenixKitAI.create_request(attrs)
-    assert Keyword.has_key?(changeset.errors, :user_uuid)
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, request} = PhoenixKitAI.create_request(attrs)
+          assert Map.fetch!(request, unquote(field)) == nil
+          assert request.metadata["unresolved_refs"] == %{to_string(unquote(field)) => ghost}
+        end)
+
+      assert log =~ "usage row written without #{unquote(field)}"
+    end
   end
 
-  test "a non-existent endpoint_uuid returns a changeset error, not a raise" do
-    attrs = Map.put(base_attrs(), :endpoint_uuid, Ecto.UUID.generate())
+  test "an unresolvable reference keeps the ones that do resolve, and the caller's metadata" do
+    ep = endpoint_fixture()
+    ghost = Ecto.UUID.generate()
 
-    assert {:error, %Ecto.Changeset{} = changeset} = PhoenixKitAI.create_request(attrs)
-    assert Keyword.has_key?(changeset.errors, :endpoint_uuid)
+    attrs =
+      base_attrs()
+      |> Map.merge(%{endpoint_uuid: ep.uuid, user_uuid: ghost, metadata: %{"cached" => false}})
+
+    ExUnit.CaptureLog.capture_log(fn ->
+      assert {:ok, request} = PhoenixKitAI.create_request(attrs)
+      assert request.endpoint_uuid == ep.uuid
+      assert request.user_uuid == nil
+
+      assert request.metadata == %{
+               "cached" => false,
+               "unresolved_refs" => %{"user_uuid" => ghost}
+             }
+    end)
+  end
+
+  test "string-keyed attrs are handled the same way" do
+    ghost = Ecto.UUID.generate()
+
+    attrs =
+      base_attrs()
+      |> Map.new(fn {k, v} -> {to_string(k), v} end)
+      |> Map.put("user_uuid", ghost)
+
+    ExUnit.CaptureLog.capture_log(fn ->
+      assert {:ok, %{user_uuid: nil, metadata: %{"unresolved_refs" => %{"user_uuid" => ^ghost}}}} =
+               PhoenixKitAI.create_request(attrs)
+    end)
+  end
+
+  test "any other validation failure still fails" do
+    attrs = Map.put(base_attrs(), :status, "not-a-status")
+
+    ExUnit.CaptureLog.capture_log(fn ->
+      assert {:error, %Ecto.Changeset{} = changeset} = PhoenixKitAI.create_request(attrs)
+      assert Keyword.has_key?(changeset.errors, :status)
+    end)
   end
 
   test "a valid endpoint reference still inserts" do

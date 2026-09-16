@@ -2247,12 +2247,31 @@ defmodule PhoenixKitAI do
   Creates a new AI request record.
 
   Used to log every AI API call for tracking and statistics.
+
+  A call that has happened is written even when one of its references does
+  not resolve. `user_uuid`, `endpoint_uuid` and `prompt_uuid` are foreign
+  keys, so an id that names no row — a caller passing a stale or foreign user
+  id, an endpoint deleted mid-call — used to fail the insert, and the usage
+  row of a call already made (and paid for) vanished from the log and every
+  spend cap. Such a reference is now left empty, the submitted id is kept in
+  `metadata["unresolved_refs"]`, and a warning is logged. The row still counts
+  toward every cap it can be attributed to (a row without a user still counts
+  toward its endpoint's and the global cap).
+
+  Any other validation failure still returns `{:error, changeset}`.
   """
   def create_request(attrs) do
     result =
-      %Request{}
-      |> Request.changeset(attrs)
-      |> repo().insert()
+      case insert_request(attrs) do
+        {:error, %Ecto.Changeset{} = changeset} = error ->
+          case unresolved_refs(changeset) do
+            [] -> error
+            fields -> insert_without_refs(attrs, fields)
+          end
+
+        other ->
+          other
+      end
       |> broadcast_request_change(:request_created)
 
     case result do
@@ -2263,9 +2282,9 @@ defmodule PhoenixKitAI do
 
       {:error, %Ecto.Changeset{} = changeset} = error ->
         # Every logger discards this result; a usage row that fails to
-        # insert (an unknown `user_uuid:`, typically) must not vanish quietly.
+        # insert must not vanish quietly.
         Logger.warning(
-          "[PhoenixKitAI] usage row not written: #{inspect(changeset.errors)} (type=#{inspect(attrs[:request_type])})"
+          "[PhoenixKitAI] usage row not written: #{inspect(changeset.errors)} (type=#{inspect(attr(attrs, :request_type))})"
         )
 
         error
@@ -2274,6 +2293,53 @@ defmodule PhoenixKitAI do
         other
     end
   end
+
+  @unresolvable_refs [:user_uuid, :endpoint_uuid, :prompt_uuid]
+
+  defp insert_request(attrs) do
+    %Request{}
+    |> Request.changeset(attrs)
+    |> repo().insert()
+  end
+
+  # The references the database refused because the row they name does not
+  # exist. Only a foreign-key violation counts: that is the database saying
+  # "no such row", which is conclusive. Any other error keeps failing.
+  defp unresolved_refs(%Ecto.Changeset{errors: errors}) do
+    for {field, {_message, opts}} <- errors,
+        field in @unresolvable_refs,
+        Keyword.get(opts, :constraint) == :foreign,
+        uniq: true,
+        do: field
+  end
+
+  defp insert_without_refs(attrs, fields) do
+    submitted = Map.new(fields, &{Atom.to_string(&1), attr(attrs, &1)})
+
+    Logger.warning(
+      "[PhoenixKitAI] usage row written without #{Enum.join(fields, ", ")}: " <>
+        "no such row for #{inspect(submitted)} (type=#{inspect(attr(attrs, :request_type))})"
+    )
+
+    metadata =
+      attrs
+      |> attr(:metadata)
+      |> case do
+        %{} = map -> map
+        _ -> %{}
+      end
+      |> Map.put("unresolved_refs", submitted)
+
+    attrs
+    |> Map.new(fn {key, value} -> {to_string(key), value} end)
+    |> Map.drop(Enum.map(fields, &Atom.to_string/1))
+    |> Map.put("metadata", metadata)
+    |> insert_request()
+  end
+
+  # Attrs arrive with atom keys from this module and string keys from callers
+  # that pass params through.
+  defp attr(attrs, key), do: Map.get(attrs, key, Map.get(attrs, Atom.to_string(key)))
 
   # `[:phoenix_kit_ai, :request]` — one event per usage row, every verb,
   # cached rows included; tags only, never content.
