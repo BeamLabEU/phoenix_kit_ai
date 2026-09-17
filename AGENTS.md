@@ -192,9 +192,12 @@ Repo-local aliases:
   not cents — the name is legacy. Reading it as cents is off by seven orders of
   magnitude. The spend-cap settings use the same unit: `5_000_000` is $5.
 - `user_uuid:` on a verb must be a PhoenixKit user uuid. The usage row has a
-  foreign key on it, so an anonymous or external id means the provider is
-  paid and the row is *not written* (logged as a warning) — which also
-  blinds the per-user cap. Cap the endpoint or the site for visitors.
+  foreign key on it, so an anonymous or external id cannot be stored there:
+  the row is written without it (`user_uuid` nil, the submitted id kept in
+  `metadata["unresolved_refs"]`, a warning logged) and counts toward the
+  endpoint and global caps but never the per-user one. The same applies to
+  an `endpoint_uuid` or `prompt_uuid` that names no row. Cap the endpoint or
+  the site for visitors.
 - Spend caps read the usage table; concurrent callers overshoot by their
   in-flight calls, and a database error fails open. Treat a cap as a brake
   on a runaway day, not as a hard invoice ceiling.
@@ -518,10 +521,8 @@ folder with no `FOLLOW_UP.md` means "not triaged yet"; a stub file is what
   single-flight on a miss; atomic budget reservation before dispatch
   (today concurrent calls can overshoot); a nullable external-subject
   column on the requests table in core so anonymous visitors can be
-  capped per identity (today `user_uuid` is a foreign key); composite
-  partial indexes `(endpoint_uuid, inserted_at)` / `(user_uuid,
-  inserted_at) WHERE status = 'success'` in core once per-endpoint caps
-  run on a busy table; per-source / per-user rate and concurrency limits
+  capped per identity (today `user_uuid` is a foreign key); per-source /
+  per-user rate and concurrency limits
   (spend caps are too coarse against a scrape); one `%Result{}` struct
   across verbs instead of provider-shaped maps; streaming chat/TTS with
   cancellation and an async (Oban) mode for slow verbs; provider-neutral

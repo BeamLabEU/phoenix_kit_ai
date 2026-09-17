@@ -170,6 +170,10 @@ defmodule PhoenixKitAI.Budget do
   defp spent(scope, endpoint, user_uuid) do
     since = DateTime.add(DateTime.utc_now(), -@window_seconds, :second)
 
+    # `"success"` must stay a literal, not `^status`: core (V193) indexes this
+    # sum with partial indexes `WHERE status = 'success'`, and Postgres can only
+    # use them when it can prove the query's condition matches — which it
+    # cannot for a bound parameter once a prepared statement goes generic.
     query =
       from(r in Request,
         where: r.inserted_at >= ^since and r.status == "success",

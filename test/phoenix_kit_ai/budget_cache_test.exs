@@ -166,7 +166,10 @@ defmodule PhoenixKitAI.BudgetCacheTest do
       assert {:error, {:budget_exceeded, :endpoint}} = PhoenixKitAI.ask(ep.uuid, "e")
     end
 
-    test "an unknown user_uuid loses the row loudly, never silently", %{endpoint: ep} do
+    test "an unknown user_uuid still records the call, unattributed, loudly", %{endpoint: ep} do
+      # A call that was made (and paid for) used to vanish from the log and
+      # every cap when its user_uuid named no user. It is now written without
+      # the user, keeps the submitted id, and still counts for its endpoint.
       stub_chat(self())
       ghost = Ecto.UUID.generate()
 
@@ -175,8 +178,13 @@ defmodule PhoenixKitAI.BudgetCacheTest do
           assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "who?", user_uuid: ghost)
         end)
 
-      assert log =~ "usage row not written"
-      assert rows(ep) == []
+      assert log =~ "usage row written without user_uuid"
+      assert [row] = rows(ep)
+      assert row.user_uuid == nil
+      assert row.metadata["unresolved_refs"] == %{"user_uuid" => ghost}
+      {:ok, _} = Budget.set_limit(:endpoint, 1_000_000_000)
+      assert %{spent: spent} = Enum.find(Budget.status(ep, []), &(&1.scope == :endpoint))
+      assert spent > 0, "an unattributed row must still count toward its endpoint's cap"
     end
 
     test "the warning fires once per crossing and status/2 stays side-effect free", %{
