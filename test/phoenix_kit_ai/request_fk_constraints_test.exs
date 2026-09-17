@@ -88,6 +88,44 @@ defmodule PhoenixKitAI.RequestFkConstraintsTest do
     end)
   end
 
+  test "two unresolvable references are both dropped, not just the first one reported" do
+    # Postgres reports only the first broken foreign key per statement.
+    user_ghost = Ecto.UUID.generate()
+    endpoint_ghost = Ecto.UUID.generate()
+
+    attrs = Map.merge(base_attrs(), %{user_uuid: user_ghost, endpoint_uuid: endpoint_ghost})
+
+    log =
+      ExUnit.CaptureLog.capture_log(fn ->
+        assert {:ok, request} = PhoenixKitAI.create_request(attrs)
+        assert request.user_uuid == nil
+        assert request.endpoint_uuid == nil
+
+        assert request.metadata["unresolved_refs"] == %{
+                 "user_uuid" => user_ghost,
+                 "endpoint_uuid" => endpoint_ghost
+               }
+      end)
+
+    refute log =~ "usage row not written"
+    assert length(String.split(log, "usage row written without")) == 2
+  end
+
+  test "inside a caller's transaction the retry succeeds and the transaction survives" do
+    attrs = Map.put(base_attrs(), :user_uuid, Ecto.UUID.generate())
+
+    assert {:ok, count} =
+             Repo.transaction(fn ->
+               ExUnit.CaptureLog.capture_log(fn ->
+                 assert {:ok, _} = PhoenixKitAI.create_request(attrs)
+               end)
+
+               Repo.aggregate(Request, :count)
+             end)
+
+    assert count == 1
+  end
+
   test "string-keyed attrs are handled the same way" do
     ghost = Ecto.UUID.generate()
 

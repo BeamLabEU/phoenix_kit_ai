@@ -2256,22 +2256,16 @@ defmodule PhoenixKitAI do
   spend cap. Such a reference is now left empty, the submitted id is kept in
   `metadata["unresolved_refs"]`, and a warning is logged. The row still counts
   toward every cap it can be attributed to (a row without a user still counts
-  toward its endpoint's and the global cap).
+  toward its endpoint's and the global cap). Several dangling references are
+  all dropped, and inside a caller's transaction the refused insert is
+  confined to a savepoint so the retry — and the caller's transaction — go on.
 
   Any other validation failure still returns `{:error, changeset}`.
   """
   def create_request(attrs) do
     result =
-      case insert_request(attrs) do
-        {:error, %Ecto.Changeset{} = changeset} = error ->
-          case unresolved_refs(changeset) do
-            [] -> error
-            fields -> insert_without_refs(attrs, fields)
-          end
-
-        other ->
-          other
-      end
+      attrs
+      |> insert_request([])
       |> broadcast_request_change(:request_created)
 
     case result do
@@ -2296,10 +2290,41 @@ defmodule PhoenixKitAI do
 
   @unresolvable_refs [:user_uuid, :endpoint_uuid, :prompt_uuid]
 
-  defp insert_request(attrs) do
+  # Postgres stops at the first foreign key it finds broken, so a row with two
+  # dangling references reports one per attempt: retry, dropping what has been
+  # refused so far, until the insert succeeds or fails for another reason. At
+  # most one retry per reference.
+  defp insert_request(attrs, dropped) do
+    case attrs |> without_refs(dropped) |> insert_row() do
+      {:error, %Ecto.Changeset{} = changeset} = error ->
+        case unresolved_refs(changeset) -- dropped do
+          [] -> error
+          fields -> insert_request(attrs, dropped ++ fields)
+        end
+
+      {:ok, _} = ok when dropped != [] ->
+        Logger.warning(
+          "[PhoenixKitAI] usage row written without #{Enum.join(dropped, ", ")}: " <>
+            "no such row for #{inspect(submitted_refs(attrs, dropped))} (type=#{inspect(attr(attrs, :request_type))})"
+        )
+
+        ok
+
+      other ->
+        other
+    end
+  end
+
+  # Inside a caller's transaction a refused insert aborts the whole
+  # transaction, so the retry (and every later query of the caller) would fail
+  # with `in_failed_sql_transaction`. A savepoint confines the failure to this
+  # statement. Outside a transaction there is nothing to protect.
+  defp insert_row(attrs) do
+    opts = if repo().in_transaction?(), do: [mode: :savepoint], else: []
+
     %Request{}
     |> Request.changeset(attrs)
-    |> repo().insert()
+    |> repo().insert(opts)
   end
 
   # The references the database refused because the row they name does not
@@ -2313,14 +2338,9 @@ defmodule PhoenixKitAI do
         do: field
   end
 
-  defp insert_without_refs(attrs, fields) do
-    submitted = Map.new(fields, &{Atom.to_string(&1), attr(attrs, &1)})
+  defp without_refs(attrs, []), do: attrs
 
-    Logger.warning(
-      "[PhoenixKitAI] usage row written without #{Enum.join(fields, ", ")}: " <>
-        "no such row for #{inspect(submitted)} (type=#{inspect(attr(attrs, :request_type))})"
-    )
-
+  defp without_refs(attrs, fields) do
     metadata =
       attrs
       |> attr(:metadata)
@@ -2328,14 +2348,15 @@ defmodule PhoenixKitAI do
         %{} = map -> map
         _ -> %{}
       end
-      |> Map.put("unresolved_refs", submitted)
+      |> Map.put("unresolved_refs", submitted_refs(attrs, fields))
 
     attrs
     |> Map.new(fn {key, value} -> {to_string(key), value} end)
     |> Map.drop(Enum.map(fields, &Atom.to_string/1))
     |> Map.put("metadata", metadata)
-    |> insert_request()
   end
+
+  defp submitted_refs(attrs, fields), do: Map.new(fields, &{Atom.to_string(&1), attr(attrs, &1)})
 
   # Attrs arrive with atom keys from this module and string keys from callers
   # that pass params through.

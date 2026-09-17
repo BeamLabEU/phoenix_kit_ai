@@ -1,3 +1,33 @@
+## 0.23.1 - 2026-09-17
+
+### Fixed
+
+- **A usage row is kept when a reference names no row** (PR #28).
+  `create_request/1` used to fail the insert when `user_uuid`,
+  `endpoint_uuid` or `prompt_uuid` named no row — a stale or external user
+  id, an endpoint deleted mid-call — so a call already made and paid for
+  vanished from the log and from every spend cap. The row is now written
+  with that reference empty, the submitted id kept in
+  `metadata["unresolved_refs"]`, and a warning logged. It still counts
+  toward the endpoint and global caps it can be attributed to, never the
+  per-user one. Any other validation failure still returns
+  `{:error, changeset}`.
+- **Every dangling reference is dropped, not just the first.** Postgres
+  reports one broken foreign key per statement, so a row with both a ghost
+  user and a deleted endpoint was still lost on the retry. The insert now
+  retries until no new reference is refused.
+- **The retry works inside a caller's transaction.** The refused insert
+  used to abort the surrounding transaction, so the retry raised
+  `in_failed_sql_transaction` out of an AI verb whose call had already
+  succeeded. The insert runs under a savepoint whenever a transaction is
+  open.
+
+### Changed
+
+- `Budget` keeps `status = 'success'` as a literal so core's V193 partial
+  indexes on `(endpoint_uuid, inserted_at)` / `(user_uuid, inserted_at)`
+  apply; the corresponding AGENTS.md TODO is removed.
+
 ## 0.23.0 - 2026-09-15
 
 ### Added
