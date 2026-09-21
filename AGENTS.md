@@ -32,7 +32,7 @@ host supplies endpoint and router (`config/` exists only for tests).
 - **No DB migrations of its own.** Tables are created by core's versioned
   chain. Adding a column is a core migration first, then schema + changeset
   edits here.
-- **No per-completion Activity logging.** `PhoenixKit.Activity.log/1` runs on
+- **No per-completion Activity logging.** `PhoenixKit.Activity.log/3` runs on
   endpoint/prompt CRUD and enable/disable toggles, on both the success and
   failure branches, via the `log_failed_*_mutation/3` pipe-step helpers with
   PII-safe `error_keys` metadata, and on each terminal outcome of an AI

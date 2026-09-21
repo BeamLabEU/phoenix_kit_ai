@@ -19,19 +19,14 @@ defmodule PhoenixKitAI.Web.AuthHelpers do
   `update_prompt/3`, etc).
 
   Returns `[actor_uuid: uuid, actor_role: "admin" | "user"]` when the
-  socket carries a `phoenix_kit_current_user` with a uuid, or
-  `[actor_role: ...]` only when no user is in the socket (rare —
-  on_mount usually guarantees one, but defensive callers still want
-  the role).
+  socket carries a signed-in user (read by `PhoenixKitWeb.Actor`), or
+  `[actor_role: ...]` only when it does not (rare — on_mount usually
+  guarantees one, but defensive callers still want the role).
   """
   @spec actor_opts(Phoenix.LiveView.Socket.t()) :: keyword()
   def actor_opts(socket) do
     role = if admin?(socket), do: "admin", else: "user"
-
-    case socket.assigns[:phoenix_kit_current_user] do
-      %{uuid: uuid} when is_binary(uuid) -> [actor_uuid: uuid, actor_role: role]
-      _ -> [actor_role: role]
-    end
+    PhoenixKitWeb.Actor.opts(socket) ++ [actor_role: role]
   end
 
   @doc """

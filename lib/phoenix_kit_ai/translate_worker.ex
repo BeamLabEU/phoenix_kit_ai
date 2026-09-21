@@ -324,33 +324,22 @@ defmodule PhoenixKitAI.TranslateWorker do
   defp maybe_put_scope(metadata, scope), do: Map.put(metadata, "resource_scope", scope)
 
   defp log_added(ctx, translated) do
-    if Code.ensure_loaded?(PhoenixKit.Activity) and
-         function_exported?(PhoenixKit.Activity, :log, 1) do
-      PhoenixKit.Activity.log(%{
-        action: "ai.translation_added",
-        module: "ai",
-        mode: "auto",
-        actor_uuid: ctx.actor,
-        resource_type: ctx.type,
-        resource_uuid: ctx.uuid,
-        metadata:
-          %{
-            "source_lang" => ctx.source,
-            "target_lang" => ctx.target,
-            "fields" => Map.keys(translated)
-          }
-          |> maybe_put_scope(ctx.scope)
-      })
-    end
-  rescue
-    # The audit entry is best-effort — a logging failure must not fail an
-    # otherwise-successful translation (the row is already persisted).
-    error ->
-      Logger.warning("[AI.TranslateWorker] activity log failed: #{Exception.message(error)}")
-      :ok
+    PhoenixKit.Activity.log("ai", "ai.translation_added",
+      mode: "auto",
+      actor_uuid: ctx.actor,
+      resource_type: ctx.type,
+      resource_uuid: ctx.uuid,
+      metadata:
+        %{
+          "source_lang" => ctx.source,
+          "target_lang" => ctx.target,
+          "fields" => Map.keys(translated)
+        }
+        |> maybe_put_scope(ctx.scope)
+    )
   end
 
-  # Mirrors `log_added/2` — same best-effort guard, same rescue. `ctx` here is
+  # Mirrors `log_added/2` — best-effort, as core's log never raises. `ctx` here is
   # only ever the small map both `fail/3` and the `perform/1` setup-failure
   # branch build (`:type`, `:uuid`, `:scope`, `:source`, `:target`, `:actor`),
   # not the full `do_translate` context.
@@ -361,34 +350,22 @@ defmodule PhoenixKitAI.TranslateWorker do
   # `classify_reason/1` reduces it to a short, static classification tag
   # before it reaches metadata.
   defp log_failed(ctx, reason) do
-    if Code.ensure_loaded?(PhoenixKit.Activity) and
-         function_exported?(PhoenixKit.Activity, :log, 1) do
-      {category, detail} = classify_reason(reason)
+    {category, detail} = classify_reason(reason)
 
-      PhoenixKit.Activity.log(%{
-        action: "ai.translation_failed",
-        module: "ai",
-        mode: "auto",
-        actor_uuid: ctx.actor,
-        resource_type: ctx.type,
-        resource_uuid: ctx.uuid,
-        metadata:
-          %{
-            "source_lang" => ctx.source,
-            "target_lang" => ctx.target,
-            "reason" => category
-          }
-          |> maybe_put_reason_detail(detail)
-          |> maybe_put_scope(ctx.scope)
-      })
-    end
-  rescue
-    error ->
-      Logger.warning(
-        "[AI.TranslateWorker] failure activity log failed: #{Exception.message(error)}"
-      )
-
-      :ok
+    PhoenixKit.Activity.log("ai", "ai.translation_failed",
+      mode: "auto",
+      actor_uuid: ctx.actor,
+      resource_type: ctx.type,
+      resource_uuid: ctx.uuid,
+      metadata:
+        %{
+          "source_lang" => ctx.source,
+          "target_lang" => ctx.target,
+          "reason" => category
+        }
+        |> maybe_put_reason_detail(detail)
+        |> maybe_put_scope(ctx.scope)
+    )
   end
 
   defp maybe_put_reason_detail(metadata, nil), do: metadata

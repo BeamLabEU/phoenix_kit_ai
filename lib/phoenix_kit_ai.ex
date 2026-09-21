@@ -319,51 +319,16 @@ defmodule PhoenixKitAI do
     result
   end
 
-  # Unified logger — guarded by Code.ensure_loaded?/1 and rescued so
-  # activity failures never crash the primary operation. No-op on hosts
-  # without PhoenixKit.Activity available.
-  #
-  # The `:undefined_table` case is silently skipped: hosts that haven't
-  # run the core PhoenixKit migrations yet simply don't have the
-  # `phoenix_kit_activities` table, so logging would be noise on every
-  # mutation. Any other failure is logged so real bugs aren't hidden.
+  # Unified logger. Core's log never raises, so activity failures never
+  # crash the primary operation.
   defp log_activity(action, resource_type, resource_uuid, opts, extra) do
-    if Code.ensure_loaded?(PhoenixKit.Activity) do
-      metadata =
-        %{"actor_role" => Keyword.get(opts, :actor_role, "user")}
-        |> Map.merge(extra)
-
-      PhoenixKit.Activity.log(%{
-        action: action,
-        module: "ai",
-        mode: Keyword.get(opts, :mode, "manual"),
-        actor_uuid: Keyword.get(opts, :actor_uuid),
-        resource_type: resource_type,
-        resource_uuid: resource_uuid,
-        metadata: metadata
-      })
-    end
-  rescue
-    e in Postgrex.Error ->
-      if Map.get(e.postgres || %{}, :code) == :undefined_table do
-        # Host hasn't run the core activity migration yet — silent no-op.
-        :activity_log_unavailable
-      else
-        log_activity_failure(action, e)
-      end
-
-    e ->
-      log_activity_failure(action, e)
-  end
-
-  defp log_activity_failure(action, exception) do
-    require Logger
-
-    Logger.warning(
-      "[PhoenixKitAI] activity log failed for #{action}: #{Exception.message(exception)}"
+    PhoenixKit.Activity.log("ai", action,
+      mode: Keyword.get(opts, :mode, "manual"),
+      actor_uuid: Keyword.get(opts, :actor_uuid),
+      resource_type: resource_type,
+      resource_uuid: resource_uuid,
+      metadata: Map.merge(%{"actor_role" => Keyword.get(opts, :actor_role, "user")}, extra)
     )
-
-    :activity_log_failed
   end
 
   # ===========================================

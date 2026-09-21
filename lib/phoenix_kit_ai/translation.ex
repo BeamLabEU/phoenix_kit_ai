@@ -451,28 +451,19 @@ defmodule PhoenixKitAI.Translation do
   # (e.g. `publishing.translation.added`); this entry is the unified
   # token-spend audit trail.
   #
-  # If `PhoenixKit.Activity` isn't loaded (host has the module disabled)
-  # the log is skipped silently. Beyond that we let `Activity.log/1`
-  # failures propagate — a DB-level problem here is the same bug we'd
-  # want to see in any other log site, and the caller (an Oban worker
-  # in every documented consumer) owns retry policy.
+  # Core's log never raises: a failed insert is logged there and returned.
   defp log_request(source_lang, target_lang, field_names, opts) do
-    if Code.ensure_loaded?(PhoenixKit.Activity) and
-         function_exported?(PhoenixKit.Activity, :log, 1) do
-      PhoenixKit.Activity.log(%{
-        action: @core_activity_action,
-        module: "ai",
-        mode: "auto",
-        actor_uuid: Keyword.get(opts, :actor_uuid),
-        resource_type: Keyword.get(opts, :resource_type, "ai_translation"),
-        resource_uuid: Keyword.get(opts, :resource_uuid),
-        metadata: %{
-          "source_lang" => source_lang,
-          "target_lang" => target_lang,
-          "field_count" => length(field_names),
-          "fields" => field_names
-        }
-      })
-    end
+    PhoenixKit.Activity.log("ai", @core_activity_action,
+      mode: "auto",
+      actor_uuid: Keyword.get(opts, :actor_uuid),
+      resource_type: Keyword.get(opts, :resource_type, "ai_translation"),
+      resource_uuid: Keyword.get(opts, :resource_uuid),
+      metadata: %{
+        "source_lang" => source_lang,
+        "target_lang" => target_lang,
+        "field_count" => length(field_names),
+        "fields" => field_names
+      }
+    )
   end
 end
