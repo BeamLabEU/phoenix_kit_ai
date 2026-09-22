@@ -58,7 +58,8 @@ host supplies endpoint and router (`config/` exists only for tests).
   add `gun` itself.
 - **No Oban for completions.** Chat, TTS, embeddings and image calls run
   synchronously. Oban is used only by the AI-translation pipeline
-  (`PhoenixKitAI.TranslateWorker`).
+  (`PhoenixKitAI.TranslateWorker`, and the sweep chains consuming modules
+  run through `PhoenixKitAI.TranslationSweep`).
 - **No streaming chat responses.** `Completion` returns a full
   `{:ok, response}` and the Playground is request/response. Realtime *voice* is
   the one streaming path, and it is a separate WebSocket transport.
@@ -289,7 +290,9 @@ Notes on the less obvious modules:
 
 Settings: `ai_enabled` (boolean, default `false`) is the module toggle;
 `ai_legacy_api_key_migration_completed_at` is the idempotency marker for
-`migrate_legacy/0`. Spend caps (`PhoenixKitAI.Budget`): `ai_daily_budget`,
+`migrate_legacy/0`; `ai_translation_sweep_last_run_<sweep_key>` holds each
+translation sweep's last outcome, written by `PhoenixKitAI.TranslationSweep`.
+Spend caps (`PhoenixKitAI.Budget`): `ai_daily_budget`,
 `ai_daily_budget_per_endpoint`, `ai_daily_budget_per_user` — nanodollars per
 trailing 24 hours, `0` = no cap — and `ai_budget_warn_percent` (default 80),
 read through the settings cache. Every provider-calling verb (not the
@@ -478,6 +481,14 @@ Test database `phoenix_kit_ai_test`.
 - A cache hit's usage row is the fresh row minus cost: same `user_uuid`,
   attribution, prompt link and snapshot. Reports that ignore
   `metadata.cached` still add up.
+- A module's background translation top-up is `PhoenixKitAI.TranslationSweep`:
+  the module keeps its own Oban worker (already-scheduled jobs name it) and
+  implements the callbacks; the engine owns the chain (one waiting tick per
+  worker), the gates, both caps (a candidate that does not fit whole is
+  admitted for the languages that do), holding back a pair whose latest job
+  was discarded in the last day, and the recorded outcome. A module whose
+  `phoenix_kit_ai` dependency is optional implements the callbacks without
+  declaring the behaviour.
 - Host translatables (`config :phoenix_kit_ai, translatables:`) implement
   `PhoenixKitAI.Translatable` (`fetch/2`, `source_fields/2`,
   `put_translation/4`); a configured entry wins over a module's adapter
