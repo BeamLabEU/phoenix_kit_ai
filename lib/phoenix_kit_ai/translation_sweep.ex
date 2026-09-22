@@ -36,11 +36,12 @@ defmodule PhoenixKitAI.TranslationSweep do
      be admitted).
   3. Stop at `:ceiling_reached` when the source's incomplete
      `TranslateWorker` jobs already fill `max_in_flight`.
-  4. Take the candidates in the source's order, drop each language whose
-     latest job for that resource was discarded in the last
-     24 hours (a pair that keeps failing would otherwise be re-enqueued
-     every tick and hold up everything behind it), and admit them within
-     both caps — `batch` resources, and the job room left under
+  4. Take the candidates in the source's order, drop each language that
+     already has a job in flight (admitting it would spend both budgets on
+     a job the enqueue then skips) or whose latest job for that resource
+     was discarded in the last 24 hours (a pair that keeps failing would
+     otherwise be re-enqueued every tick), and admit the rest within both
+     caps — `batch` resources, and the job room left under
      `max_in_flight`. A candidate that does not fit whole is admitted for
      the languages that do; the rest wait for the next tick.
   5. Enqueue each admitted resource's languages
@@ -150,18 +151,27 @@ defmodule PhoenixKitAI.TranslationSweep do
   end
 
   @doc """
-  Replaces the waiting tick with one at the current interval — call it
-  after the interval is saved, or a shortened interval would wait out
-  the old one. A tick already running is left alone.
+  Moves the waiting tick to the current interval from now — call it after
+  the interval is saved, or a shortened interval would wait out the old
+  one — and schedules one if none is waiting. A tick already due or
+  running is left alone: it schedules its successor at the new interval.
+
+  The move is one `UPDATE` guarded on the job still being `scheduled`,
+  which Postgres re-checks on the row it locks; cancelling instead would
+  kill a tick that started between reading the job and cancelling it.
   """
   @spec reschedule(module()) :: {:ok, Oban.Job.t()} | {:error, term()}
   def reschedule(source) do
+    at = DateTime.add(DateTime.utc_now(), settings(source).interval_minutes * 60, :second)
+
     from(j in Oban.Job, where: j.worker == ^worker_name(source) and j.state == "scheduled")
-    |> select([j], j.id)
-    |> repo().all()
-    |> Enum.each(&Oban.cancel_job/1)
+    |> repo().update_all(set: [scheduled_at: at])
 
     ensure_scheduled(source)
+  rescue
+    error -> schedule_failed(source, error)
+  catch
+    :exit, reason -> schedule_failed(source, {:exit, reason})
   end
 
   @doc "When the waiting tick fires, or `nil` when none is waiting."
@@ -203,8 +213,8 @@ defmodule PhoenixKitAI.TranslationSweep do
          :ok <- ai_available(),
          :ok <- has_languages(settings),
          :ok <- caps_admit(settings),
-         {:ok, in_flight, room} <- room(source, settings) do
-      sweep(source, settings, in_flight, room)
+         {:ok, busy, room} <- room(source, settings) do
+      sweep(source, settings, busy, room)
     else
       {:stop, reason, info} -> finish(source, reason, info)
     end
@@ -239,24 +249,29 @@ defmodule PhoenixKitAI.TranslationSweep do
 
   defp caps_admit(_settings), do: :ok
 
+  # `busy` is one {type, uuid, lang} per incomplete job: its length is what
+  # presses on the ceiling, its pairs are what the sweep must not re-admit.
   defp room(source, %{max_in_flight: max}) do
-    in_flight = count_in_flight(source.sweep_resource_types())
+    busy = in_flight(source.sweep_resource_types())
+    in_flight = length(busy)
 
     if in_flight >= max,
       do: {:stop, :ceiling_reached, %{in_flight: in_flight}},
-      else: {:ok, in_flight, max - in_flight}
+      else: {:ok, busy, max - in_flight}
   end
 
-  defp sweep(source, settings, in_flight, room) do
+  defp sweep(source, settings, busy, room) do
     targets = settings.languages
 
-    candidates =
+    {candidates, _in_flight} =
       settings.source_language
       |> source.sweep_candidates(targets)
+      |> merge_repeats()
       |> Enum.map(&only_targets(&1, targets))
+      |> without_pairs(Map.new(busy, &{&1, true}))
 
     failed = recently_failed(source.sweep_resource_types())
-    {kept, backed_off} = back_off(candidates, failed)
+    {kept, backed_off} = without_pairs(candidates, failed)
     selected = take_within_budget(kept, settings.batch, room)
 
     case prompts(source, selected) do
@@ -269,7 +284,7 @@ defmodule PhoenixKitAI.TranslationSweep do
           Map.merge(counts, %{
             candidates: length(selected),
             backed_off: backed_off,
-            in_flight: in_flight
+            in_flight: length(busy)
           })
         )
 
@@ -278,17 +293,36 @@ defmodule PhoenixKitAI.TranslationSweep do
     end
   end
 
+  # A resource listed twice would take two batch slots for one resource:
+  # its languages join its first entry, in order.
+  defp merge_repeats(candidates) do
+    {order, by_key} =
+      Enum.reduce(candidates, {[], %{}}, fn c, {order, by_key} ->
+        key = {c.resource_type, c.uuid}
+
+        case by_key do
+          %{^key => first} ->
+            {order, %{by_key | key => %{first | languages: first.languages ++ c.languages}}}
+
+          _ ->
+            {[key | order], Map.put(by_key, key, c)}
+        end
+      end)
+
+    order |> Enum.reverse() |> Enum.map(&Map.fetch!(by_key, &1))
+  end
+
   defp only_targets(candidate, targets) do
     %{candidate | languages: candidate.languages |> Enum.filter(&(&1 in targets)) |> Enum.uniq()}
   end
 
-  # Languages whose latest job failed for good lately are left out; a
+  # Leaves out every language whose {type, uuid, lang} is a key of `pairs`; a
   # candidate left with none is dropped. Answers the rest and how many
-  # (resource, language) pairs were held back.
-  defp back_off(candidates, failed) do
+  # (resource, language) pairs were left out.
+  defp without_pairs(candidates, pairs) do
     Enum.flat_map_reduce(candidates, 0, fn c, held ->
       {skipped, kept} =
-        Enum.split_with(c.languages, &Map.has_key?(failed, {c.resource_type, c.uuid, &1}))
+        Enum.split_with(c.languages, &Map.has_key?(pairs, {c.resource_type, c.uuid, &1}))
 
       if kept == [],
         do: {[], held + length(skipped)},
@@ -371,22 +405,25 @@ defmodule PhoenixKitAI.TranslationSweep do
     end
   end
 
-  # The source's incomplete TranslateWorker jobs — its own resource types
-  # only, so two sources do not throttle each other. Fails open (0): a
-  # query error must not stop the sweep for good.
-  defp count_in_flight([]), do: 0
+  # {type, uuid, lang} of each of the source's incomplete TranslateWorker
+  # jobs — its own resource types only, so two sources do not throttle each
+  # other. Fails open (none): a query error must not stop the sweep for
+  # good, and `enqueue_all_missing/2` still skips a pair in flight.
+  defp in_flight([]), do: []
 
-  defp count_in_flight(types) do
+  defp in_flight(types) do
     from(j in "oban_jobs",
       where: j.worker == ^@translate_worker and j.state in ^@incomplete_states,
       where: fragment("?->>'resource_type'", j.args) in ^types,
-      select: count(j.id)
+      select:
+        {fragment("?->>'resource_type'", j.args), fragment("?->>'resource_uuid'", j.args),
+         fragment("?->>'target_lang'", j.args)}
     )
-    |> repo().one()
+    |> repo().all()
   rescue
-    _ -> 0
+    _ -> []
   catch
-    :exit, _ -> 0
+    :exit, _ -> []
   end
 
   # {resource_type, uuid, lang} of every pair whose LATEST job was
@@ -453,7 +490,7 @@ defmodule PhoenixKitAI.TranslationSweep do
   @spec last_run(module()) :: map() | nil
   def last_run(source) do
     case Settings.get_json_setting(last_run_key(source), nil) do
-      %{} = record -> record
+      %{"reason" => reason} = record when is_binary(reason) -> record
       _ -> nil
     end
   end

@@ -3,7 +3,8 @@ defmodule PhoenixKitAI.TranslationSweepTest do
   The shared translation sweep: the chain keeps one tick waiting, a tick
   stops for the right reason and records it, and a sweep admits
   candidates within both caps — skipping the (resource, language) pairs
-  whose latest job was discarded, so they cannot hold up the rest.
+  already in flight or whose latest job was discarded, so they cannot hold
+  up the rest.
   """
   use ExUnit.Case, async: false
 
@@ -144,6 +145,8 @@ defmodule PhoenixKitAI.TranslationSweepTest do
       Process.put(:sweep_settings, %{batch: 0})
       assert {:sweep_stalled, _} = TranslationSweep.run_tick(Source)
 
+      # A fresh candidate: the first one's de is in flight since the manual run.
+      Process.put(:sweep_candidates, [candidate(Ecto.UUID.generate(), ~w(de))])
       Process.put(:sweep_settings, %{})
       Process.put(:sweep_prompts, {:error, :no_prompt})
       assert {:prompts_unavailable, _} = TranslationSweep.run_tick(Source)
@@ -166,6 +169,51 @@ defmodule PhoenixKitAI.TranslationSweepTest do
       Process.put(:sweep_settings, %{max_in_flight: 3})
       assert {:ok, %{enqueued: 1}} = TranslationSweep.run_tick(Source)
       assert {new, "de"} in translate_jobs()
+    end
+
+    test "a pair already in flight takes no batch slot and cuts off no later language" do
+      [busy, next] = [Ecto.UUID.generate(), Ecto.UUID.generate()]
+      translate_job!(busy, "de", "executing")
+
+      # One resource per tick: the busy one's de must not spend it.
+      Process.put(:sweep_candidates, [candidate(busy, ~w(de)), candidate(next, ~w(de))])
+      Process.put(:sweep_settings, %{batch: 1, max_in_flight: 5})
+
+      assert {:ok, %{enqueued: 1, candidates: 1, in_flight: 1}} =
+               TranslationSweep.run_tick(Source)
+
+      assert {next, "de"} in translate_jobs()
+
+      # One job of room: fr goes, rather than the busy de being admitted again.
+      Process.put(:sweep_candidates, [candidate(busy, ~w(de fr))])
+      Process.put(:sweep_settings, %{max_in_flight: 3})
+      assert {:ok, %{enqueued: 1}} = TranslationSweep.run_tick(Source)
+      assert {busy, "fr"} in translate_jobs()
+    end
+
+    test "a resource listed twice takes one batch slot" do
+      [twice, next] = [Ecto.UUID.generate(), Ecto.UUID.generate()]
+
+      Process.put(:sweep_candidates, [
+        candidate(twice, ~w(de)),
+        candidate(twice, ~w(de fr)),
+        candidate(next, ~w(de))
+      ])
+
+      Process.put(:sweep_settings, %{batch: 2})
+      assert {:ok, %{enqueued: 3, candidates: 2}} = TranslationSweep.run_tick(Source)
+      assert translate_jobs() == Enum.sort([{twice, "de"}, {twice, "fr"}, {next, "de"}])
+    end
+
+    test "a stored outcome without a reason reads as none" do
+      {:ok, _} =
+        PhoenixKit.Settings.update_json_setting_with_module(
+          TranslationSweep.last_run_key(Source),
+          %{"at" => "2026-09-22T00:00:00Z"},
+          "ai"
+        )
+
+      assert TranslationSweep.last_run(Source) == nil
     end
 
     test "a pair whose latest job was discarded is skipped, and does not hold up the rest" do
@@ -211,14 +259,35 @@ defmodule PhoenixKitAI.TranslationSweepTest do
       assert again.id == first.id
 
       Process.put(:sweep_settings, %{interval_minutes: 5})
-      assert {:ok, replaced} = TranslationSweep.reschedule(Source)
-      refute replaced.id == first.id
-      assert TestRepo.get!(Oban.Job, first.id).state == "cancelled"
+      assert {:ok, _} = TranslationSweep.reschedule(Source)
+
+      # The waiting tick moved; nothing was cancelled or added.
+      assert [%{id: id, state: "scheduled"}] = TestRepo.all(Oban.Job)
+      assert id == first.id
 
       at = TranslationSweep.next_tick_at(Source)
       assert DateTime.diff(at, DateTime.utc_now()) in 290..300
 
       assert %{running?: false, next_tick_at: ^at} = TranslationSweep.status(Source)
+    end
+
+    test "reschedule never touches a tick that is already running" do
+      assert {:ok, tick} = TranslationSweep.ensure_scheduled(Source)
+      TestRepo.update_all(Oban.Job, set: [state: "executing"])
+
+      Process.put(:sweep_settings, %{interval_minutes: 5})
+      assert {:ok, successor} = TranslationSweep.reschedule(Source)
+
+      assert TestRepo.get!(Oban.Job, tick.id).state == "executing"
+      refute successor.id == tick.id
+      assert DateTime.diff(TranslationSweep.next_tick_at(Source), DateTime.utc_now()) in 290..300
+      assert TranslationSweep.status(Source).running?
+    end
+
+    test "reschedule starts a chain that has none waiting" do
+      refute TranslationSweep.next_tick_at(Source)
+      assert {:ok, _} = TranslationSweep.reschedule(Source)
+      assert TranslationSweep.next_tick_at(Source)
     end
 
     test "a tick schedules its successor before sweeping" do
