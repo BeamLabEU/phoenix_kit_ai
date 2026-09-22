@@ -171,6 +171,24 @@ defmodule PhoenixKitAI.TranslationSweepTest do
       assert {new, "de"} in translate_jobs()
     end
 
+    # Two ticks at once read the same in-flight count and each admit up to
+    # the room it leaves, so between them they can pass the ceiling and
+    # enqueue one pair twice. The scheduled tick is the one that must run;
+    # an operator's button waits.
+    test "a manual run refuses while a tick of this source is running" do
+      Process.put(:sweep_candidates, [candidate(Ecto.UUID.generate(), ~w(de))])
+      {:ok, _tick} = TranslationSweep.ensure_scheduled(Source)
+      TestRepo.update_all(Oban.Job, set: [state: "executing"])
+
+      assert {:sweep_running, %{}} = TranslationSweep.run_tick(Source, :manual)
+      assert translate_jobs() == []
+      # A refusal is not an outcome: it does not overwrite the last run.
+      refute TranslationSweep.last_run(Source)
+
+      # The scheduled tick itself is the running job, and must not refuse.
+      assert {:ok, %{enqueued: 1}} = TranslationSweep.run_tick(Source)
+    end
+
     test "a pair already in flight takes no batch slot and cuts off no later language" do
       [busy, next] = [Ecto.UUID.generate(), Ecto.UUID.generate()]
       translate_job!(busy, "de", "executing")

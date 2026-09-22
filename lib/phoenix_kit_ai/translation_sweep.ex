@@ -206,10 +206,19 @@ defmodule PhoenixKitAI.TranslationSweep do
   candidates, enqueued, conflicts, errors, backed_off, in_flight) or why
   it stopped: the source's own reason, `:sweep_disabled`,
   `:ai_unavailable`, `:no_target_languages`, `:sweep_stalled`,
-  `:ceiling_reached`, `:prompts_unavailable`.
+  `:ceiling_reached`, `:prompts_unavailable`, or — for a manual run while
+  the scheduled tick is running — `:sweep_running`.
   """
   @spec run_tick(module(), trigger()) :: {atom(), map()}
   def run_tick(source, trigger \\ :interval) do
+    case alone(source, trigger) do
+      :ok -> do_run_tick(source, trigger)
+      # Not an outcome of a tick, so it is answered without recording one.
+      {:stop, reason, info} -> {reason, info}
+    end
+  end
+
+  defp do_run_tick(source, trigger) do
     settings = settings(source)
 
     with :ok <- ready(source, trigger),
@@ -223,6 +232,16 @@ defmodule PhoenixKitAI.TranslationSweep do
       {:stop, reason, info} -> finish(source, reason, info)
     end
   end
+
+  # Two ticks at once read the same in-flight count and each admit up to
+  # the room it leaves, so together they can pass the ceiling and enqueue
+  # one pair twice (the enqueue's own guard is a check, not a constraint).
+  # The scheduled tick is the one running; an operator's button waits.
+  defp alone(source, :manual) do
+    if running?(source), do: {:stop, :sweep_running, %{}}, else: :ok
+  end
+
+  defp alone(_source, _trigger), do: :ok
 
   defp ready(source, trigger) do
     if function_exported?(source, :sweep_ready, 1) do
