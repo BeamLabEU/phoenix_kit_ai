@@ -854,24 +854,20 @@ defmodule PhoenixKitAI do
 
   defp resolve_provider_to_uuid(_), do: nil
 
+  # Never raises (core's `log/3`); the migration goes on whether or not
+  # its entry landed.
   defp log_migration_activity(action_atom, metadata) do
-    if Code.ensure_loaded?(PhoenixKit.Activity) do
-      PhoenixKit.Activity.log(%{
-        action: "integration.legacy_migrated",
-        module: module_key(),
-        mode: "auto",
-        resource_type: "endpoint",
-        metadata:
-          Map.merge(metadata, %{
-            "migration_kind" => Atom.to_string(action_atom),
-            "actor_role" => "system"
-          })
-      })
-    end
+    PhoenixKit.Activity.log(module_key(), "integration.legacy_migrated",
+      mode: "auto",
+      resource_type: "endpoint",
+      metadata:
+        Map.merge(metadata, %{
+          "migration_kind" => Atom.to_string(action_atom),
+          "actor_role" => "system"
+        })
+    )
 
     :ok
-  rescue
-    _ -> :ok
   end
 
   @doc """
