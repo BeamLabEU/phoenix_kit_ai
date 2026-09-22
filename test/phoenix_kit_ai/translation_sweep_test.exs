@@ -209,11 +209,28 @@ defmodule PhoenixKitAI.TranslationSweepTest do
       {:ok, _} =
         PhoenixKit.Settings.update_json_setting_with_module(
           TranslationSweep.last_run_key(Source),
-          %{"at" => "2026-09-22T00:00:00Z"},
+          %{"since" => "2026-09-22T00:00:00Z"},
           "ai"
         )
 
       assert TranslationSweep.last_run(Source) == nil
+    end
+
+    test "an outcome is written only when it changes, so repeats add no settings history" do
+      key = TranslationSweep.last_run_key(Source)
+      earlier = %{"reason" => "sweep_disabled", "since" => "2026-01-01T00:00:00Z"}
+      {:ok, _} = PhoenixKit.Settings.update_json_setting_with_module(key, earlier, "ai")
+
+      Process.put(:sweep_settings, %{enabled?: false})
+      for _ <- 1..3, do: assert({:sweep_disabled, _} = TranslationSweep.run_tick(Source))
+      assert TranslationSweep.last_run(Source) == earlier
+      assert length(PhoenixKit.Settings.history(key)) == 1
+
+      Process.put(:sweep_settings, %{})
+      assert {:ok, _} = TranslationSweep.run_tick(Source)
+      assert %{"reason" => "ok", "since" => since} = TranslationSweep.last_run(Source)
+      refute since == earlier["since"]
+      assert length(PhoenixKit.Settings.history(key)) == 2
     end
 
     test "a pair whose latest job was discarded is skipped, and does not hold up the rest" do

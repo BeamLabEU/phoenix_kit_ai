@@ -48,8 +48,12 @@ defmodule PhoenixKitAI.TranslationSweep do
      (`Translations.enqueue_all_missing/2`, which skips a pair already in
      flight) and record the outcome.
 
-  Every outcome is kept as the source's last run (`last_run/1`);
-  `status/1` adds when the next tick fires and whether one is running.
+  The outcome is kept as the source's last run (`last_run/1`) — written
+  only when it differs from the one stored, with the time it first
+  happened: the record is a setting, every settings change is a permanent
+  history entry, and a tick an hour that ends the same way would otherwise
+  add one forever. `status/1` adds when the next tick fires and whether
+  one is running.
   """
 
   import Ecto.Query
@@ -461,19 +465,25 @@ defmodule PhoenixKitAI.TranslationSweep do
   # ── The outcome ────────────────────────────────────────────────────
 
   defp finish(source, reason, info) do
-    record =
+    outcome =
       info
       |> Map.new(fn {k, v} -> {to_string(k), v} end)
-      |> Map.merge(%{"reason" => to_string(reason), "at" => DateTime.to_iso8601(now())})
+      |> Map.put("reason", to_string(reason))
 
-    case Settings.update_json_setting_with_module(last_run_key(source), record, "ai") do
-      {:ok, _} ->
-        :ok
+    stored = last_run(source)
 
-      {:error, error} ->
-        Logger.warning(
-          "[TranslationSweep] could not record #{source.sweep_key()}'s last run: #{failure_shape(error)}"
-        )
+    if is_nil(stored) or Map.delete(stored, "since") != outcome do
+      record = Map.put(outcome, "since", DateTime.to_iso8601(now()))
+
+      case Settings.update_json_setting_with_module(last_run_key(source), record, "ai") do
+        {:ok, _} ->
+          :ok
+
+        {:error, error} ->
+          Logger.warning(
+            "[TranslationSweep] could not record #{source.sweep_key()}'s last run: #{failure_shape(error)}"
+          )
+      end
     end
 
     {reason, info}
@@ -484,8 +494,9 @@ defmodule PhoenixKitAI.TranslationSweep do
   end
 
   @doc """
-  The last tick's outcome — `%{"reason" => …, "at" => iso8601, …counts}`
-  — or `nil` before the first.
+  The last tick's outcome — `%{"reason" => …, "since" => iso8601,
+  …counts}`, `since` being when ticks began ending this way — or `nil`
+  before the first.
   """
   @spec last_run(module()) :: map() | nil
   def last_run(source) do
