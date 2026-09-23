@@ -109,16 +109,51 @@ defmodule PhoenixKitAI.TranslationsTest do
       assert Translations.glossary("fr-FR") == "shared terms"
     end
 
-    test "a blank per-language value falls through to the shared key" do
-      # Blank is "not configured", not "configured as empty" — otherwise
-      # clearing a per-language field in a UI would silently disable the
-      # shared glossary for that language only.
+    test "Settings refuses to store a blank per-language value at all" do
+      # Found by actually running this against a database: the Setting
+      # changeset requires "either value or value_json", so "", "   " and
+      # "\n" are ALL rejected. A blank per-language glossary therefore
+      # cannot exist via the public API, and the write that would have
+      # created one leaves the shared glossary in force — which is the
+      # behaviour that matters to an operator who tries to blank the field.
       {:ok, _} = Settings.update_setting("ai_translation_glossary", "shared terms")
 
-      for blank <- ["", "   "] do
-        {:ok, _} = Settings.update_setting("ai_translation_glossary_de-DE", blank)
+      for blank <- ["", "   ", "\n"] do
+        assert {:error, %Ecto.Changeset{}} =
+                 Settings.update_setting("ai_translation_glossary_de-DE", blank)
+
         assert Translations.glossary("de-DE") == "shared terms"
       end
+    end
+
+    test "deleting the per-language key is how a language falls back to the shared glossary" do
+      # Since blank cannot be stored, `delete_setting/1` is the actual
+      # clearing operation — this pins the round trip an operator needs.
+      {:ok, _} = Settings.update_setting("ai_translation_glossary", "shared terms")
+      {:ok, _} = Settings.update_setting("ai_translation_glossary_de-DE", "german terms")
+      assert Translations.glossary("de-DE") == "german terms"
+
+      Settings.delete_setting("ai_translation_glossary_de-DE")
+
+      assert Translations.glossary("de-DE") == "shared terms"
+    end
+
+    test "blank_to_nil still guards a blank that arrived outside update_setting/2" do
+      # The fallback is unreachable through the public API (see above), but a
+      # direct write, a data migration or a future API change can still
+      # produce one, and `glossary/1` must not hand the model an empty
+      # glossary block in that case.
+      {:ok, _} = Settings.update_setting("ai_translation_glossary", "shared terms")
+      {:ok, _} = Settings.update_setting("ai_translation_glossary_de-DE", "placeholder")
+
+      PhoenixKit.RepoHelper.repo().query!(
+        "UPDATE phoenix_kit_settings SET value = '   ' WHERE key = $1",
+        ["ai_translation_glossary_de-DE"]
+      )
+
+      PhoenixKit.Cache.invalidate_now(:settings, ["ai_translation_glossary_de-DE"])
+
+      assert Translations.glossary("de-DE") == "shared terms"
     end
 
     test "glossary_setting_key/1 names the keys this module actually reads" do
