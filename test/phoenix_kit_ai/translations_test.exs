@@ -73,6 +73,63 @@ defmodule PhoenixKitAI.TranslationsTest do
     end
   end
 
+  describe "glossary/1 resolution order" do
+    @describetag :integration
+
+    setup context do
+      pid = Sandbox.start_owner!(TestRepo, shared: not context[:async])
+      on_exit(fn -> Sandbox.stop_owner(pid) end)
+      :ok
+    end
+
+    test "nil when neither the per-language nor the shared key is set" do
+      assert Translations.glossary("de-DE") == nil
+      assert Translations.glossary() == nil
+    end
+
+    test "the shared key applies to every target language" do
+      {:ok, _} = Settings.update_setting("ai_translation_glossary", "shared terms")
+
+      assert Translations.glossary("de-DE") == "shared terms"
+      assert Translations.glossary("fr-FR") == "shared terms"
+      assert Translations.glossary() == "shared terms"
+    end
+
+    test "the per-language key overrides the shared one — it does NOT append to it" do
+      # Override, not concatenation: an operator who sets the per-language
+      # key must see exactly that text reach the model. Appending the shared
+      # key behind their back would spend tokens on terms they replaced on
+      # purpose, and could contradict the override.
+      {:ok, _} = Settings.update_setting("ai_translation_glossary", "shared terms")
+      {:ok, _} = Settings.update_setting("ai_translation_glossary_de-DE", "german terms")
+
+      assert Translations.glossary("de-DE") == "german terms"
+      refute Translations.glossary("de-DE") =~ "shared"
+      # untouched for another language
+      assert Translations.glossary("fr-FR") == "shared terms"
+    end
+
+    test "a blank per-language value falls through to the shared key" do
+      # Blank is "not configured", not "configured as empty" — otherwise
+      # clearing a per-language field in a UI would silently disable the
+      # shared glossary for that language only.
+      {:ok, _} = Settings.update_setting("ai_translation_glossary", "shared terms")
+
+      for blank <- ["", "   "] do
+        {:ok, _} = Settings.update_setting("ai_translation_glossary_de-DE", blank)
+        assert Translations.glossary("de-DE") == "shared terms"
+      end
+    end
+
+    test "glossary_setting_key/1 names the keys this module actually reads" do
+      assert Translations.glossary_setting_key() == "ai_translation_glossary"
+      assert Translations.glossary_setting_key("de-DE") == "ai_translation_glossary_de-DE"
+
+      {:ok, _} = Settings.update_setting(Translations.glossary_setting_key("fr-FR"), "fr terms")
+      assert Translations.glossary("fr-FR") == "fr terms"
+    end
+  end
+
   describe "availability: disabled vs enabled-with-endpoint" do
     @describetag :integration
 

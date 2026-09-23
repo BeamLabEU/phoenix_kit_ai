@@ -108,6 +108,12 @@ defmodule PhoenixKitAI.Translation do
   - `:cache` — passed to the completion as-is (see `PhoenixKitAI.RequestCache`).
     A caller retrying a failed parse passes `cache: :refresh`, or the retry
     replays the cached answer that failed.
+  - `:glossary` — terminology the model must follow, bound to the
+    prompt's `{{Glossary}}` slot. Omit it to use the configured glossary
+    for `target_lang` (`PhoenixKitAI.Translations.glossary/1`); pass a
+    binary to override it for this call only; pass `nil` to translate
+    with no glossary at all. A prompt template without a `{{Glossary}}`
+    slot ignores this entirely.
   """
   @spec translate_fields(
           String.t(),
@@ -175,7 +181,8 @@ defmodule PhoenixKitAI.Translation do
   end
 
   defp do_translate(endpoint_uuid, prompt_uuid, source_lang, target_lang, fields, opts) do
-    variables = build_variables(fields, source_lang, target_lang)
+    variables =
+      build_variables(fields, source_lang, target_lang, resolve_glossary(target_lang, opts))
 
     ai_opts =
       opts
@@ -207,6 +214,35 @@ defmodule PhoenixKitAI.Translation do
     end
   end
 
+  # `:glossary` is three-valued, and the distinction matters. Absent means
+  # "ask the settings" — the normal path, so every existing caller gains
+  # glossary support without changing a line. An explicit `nil` (or blank)
+  # means "no glossary on THIS call" and must NOT fall back to the
+  # settings, otherwise a caller deliberately translating without
+  # terminology constraints (a re-run to compare against, a test) silently
+  # gets them anyway. A binary overrides the settings outright — that is
+  # how a caller with a narrower glossary than the global one (a single
+  # product category, say) supplies it.
+  #
+  # The settings read is wrapped: a glossary is an enhancement, and a
+  # Settings failure must degrade to "no glossary" rather than fail a
+  # translation that would otherwise have succeeded.
+  defp resolve_glossary(target_lang, opts) do
+    if Keyword.has_key?(opts, :glossary) do
+      Keyword.get(opts, :glossary)
+    else
+      settings_glossary(target_lang)
+    end
+  end
+
+  defp settings_glossary(target_lang) do
+    PhoenixKitAI.Translations.glossary(target_lang)
+  rescue
+    _ -> nil
+  catch
+    :exit, _ -> nil
+  end
+
   @doc false
   # Public-for-testing entry point (same rationale as `handle_ai_response/2`
   # below) for the prompt-variable map `do_translate/6` renders with.
@@ -224,14 +260,52 @@ defmodule PhoenixKitAI.Translation do
   # verbatim (unlike markers, which are upcased) so an existing prompt
   # written against the old one-slot-per-field contract (`{{title}}`,
   # `{{Title}}`, …) keeps rendering exactly as before.
-  @spec build_variables(field_map(), String.t(), String.t()) :: field_map()
-  def build_variables(fields, source_lang, target_lang) when is_map(fields) do
+  @spec build_variables(field_map(), String.t(), String.t(), String.t() | nil) :: field_map()
+  def build_variables(fields, source_lang, target_lang, glossary \\ nil) when is_map(fields) do
     Map.merge(fields, %{
       "SourceLanguage" => source_lang,
       "TargetLanguage" => target_lang,
-      "SourceFields" => source_fields_section(fields)
+      "SourceFields" => source_fields_section(fields),
+      "Glossary" => glossary_section(glossary)
     })
   end
+
+  # `{{Glossary}}` binds to the WHOLE block, heading included, not just the
+  # operator's text. A template carrying a hardcoded "TERMINOLOGY:" header
+  # above a `{{Glossary}}` slot would, with no glossary configured, render
+  # a header introducing nothing — an instruction the model still has to
+  # interpret, and the same class of defect as the unbound-placeholder one
+  # (§9.1): prompt text that looks like content but means nothing. Binding
+  # the header together with the body makes "no glossary" render as exactly
+  # nothing.
+  #
+  # `Glossary` is bound on EVERY call, including when it is empty. A
+  # variable a template never references costs nothing (rendering
+  # substitutes what it finds), so a prompt without the slot is unaffected,
+  # while a prompt that has it never leaves it unbound — which is what the
+  # §9.2 unbound-placeholder guard would otherwise report on every single
+  # translation.
+  defp glossary_section(nil), do: ""
+
+  defp glossary_section(glossary) when is_binary(glossary) do
+    case String.trim(glossary) do
+      "" ->
+        ""
+
+      trimmed ->
+        """
+        TERMINOLOGY — the renderings below are mandatory. Where a term in the
+        source appears in this glossary, use the glossary's target-language
+        rendering exactly, even if another translation would also be correct.
+        Where it does not, translate normally.
+
+        #{trimmed}
+        """
+        |> String.trim_trailing()
+    end
+  end
+
+  defp glossary_section(_other), do: ""
 
   # Builds the `{{SourceFields}}` block: one `---MARKER---` section per
   # field actually passed. Sorted by field name — map iteration order is

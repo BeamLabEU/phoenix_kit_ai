@@ -46,6 +46,7 @@ defmodule PhoenixKitAI.Translations do
 
   @endpoint_setting_key "ai_translation_endpoint_uuid"
   @prompt_setting_key "ai_translation_prompt_uuid"
+  @glossary_setting_key "ai_translation_glossary"
   # `PhoenixKitAI` derives a prompt's slug from its name (`Slug.slugify/1`,
   # overriding any passed `:slug`), so the slug here MUST equal
   # `slugify(@prompt_name)` or the idempotency lookup never matches and every
@@ -195,6 +196,54 @@ defmodule PhoenixKitAI.Translations do
     )
   end
 
+  @doc """
+  The terminology glossary to hand the model for `target_lang`, or `nil`.
+
+  Resolution, per-language setting first:
+
+  1. `#{@glossary_setting_key}_<target_lang>` — e.g.
+     `#{@glossary_setting_key}_de-DE`. Wins outright when non-blank.
+  2. `#{@glossary_setting_key}` — one glossary shared by every target
+     language. A table with a column per language belongs here.
+
+  Override, NOT concatenation: an operator who sets the per-language key
+  sees exactly that text reach the model, with nothing appended from the
+  global key behind their back.
+
+  This is plain text, not a structured term list. Whatever an operator
+  stores is passed through verbatim (see
+  `PhoenixKitAI.Translation.build_variables/4`) — a Markdown table, a
+  bullet list or prose all work, because the consumer is a language
+  model, not a parser. The value is NOT validated or size-capped here:
+  it is operator-authored configuration, and it is spent as prompt
+  tokens on every translation call, so its length is the operator's
+  cost decision to make.
+
+  Returns `nil` (never `""`) when neither key holds anything, so callers
+  can pattern-match on absence.
+  """
+  @spec glossary(String.t() | nil) :: String.t() | nil
+  def glossary(target_lang \\ nil) do
+    language_glossary(target_lang) || blank_to_nil(Settings.get_setting(@glossary_setting_key))
+  end
+
+  @doc """
+  The settings key holding the glossary for `target_lang`, or the shared
+  one when `nil`. Exposed so host UI and tests address the same key this
+  module reads instead of rebuilding the string.
+  """
+  @spec glossary_setting_key(String.t() | nil) :: String.t()
+  def glossary_setting_key(nil), do: @glossary_setting_key
+
+  def glossary_setting_key(target_lang) when is_binary(target_lang),
+    do: "#{@glossary_setting_key}_#{target_lang}"
+
+  defp language_glossary(nil), do: nil
+
+  defp language_glossary(target_lang) when is_binary(target_lang) do
+    blank_to_nil(Settings.get_setting(glossary_setting_key(target_lang)))
+  end
+
   @doc "Is the shared default translation prompt already provisioned?"
   @spec default_prompt_exists?() :: boolean()
   def default_prompt_exists? do
@@ -239,6 +288,17 @@ defmodule PhoenixKitAI.Translations do
     end
   end
 
+  # `{{Glossary}}` renders the operator-configured terminology block, or
+  # nothing at all when none is configured (`Translation.build_variables/4`
+  # binds the heading together with the body for exactly that reason). It
+  # is provisioned here only for installs created from this point on:
+  # `do_ensure_prompt/0` above creates the shared prompt and never rewrites
+  # an existing one, deliberately — this prompt is editable in the prompts
+  # admin UI, and silently overwriting an operator's edit to introduce a
+  # slot would be worse than leaving it out. An existing install adds the
+  # `{{Glossary}}` line to its own prompt when it wants the feature; until
+  # then the bound variable is simply unused.
+  #
   # The SOURCE block enumerates the common translatable field names across
   # PhoenixKit modules (name/title/description/summary/body/content). The
   # engine binds only the fields an adapter actually provides; any unbound
@@ -252,51 +312,64 @@ defmodule PhoenixKitAI.Translations do
       slug: @prompt_slug,
       name: @prompt_name,
       description: "Shared PhoenixKit prompt for translating resource fields between languages.",
-      content: """
-      You are translating fields of a content resource from {{SourceLanguage}} to {{TargetLanguage}}.
-
-      RULES:
-      - Preserve formatting exactly (line breaks, spacing, Markdown if present).
-      - Do NOT translate text inside code blocks, inline code, or URLs.
-      - Translate naturally and idiomatically — match the tone of the source.
-      - Keep any HTML tags and special syntax unchanged.
-      - Output ONLY the structured markers below — no commentary, no preface, no closing remarks.
-
-      OUTPUT FORMAT — for each non-empty field in the SOURCE section below,
-      emit ONE marker named after the field (uppercased), followed by the
-      translation:
-
-          ---<FIELD_NAME_UPPERCASE>---
-          [translated value]
-
-      Example:
-
-          ---NAME---
-          <translated name>
-
-          ---DESCRIPTION---
-          <translated description>
-
-      Skip any field that is missing, blank, or still a literal placeholder
-      (e.g. a value that looks like `{{title}}` means the caller did not bind
-      it) — do NOT emit a marker for it, and do NOT translate the placeholder
-      text itself.
-
-      === SOURCE ===
-
-      Name: {{name}}
-
-      Title: {{title}}
-
-      Summary: {{summary}}
-
-      Description: {{description}}
-
-      Body: {{body}}
-
-      Content: {{content}}
-      """
+      content: default_prompt_content()
     }
+  end
+
+  @doc false
+  # Exposed (doc-false) so a test can pin the template's slots — the
+  # `{{Glossary}}` one in particular — without a live database. The wiring
+  # between "the engine binds this variable" and "the shipped prompt has a
+  # slot for it" is otherwise untested: both halves can look right while
+  # the feature reaches no model at all.
+  @spec default_prompt_content() :: String.t()
+  def default_prompt_content do
+    """
+    You are translating fields of a content resource from {{SourceLanguage}} to {{TargetLanguage}}.
+
+    RULES:
+    - Preserve formatting exactly (line breaks, spacing, Markdown if present).
+    - Do NOT translate text inside code blocks, inline code, or URLs.
+    - Translate naturally and idiomatically — match the tone of the source.
+    - Keep any HTML tags and special syntax unchanged.
+    - Output ONLY the structured markers below — no commentary, no preface, no closing remarks.
+
+    {{Glossary}}
+
+    OUTPUT FORMAT — for each non-empty field in the SOURCE section below,
+    emit ONE marker named after the field (uppercased), followed by the
+    translation:
+
+        ---<FIELD_NAME_UPPERCASE>---
+        [translated value]
+
+    Example:
+
+        ---NAME---
+        <translated name>
+
+        ---DESCRIPTION---
+        <translated description>
+
+    Skip any field that is missing, blank, or still a literal placeholder
+    (e.g. a value that looks like `{{title}}` means the caller did not bind
+    it) — do NOT emit a marker for it, and do NOT translate the placeholder
+    text itself.
+
+    === SOURCE ===
+
+    Name: {{name}}
+
+    Title: {{title}}
+
+    Summary: {{summary}}
+
+    Description: {{description}}
+
+    Body: {{body}}
+
+    Content: {{content}}
+    """
   end
 
   # ── PubSub ───────────────────────────────────────────────────────

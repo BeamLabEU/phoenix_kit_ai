@@ -206,6 +206,74 @@ defmodule PhoenixKitAI.TranslationTest do
     end
   end
 
+  describe "build_variables/4 — {{Glossary}} slot" do
+    @glossary "| EN | de-DE |\n|---|---|\n| wall shelf | Wandregal |"
+
+    test "binds Glossary on every call, so a template slot is never left unbound" do
+      # §9.2's guard reports any `{{...}}` a template leaves unbound. If
+      # `Glossary` were bound only when configured, every translation on an
+      # install without a glossary would report it — turning a real signal
+      # into noise.
+      variables = Translation.build_variables(%{"title" => "Widget"}, "en", "de")
+
+      assert Map.has_key?(variables, "Glossary")
+      assert variables["Glossary"] == ""
+    end
+
+    test "no glossary renders as exactly nothing — not an empty heading" do
+      for absent <- [nil, "", "   ", "\n\t "] do
+        variables = Translation.build_variables(%{"title" => "W"}, "en", "de", absent)
+
+        assert variables["Glossary"] == "",
+               "expected #{inspect(absent)} to render as empty, got #{inspect(variables["Glossary"])}"
+      end
+    end
+
+    test "a configured glossary renders with its own heading and the text verbatim" do
+      variables = Translation.build_variables(%{"title" => "W"}, "en", "de", @glossary)
+
+      assert variables["Glossary"] =~ "TERMINOLOGY"
+      assert variables["Glossary"] =~ "mandatory"
+      assert String.contains?(variables["Glossary"], @glossary)
+    end
+
+    test "the glossary is passed through verbatim — no parsing, no reformatting" do
+      prose = "Always render \"wall shelf\" as \"Wandregal\", never \"Regal\"."
+      variables = Translation.build_variables(%{"title" => "W"}, "en", "de", prose)
+
+      assert String.contains?(variables["Glossary"], prose)
+    end
+
+    test "glossary text is trimmed of surrounding blank space but keeps inner layout" do
+      variables = Translation.build_variables(%{"title" => "W"}, "en", "de", "\n\n a \n b \n\n")
+
+      assert String.contains?(variables["Glossary"], "a \n b")
+      refute String.ends_with?(variables["Glossary"], "\n")
+    end
+
+    test "adding a glossary leaves every other variable untouched" do
+      without = Translation.build_variables(%{"title" => "Widget"}, "en", "de")
+      with_glossary = Translation.build_variables(%{"title" => "Widget"}, "en", "de", @glossary)
+
+      assert Map.delete(without, "Glossary") == Map.delete(with_glossary, "Glossary")
+    end
+
+    test "build_variables/3 still works — the fourth argument is optional" do
+      variables = Translation.build_variables(%{"title" => "Widget"}, "en", "de")
+
+      assert variables["title"] == "Widget"
+      assert variables["SourceLanguage"] == "en"
+      assert variables["SourceFields"] == "---TITLE---\nWidget"
+    end
+
+    test "a non-binary glossary is ignored rather than crashing a translation" do
+      variables =
+        Translation.build_variables(%{"title" => "W"}, "en", "de", %{unexpected: :shape})
+
+      assert variables["Glossary"] == ""
+    end
+  end
+
   describe "build_variables/3 — §9.1 dynamic source section" do
     test "still binds each field verbatim by name (old per-field-slot prompts keep working)" do
       variables = Translation.build_variables(%{"title" => "Widget"}, "en", "es")
