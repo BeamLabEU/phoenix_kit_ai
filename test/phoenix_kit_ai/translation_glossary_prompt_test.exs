@@ -10,6 +10,7 @@ defmodule PhoenixKitAI.TranslationGlossaryPromptTest do
 
   use ExUnit.Case, async: true
 
+  alias PhoenixKitAI.Prompt
   alias PhoenixKitAI.Translation
   alias PhoenixKitAI.Translations
 
@@ -42,6 +43,28 @@ defmodule PhoenixKitAI.TranslationGlossaryPromptTest do
       [{source_at, _}] = Regex.run(~r/=== SOURCE ===/, content, return: :index)
 
       assert glossary_at < source_at
+    end
+
+    test "the shipped template renders cleanly with and without a glossary" do
+      # End to end through the real renderer: the slot must vanish entirely
+      # when nothing is configured (no stray heading, nothing left unbound)
+      # and carry the heading plus the terms when something is.
+      content = Translations.default_prompt_content()
+
+      for absent <- [nil, "   "] do
+        variables = Translation.build_variables(%{"title" => "W"}, "en", "de", absent)
+        {:ok, rendered} = Prompt.render_content(content, variables)
+
+        refute rendered =~ "{{Glossary}}"
+        refute rendered =~ "TERMINOLOGY"
+      end
+
+      variables = Translation.build_variables(%{"title" => "W"}, "en", "de", "shelf = Regal")
+      {:ok, rendered} = Prompt.render_content(content, variables)
+
+      assert rendered =~ "TERMINOLOGY"
+      assert rendered =~ "shelf = Regal"
+      refute rendered =~ "{{Glossary}}"
     end
   end
 end

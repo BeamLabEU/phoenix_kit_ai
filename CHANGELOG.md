@@ -1,3 +1,34 @@
+## 0.23.2 - 2026-09-23
+
+### Added
+
+- **Terminology glossary for AI translation** (PR #30). The shared
+  translation prompt has a new `{{Glossary}}` slot, filled from the
+  `ai_translation_glossary_<target_lang>` setting, or from
+  `ai_translation_glossary` when no per-language value is set. The
+  per-language value replaces the shared one; the two are never combined.
+  The text is passed to the model verbatim under a "TERMINOLOGY" heading,
+  and renders as nothing when no glossary is configured.
+  `Translation.translate_fields/6` takes a `glossary:` option to override
+  the setting for one call (a binary), or to translate with no glossary
+  (`nil`). If the settings lookup fails, the translation continues without
+  a glossary and a warning is logged.
+- `Translations.glossary/1` and `Translations.glossary_setting_key/1`.
+
+### Upgrade note
+
+- The shared prompt is only created on installs that don't have one yet;
+  an existing prompt is never rewritten, because operators can edit it. On
+  an install provisioned before 0.23.2, add a `{{Glossary}}` line to the
+  "PhoenixKit Translate Content" prompt, above the SOURCE block, or the glossary
+  settings have no effect.
+
+### Changed
+
+- `Glossary` joins `SourceLanguage`, `TargetLanguage` and `SourceFields`
+  as a reserved translation-prompt variable.
+- `mint` locked at 1.10.1 (EEF-CVE-2026-82672).
+
 ## 0.23.1 - 2026-09-17
 
 ### Fixed

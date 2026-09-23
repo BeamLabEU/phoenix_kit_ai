@@ -264,7 +264,9 @@ Notes on the less obvious modules:
   LiveView's `terminate/2` is not reliably called.
 - `translation.ex` is the single orchestration layer every consuming module
   wraps in its own worker: prompt rendering with `{{SourceLanguage}}` /
-  `{{TargetLanguage}}` / arbitrary field variables, a parser for the
+  `{{TargetLanguage}}` / `{{SourceFields}}` / `{{Glossary}}` / arbitrary
+  field variables (those four names are reserved — a resource field named
+  exactly `"Glossary"` would be overwritten), a parser for the
   `---FIELD_NAME---` response shape, and error normalisation so every failure
   path returns `{:error, atom_or_tuple}`. Adapters are duck-typed through
   `ai_translatables/0` discovery.
@@ -297,6 +299,14 @@ realtime voice session) checks them first and returns
 `{:error, {:budget_exceeded, scope}}` once one is reached, cached answers
 included; only a `process_image/4` dry run skips the check (no other verb
 honours `dry_run:`).
+
+AI translation: `ai_translation_endpoint_uuid` / `ai_translation_prompt_uuid`
+pick the shared endpoint and prompt; `ai_translation_glossary_<target_lang>`
+(exact string match, no `de-DE` → `de` fallback) overrides — never appends
+to — the shared `ai_translation_glossary`. Plain text passed verbatim into
+the prompt's `{{Glossary}}` slot, uncapped. A blank value cannot be stored,
+so `Settings.delete_setting/1` is how a language falls back to the shared
+key; `translate_fields/6`'s `glossary:` option overrides both (`nil` = none).
 
 Permissions: a single module permission `"ai"` from `permission_metadata/0`,
 checked with `Scope.has_module_access?/2`. No sub-permissions.
@@ -482,6 +492,12 @@ Test database `phoenix_kit_ai_test`.
   `PhoenixKitAI.Translatable` (`fetch/2`, `source_fields/2`,
   `put_translation/4`); a configured entry wins over a module's adapter
   for the same type without a duplicate warning.
+- The translation glossary only reaches the model through a prompt that
+  has a `{{Glossary}}` slot. The shared prompt carries one only on installs
+  provisioned from 0.23.2 on — `Translations.ensure_default_prompt/0` never
+  rewrites an existing, operator-editable prompt — so an older install
+  adds the line to its prompt by hand; until then the setting is silently
+  inert.
 - Image processing is provider-neutral by construction: callers name an
   endpoint and operations, adapters own the HTTP shape, and options are
   fitted to the model's published capabilities before anything is sent —
