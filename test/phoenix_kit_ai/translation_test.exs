@@ -206,6 +206,151 @@ defmodule PhoenixKitAI.TranslationTest do
     end
   end
 
+  describe "resolve_glossary/3 — the three-valued :glossary option" do
+    # The resolver is injected so these assertions can tell "returned nil"
+    # apart from "was never called" — the distinction the explicit-nil
+    # branch exists to guarantee, and one a real settings lookup cannot
+    # express.
+    # A canary that RAISES would be swallowed by `settings_glossary/2`'s own
+    # rescue, so a mutation that wrongly routes an explicit `nil` into the
+    # settings would still return `nil` and the test would pass. Messages
+    # cannot be rescued: the probe records that it ran, and the assertion is
+    # on the absence of that record.
+    defp never_called do
+      test = self()
+
+      fn lang ->
+        send(test, {:settings_consulted, lang})
+        "leaked from settings"
+      end
+    end
+
+    test "option absent: consults the settings for this target language" do
+      assert Translation.resolve_glossary("de-DE", [], fn "de-DE" -> "from settings" end) ==
+               "from settings"
+    end
+
+    test "option absent: passes the target language through, not something else" do
+      assert Translation.resolve_glossary("fr-FR", [], & &1) == "fr-FR"
+    end
+
+    test "option absent: other opts do not disturb the settings path" do
+      opts = [cache: :refresh, source: "X", actor_uuid: "u"]
+
+      assert Translation.resolve_glossary("de-DE", opts, fn _ -> "from settings" end) ==
+               "from settings"
+    end
+
+    test "explicit nil: no glossary AND the settings are never consulted" do
+      # The whole point: a caller deliberately translating without
+      # terminology constraints must not silently get them from settings.
+      assert Translation.resolve_glossary("de-DE", [glossary: nil], never_called()) == nil
+      refute_received {:settings_consulted, _}
+    end
+
+    test "a binary overrides the settings outright" do
+      assert Translation.resolve_glossary("de-DE", [glossary: "narrow terms"], never_called()) ==
+               "narrow terms"
+
+      refute_received {:settings_consulted, _}
+    end
+
+    test "an explicit empty string overrides too — it does not fall back" do
+      # `""` renders as no glossary (see glossary_section/1) but it is still
+      # an explicit caller decision, not an absent option.
+      assert Translation.resolve_glossary("de-DE", [glossary: ""], never_called()) == ""
+      refute_received {:settings_consulted, _}
+    end
+
+    test "a raising settings lookup degrades to no glossary instead of failing the translation" do
+      assert Translation.resolve_glossary("de-DE", [], fn _ -> raise "settings down" end) == nil
+    end
+
+    test "an exiting settings lookup degrades the same way" do
+      assert Translation.resolve_glossary("de-DE", [], fn _ -> exit(:timeout) end) == nil
+    end
+
+    test "the resolved value is what reaches the {{Glossary}} slot" do
+      # Pins the seam between resolution and rendering: a resolved glossary
+      # that never reaches build_variables/4 is the same as no feature.
+      resolved =
+        Translation.resolve_glossary("de-DE", [glossary: "term = Begriff"], never_called())
+
+      refute_received {:settings_consulted, _}
+      variables = Translation.build_variables(%{"title" => "W"}, "en", "de-DE", resolved)
+
+      assert variables["Glossary"] =~ "term = Begriff"
+    end
+  end
+
+  describe "build_variables/4 — {{Glossary}} slot" do
+    @glossary "| EN | de-DE |\n|---|---|\n| wall shelf | Wandregal |"
+
+    test "binds Glossary on every call, so a template slot is never left unbound" do
+      # §9.2's guard reports any `{{...}}` a template leaves unbound. If
+      # `Glossary` were bound only when configured, every translation on an
+      # install without a glossary would report it — turning a real signal
+      # into noise.
+      variables = Translation.build_variables(%{"title" => "Widget"}, "en", "de")
+
+      assert Map.has_key?(variables, "Glossary")
+      assert variables["Glossary"] == ""
+    end
+
+    test "no glossary renders as exactly nothing — not an empty heading" do
+      for absent <- [nil, "", "   ", "\n\t "] do
+        variables = Translation.build_variables(%{"title" => "W"}, "en", "de", absent)
+
+        assert variables["Glossary"] == "",
+               "expected #{inspect(absent)} to render as empty, got #{inspect(variables["Glossary"])}"
+      end
+    end
+
+    test "a configured glossary renders with its own heading and the text verbatim" do
+      variables = Translation.build_variables(%{"title" => "W"}, "en", "de", @glossary)
+
+      assert variables["Glossary"] =~ "TERMINOLOGY"
+      assert variables["Glossary"] =~ "mandatory"
+      assert String.contains?(variables["Glossary"], @glossary)
+    end
+
+    test "the glossary is passed through verbatim — no parsing, no reformatting" do
+      prose = "Always render \"wall shelf\" as \"Wandregal\", never \"Regal\"."
+      variables = Translation.build_variables(%{"title" => "W"}, "en", "de", prose)
+
+      assert String.contains?(variables["Glossary"], prose)
+    end
+
+    test "glossary text is trimmed of surrounding blank space but keeps inner layout" do
+      variables = Translation.build_variables(%{"title" => "W"}, "en", "de", "\n\n a \n b \n\n")
+
+      assert String.contains?(variables["Glossary"], "a \n b")
+      refute String.ends_with?(variables["Glossary"], "\n")
+    end
+
+    test "adding a glossary leaves every other variable untouched" do
+      without = Translation.build_variables(%{"title" => "Widget"}, "en", "de")
+      with_glossary = Translation.build_variables(%{"title" => "Widget"}, "en", "de", @glossary)
+
+      assert Map.delete(without, "Glossary") == Map.delete(with_glossary, "Glossary")
+    end
+
+    test "build_variables/3 still works — the fourth argument is optional" do
+      variables = Translation.build_variables(%{"title" => "Widget"}, "en", "de")
+
+      assert variables["title"] == "Widget"
+      assert variables["SourceLanguage"] == "en"
+      assert variables["SourceFields"] == "---TITLE---\nWidget"
+    end
+
+    test "a non-binary glossary is ignored rather than crashing a translation" do
+      variables =
+        Translation.build_variables(%{"title" => "W"}, "en", "de", %{unexpected: :shape})
+
+      assert variables["Glossary"] == ""
+    end
+  end
+
   describe "build_variables/3 — §9.1 dynamic source section" do
     test "still binds each field verbatim by name (old per-field-slot prompts keep working)" do
       variables = Translation.build_variables(%{"title" => "Widget"}, "en", "es")
