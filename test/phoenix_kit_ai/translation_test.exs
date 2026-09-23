@@ -206,6 +206,83 @@ defmodule PhoenixKitAI.TranslationTest do
     end
   end
 
+  describe "resolve_glossary/3 — the three-valued :glossary option" do
+    # The resolver is injected so these assertions can tell "returned nil"
+    # apart from "was never called" — the distinction the explicit-nil
+    # branch exists to guarantee, and one a real settings lookup cannot
+    # express.
+    # A canary that RAISES would be swallowed by `settings_glossary/2`'s own
+    # rescue, so a mutation that wrongly routes an explicit `nil` into the
+    # settings would still return `nil` and the test would pass. Messages
+    # cannot be rescued: the probe records that it ran, and the assertion is
+    # on the absence of that record.
+    defp never_called do
+      test = self()
+
+      fn lang ->
+        send(test, {:settings_consulted, lang})
+        "leaked from settings"
+      end
+    end
+
+    test "option absent: consults the settings for this target language" do
+      assert Translation.resolve_glossary("de-DE", [], fn "de-DE" -> "from settings" end) ==
+               "from settings"
+    end
+
+    test "option absent: passes the target language through, not something else" do
+      assert Translation.resolve_glossary("fr-FR", [], & &1) == "fr-FR"
+    end
+
+    test "option absent: other opts do not disturb the settings path" do
+      opts = [cache: :refresh, source: "X", actor_uuid: "u"]
+
+      assert Translation.resolve_glossary("de-DE", opts, fn _ -> "from settings" end) ==
+               "from settings"
+    end
+
+    test "explicit nil: no glossary AND the settings are never consulted" do
+      # The whole point: a caller deliberately translating without
+      # terminology constraints must not silently get them from settings.
+      assert Translation.resolve_glossary("de-DE", [glossary: nil], never_called()) == nil
+      refute_received {:settings_consulted, _}
+    end
+
+    test "a binary overrides the settings outright" do
+      assert Translation.resolve_glossary("de-DE", [glossary: "narrow terms"], never_called()) ==
+               "narrow terms"
+
+      refute_received {:settings_consulted, _}
+    end
+
+    test "an explicit empty string overrides too — it does not fall back" do
+      # `""` renders as no glossary (see glossary_section/1) but it is still
+      # an explicit caller decision, not an absent option.
+      assert Translation.resolve_glossary("de-DE", [glossary: ""], never_called()) == ""
+      refute_received {:settings_consulted, _}
+    end
+
+    test "a raising settings lookup degrades to no glossary instead of failing the translation" do
+      assert Translation.resolve_glossary("de-DE", [], fn _ -> raise "settings down" end) == nil
+    end
+
+    test "an exiting settings lookup degrades the same way" do
+      assert Translation.resolve_glossary("de-DE", [], fn _ -> exit(:timeout) end) == nil
+    end
+
+    test "the resolved value is what reaches the {{Glossary}} slot" do
+      # Pins the seam between resolution and rendering: a resolved glossary
+      # that never reaches build_variables/4 is the same as no feature.
+      resolved =
+        Translation.resolve_glossary("de-DE", [glossary: "term = Begriff"], never_called())
+
+      refute_received {:settings_consulted, _}
+      variables = Translation.build_variables(%{"title" => "W"}, "en", "de-DE", resolved)
+
+      assert variables["Glossary"] =~ "term = Begriff"
+    end
+  end
+
   describe "build_variables/4 — {{Glossary}} slot" do
     @glossary "| EN | de-DE |\n|---|---|\n| wall shelf | Wandregal |"
 

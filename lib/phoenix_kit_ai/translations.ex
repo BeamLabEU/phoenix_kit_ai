@@ -233,6 +233,8 @@ defmodule PhoenixKitAI.Translations do
   module reads instead of rebuilding the string.
   """
   @spec glossary_setting_key(String.t() | nil) :: String.t()
+  def glossary_setting_key(target_lang \\ nil)
+
   def glossary_setting_key(nil), do: @glossary_setting_key
 
   def glossary_setting_key(target_lang) when is_binary(target_lang),

@@ -68,6 +68,8 @@ defmodule PhoenixKitAI.Translation do
   # module before the top-level PhoenixKitAI facade is loaded.
   @compile {:no_warn_undefined, [{PhoenixKitAI, :ask_with_prompt, 4}]}
 
+  require Logger
+
   @core_activity_action "core.ai_translation.requested"
 
   @type field_map :: %{required(String.t()) => String.t()}
@@ -227,20 +229,48 @@ defmodule PhoenixKitAI.Translation do
   # The settings read is wrapped: a glossary is an enhancement, and a
   # Settings failure must degrade to "no glossary" rather than fail a
   # translation that would otherwise have succeeded.
-  defp resolve_glossary(target_lang, opts) do
+  # `resolver` is injectable for the same reason `build_variables/4` and
+  # `handle_ai_response/2` are public-for-testing: the three-valued
+  # contract above is the whole feature, and asserting it through a real
+  # settings lookup would need a database and could not distinguish
+  # "returned nil" from "was never called" — which is exactly the
+  # distinction the explicit-`nil` branch has to guarantee.
+  @doc false
+  @spec resolve_glossary(String.t(), keyword(), (String.t() -> String.t() | nil)) ::
+          String.t() | nil
+  def resolve_glossary(target_lang, opts, resolver \\ &PhoenixKitAI.Translations.glossary/1) do
     if Keyword.has_key?(opts, :glossary) do
       Keyword.get(opts, :glossary)
     else
-      settings_glossary(target_lang)
+      settings_glossary(target_lang, resolver)
     end
   end
 
-  defp settings_glossary(target_lang) do
-    PhoenixKitAI.Translations.glossary(target_lang)
+  # A glossary is an enhancement: a Settings failure must not fail a
+  # translation that would otherwise have succeeded, so this stays a broad
+  # catch rather than the narrow type list `Translations.safe_ai/2` uses.
+  # It does NOT stay silent, though — a permanently failing lookup would
+  # otherwise disable the glossary for every translation with nothing
+  # anywhere to say so, and this is precisely where a bug inside
+  # `Translations.glossary/1` (a wrong arity, say) would be swallowed.
+  defp settings_glossary(target_lang, resolver) do
+    resolver.(target_lang)
   rescue
-    _ -> nil
+    exception ->
+      Logger.warning(
+        "AI translation glossary lookup failed for #{inspect(target_lang)}, " <>
+          "continuing without a glossary: #{Exception.message(exception)}"
+      )
+
+      nil
   catch
-    :exit, _ -> nil
+    :exit, reason ->
+      Logger.warning(
+        "AI translation glossary lookup exited for #{inspect(target_lang)}, " <>
+          "continuing without a glossary: #{inspect(reason)}"
+      )
+
+      nil
   end
 
   @doc false
@@ -278,6 +308,15 @@ defmodule PhoenixKitAI.Translation do
   # (§9.1): prompt text that looks like content but means nothing. Binding
   # the header together with the body makes "no glossary" render as exactly
   # nothing.
+  #
+  # Note for future consumers: `Glossary` joins `SourceLanguage`,
+  # `TargetLanguage` and `SourceFields` as a RESERVED variable name. The
+  # merge below is `Map.merge(fields, %{...})`, so a resource field named
+  # exactly `"Glossary"` would be silently overwritten. No adapter's
+  # `source_fields/2` uses that name today (their vocabularies are closed:
+  # name/title/description/summary/seo_*/body/content/label/value), and this
+  # is the same trade-off the three existing reserved names already carry —
+  # but the list is now one longer.
   #
   # `Glossary` is bound on EVERY call, including when it is empty. A
   # variable a template never references costs nothing (rendering
