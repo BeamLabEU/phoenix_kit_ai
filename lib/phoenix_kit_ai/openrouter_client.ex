@@ -650,25 +650,19 @@ defmodule PhoenixKitAI.OpenRouterClient do
   defp lookup_uuid_for_provider(_), do: nil
 
   defp log_lazy_promotion(endpoint, integration_uuid) do
-    if Code.ensure_loaded?(PhoenixKit.Activity) do
-      PhoenixKit.Activity.log(%{
-        action: "integration.legacy_migrated",
-        module: "ai",
-        mode: "auto",
-        resource_type: "endpoint",
-        resource_uuid: endpoint.uuid,
-        metadata: %{
-          "migration_kind" => "reference_migrated",
-          "source" => "lazy_on_read",
-          "integration_uuid" => integration_uuid,
-          "actor_role" => "system"
-        }
-      })
-    end
+    PhoenixKit.Activity.log("ai", "integration.legacy_migrated",
+      mode: "auto",
+      resource_type: "endpoint",
+      resource_uuid: endpoint.uuid,
+      metadata: %{
+        "migration_kind" => "reference_migrated",
+        "source" => "lazy_on_read",
+        "integration_uuid" => integration_uuid,
+        "actor_role" => "system"
+      }
+    )
 
     :ok
-  rescue
-    _ -> :ok
   end
 
   # Warn at most once per endpoint per VM. The legacy fallback path runs

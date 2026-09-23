@@ -377,6 +377,10 @@ defmodule PhoenixKitAI.LegacyApiKeyMigrationTest do
       reloaded = PhoenixKitAI.get_endpoint!(ep.uuid)
       assert reloaded.provider == "openrouter:default"
       assert is_binary(reloaded.integration_uuid)
+
+      assert_activity_logged("integration.legacy_migrated",
+        metadata_has: %{"migration_kind" => "credentials_migrated", "endpoint_count" => 1}
+      )
     end
 
     test "reference sweep pass promotes provider:name → integration_uuid" do
