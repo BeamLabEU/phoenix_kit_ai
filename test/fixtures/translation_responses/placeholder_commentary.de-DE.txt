@@ -1,0 +1,6 @@
+Here's the translation for the provided fields, following all the specified rules:
+
+---TITLE---
+Gelb
+
+(Note: The "Label" field was skipped as it contained a placeholder value `{{label}}` and no real text to translate.)
