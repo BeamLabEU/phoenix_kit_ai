@@ -418,6 +418,12 @@ defmodule PhoenixKitAI.TranslateWorker do
   def classify_reason({:parse_error, {:duplicate_markers, _duplicates}}),
     do: {"parse_error", "duplicate_markers"}
 
+  def classify_reason({:parse_error, {:unexpected_markers, _markers}}),
+    do: {"parse_error", "unexpected_markers"}
+
+  def classify_reason({:parse_error, {:placeholder_echo, _fields}}),
+    do: {"parse_error", "placeholder_echo"}
+
   def classify_reason({:parse_error, _other}), do: {"parse_error", "unclassified"}
   def classify_reason({:ai_error, detail}), do: {"ai_error", classify_ai_detail(detail)}
   def classify_reason(reason) when is_atom(reason), do: {"error", Atom.to_string(reason)}
@@ -478,6 +484,12 @@ defmodule PhoenixKitAI.TranslateWorker do
   # retry always fixes it"; a prompt that structurally can't produce a given
   # marker will just burn all 3 attempts.
   def retryable?({:parse_error, {:missing_fields, _}}), do: true
+
+  # Same footing: a model that turned a heading into a marker, or appended a
+  # note about the prompt, usually answers cleanly on a fresh sample (a retry
+  # refreshes the request cache). The rejected answer is never persisted.
+  def retryable?({:parse_error, {:unexpected_markers, _}}), do: true
+  def retryable?({:parse_error, {:placeholder_echo, _}}), do: true
 
   def retryable?(_), do: false
 

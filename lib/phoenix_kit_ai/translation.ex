@@ -70,6 +70,8 @@ defmodule PhoenixKitAI.Translation do
 
   require Logger
 
+  alias PhoenixKitAI.Prompt
+
   @core_activity_action "core.ai_translation.requested"
 
   @type field_map :: %{required(String.t()) => String.t()}
@@ -384,11 +386,11 @@ defmodule PhoenixKitAI.Translation do
   # plugin. Production callers go through `do_translate/6`.
   def handle_ai_response(%{"choices" => [%{"message" => %{"content" => content}} | _]}, fields)
       when is_binary(content) do
-    parse_response(content, Map.keys(fields))
+    content |> parse_response(Map.keys(fields)) |> reject_placeholder_echo(fields)
   end
 
   def handle_ai_response(response, fields) when is_binary(response) do
-    parse_response(response, Map.keys(fields))
+    response |> parse_response(Map.keys(fields)) |> reject_placeholder_echo(fields)
   end
 
   # §9.6 fix: some providers (observed via OpenRouter, 2026-08-31 run) return
@@ -413,6 +415,34 @@ defmodule PhoenixKitAI.Translation do
     {:error, {:ai_error, {:unexpected_response, other}}}
   end
 
+  # A `{{name}}` placeholder in a translated value that its source value does
+  # not contain came from the prompt, not from the content: the model is
+  # talking about a slot it saw left unbound ("(Note: The "Label" field was
+  # skipped as it contained a placeholder value `{{label}}`…)", observed
+  # trailing a set title on deepseek-chat). Such a note trails the last
+  # field's value with no marker in between, so the parser cannot cut it
+  # off; the value is refused instead. Only placeholders are recognisable
+  # this way — a note that quotes none still passes, which is why the
+  # prompt side (never render an unbound slot) is the actual fix.
+  defp reject_placeholder_echo({:ok, parsed}, fields) do
+    echoed =
+      for {name, value} <- Enum.sort(parsed),
+          echoes_placeholder?(value, Map.get(fields, name)),
+          do: name
+
+    case echoed do
+      [] -> {:ok, parsed}
+      names -> {:error, {:parse_error, {:placeholder_echo, names}}}
+    end
+  end
+
+  defp reject_placeholder_echo(error, _fields), do: error
+
+  defp echoes_placeholder?(value, source) do
+    not_in_source = Prompt.unbound_placeholders(value) -- Prompt.unbound_placeholders(source)
+    not_in_source != []
+  end
+
   @doc """
   Parses a structured `---FIELD_NAME---` response into a field map.
 
@@ -432,6 +462,16 @@ defmodule PhoenixKitAI.Translation do
   can decide whether to retry, fall back to the source value, or
   surface an error to the user — rather than silently persisting a
   half-translated row.
+
+  **Every marker line must be a requested field's, once.** Any other line
+  shaped like a marker — `---MINIATURE_DETAILS---`, `---SIZE AND USABLE
+  SPACE---`, `---Größe---`, or a requested marker repeated — returns
+  `{:error, {:parse_error, {:unexpected_markers, [...]}}}` with the names
+  as emitted. Models turn a value's Markdown headings into such lines;
+  cutting the field at the first one returned a fraction of it, and a
+  shape the boundary did not recognise stayed inside the value. The one
+  tolerated extra section is an echo of an unbound slot (`---TITLE---`
+  followed by nothing but `{{title}}`), which carries no requested content.
 
       iex> Translation.parse_response(
       ...>   "---TITLE---\\nHola\\n---BODY---\\nMundo",
@@ -460,9 +500,11 @@ defmodule PhoenixKitAI.Translation do
       end)
 
     missing = for name <- field_names, not Map.has_key?(parsed, name), do: name
+    unexpected = unexpected_markers(body, Enum.map(upcased, &elem(&1, 1)))
 
     cond do
       map_size(parsed) == 0 -> {:error, {:parse_error, :no_markers}}
+      unexpected != [] -> {:error, {:parse_error, {:unexpected_markers, unexpected}}}
       missing != [] -> {:error, {:parse_error, {:missing_fields, missing}}}
       true -> {:ok, parsed}
     end
@@ -471,6 +513,73 @@ defmodule PhoenixKitAI.Translation do
   defp marker(field) when is_binary(field) do
     field |> String.upcase() |> String.replace(~r/[^A-Z0-9]+/, "_")
   end
+
+  # Why an error and not a repair: the heading a model turned into a marker
+  # is gone from the response — `---MINIATURE_DETAILS---` carries neither
+  # the translated heading text nor its level (`##` vs `###`), so rebuilding
+  # the field would put untranslated, uppercased headings on a translated
+  # page. A retry asks the model again; the worker allows for that.
+  defp unexpected_markers(body, requested) do
+    {unexpected, _seen} =
+      body
+      |> marker_sections()
+      |> Enum.reduce({[], MapSet.new()}, fn {name, text}, {unexpected, seen} ->
+        key = marker(name)
+
+        cond do
+          key in requested and not MapSet.member?(seen, key) ->
+            {unexpected, MapSet.put(seen, key)}
+
+          key not in requested and unbound_slot_echo?(text) ->
+            {unexpected, seen}
+
+          true ->
+            {[name | unexpected], seen}
+        end
+      end)
+
+    unexpected |> Enum.reverse() |> Enum.uniq()
+  end
+
+  # `[{marker_name, section_text}]` in response order. Text before the
+  # first marker (a preface) belongs to no section.
+  defp marker_sections(body) do
+    body
+    |> String.split("\n")
+    |> Enum.reduce([], fn line, sections ->
+      case {marker_line_name(line), sections} do
+        {nil, []} -> []
+        {nil, [{name, lines} | rest]} -> [{name, [line | lines]} | rest]
+        {name, _} -> [{name, []} | sections]
+      end
+    end)
+    |> Enum.reverse()
+    |> Enum.map(fn {name, lines} -> {name, lines |> Enum.reverse() |> Enum.join("\n")} end)
+  end
+
+  # A line that is nothing but a marker, in any spelling a model produces:
+  # underscores, spaces, digits, either case, any script, extra dashes.
+  # It has to contain a letter or digit, so a Markdown rule (`---`) or a
+  # table separator (`|---|`) is content.
+  @marker_line ~r/\A\s*-{3,}\s*([^\s-](?:.*[^\s-])?)\s*-{3,}\s*\z/u
+  @marker_name_char ~r/[\p{L}\p{N}]/u
+  # What `extract_section/2` stops a capture at: a requested-format marker
+  # opening a line, even with text after it. Every such line has to be
+  # accounted for, or the capture before it is cut short unnoticed.
+  @boundary_line ~r/\A---([A-Z0-9_]+)---/i
+
+  defp marker_line_name(line) do
+    whole_line = Regex.run(@marker_line, line, capture: :all_but_first)
+    boundary = Regex.run(@boundary_line, line, capture: :all_but_first)
+
+    cond do
+      whole_line && Regex.match?(@marker_name_char, hd(whole_line)) -> hd(whole_line)
+      boundary -> hd(boundary)
+      true -> nil
+    end
+  end
+
+  defp unbound_slot_echo?(text), do: Regex.match?(~r/\A\{\{\w+\}\}\z/, String.trim(text))
 
   # Reasoning / "thinking" models (DeepSeek-R1, QwQ, etc.) wrap their
   # chain-of-thought in `<think>…</think>` (also `<thinking>`/`<reasoning>`/
