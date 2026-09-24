@@ -1,7 +1,7 @@
 defmodule PhoenixKitAI.MixProject do
   use Mix.Project
 
-  @version "0.23.2"
+  @version "0.24.0"
   @source_url "https://github.com/BeamLabEU/phoenix_kit_ai"
 
   def project do
@@ -139,7 +139,10 @@ defmodule PhoenixKitAI.MixProject do
       # 1.7.214+ required: Scope.can_access_admin_area?/1 (the rename of the
       # now-`@deprecated` Scope.admin?/1) — an older core has no such function,
       # so this is an UndefinedFunctionError at runtime, not a warning.
-      pk_dep(:phoenix_kit, "~> 2.0"),
+      # 2.38+ required: `PhoenixKit.Activity.log/3` and `PhoenixKitWeb.Actor`
+      # carry every activity entry and the acting user — an older core raises
+      # UndefinedFunctionError on each endpoint/prompt mutation.
+      pk_dep(:phoenix_kit, "~> 2.38"),
 
       # LiveView is needed for the admin pages.
       {:phoenix_live_view, "~> 1.1"},

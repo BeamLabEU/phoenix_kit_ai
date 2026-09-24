@@ -126,8 +126,9 @@ defmodule PhoenixKitAI.TranslationSweep do
 
   @doc """
   A tick: schedules the next one, then sweeps. For the worker's
-  `perform/1`; always `:ok` — a failed tick is not worth a retry when its
-  successor is already waiting.
+  `perform/1`. A tick that ends in a stop reason is still `:ok` — not
+  worth a retry when its successor is already waiting; one that raises
+  fails its job (logged by Oban) with the successor already in place.
   """
   @spec perform(module()) :: :ok
   def perform(source) do
@@ -551,7 +552,14 @@ defmodule PhoenixKitAI.TranslationSweep do
     |> Map.update!(:batch, &limit/1)
     |> Map.update!(:max_in_flight, &limit/1)
     |> Map.put_new_lazy(:source_language, &Multilang.primary_language/0)
+    |> Map.update!(:interval_minutes, &interval/1)
   end
+
+  # A zero, negative or unreadable interval (a hand-edited setting) would
+  # schedule each tick for "now" — a chain that never rests — so the
+  # shortest one is a minute.
+  defp interval(minutes) when is_integer(minutes) and minutes >= 1, do: minutes
+  defp interval(_minutes), do: 1
 
   defp schedule_failed(source, error) do
     Logger.warning(

@@ -1,3 +1,39 @@
+## 0.24.0 - 2026-09-24
+
+### Added
+
+- **`PhoenixKitAI.TranslationSweep`** (PR #29). This is the shared engine
+  behind a module's background AI-translation top-up. The module keeps its
+  own Oban worker and implements the callbacks (`sweep_key/0`,
+  `sweep_settings/0`, `sweep_resource_types/0`, `sweep_candidates/2`,
+  `sweep_prompts/0`, and optionally `sweep_ready/1`). The engine handles the
+  rest:
+  - the self-rescheduling chain, with one waiting tick per worker
+  - the gates
+  - the `batch` and `max_in_flight` caps
+  - skipping pairs that already have a job in flight
+  - a 24-hour back-off for a pair whose latest job was discarded
+  - the last outcome, stored under
+    `ai_translation_sweep_last_run_<sweep_key>` and written only when it
+    changes
+
+  `reschedule/1`, `run_tick/2` (`:manual` skips only the automatic switch),
+  `status/1` and `last_run/1` are there for a settings panel.
+
+### Changed
+
+- **Requires `phoenix_kit` 2.38 or later.** Activity entries now go through
+  core's never-raising `PhoenixKit.Activity.log/3`, and the acting user is
+  read through `PhoenixKitWeb.Actor`, which checks the scope first and then
+  the current user. The module's own guard/rescue wrappers are removed.
+- The legacy API-key migration test now asserts its activity entry.
+
+### Fixed
+
+- A sweep interval of zero, a negative number or an unreadable value is
+  treated as one minute. Before, each tick scheduled the next one to run
+  immediately, so the chain never paused.
+
 ## 0.23.2 - 2026-09-23
 
 ### Added

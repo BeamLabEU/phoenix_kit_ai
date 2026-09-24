@@ -325,6 +325,15 @@ defmodule PhoenixKitAI.TranslationSweepTest do
       assert TranslationSweep.next_tick_at(Source)
     end
 
+    test "an interval below a minute schedules the tick a minute out, never now" do
+      for minutes <- [0, -5, nil] do
+        TestRepo.delete_all(Oban.Job)
+        Process.put(:sweep_settings, %{interval_minutes: minutes})
+        assert {:ok, _} = TranslationSweep.ensure_scheduled(Source)
+        assert DateTime.diff(TranslationSweep.next_tick_at(Source), DateTime.utc_now()) in 50..60
+      end
+    end
+
     test "a tick schedules its successor before sweeping" do
       Process.put(:sweep_settings, %{enabled?: false})
       assert TranslationSweep.perform(Source) == :ok

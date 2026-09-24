@@ -13,8 +13,9 @@ is no hardcoded provider whitelist. Implements the `PhoenixKit.Module`
 behaviour for auto-discovery by the host application; it is a library, and the
 host supplies endpoint and router (`config/` exists only for tests).
 
-- **Depends on:** `phoenix_kit` `~> 2.0` (Hex). No sibling `phoenix_kit_*`
-  deps. Non-kit deps: `phoenix_live_view` `~> 1.1`, `gettext` `~> 1.0`, `xai`
+- **Depends on:** `phoenix_kit` `~> 2.38` (Hex; the floor is where
+  `PhoenixKit.Activity.log/3` and `PhoenixKitWeb.Actor` ship). No sibling
+  `phoenix_kit_*` deps. Non-kit deps: `phoenix_live_view` `~> 1.1`, `gettext` `~> 1.0`, `xai`
   `~> 0.2` (realtime voice only — `Xai.Realtime`; `gun`/`mint` are deliberately
   not added so cowlib's CVE surface stays out of the tree), `rustler`
   (optional, lets the transitive `mdex_native` NIF source-build), plus
@@ -466,10 +467,10 @@ Test database `phoenix_kit_ai_test`.
   (`async: false`); the LiveView-mounted one is tagged `:destructive` and needs
   `--include destructive`.
 - Conformance tests guard two cross-repo invariants:
-  `core_pin_conformance_test.exs` rejects a three-segment `~> 2.0.x` core pin
+  `test/core_pin_conformance_test.exs` rejects a three-segment `~> 2.x.y` core pin
   (which would exclude every later core minor and break consumers, never this
   repo) and a path override reaching a commit;
-  `schema_prefix_conformance_test.exs` asserts every table-backed schema uses
+  `test/schema_prefix_conformance_test.exs` asserts every table-backed schema uses
   `PhoenixKit.SchemaPrefix`.
 - `test/phoenix_kit_ai_test.exs` covers the behaviour callbacks: `module_key/0`,
   `module_name/0`, `version/0`, `admin_tabs/0`, `css_sources/0`, `js_sources/0`,
