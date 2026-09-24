@@ -1,3 +1,25 @@
+## 0.24.1 - 2026-09-24
+
+### Fixed
+
+- **Translation parsing refuses marker lines that nobody asked for** (PR #31).
+  Models sometimes turn a field's Markdown headings into marker lines
+  (`---MINIATURE_DETAILS---`, `---SIZE AND USABLE SPACE---`) or repeat a
+  requested marker. The first case used to cut the field short at that
+  line; the second left the marker lines inside the value. Both now
+  return `{:parse_error, {:unexpected_markers, names}}`. A section
+  holding nothing but an unbound `{{slot}}` is still dropped silently.
+- A translated value that quotes a `{{placeholder}}` its source does not
+  contain (a model's note about an unbound prompt slot) returns
+  `{:parse_error, {:placeholder_echo, fields}}` instead of being persisted
+  with the note appended.
+- `TranslateWorker` retries both new errors, like `missing_fields`, and
+  classifies them for the activity log.
+- Content that carries marker-shaped lines of its own
+  (`----- Original Message -----`, `--- OR ---`) still translates. The
+  response may contain as many such lines as the source values do.
+  `Translation.parse_response/3` takes the source values as `sources:`.
+
 ## 0.24.0 - 2026-09-24
 
 ### Added

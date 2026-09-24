@@ -182,6 +182,42 @@ defmodule PhoenixKitAI.TranslationMarkdownSectionsTest do
     end
   end
 
+  describe "marker-shaped lines the source carries" do
+    @source %{"body" => "Hi Anna,\n\n----- Original Message -----\nFrom: Bob"}
+
+    test "come back translated and parse as content" do
+      response = "---BODY---\nHallo Anna,\n\n----- Ursprüngliche Nachricht -----\nVon: Bob"
+
+      assert {:ok, %{"body" => body}} = Translation.handle_ai_response(response, @source)
+      assert body =~ "----- Ursprüngliche Nachricht -----"
+    end
+
+    test "allow no more of them than the source has" do
+      response =
+        "---BODY---\nHallo Anna,\n\n--- GRUSS ---\n\n----- Ursprüngliche Nachricht -----\nVon: Bob"
+
+      assert {:error, {:parse_error, {:unexpected_markers, ["Ursprüngliche Nachricht"]}}} =
+               Translation.handle_ai_response(response, @source)
+    end
+
+    test "never cover a line the parser would cut the field at" do
+      # `---NOTE---` stops `extract_section/2` whatever its origin, so the
+      # value before it would be a fraction of the field.
+      source = %{"body" => "Text\n---NOTE---\nmore"}
+      response = "---BODY---\nText\n---NOTE---\nmehr"
+
+      assert {:error, {:parse_error, {:unexpected_markers, ["NOTE"]}}} =
+               Translation.handle_ai_response(response, source)
+    end
+
+    test "can be passed to parse_response/3 as a list" do
+      assert {:ok, %{"body" => "Text\n--- ODER ---\nmehr"}} =
+               Translation.parse_response("---BODY---\nText\n--- ODER ---\nmehr", ["body"],
+                 sources: ["Text\n--- OR ---\nmore"]
+               )
+    end
+  end
+
   describe "placeholder echo" do
     test "a placeholder the source itself contains is content, not an echo" do
       response = "---BODY---\nVerwenden Sie {{name}} im Betreff."

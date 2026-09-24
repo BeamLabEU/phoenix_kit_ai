@@ -386,11 +386,15 @@ defmodule PhoenixKitAI.Translation do
   # plugin. Production callers go through `do_translate/6`.
   def handle_ai_response(%{"choices" => [%{"message" => %{"content" => content}} | _]}, fields)
       when is_binary(content) do
-    content |> parse_response(Map.keys(fields)) |> reject_placeholder_echo(fields)
+    content
+    |> parse_response(Map.keys(fields), sources: fields)
+    |> reject_placeholder_echo(fields)
   end
 
   def handle_ai_response(response, fields) when is_binary(response) do
-    response |> parse_response(Map.keys(fields)) |> reject_placeholder_echo(fields)
+    response
+    |> parse_response(Map.keys(fields), sources: fields)
+    |> reject_placeholder_echo(fields)
   end
 
   # §9.6 fix: some providers (observed via OpenRouter, 2026-08-31 run) return
@@ -473,6 +477,13 @@ defmodule PhoenixKitAI.Translation do
   tolerated extra section is an echo of an unbound slot (`---TITLE---`
   followed by nothing but `{{title}}`), which carries no requested content.
 
+  Content can hold marker-shaped lines of its own (`----- Original Message
+  -----`, `--- OR ---`). Pass the source values as `sources:` (a field map
+  or a list of strings) and the response may carry as many lines of that
+  kind as the sources do — only the kind `extract_section/2` does not stop
+  at (spaces, non-ASCII, extra dashes), since a `---WORD---` line would cut
+  the field short whatever its origin. `handle_ai_response/2` passes them.
+
       iex> Translation.parse_response(
       ...>   "---TITLE---\\nHola\\n---BODY---\\nMundo",
       ...>   ["title", "body"]
@@ -485,9 +496,10 @@ defmodule PhoenixKitAI.Translation do
       iex> Translation.parse_response(":shrug:", ["title"])
       {:error, {:parse_error, :no_markers}}
   """
-  @spec parse_response(String.t(), [String.t()]) ::
+  @spec parse_response(String.t(), [String.t()], keyword()) ::
           {:ok, field_map()} | {:error, {:parse_error, term()}}
-  def parse_response(response, field_names) when is_binary(response) and is_list(field_names) do
+  def parse_response(response, field_names, opts \\ [])
+      when is_binary(response) and is_list(field_names) do
     upcased = Enum.map(field_names, &{&1, marker(&1)})
     body = response |> strip_reasoning() |> String.trim()
 
@@ -500,7 +512,8 @@ defmodule PhoenixKitAI.Translation do
       end)
 
     missing = for name <- field_names, not Map.has_key?(parsed, name), do: name
-    unexpected = unexpected_markers(body, Enum.map(upcased, &elem(&1, 1)))
+    content_lines = opts |> Keyword.get(:sources, []) |> content_marker_lines()
+    unexpected = unexpected_markers(body, Enum.map(upcased, &elem(&1, 1)), content_lines)
 
     cond do
       map_size(parsed) == 0 -> {:error, {:parse_error, :no_markers}}
@@ -519,42 +532,63 @@ defmodule PhoenixKitAI.Translation do
   # the translated heading text nor its level (`##` vs `###`), so rebuilding
   # the field would put untranslated, uppercased headings on a translated
   # page. A retry asks the model again; the worker allows for that.
-  defp unexpected_markers(body, requested) do
-    {unexpected, _seen} =
+  #
+  # `content_lines` is how many whole-line markers the source values carry
+  # themselves; that many in the response are their translations. Only the
+  # `:line` kind qualifies: `extract_section/2` reads past it, so it stays
+  # in the value exactly as it did in the source.
+  defp unexpected_markers(body, requested, content_lines) do
+    {unexpected, _seen, _content_lines} =
       body
       |> marker_sections()
-      |> Enum.reduce({[], MapSet.new()}, fn {name, text}, {unexpected, seen} ->
-        key = marker(name)
+      |> Enum.reduce({[], MapSet.new(), content_lines}, fn
+        {_name, :line, _text}, {unexpected, seen, left} when left > 0 ->
+          {unexpected, seen, left - 1}
 
-        cond do
-          key in requested and not MapSet.member?(seen, key) ->
-            {unexpected, MapSet.put(seen, key)}
+        {name, _kind, text}, {unexpected, seen, left} ->
+          key = marker(name)
 
-          key not in requested and unbound_slot_echo?(text) ->
-            {unexpected, seen}
+          cond do
+            key in requested and not MapSet.member?(seen, key) ->
+              {unexpected, MapSet.put(seen, key), left}
 
-          true ->
-            {[name | unexpected], seen}
-        end
+            key not in requested and unbound_slot_echo?(text) ->
+              {unexpected, seen, left}
+
+            true ->
+              {[name | unexpected], seen, left}
+          end
       end)
 
     unexpected |> Enum.reverse() |> Enum.uniq()
   end
 
-  # `[{marker_name, section_text}]` in response order. Text before the
-  # first marker (a preface) belongs to no section.
+  # `[{marker_name, kind, section_text}]` in response order. Text before
+  # the first marker (a preface) belongs to no section.
   defp marker_sections(body) do
     body
     |> String.split("\n")
     |> Enum.reduce([], fn line, sections ->
-      case {marker_line_name(line), sections} do
+      case {marker_line(line), sections} do
         {nil, []} -> []
-        {nil, [{name, lines} | rest]} -> [{name, [line | lines]} | rest]
-        {name, _} -> [{name, []} | sections]
+        {nil, [{name, kind, lines} | rest]} -> [{name, kind, [line | lines]} | rest]
+        {{name, kind}, _} -> [{name, kind, []} | sections]
       end
     end)
     |> Enum.reverse()
-    |> Enum.map(fn {name, lines} -> {name, lines |> Enum.reverse() |> Enum.join("\n")} end)
+    |> Enum.map(fn {name, kind, lines} ->
+      {name, kind, lines |> Enum.reverse() |> Enum.join("\n")}
+    end)
+  end
+
+  defp content_marker_lines(sources) when is_map(sources),
+    do: sources |> Map.values() |> content_marker_lines()
+
+  defp content_marker_lines(sources) when is_list(sources) do
+    sources
+    |> Enum.filter(&is_binary/1)
+    |> Enum.flat_map(&String.split(&1, "\n"))
+    |> Enum.count(&match?({_name, :line}, marker_line(&1)))
   end
 
   # A line that is nothing but a marker, in any spelling a model produces:
@@ -568,13 +602,15 @@ defmodule PhoenixKitAI.Translation do
   # accounted for, or the capture before it is cut short unnoticed.
   @boundary_line ~r/\A---([A-Z0-9_]+)---/i
 
-  defp marker_line_name(line) do
+  # `{name, :boundary}` for a line `extract_section/2` stops at,
+  # `{name, :line}` for a marker-shaped line it reads past, nil otherwise.
+  defp marker_line(line) do
     whole_line = Regex.run(@marker_line, line, capture: :all_but_first)
     boundary = Regex.run(@boundary_line, line, capture: :all_but_first)
 
     cond do
-      whole_line && Regex.match?(@marker_name_char, hd(whole_line)) -> hd(whole_line)
-      boundary -> hd(boundary)
+      boundary -> {hd(boundary), :boundary}
+      whole_line && Regex.match?(@marker_name_char, hd(whole_line)) -> {hd(whole_line), :line}
       true -> nil
     end
   end
