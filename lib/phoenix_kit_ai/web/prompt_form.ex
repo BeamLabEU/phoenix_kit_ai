@@ -30,7 +30,10 @@ defmodule PhoenixKitAI.Web.PromptForm do
       |> assign(:extracted_variables, [])
       |> assign(:prompt, nil)
       |> assign(:form, to_form(AI.change_prompt(%Prompt{})))
-      |> assign(:page_title, gettext("AI Prompt"))
+      |> assign(:page_section, gettext("AI"))
+      |> assign(:page_section_path, PhoenixKitAI.Routes.ai_path())
+      |> assign(:page_crumbs, [prompts_crumb()])
+      |> assign(:page_title, gettext("New prompt"))
       |> assign(
         :page_subtitle,
         gettext("Create reusable prompts with variable substitution")
@@ -44,7 +47,8 @@ defmodule PhoenixKitAI.Web.PromptForm do
     changeset = AI.change_prompt(%Prompt{})
 
     socket
-    |> assign(:page_title, gettext("New AI Prompt"))
+    |> assign(:page_crumbs, [prompts_crumb()])
+    |> assign(:page_title, gettext("New prompt"))
     |> assign(:prompt, nil)
     |> assign(:form, to_form(changeset))
   end
@@ -59,12 +63,19 @@ defmodule PhoenixKitAI.Web.PromptForm do
       prompt ->
         changeset = AI.change_prompt(prompt)
 
+        # The prompt has no page of its own (the list is it), so its
+        # crumb is text; the title is the action only.
         socket
-        |> assign(:page_title, gettext("Edit AI Prompt"))
+        |> assign(:page_crumbs, [prompts_crumb(), %{label: prompt.name}])
+        |> assign(:page_title, gettext("Edit"))
         |> assign(:prompt, prompt)
         |> assign(:form, to_form(changeset))
         |> assign(:extracted_variables, prompt.variables || [])
     end
+  end
+
+  defp prompts_crumb do
+    %{label: gettext("Prompts"), path: PhoenixKitAI.Routes.ai_path() <> "/prompts"}
   end
 
   @impl true

@@ -57,7 +57,10 @@ defmodule PhoenixKitAI.Web.Prompts do
     socket =
       socket
       |> assign(:current_path, current_path)
-      |> assign(:page_title, gettext("AI Prompts"))
+      |> assign(:page_section, gettext("AI"))
+      |> assign(:page_section_path, PhoenixKitAI.Routes.ai_path())
+      |> assign(:page_crumbs, [])
+      |> assign(:page_title, gettext("Prompts"))
       |> assign(:page_subtitle, gettext("Reusable prompt templates with variable substitution"))
       |> assign(:project_title, project_title)
       |> assign(:prompts, [])

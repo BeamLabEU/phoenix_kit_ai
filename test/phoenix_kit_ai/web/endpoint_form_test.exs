@@ -13,8 +13,10 @@ defmodule PhoenixKitAI.Web.EndpointFormTest do
       # in PR #1's review.
       assert html =~ ~r/<button[^>]+type="submit"[^>]+phx-disable-with/
 
-      # Page heading and form structure should be present.
-      assert html =~ "New AI Endpoint"
+      # Header trail (AI / Endpoints / New endpoint) and form structure.
+      assert html =~ ~r{<a href="[^"]*/admin/ai">AI</a>}
+      assert html =~ ~r{<a href="[^"]*/admin/ai/endpoints">Endpoints</a>}
+      assert html =~ "<h1>New endpoint</h1>"
       assert html =~ ~s(name="endpoint[name]")
     end
   end
@@ -26,7 +28,10 @@ defmodule PhoenixKitAI.Web.EndpointFormTest do
 
       {:ok, _view, html} = live(conn, "/en/admin/ai/endpoints/#{endpoint.uuid}/edit")
 
-      assert html =~ "Editable"
+      # Header trail: AI / Endpoints / <name as text> / Edit.
+      assert html =~ ~r{<a href="[^"]*/admin/ai/endpoints">Endpoints</a>}
+      assert html =~ ~s(<span class="crumb"><span>Editable</span></span>)
+      assert html =~ "<h1>Edit</h1>"
       assert html =~ ~r/<button[^>]+type="submit"[^>]+phx-disable-with/
     end
 

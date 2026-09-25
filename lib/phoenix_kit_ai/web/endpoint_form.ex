@@ -276,7 +276,10 @@ defmodule PhoenixKitAI.Web.EndpointForm do
       |> assign(:selected_uuids, [])
       |> assign(:integration_connected, false)
       |> assign(:form, to_form(AI.change_endpoint(%Endpoint{})))
-      |> assign(:page_title, gettext("AI Endpoint"))
+      |> assign(:page_section, gettext("AI"))
+      |> assign(:page_section_path, PhoenixKitAI.Routes.ai_path())
+      |> assign(:page_crumbs, [endpoints_crumb()])
+      |> assign(:page_title, gettext("New endpoint"))
       |> assign(:page_subtitle, new_endpoint_subtitle())
       |> assign(:loaded_id, :unloaded)
 
@@ -290,7 +293,8 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     # would mask "no integration set" with "an integration is set" and
     # confuse anyone scanning the form to verify wiring.
     socket
-    |> assign(:page_title, gettext("New AI Endpoint"))
+    |> assign(:page_crumbs, [endpoints_crumb()])
+    |> assign(:page_title, gettext("New endpoint"))
     |> assign(:page_subtitle, new_endpoint_subtitle())
     |> assign(:endpoint, nil)
     |> assign(:form, to_form(AI.change_endpoint(%Endpoint{})))
@@ -314,8 +318,11 @@ defmodule PhoenixKitAI.Web.EndpointForm do
         connected = active && Integrations.connected?(active)
         selected_uuids = picker_selected_uuids(active, orphaned_integration_uuid)
 
+        # The endpoint has no page of its own (the list is it), so its
+        # crumb is text; the title is the action only.
         socket
-        |> assign(:page_title, gettext("Edit AI Endpoint"))
+        |> assign(:page_crumbs, [endpoints_crumb(), %{label: endpoint.name}])
+        |> assign(:page_title, gettext("Edit"))
         |> assign(:page_subtitle, gettext("Update your AI endpoint configuration"))
         |> assign(:endpoint, endpoint)
         |> assign(:form, to_form(changeset))
@@ -326,6 +333,10 @@ defmodule PhoenixKitAI.Web.EndpointForm do
         |> assign(:model_type, model_type_for(endpoint.model))
         |> maybe_fetch_models_on_load(connected)
     end
+  end
+
+  defp endpoints_crumb do
+    %{label: gettext("Endpoints"), path: PhoenixKitAI.Routes.ai_path() <> "/endpoints"}
   end
 
   # Kept as a function (not a module attribute) so `gettext/1` sees a

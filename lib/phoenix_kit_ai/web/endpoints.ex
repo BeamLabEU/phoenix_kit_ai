@@ -63,12 +63,14 @@ defmodule PhoenixKitAI.Web.Endpoints do
   # `handle_params/3` on every navigation so the shared breadcrumb bar
   # never shows stale text after switching tabs (unlike @page_title,
   # which used to be set once in mount/3 and never touched again).
+  # The header bar draws the trail (`Admin Panel / AI / Endpoints`) from
+  # `page_section` + `page_title`, so the title names this page only.
   defp tab_title_and_subtitle("usage") do
-    {gettext("AI Usage"), gettext("Monitor API requests, token usage, and costs")}
+    {gettext("Usage"), gettext("Monitor API requests, token usage, and costs")}
   end
 
   defp tab_title_and_subtitle(_tab) do
-    {gettext("AI Endpoints"),
+    {gettext("Endpoints"),
      gettext("Artificial intelligence — manage provider endpoints and API configurations")}
   end
 
@@ -94,6 +96,9 @@ defmodule PhoenixKitAI.Web.Endpoints do
     socket =
       socket
       |> assign(:current_path, current_path)
+      |> assign(:page_section, gettext("AI"))
+      |> assign(:page_section_path, PhoenixKitAI.Routes.ai_path())
+      |> assign(:page_crumbs, [])
       |> assign(:page_title, page_title)
       |> assign(:page_subtitle, page_subtitle)
       |> assign(:project_title, project_title)

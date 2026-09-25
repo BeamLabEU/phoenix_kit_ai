@@ -104,7 +104,7 @@ defmodule PhoenixKitAI.Web.PromptsTest do
           send(view.pid, {:something_we_dont_care_about, %{}, %{}})
 
           html = render(view)
-          assert html =~ "AI Prompts"
+          assert html =~ "<h1>Prompts</h1>"
         end)
 
       assert log =~ "[PhoenixKitAI.Web.Prompts] unhandled handle_info"
