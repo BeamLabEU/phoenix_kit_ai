@@ -291,7 +291,7 @@ defmodule PhoenixKitAI.Web.EndpointsTest do
           # page actually rendered (vs. is_binary which is true for any
           # error page too) AND that handle_info didn't break the LV.
           html = render(view)
-          assert html =~ "AI Endpoints"
+          assert html =~ "<h1>Endpoints</h1>"
         end)
 
       # Pin the catch-all's Logger.debug — proves this branch fired

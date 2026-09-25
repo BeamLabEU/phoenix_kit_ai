@@ -6,7 +6,9 @@ defmodule PhoenixKitAI.Web.PlaygroundTest do
   describe "mount" do
     test "renders the playground heading + configuration card", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/en/admin/ai/playground")
-      assert html =~ "AI Playground"
+      # Header trail: section AI -> /admin/ai, title = this page only.
+      assert html =~ ~r{<a href="[^"]*/admin/ai">AI</a>}
+      assert html =~ "<h1>Playground</h1>"
       assert html =~ "Configuration"
     end
 
@@ -58,7 +60,7 @@ defmodule PhoenixKitAI.Web.PlaygroundTest do
           send(view.pid, {:something_we_dont_care_about, %{}, %{}})
 
           html = render(view)
-          assert html =~ "AI Playground"
+          assert html =~ "<h1>Playground</h1>"
         end)
 
       assert log =~ "[PhoenixKitAI.Web.Playground] unhandled handle_info"

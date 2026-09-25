@@ -16,21 +16,6 @@ msgstr ""
 msgid "(taking longer than usual — the provider may be slow)"
 msgstr "(võtab tavapärasest kauem aega — teenusepakkuja võib olla aeglane)"
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:71
-#, elixir-autogen, elixir-format
-msgid "AI Endpoints"
-msgstr "AI lõpp-punktid"
-
-#: lib/phoenix_kit_ai/web/playground.ex:51
-#, elixir-autogen, elixir-format
-msgid "AI Playground"
-msgstr "AI liivakast"
-
-#: lib/phoenix_kit_ai/web/prompts.ex:60
-#, elixir-autogen, elixir-format
-msgid "AI Prompts"
-msgstr "AI promptid"
-
 #: lib/phoenix_kit_ai/components/ai_translate.ex:96
 #, elixir-autogen, elixir-format
 msgid "AI Translate"
@@ -41,14 +26,9 @@ msgstr "AI tõlge"
 msgid "AI Translation"
 msgstr "AI tõlge"
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:67
-#, elixir-autogen, elixir-format
-msgid "AI Usage"
-msgstr "AI kasutus"
-
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:416
-#: lib/phoenix_kit_ai/web/playground.ex:126
-#: lib/phoenix_kit_ai/web/prompt_form.ex:97
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:427
+#: lib/phoenix_kit_ai/web/playground.ex:129
+#: lib/phoenix_kit_ai/web/prompt_form.ex:108
 #, elixir-autogen, elixir-format
 msgid "AI module is not enabled"
 msgstr "AI moodul ei ole lubatud"
@@ -255,7 +235,7 @@ msgstr "Kopeeri"
 msgid "Cost"
 msgstr "Maksumus"
 
-#: lib/phoenix_kit_ai/web/playground.ex:359
+#: lib/phoenix_kit_ai/web/playground.ex:362
 #, elixir-autogen, elixir-format
 msgid "Could not connect to xAI realtime voice"
 msgstr "xAI reaalajas hääle ühendus ebaõnnestus"
@@ -291,7 +271,7 @@ msgstr "Loo esimene prompt"
 msgid "Create Prompt"
 msgstr "Loo prompt"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:334
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:345
 #, elixir-autogen, elixir-format
 msgid "Create a new AI endpoint with provider credentials, model selection, and parameters"
 msgstr "Loo uus AI lõpp-punkt: teenusepakkuja andmed, mudeli valik ja parameetrid"
@@ -306,7 +286,7 @@ msgstr "Loo see"
 msgid "Create reusable prompt templates with variable substitution."
 msgstr "Loo korduvkasutatavad promptmallid muutujate asendusega."
 
-#: lib/phoenix_kit_ai/web/prompt_form.ex:36
+#: lib/phoenix_kit_ai/web/prompt_form.ex:39
 #, elixir-autogen, elixir-format
 msgid "Create reusable prompts with variable substitution"
 msgstr "Loo korduvkasutatavad promptid muutujate asendusega"
@@ -463,8 +443,10 @@ msgstr "Lohista, et muuta järjekorda"
 msgid "Each language is saved automatically the moment it finishes, so it's fine to navigate away or keep editing other fields — nothing will be lost."
 msgstr "Iga keel salvestatakse automaatselt kohe pärast valmimist — võid rahulikult lehelt lahkuda või teisi välju muuta, midagi ei lähe kaduma."
 
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:325
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:179
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:334
+#: lib/phoenix_kit_ai/web/prompt_form.ex:70
 #: lib/phoenix_kit_ai/web/prompts.html.heex:109
 #: lib/phoenix_kit_ai/web/prompts.html.heex:191
 #, elixir-autogen, elixir-format
@@ -507,17 +489,17 @@ msgstr "Lubatud"
 msgid "Endpoint"
 msgstr "Lõpp-punkt"
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:321
+#: lib/phoenix_kit_ai/web/endpoints.ex:326
 #, elixir-autogen, elixir-format
 msgid "Endpoint deleted"
 msgstr "Lõpp-punkt kustutatud"
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:298
+#: lib/phoenix_kit_ai/web/endpoints.ex:303
 #, elixir-autogen, elixir-format
 msgid "Endpoint disabled"
 msgstr "Lõpp-punkt keelatud"
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:297
+#: lib/phoenix_kit_ai/web/endpoints.ex:302
 #, elixir-autogen, elixir-format
 msgid "Endpoint enabled"
 msgstr "Lõpp-punkt lubatud"
@@ -533,7 +515,7 @@ msgid "Endpoint is disabled"
 msgstr "Lõpp-punkt on keelatud"
 
 #: lib/phoenix_kit_ai/errors.ex:36
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:306
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:310
 #, elixir-autogen, elixir-format
 msgid "Endpoint not found"
 msgstr "Lõpp-punkti ei leitud"
@@ -564,22 +546,22 @@ msgstr "Viga"
 msgid "Existing translations in every non-primary language will be overwritten on completion."
 msgstr "Valmimisel kirjutatakse kõigi mitte-põhikeelte olemasolevad tõlked üle."
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:324
+#: lib/phoenix_kit_ai/web/endpoints.ex:329
 #, elixir-autogen, elixir-format
 msgid "Failed to delete endpoint"
 msgstr "Lõpp-punkti kustutamine ebaõnnestus"
 
-#: lib/phoenix_kit_ai/web/prompts.ex:135
+#: lib/phoenix_kit_ai/web/prompts.ex:138
 #, elixir-autogen, elixir-format
 msgid "Failed to delete prompt"
 msgstr "Prompti kustutamine ebaõnnestus"
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:306
+#: lib/phoenix_kit_ai/web/endpoints.ex:311
 #, elixir-autogen, elixir-format
 msgid "Failed to update endpoint"
 msgstr "Lõpp-punkti uuendamine ebaõnnestus"
 
-#: lib/phoenix_kit_ai/web/prompts.ex:119
+#: lib/phoenix_kit_ai/web/prompts.ex:122
 #, elixir-autogen, elixir-format
 msgid "Failed to update prompt"
 msgstr "Prompti uuendamine ebaõnnestus"
@@ -804,7 +786,7 @@ msgstr "Mudeli tüüp"
 msgid "Model not found"
 msgstr "Mudelit ei leitud"
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:67
+#: lib/phoenix_kit_ai/web/endpoints.ex:69
 #, elixir-autogen, elixir-format
 msgid "Monitor API requests, token usage, and costs"
 msgstr "Jälgi API päringuid, tokenite kasutust ja kulusid"
@@ -878,7 +860,7 @@ msgid "No integration"
 msgstr "Integratsioon puudub"
 
 #: lib/phoenix_kit_ai/errors.ex:69
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:1074
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:1085
 #, elixir-autogen, elixir-format
 msgid "No integration configured for this endpoint. Set up the API key in Settings → Integrations."
 msgstr "Sellele lõpp-punktile pole integratsiooni seadistatud. Seadista API võti jaotises „Seaded → Integratsioonid“."
@@ -976,11 +958,11 @@ msgstr "Vali ülal integratsioon, et näha teenusepakkujaspetsiifilisi valikulis
 msgid "Pick an integration above, then a model, to configure generation parameters."
 msgstr "Vali ülal integratsioon ja seejärel mudel, et seadistada genereerimise parameetrid."
 
-#: lib/phoenix_kit_ai/web/playground.ex:146
-#: lib/phoenix_kit_ai/web/playground.ex:194
-#: lib/phoenix_kit_ai/web/playground.ex:223
-#: lib/phoenix_kit_ai/web/playground.ex:257
-#: lib/phoenix_kit_ai/web/playground.ex:295
+#: lib/phoenix_kit_ai/web/playground.ex:149
+#: lib/phoenix_kit_ai/web/playground.ex:197
+#: lib/phoenix_kit_ai/web/playground.ex:226
+#: lib/phoenix_kit_ai/web/playground.ex:260
+#: lib/phoenix_kit_ai/web/playground.ex:298
 #, elixir-autogen, elixir-format
 msgid "Please select an endpoint"
 msgstr "Palun vali lõpp-punkt"
@@ -1005,22 +987,22 @@ msgstr "Prompt (valikuline)"
 msgid "Prompt Template (editable)"
 msgstr "Prompti mall (muudetav)"
 
-#: lib/phoenix_kit_ai/web/prompt_form.ex:148
+#: lib/phoenix_kit_ai/web/prompt_form.ex:159
 #, elixir-autogen, elixir-format
 msgid "Prompt created successfully"
 msgstr "Prompt edukalt loodud"
 
-#: lib/phoenix_kit_ai/web/prompts.ex:132
+#: lib/phoenix_kit_ai/web/prompts.ex:135
 #, elixir-autogen, elixir-format
 msgid "Prompt deleted"
 msgstr "Prompt kustutatud"
 
-#: lib/phoenix_kit_ai/web/prompts.ex:111
+#: lib/phoenix_kit_ai/web/prompts.ex:114
 #, elixir-autogen, elixir-format
 msgid "Prompt disabled"
 msgstr "Prompt keelatud"
 
-#: lib/phoenix_kit_ai/web/prompts.ex:111
+#: lib/phoenix_kit_ai/web/prompts.ex:114
 #, elixir-autogen, elixir-format
 msgid "Prompt enabled"
 msgstr "Prompt lubatud"
@@ -1041,12 +1023,12 @@ msgid "Prompt is disabled"
 msgstr "Prompt on keelatud"
 
 #: lib/phoenix_kit_ai/errors.ex:82
-#: lib/phoenix_kit_ai/web/prompt_form.ex:56
+#: lib/phoenix_kit_ai/web/prompt_form.ex:60
 #, elixir-autogen, elixir-format
 msgid "Prompt not found"
 msgstr "Prompti ei leitud"
 
-#: lib/phoenix_kit_ai/web/prompt_form.ex:147
+#: lib/phoenix_kit_ai/web/prompt_form.ex:158
 #, elixir-autogen, elixir-format
 msgid "Prompt updated successfully"
 msgstr "Prompt edukalt uuendatud"
@@ -1134,7 +1116,7 @@ msgstr "Proovi uuesti"
 msgid "Retrying…"
 msgstr "Proovimine uuesti…"
 
-#: lib/phoenix_kit_ai/web/prompts.ex:61
+#: lib/phoenix_kit_ai/web/prompts.ex:64
 #, elixir-autogen, elixir-format
 msgid "Reusable prompt templates with variable substitution"
 msgstr "Korduvkasutatavad promptmallid muutujate asendusega"
@@ -1180,7 +1162,7 @@ msgstr "Vali lõpp-punkt…"
 msgid "Select provider (%{count} available)"
 msgstr "Vali teenusepakkuja (saadaval %{count})"
 
-#: lib/phoenix_kit_ai/web/playground.ex:302
+#: lib/phoenix_kit_ai/web/playground.ex:305
 #, elixir-autogen, elixir-format
 msgid "Selected endpoint does not support realtime voice"
 msgstr "Valitud lõpp-punkt ei toeta reaalajas häält"
@@ -1233,8 +1215,8 @@ msgstr "Kuvatud %{shown} päringut %{total}-st"
 msgid "Slug"
 msgstr "Slug"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:1013
-#: lib/phoenix_kit_ai/web/prompt_form.ex:167
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:1024
+#: lib/phoenix_kit_ai/web/prompt_form.ex:178
 #, elixir-autogen, elixir-format
 msgid "Something went wrong. Please try again."
 msgstr "Midagi läks valesti. Proovi uuesti."
@@ -1308,7 +1290,7 @@ msgstr "Süsteemne prompt"
 msgid "System Prompt (Optional)"
 msgstr "Süsteemne prompt (valikuline)"
 
-#: lib/phoenix_kit_ai/web/playground.ex:52
+#: lib/phoenix_kit_ai/web/playground.ex:55
 #, elixir-autogen, elixir-format
 msgid "Test endpoints and prompts interactively"
 msgstr "Testi lõpp-punkte ja prompte interaktiivselt"
@@ -1324,7 +1306,7 @@ msgstr "Kõnesüntees"
 msgid "Text-to-Speech model"
 msgstr "Kõnesünteesi mudel"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:1086
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:1097
 #, elixir-autogen, elixir-format
 msgid "The %{provider} integration is not connected — requests will fail until you connect it in Settings → Integrations."
 msgstr "%{provider} integratsioon ei ole ühendatud — päringud ebaõnnestuvad, kuni ühendad selle jaotises „Seaded → Integratsioonid“."
@@ -1354,7 +1336,7 @@ msgstr "Integratsiooni viimane valideerimine ebaõnnestus. Uuesti testimiseks av
 msgid "The pinned integration was deleted. Edit the endpoint and select a new one."
 msgstr "Kinnistatud integratsioon on kustutatud. Muuda lõpp-punkti ja vali uus."
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:1063
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:1074
 #, elixir-autogen, elixir-format
 msgid "The selected integration is not connected — requests will fail until you connect it in Settings → Integrations."
 msgstr "Valitud integratsioon ei ole ühendatud — päringud ebaõnnestuvad, kuni ühendad selle jaotises „Seaded → Integratsioonid“."
@@ -1401,7 +1383,7 @@ msgstr "Tokenite piirmäär"
 msgid "Tokens"
 msgstr "Tokenid"
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:391
+#: lib/phoenix_kit_ai/web/endpoints.ex:396
 #, elixir-autogen, elixir-format
 msgid "Too many endpoints to reorder at once."
 msgstr "Korraga on liiga palju lõpp-punkte, et järjekorda muuta."
@@ -1506,7 +1488,7 @@ msgstr "Uuenda lõpp-punkti"
 msgid "Update Prompt"
 msgstr "Uuenda prompti"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:319
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:326
 #, elixir-autogen, elixir-format
 msgid "Update your AI endpoint configuration"
 msgstr "Uuenda oma AI lõpp-punkti seadistust"
@@ -1519,7 +1501,8 @@ msgstr "Uuenda oma AI lõpp-punkti seadistust"
 msgid "Updating…"
 msgstr "Uuendamine…"
 
-#: lib/phoenix_kit_ai.ex:1069
+#: lib/phoenix_kit_ai.ex:1030
+#: lib/phoenix_kit_ai/web/endpoints.ex:69
 #: lib/phoenix_kit_ai/web/prompts.ex:39
 #, elixir-autogen, elixir-format
 msgid "Usage"
@@ -1707,12 +1690,12 @@ msgstr "— ei tuvastata muutujana"
 msgid "…"
 msgstr "…"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:1028
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:1039
 #, elixir-autogen, elixir-format
 msgid "Endpoint created successfully"
 msgstr "Lõpp-punkt edukalt loodud"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:1029
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:1040
 #, elixir-autogen, elixir-format
 msgid "Endpoint updated successfully"
 msgstr "Lõpp-punkt edukalt uuendatud"
@@ -1724,7 +1707,7 @@ msgid_plural "Missing only (%{count} languages)"
 msgstr[0] "Ainult puuduvad (%{count} keel)"
 msgstr[1] "Ainult puuduvad (%{count} keelt)"
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:72
+#: lib/phoenix_kit_ai/web/endpoints.ex:74
 #, elixir-autogen, elixir-format
 msgid "Artificial intelligence — manage provider endpoints and API configurations"
 msgstr "Tehisintellekt — halda teenusepakkujate lõpp-punkte ja API seadistusi"
@@ -1786,55 +1769,35 @@ msgid_plural "tokens"
 msgstr[0] "token"
 msgstr[1] "tokenit"
 
-#: lib/phoenix_kit_ai.ex:1065
+#: lib/phoenix_kit_ai.ex:1026
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:279
+#: lib/phoenix_kit_ai/web/endpoints.ex:99
+#: lib/phoenix_kit_ai/web/playground.ex:51
+#: lib/phoenix_kit_ai/web/prompt_form.ex:33
+#: lib/phoenix_kit_ai/web/prompts.ex:60
 #, elixir-autogen, elixir-format
 msgid "AI"
 msgstr "AI"
 
-#: lib/phoenix_kit_ai.ex:1066
+#: lib/phoenix_kit_ai.ex:1027
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:339
+#: lib/phoenix_kit_ai/web/endpoints.ex:73
 #, elixir-autogen, elixir-format
 msgid "Endpoints"
 msgstr "Lõpp-punktid"
 
-#: lib/phoenix_kit_ai.ex:1068
+#: lib/phoenix_kit_ai.ex:1029
+#: lib/phoenix_kit_ai/web/playground.ex:54
 #, elixir-autogen, elixir-format
 msgid "Playground"
 msgstr "Liivakast"
 
-#: lib/phoenix_kit_ai.ex:1067
+#: lib/phoenix_kit_ai.ex:1028
+#: lib/phoenix_kit_ai/web/prompt_form.ex:78
+#: lib/phoenix_kit_ai/web/prompts.ex:63
 #, elixir-autogen, elixir-format
 msgid "Prompts"
 msgstr "Promptid"
-
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:279
-#, elixir-autogen, elixir-format
-msgid "AI Endpoint"
-msgstr "AI lõpp-punkt"
-
-#: lib/phoenix_kit_ai/web/prompt_form.ex:33
-#, elixir-autogen, elixir-format
-msgid "AI Prompt"
-msgstr "AI prompt"
-
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:318
-#, elixir-autogen, elixir-format
-msgid "Edit AI Endpoint"
-msgstr "Muuda AI lõpp-punkti"
-
-#: lib/phoenix_kit_ai/web/prompt_form.ex:63
-#, elixir-autogen, elixir-format
-msgid "Edit AI Prompt"
-msgstr "Muuda AI prompti"
-
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:293
-#, elixir-autogen, elixir-format
-msgid "New AI Endpoint"
-msgstr "Uus AI lõpp-punkt"
-
-#: lib/phoenix_kit_ai/web/prompt_form.ex:47
-#, elixir-autogen, elixir-format
-msgid "New AI Prompt"
-msgstr "Uus AI prompt"
 
 #: lib/phoenix_kit_ai/web/playground.html.heex:256
 #, elixir-autogen, elixir-format
@@ -1866,8 +1829,8 @@ msgstr "Pildi muutmine"
 msgid "Invalid image input"
 msgstr "Vigane pildisisend"
 
-#: lib/phoenix_kit_ai/web/playground.ex:226
-#: lib/phoenix_kit_ai/web/playground.ex:260
+#: lib/phoenix_kit_ai/web/playground.ex:229
+#: lib/phoenix_kit_ai/web/playground.ex:263
 #, elixir-autogen, elixir-format
 msgid "Please add at least one image"
 msgstr "Palun lisa vähemalt üks pilt"
@@ -1878,7 +1841,7 @@ msgid "Remove"
 msgstr "Eemalda"
 
 #: lib/phoenix_kit_ai/errors.ex:53
-#: lib/phoenix_kit_ai/web/playground.ex:727
+#: lib/phoenix_kit_ai/web/playground.ex:730
 #, elixir-autogen, elixir-format
 msgid "The model returned no image"
 msgstr "Mudel ei tagastanud pilti"
@@ -1955,7 +1918,7 @@ msgstr "See teenusepakkuja ei toeta seda"
 msgid "Operations"
 msgstr "Toimingud"
 
-#: lib/phoenix_kit_ai/web/playground.ex:264
+#: lib/phoenix_kit_ai/web/playground.ex:267
 #, elixir-autogen, elixir-format
 msgid "Pick an operation or write an instruction"
 msgstr "Vali toiming või kirjuta juhis"
@@ -1985,7 +1948,7 @@ msgstr "Mudel ei toeta valikut %{option} = %{value}"
 msgid "This operation needs a reference image"
 msgstr "See toiming vajab viitepilti"
 
-#: lib/phoenix_kit_ai/web/playground.ex:702
+#: lib/phoenix_kit_ai/web/playground.ex:705
 #, elixir-autogen, elixir-format
 msgid "This provider publishes no image model list"
 msgstr "See teenusepakkuja ei avalda pildimudelite loendit"
@@ -2026,7 +1989,7 @@ msgstr "Pilti ei õnnestunud alla laadida"
 msgid "The provider refused this content: %{reason}"
 msgstr "Teenusepakkuja keeldus sellest sisust: %{reason}"
 
-#: lib/phoenix_kit_ai/web/playground.ex:905
+#: lib/phoenix_kit_ai/web/playground.ex:908
 #, elixir-autogen, elixir-format
 msgid "%{count} bytes of image data"
 msgstr "%{count} baiti pildiandmeid"
@@ -2038,27 +2001,27 @@ msgid_plural "%{count} images kept from the last run"
 msgstr[0] "%{count} pilt jäi eelmisest käivitusest alles"
 msgstr[1] "%{count} pilti jäi eelmisest käivitusest alles"
 
-#: lib/phoenix_kit_ai/web/playground.ex:885
+#: lib/phoenix_kit_ai/web/playground.ex:888
 #, elixir-autogen, elixir-format
 msgid "%{option} was changed from %{from} to %{to}"
 msgstr "%{option} muudeti: %{from} → %{to}"
 
-#: lib/phoenix_kit_ai/web/playground.ex:878
+#: lib/phoenix_kit_ai/web/playground.ex:881
 #, elixir-autogen, elixir-format
 msgid "%{option} was dropped: the model does not accept %{value}"
 msgstr "%{option} jäeti välja: mudel ei toeta väärtust %{value}"
 
-#: lib/phoenix_kit_ai/web/playground.ex:901
+#: lib/phoenix_kit_ai/web/playground.ex:904
 #, elixir-autogen, elixir-format
 msgid "An output image could not be downloaded and is shown from the provider's link"
 msgstr "Väljundpilti ei õnnestunud alla laadida; see kuvatakse teenusepakkuja lingilt"
 
-#: lib/phoenix_kit_ai/web/playground.ex:867
+#: lib/phoenix_kit_ai/web/playground.ex:870
 #, elixir-autogen, elixir-format
 msgid "Aspect ratio"
 msgstr "Külgede suhe"
 
-#: lib/phoenix_kit_ai/web/playground.ex:870
+#: lib/phoenix_kit_ai/web/playground.ex:873
 #, elixir-autogen, elixir-format
 msgid "Background"
 msgstr "Taust"
@@ -2098,12 +2061,12 @@ msgstr "Vabas vormis juhis"
 msgid "Loading…"
 msgstr "Laadimine…"
 
-#: lib/phoenix_kit_ai/web/playground.ex:914
+#: lib/phoenix_kit_ai/web/playground.ex:917
 #, elixir-autogen, elixir-format
 msgid "Only JPEG, PNG and WebP images are accepted"
 msgstr "Lubatud on ainult JPEG, PNG ja WebP pildid"
 
-#: lib/phoenix_kit_ai/web/playground.ex:871
+#: lib/phoenix_kit_ai/web/playground.ex:874
 #, elixir-autogen, elixir-format
 msgid "Output format"
 msgstr "Väljundvorming"
@@ -2113,7 +2076,7 @@ msgstr "Väljundvorming"
 msgid "Plain studio background"
 msgstr "Lihtne stuudiotaust"
 
-#: lib/phoenix_kit_ai/web/playground.ex:869
+#: lib/phoenix_kit_ai/web/playground.ex:872
 #, elixir-autogen, elixir-format
 msgid "Quality"
 msgstr "Kvaliteet"
@@ -2138,7 +2101,7 @@ msgstr "Eemalda midagi"
 msgid "Replace the background"
 msgstr "Asenda taust"
 
-#: lib/phoenix_kit_ai/web/playground.ex:868
+#: lib/phoenix_kit_ai/web/playground.ex:871
 #, elixir-autogen, elixir-format
 msgid "Resolution"
 msgstr "Eraldusvõime"
@@ -2148,7 +2111,7 @@ msgstr "Eraldusvõime"
 msgid "Restyle after reference images"
 msgstr "Kujunda ümber näidispiltide järgi"
 
-#: lib/phoenix_kit_ai/web/playground.ex:770
+#: lib/phoenix_kit_ai/web/playground.ex:773
 #, elixir-autogen, elixir-format
 msgid "Something went wrong on our side. Please try again."
 msgstr "Meie poolel läks midagi valesti. Palun proovi uuesti."
@@ -2158,7 +2121,7 @@ msgstr "Meie poolel läks midagi valesti. Palun proovi uuesti."
 msgid "Straighten"
 msgstr "Sirgesta"
 
-#: lib/phoenix_kit_ai/web/playground.ex:911
+#: lib/phoenix_kit_ai/web/playground.ex:914
 #, elixir-autogen, elixir-format
 msgid "That file is too large (8 MB at most)"
 msgstr "See fail on liiga suur (kuni 8 MB)"
@@ -2168,7 +2131,7 @@ msgstr "See fail on liiga suur (kuni 8 MB)"
 msgid "The provider's model list could not be fetched"
 msgstr "Teenusepakkuja mudelite loendit ei õnnestunud laadida"
 
-#: lib/phoenix_kit_ai/web/playground.ex:898
+#: lib/phoenix_kit_ai/web/playground.ex:901
 #, elixir-autogen, elixir-format
 msgid "The provider's model list could not be fetched; options were not checked"
 msgstr "Teenusepakkuja mudelite loendit ei õnnestunud laadida; valikuid ei kontrollitud"
@@ -2178,12 +2141,12 @@ msgstr "Teenusepakkuja mudelite loendit ei õnnestunud laadida; valikuid ei kont
 msgid "The provider's model list does not include %{model}"
 msgstr "Teenusepakkuja mudelite loend ei sisalda mudelit %{model}"
 
-#: lib/phoenix_kit_ai/web/playground.ex:893
+#: lib/phoenix_kit_ai/web/playground.ex:896
 #, elixir-autogen, elixir-format
 msgid "The provider's model list does not include %{model}; options were not checked"
 msgstr "Teenusepakkuja mudelite loend ei sisalda mudelit %{model}; valikuid ei kontrollitud"
 
-#: lib/phoenix_kit_ai/web/playground.ex:916
+#: lib/phoenix_kit_ai/web/playground.ex:919
 #, elixir-autogen, elixir-format
 msgid "Two images at most"
 msgstr "Kuni kaks pilti"
@@ -2212,3 +2175,15 @@ msgstr "Selle otspunkti viimase 24 tunni eelarve on ära kasutatud"
 #, elixir-autogen, elixir-format
 msgid "You have used your AI allowance for the last 24 hours"
 msgstr "Sinu viimase 24 tunni AI limiit on ära kasutatud"
+
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:282
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:297
+#, elixir-autogen, elixir-format
+msgid "New endpoint"
+msgstr "Uus lõpp-punkt"
+
+#: lib/phoenix_kit_ai/web/prompt_form.ex:36
+#: lib/phoenix_kit_ai/web/prompt_form.ex:51
+#, elixir-autogen, elixir-format
+msgid "New prompt"
+msgstr "Uus prompt"

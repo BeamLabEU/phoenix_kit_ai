@@ -8,7 +8,10 @@ defmodule PhoenixKitAI.Web.PromptFormTest do
          %{conn: conn} do
       {:ok, _view, html} = live(conn, "/en/admin/ai/prompts/new")
 
-      assert html =~ "New AI Prompt"
+      # Header trail (AI / Prompts / New prompt).
+      assert html =~ ~r{<a href="[^"]*/admin/ai">AI</a>}
+      assert html =~ ~r{<a href="[^"]*/admin/ai/prompts">Prompts</a>}
+      assert html =~ "<h1>New prompt</h1>"
       assert html =~ ~r/<button[^>]+type="submit"[^>]+phx-disable-with/
       assert html =~ ~s(name="prompt[name]")
     end
@@ -21,7 +24,10 @@ defmodule PhoenixKitAI.Web.PromptFormTest do
 
       {:ok, _view, html} = live(conn, "/en/admin/ai/prompts/#{prompt.uuid}/edit")
 
-      assert html =~ "Editable Prompt"
+      # Header trail: AI / Prompts / <name as text> / Edit.
+      assert html =~ ~r{<a href="[^"]*/admin/ai/prompts">Prompts</a>}
+      assert html =~ ~s(<span class="crumb"><span>Editable Prompt</span></span>)
+      assert html =~ "<h1>Edit</h1>"
       assert html =~ ~r/<button[^>]+type="submit"[^>]+phx-disable-with/
     end
 
