@@ -3,7 +3,7 @@
          monitors, but single-line inputs don't stretch absurdly on
          ultrawide displays. --%>
     <div class="max-w-7xl mx-auto space-y-6 w-full">
-      <form phx-change="change" phx-submit="send" class="space-y-6">
+      <form id="ai-playground-form" phx-change="change" phx-submit="send" class="space-y-6">
         <.form_section title={gettext("Configuration")} icon="hero-cog-6-tooth" class="bg-base-200">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
             <%!-- Endpoint Selector --%>
@@ -161,7 +161,7 @@
           icon="hero-speaker-wave"
           class="bg-base-200"
         >
-          <form phx-change="voice_change" phx-submit="speak_voice" class="space-y-3">
+          <form id="ai-playground-voice-form" phx-change="voice_change" phx-submit="speak_voice" class="space-y-3">
             <.select
               name="voice"
               label={gettext("Voice")}

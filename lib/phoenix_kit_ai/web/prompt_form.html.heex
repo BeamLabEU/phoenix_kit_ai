@@ -6,7 +6,7 @@
       <%!-- Form --%>
       <div class="card bg-base-200">
         <div class="card-body">
-          <.form for={@form} phx-change="validate" phx-submit="save" class="space-y-5">
+          <.form for={@form} id="ai-prompt-form" phx-change="validate" phx-submit="save" class="space-y-5">
             <%!-- Name --%>
             <.input
               field={@form[:name]}
