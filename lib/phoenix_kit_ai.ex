@@ -2591,11 +2591,7 @@ defmodule PhoenixKitAI do
             material.()
 
           caller_key ->
-            base = {:caller_key, caller_key, opts[:schema], opts[:json] == true, opts[:fields]}
-
-            # `images_as` changes the prompt, so it is part of the key — but
-            # only when given, so existing cache entries keep their keys.
-            if opts[:images_as], do: {base, opts[:images_as]}, else: base
+            caller_material(caller_key, opts)
         end
 
       RequestCache.key(verb, endpoint, model, material)
@@ -2696,6 +2692,13 @@ defmodule PhoenixKitAI do
   defp maybe_filter_by(query, :source_prefix, prefix) when is_binary(prefix) do
     pattern = escape_like(prefix) <> "%"
     where(query, [r], fragment("?->>'source' LIKE ?", r.metadata, ^pattern))
+  end
+
+  # `images_as` changes the prompt, so it is part of the key — but only when
+  # given, so existing cache entries keep their keys.
+  defp caller_material(caller_key, opts) do
+    base = {:caller_key, caller_key, opts[:schema], opts[:json] == true, opts[:fields]}
+    if opts[:images_as], do: {base, opts[:images_as]}, else: base
   end
 
   defp escape_like(text),
