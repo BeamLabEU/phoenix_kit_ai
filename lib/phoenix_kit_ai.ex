@@ -1270,6 +1270,42 @@ defmodule PhoenixKitAI do
   def get_endpoint(_), do: nil
 
   @doc """
+  Gets an endpoint by its name — case-insensitive and trimmed, matching the
+  unique index on `lower(name)`, so an app can refer to "Label reader"
+  instead of carrying a uuid through config.
+
+  Disabled endpoints are returned too; calling one is refused at call time
+  (`{:error, :endpoint_disabled}`). Returns `nil` when there is none.
+  """
+  @spec get_endpoint_by_name(term()) :: Endpoint.t() | nil
+  def get_endpoint_by_name(name) when is_binary(name) do
+    case String.trim(name) do
+      "" ->
+        nil
+
+      trimmed ->
+        normalized = String.downcase(trimmed)
+
+        from(e in Endpoint, where: fragment("lower(?)", e.name) == ^normalized, limit: 1)
+        |> repo().one()
+    end
+  end
+
+  def get_endpoint_by_name(_), do: nil
+
+  @doc """
+  `get_endpoint_by_name/1` as `{:ok, endpoint}` or `{:error, :endpoint_not_found}`,
+  for `with` chains.
+  """
+  @spec resolve_endpoint_by_name(term()) :: {:ok, Endpoint.t()} | {:error, :endpoint_not_found}
+  def resolve_endpoint_by_name(name) do
+    case get_endpoint_by_name(name) do
+      nil -> {:error, :endpoint_not_found}
+      endpoint -> {:ok, endpoint}
+    end
+  end
+
+  @doc """
   Resolves an endpoint from an ID (UUID string) or Endpoint struct.
 
   ## Examples
@@ -2066,6 +2102,7 @@ defmodule PhoenixKitAI do
   - `:status` - Filter by status
   - `:model` - Filter by model
   - `:source` - Filter by source (from metadata)
+  - `:source_prefix` - Filter by sources starting with this prefix
   - `:since` - Filter by date (requests after this date)
   - `:preload` - Associations to preload
 
@@ -2554,7 +2591,11 @@ defmodule PhoenixKitAI do
             material.()
 
           caller_key ->
-            {:caller_key, caller_key, opts[:schema], opts[:json] == true, opts[:fields]}
+            base = {:caller_key, caller_key, opts[:schema], opts[:json] == true, opts[:fields]}
+
+            # `images_as` changes the prompt, so it is part of the key — but
+            # only when given, so existing cache entries keep their keys.
+            if opts[:images_as], do: {base, opts[:images_as]}, else: base
         end
 
       RequestCache.key(verb, endpoint, model, material)
@@ -2624,6 +2665,7 @@ defmodule PhoenixKitAI do
     |> maybe_filter_by(:status, Keyword.get(opts, :status))
     |> maybe_filter_by(:model, Keyword.get(opts, :model))
     |> maybe_filter_by(:source, Keyword.get(opts, :source))
+    |> maybe_filter_by(:source_prefix, Keyword.get(opts, :source_prefix))
     |> maybe_filter_since(Keyword.get(opts, :since))
     |> maybe_filter_until(Keyword.get(opts, :until))
   end
@@ -2646,6 +2688,22 @@ defmodule PhoenixKitAI do
 
   defp maybe_filter_by(query, :source, source),
     do: where(query, [r], fragment("?->>'source' = ?", r.metadata, ^source))
+
+  # Every source starting with the prefix ("MyApp." counts all of an app's
+  # callers); LIKE metacharacters in the prefix are matched literally.
+  defp maybe_filter_by(query, :source_prefix, ""), do: query
+
+  defp maybe_filter_by(query, :source_prefix, prefix) when is_binary(prefix) do
+    pattern = escape_like(prefix) <> "%"
+    where(query, [r], fragment("?->>'source' LIKE ?", r.metadata, ^pattern))
+  end
+
+  defp escape_like(text),
+    do:
+      text
+      |> String.replace("\\", "\\\\")
+      |> String.replace("%", "\\%")
+      |> String.replace("_", "\\_")
 
   defp maybe_filter_since(query, nil), do: query
   defp maybe_filter_since(query, date), do: where(query, [r], r.inserted_at >= ^date)
@@ -2699,7 +2757,7 @@ defmodule PhoenixKitAI do
 
   ## Options
   - `:since` / `:until` - rows with `inserted_at` in `[since, until)`
-  - `:endpoint_uuid`, `:user_uuid`, `:status`, `:model`, `:source` - filters
+  - `:endpoint_uuid`, `:user_uuid`, `:status`, `:model`, `:source`, `:source_prefix` - filters
 
   ## Returns
   Map with statistics including total_requests, total_tokens, success_rate, etc.

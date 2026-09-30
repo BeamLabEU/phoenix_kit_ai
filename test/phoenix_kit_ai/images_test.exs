@@ -1278,4 +1278,67 @@ defmodule PhoenixKitAI.ImagesTest do
                PhoenixKitAI.process_image(ep.uuid, [@jpeg], [:enhance], verify: true)
     end
   end
+
+  describe "extract_text images_as:" do
+    defp empty_text_answer do
+      chat_answer(
+        Jason.encode!(%{
+          "text" => "",
+          "blocks" => [],
+          "language" => "und",
+          "confidence" => 0,
+          "has_illegible_text" => false
+        })
+      )
+    end
+
+    defp question_sent do
+      assert_received {:post, _, body}
+      [%{"content" => [%{"text" => question} | _]}] = body["messages"]
+      {question, body}
+    end
+
+    test ":separate tells the model the images are independent photos" do
+      stub(empty_text_answer())
+      ep = endpoint_fixture(%{model: "google/gemini-2.5-flash"})
+
+      assert {:ok, _} = PhoenixKitAI.extract_text(ep.uuid, [@jpeg, @jpeg], images_as: :separate)
+      {question, _} = question_sent()
+      assert question =~ "separate photos"
+      refute question =~ "are pages of one document, in order"
+    end
+
+    test "a sentence of the caller's own is used as it is" do
+      stub(empty_text_answer())
+      ep = endpoint_fixture(%{model: "google/gemini-2.5-flash"})
+      sentence = "Image 1 is the pack before the change, image 2 after it."
+
+      assert {:ok, _} = PhoenixKitAI.extract_text(ep.uuid, [@jpeg, @jpeg], images_as: sentence)
+      {question, _} = question_sent()
+      assert question =~ sentence
+    end
+
+    test "per-call temperature reaches the provider" do
+      stub(empty_text_answer())
+      ep = endpoint_fixture(%{model: "google/gemini-2.5-flash"})
+
+      assert {:ok, _} = PhoenixKitAI.extract_text(ep.uuid, @jpeg, temperature: 0)
+      {_question, body} = question_sent()
+      assert body["temperature"] == 0
+    end
+
+    test "one caller cache key asks again when images_as changes" do
+      stub(empty_text_answer())
+      ep = endpoint_fixture(%{model: "google/gemini-2.5-flash"})
+      cache = [cache: [key: "pair:1"]]
+
+      assert {:ok, _} = PhoenixKitAI.extract_text(ep.uuid, [@jpeg, @jpeg], cache)
+      assert_received {:post, _, _}
+
+      assert {:ok, _} =
+               PhoenixKitAI.extract_text(ep.uuid, [@jpeg, @jpeg], [images_as: :separate] ++ cache)
+
+      assert_received {:post, _, _}
+    end
+  end
 end
