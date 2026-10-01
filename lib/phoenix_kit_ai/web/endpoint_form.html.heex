@@ -41,7 +41,7 @@
                  unchecked box needs, or `enabled` would be missing from the
                  params and the toggle would snap back on. --%>
             <div :if={@endpoint} class="py-2">
-              <.checkbox field={@form[:enabled]} variant="toggle" label={gettext("Enabled")} class="toggle-success">
+              <.checkbox field={@form[:enabled]} variant="toggle" label={gettext("Enabled")}>
                 <:description>{gettext("Disabled endpoints can't be used for AI requests.")}</:description>
               </.checkbox>
             </div>
