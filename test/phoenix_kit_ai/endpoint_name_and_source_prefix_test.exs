@@ -27,11 +27,11 @@ defmodule PhoenixKitAI.EndpointNameAndSourcePrefixTest do
       assert PhoenixKitAI.get_endpoint_by_name("Padded Reader").uuid == exact.uuid
     end
 
-    test "badge_status maps request statuses onto core's badge colours" do
-      assert PhoenixKitAI.Request.badge_status("success") == "completed"
-      assert PhoenixKitAI.Request.badge_status("error") == "error"
-      assert PhoenixKitAI.Request.badge_status("timeout") == "offline"
-      assert PhoenixKitAI.Request.badge_status("anything") == "unknown"
+    test "with no exact name, the oldest endpoint wins every time" do
+      first = endpoint!(%{name: " Twin"})
+      _second = endpoint!(%{name: "Twin "})
+
+      for _ <- 1..5, do: assert(PhoenixKitAI.get_endpoint_by_name("twin").uuid == first.uuid)
     end
 
     test "unknown, blank or non-string names are nil" do
@@ -44,6 +44,15 @@ defmodule PhoenixKitAI.EndpointNameAndSourcePrefixTest do
     test "a disabled endpoint is still found (calling it is refused elsewhere)" do
       ep = endpoint!(%{name: "Old reader", enabled: false})
       assert PhoenixKitAI.get_endpoint_by_name("old reader").uuid == ep.uuid
+    end
+  end
+
+  describe "Request.badge_status/1" do
+    test "maps request statuses onto core's badge colours" do
+      assert PhoenixKitAI.Request.badge_status("success") == "completed"
+      assert PhoenixKitAI.Request.badge_status("error") == "error"
+      assert PhoenixKitAI.Request.badge_status("timeout") == "offline"
+      assert PhoenixKitAI.Request.badge_status("anything") == "unknown"
     end
   end
 

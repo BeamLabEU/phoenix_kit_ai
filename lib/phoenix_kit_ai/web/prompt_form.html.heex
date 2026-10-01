@@ -3,8 +3,10 @@
          textareas to be readable, narrow enough that single-line inputs
          don't stretch absurdly on ultrawide displays). --%>
     <div class="max-w-5xl mx-auto w-full">
-      <%!-- Form: one untitled section (the page title names it) --%>
-      <.form_section class="bg-base-200">
+      <%!-- Form. A plain card, not an untitled `form_section`: the released
+           core's `form_section` requires a `title`. --%>
+      <div class="card bg-base-200">
+        <div class="card-body">
           <.form for={@form} id="ai-prompt-form" phx-change="validate" phx-submit="save" class="space-y-5">
             <%!-- Name --%>
             <.input
@@ -107,7 +109,8 @@
               }
             />
           </.form>
-      </.form_section>
+        </div>
+      </div>
 
       <.form_section
         title={gettext("Variable Syntax")}

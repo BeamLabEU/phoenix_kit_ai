@@ -1,3 +1,37 @@
+## 0.25.0 - 2026-10-01
+
+### Added
+
+- **Endpoints by name** (PR #33). `PhoenixKitAI.get_endpoint_by_name/1` and
+  `resolve_endpoint_by_name/1` find an endpoint by its name, ignoring case and
+  surrounding spaces, so an app can say "Label reader" instead of carrying a
+  uuid. Disabled endpoints are returned (calling one is still refused). With
+  no exact match the oldest endpoint wins.
+- **Per-user call cap.** `ai_daily_calls_per_user` (`Budget` scope
+  `:user_calls`) caps how many successful calls one user makes in 24 hours,
+  whatever each cost. Hitting it returns `{:error, {:budget_exceeded,
+  :user_calls}}`. The `[:phoenix_kit_ai, :budget, :warning]` event reports
+  call counts for this scope.
+- **`source_prefix:`** on `list_requests/1` and `get_usage_stats/1` totals one
+  app's calls across its many `source:` strings. LIKE wildcards in the prefix
+  are matched literally.
+- **`images_as:`** on `extract_text/3` says how several images relate:
+  `:pages` (default), `:separate`, or a sentence of the caller's own. Per-call
+  `temperature:`, `max_tokens:`, `top_p:` and `seed:` are documented.
+
+### Changed
+
+- The AI admin pages use core components (modal, accordion, status badge,
+  checkbox toggle, select, button) and gettext the request-details labels.
+
+### Fixed
+
+- The endpoints and prompts pages relied on a table toolbar slot
+  (`:toolbar_primary`) and an untitled `form_section` that exist only in
+  unreleased core, so on released core the New Endpoint and New Prompt
+  buttons were missing and the app compiled with warnings. They use
+  `:toolbar_actions` and a plain card again.
+
 ## 0.24.1 - 2026-09-24
 
 ### Fixed
