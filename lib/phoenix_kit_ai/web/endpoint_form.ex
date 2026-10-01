@@ -1784,4 +1784,13 @@ defmodule PhoenixKitAI.Web.EndpointForm do
         else: []
       )
   end
+
+  # "Anthropic (12 models)" for each provider in the model list.
+  defp provider_options(models_grouped) do
+    for {provider, models} <- models_grouped do
+      {ngettext("%{name} (%{count} model)", "%{name} (%{count} models)", length(models),
+         name: PhoenixKitAI.OpenRouterClient.humanize_provider(provider)
+       ), provider}
+    end
+  end
 end

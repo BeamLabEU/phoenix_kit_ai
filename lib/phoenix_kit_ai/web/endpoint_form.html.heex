@@ -532,25 +532,21 @@
                        round-trip, the wrapper "has" that descendant, so
                        descendants with the variant flip on. --%>
                   <div :if={length(@models_grouped) > 1} class="group">
-                    <label class="select w-full group-has-[select.phx-change-loading]:opacity-60 transition-opacity">
-                      <select
-                        id="provider_picker"
-                        name="provider"
-                        phx-change="select_provider"
-                        phx-hook="ResetSelect"
-                      >
-                        <option value="" selected>
-                          — {gettext("Select provider (%{count} available)", count: length(@models_grouped))} —
-                        </option>
-                        <%= for {provider, models} <- @models_grouped do %>
-                          <option value={provider} selected={@selected_provider == provider}>
-                            {PhoenixKitAI.OpenRouterClient.humanize_provider(provider)} ({length(
-                              models
-                            )} models)
-                          </option>
-                        <% end %>
-                      </select>
-                    </label>
+                    <.select
+                      id="provider_picker"
+                      name="provider"
+                      value={@selected_provider}
+                      prompt={
+                        "— " <>
+                          gettext("Select provider (%{count} available)",
+                            count: length(@models_grouped)
+                          ) <> " —"
+                      }
+                      options={provider_options(@models_grouped)}
+                      phx-change="select_provider"
+                      phx-hook="ResetSelect"
+                      class="group-has-[select.phx-change-loading]:opacity-60 transition-opacity"
+                    />
                     <div class="hidden group-has-[select.phx-change-loading]:flex items-center gap-2 mt-2 text-sm text-base-content/70">
                       <span class="loading loading-spinner loading-xs"></span>
                       {gettext("Loading models…")}
