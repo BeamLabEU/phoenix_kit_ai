@@ -13,11 +13,24 @@ defmodule PhoenixKitAI.Budget do
   | `ai_daily_budget_per_endpoint` | calls on one endpoint |
   | `ai_daily_budget_per_user` | calls attributed to a `user_uuid:` |
 
+  Beside the money, `ai_daily_calls_per_user` caps how many calls one user
+  may make in the same trailing day (a count, `0` = no cap; scope
+  `:user_calls`). A cheap model makes a money cap meaningless as a limit on
+  how much one person can use, and a count says it directly.
+
+  It counts **successful** calls (cached answers included — each writes a
+  zero-cost success row); failed provider calls cost nothing and do not
+  count. Like the money cap it reads the usage rows by `user_uuid`, so a
+  `user_uuid:` that is not a PhoenixKit user (its rows are written
+  unattributed, with a warning) is never capped — pass real user uuids.
+
   `ai_budget_warn_percent` (default 80) marks when a scope is close: the
   call still runs, but a `Logger.warning` and a
   `[:phoenix_kit_ai, :budget, :warning]` telemetry event fire once per
   crossing per scope (the flag clears when spend drops back under the
-  line).
+  line). Its `spent` / `limit` measurements are in the scope's unit:
+  nanodollars, or a call count for `:user_calls` — check the `scope`
+  metadata before adding them up.
 
   Once a cap is reached every verb returns `{:error, {:budget_exceeded,
   scope}}` without a provider call — cached answers included: a cap is a
@@ -30,8 +43,8 @@ defmodule PhoenixKitAI.Budget do
 
   The per-user cap only bites when the caller passes `user_uuid:`, and the
   value must be a PhoenixKit user uuid (the usage row has a foreign key on
-  it; a row with an unknown user is not written and is logged as a
-  warning). Anonymous visitors cannot be capped individually; cap the
+  it; a row with an unknown user is written without it, with a warning, so
+  it counts toward no user). Anonymous visitors cannot be capped individually; cap the
   endpoint or the site instead.
   """
 
@@ -41,17 +54,19 @@ defmodule PhoenixKitAI.Budget do
 
   alias PhoenixKitAI.{Endpoint, Request}
 
-  @scopes [:global, :endpoint, :user]
+  @scopes [:global, :endpoint, :user, :user_calls]
+  @user_scopes [:user, :user_calls]
   @settings %{
     global: "ai_daily_budget",
     endpoint: "ai_daily_budget_per_endpoint",
-    user: "ai_daily_budget_per_user"
+    user: "ai_daily_budget_per_user",
+    user_calls: "ai_daily_calls_per_user"
   }
   @warn_setting "ai_budget_warn_percent"
   @default_warn_percent 80
   @window_seconds 24 * 60 * 60
 
-  @type scope :: :global | :endpoint | :user
+  @type scope :: :global | :endpoint | :user | :user_calls
   @type status :: %{
           scope: scope(),
           spent: non_neg_integer(),
@@ -99,13 +114,13 @@ defmodule PhoenixKitAI.Budget do
     for scope <- @scopes,
         limit = limits[scope],
         limit > 0,
-        scope != :user or is_binary(user_uuid) do
+        scope not in @user_scopes or is_binary(user_uuid) do
       spent = spent(scope, endpoint, user_uuid)
       %{scope: scope, spent: spent, limit: limit, remaining: limit - spent}
     end
   end
 
-  @doc "The cap for a scope in nanodollars (`0` = none)."
+  @doc "The cap for a scope: nanodollars, or a call count for `:user_calls` (`0` = none)."
   @spec limit(scope()) :: non_neg_integer()
   def limit(scope) when scope in @scopes, do: limits()[scope]
 
@@ -118,13 +133,13 @@ defmodule PhoenixKitAI.Budget do
     end
   end
 
-  @doc "Sets a scope's cap (nanodollars; `0` removes it)."
+  @doc "Sets a scope's cap (nanodollars, or a call count for `:user_calls`; `0` removes it)."
   @spec set_limit(scope(), non_neg_integer()) :: {:ok, term()} | {:error, term()}
-  def set_limit(scope, nanodollars)
-      when scope in @scopes and is_integer(nanodollars) and nanodollars >= 0 do
+  def set_limit(scope, amount)
+      when scope in @scopes and is_integer(amount) and amount >= 0 do
     PhoenixKit.Settings.update_setting_with_module(
       setting(scope),
-      Integer.to_string(nanodollars),
+      Integer.to_string(amount),
       "ai"
     )
   end
@@ -166,10 +181,32 @@ defmodule PhoenixKitAI.Budget do
 
   defp parse(_other), do: 0
 
-  # Nanodollars spent in the trailing window; a nil cost counts as zero.
+  # Nanodollars spent in the trailing window (a nil cost counts as zero), or
+  # for :user_calls the number of calls.
   defp spent(scope, endpoint, user_uuid) do
     since = DateTime.add(DateTime.utc_now(), -@window_seconds, :second)
 
+    if scope == :user_calls,
+      do: calls(since, user_uuid),
+      else: money(scope, since, endpoint, user_uuid)
+  rescue
+    _ -> 0
+  catch
+    :exit, _ -> 0
+  end
+
+  # Successful calls only, like the money sum: a failed call costs nothing
+  # and is not the user's doing. Same literal status, same partial index.
+  defp calls(since, user_uuid) do
+    from(r in Request,
+      where: r.inserted_at >= ^since and r.status == "success" and r.user_uuid == ^user_uuid,
+      select: count(r.uuid)
+    )
+    |> PhoenixKit.RepoHelper.repo().one()
+    |> Kernel.||(0)
+  end
+
+  defp money(scope, since, endpoint, user_uuid) do
     # `"success"` must stay a literal, not `^status`: core (V193) indexes this
     # sum with partial indexes `WHERE status = 'success'`, and Postgres can only
     # use them when it can prove the query's condition matches — which it
@@ -195,10 +232,6 @@ defmodule PhoenixKitAI.Budget do
       value when is_float(value) -> round(value)
       _ -> 0
     end
-  rescue
-    _ -> 0
-  catch
-    :exit, _ -> 0
   end
 
   # Warn once per crossing: the flag is an ETS row per scope key and clears
@@ -213,8 +246,10 @@ defmodule PhoenixKitAI.Budget do
       over? and not warned? ->
         :ets.insert(table, {key, true})
 
+        unit = if scope == :user_calls, do: "calls", else: "nanodollars"
+
         Logger.warning(
-          "[PhoenixKitAI] budget #{scope} at #{div(spent * 100, max(limit, 1))}% (#{spent} of #{limit} nanodollars in 24h)"
+          "[PhoenixKitAI] budget #{scope} at #{div(spent * 100, max(limit, 1))}% (#{spent} of #{limit} #{unit} in 24h)"
         )
 
         :telemetry.execute(
@@ -236,4 +271,5 @@ defmodule PhoenixKitAI.Budget do
   defp scope_id(:global, _endpoint, _user), do: :all
   defp scope_id(:endpoint, endpoint, _user), do: endpoint.uuid
   defp scope_id(:user, _endpoint, user), do: user
+  defp scope_id(:user_calls, _endpoint, user), do: user
 end

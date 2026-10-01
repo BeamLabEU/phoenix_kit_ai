@@ -37,14 +37,14 @@
           />
         </:above_cards>
 
-        <:toolbar_actions>
+        <:toolbar_primary>
           <.link
             navigate={PhoenixKitAI.Routes.ai_path() <> "/prompts/new"}
             class="btn btn-primary btn-sm"
           >
             <.icon name="hero-plus" class="w-4 h-4 mr-2" /> {gettext("New Prompt")}
           </.link>
-        </:toolbar_actions>
+        </:toolbar_primary>
 
         <:card_body :let={prompt}>
           <div class="flex items-start justify-between">
@@ -62,7 +62,7 @@
 
               <%= if prompt.variables && length(prompt.variables) > 0 do %>
                 <div class="mt-2 flex flex-wrap gap-2">
-                  <span class="text-sm text-base-content/70">Variables:</span>
+                  <span class="text-sm text-base-content/70">{gettext("Variables:")}</span>
                   <%= for var <- prompt.variables do %>
                     <span class="badge badge-sm badge-primary badge-outline font-mono">
                       {"{{#{var}}}"}

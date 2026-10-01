@@ -3,10 +3,9 @@
          textareas to be readable, narrow enough that single-line inputs
          don't stretch absurdly on ultrawide displays). --%>
     <div class="max-w-5xl mx-auto w-full">
-      <%!-- Form --%>
-      <div class="card bg-base-200">
-        <div class="card-body">
-          <.form for={@form} phx-change="validate" phx-submit="save" class="space-y-5">
+      <%!-- Form: one untitled section (the page title names it) --%>
+      <.form_section class="bg-base-200">
+          <.form for={@form} id="ai-prompt-form" phx-change="validate" phx-submit="save" class="space-y-5">
             <%!-- Name --%>
             <.input
               field={@form[:name]}
@@ -108,8 +107,7 @@
               }
             />
           </.form>
-        </div>
-      </div>
+      </.form_section>
 
       <.form_section
         title={gettext("Variable Syntax")}

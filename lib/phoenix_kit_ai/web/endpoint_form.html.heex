@@ -5,6 +5,7 @@
     <div class="max-w-5xl mx-auto w-full">
       <.form
         for={@form}
+        id="ai-endpoint-form"
         phx-change="validate"
         phx-submit="save"
         class="space-y-6"
@@ -36,31 +37,13 @@
                  schema's `enabled: true` default, so a "create + disabled"
                  dance isn't a real flow we want to expose.
 
-                 Hidden `value="false"` input is required: unchecked checkboxes
-                 don't submit any value, so without this the params would
-                 lack `enabled` after unchecking, the changeset would fall
-                 back to the previous DB value, and the toggle would snap
-                 back to "on" on re-render. Same pattern as core's
-                 <.checkbox> component. --%>
-            <div :if={@endpoint} class="fieldset py-2">
-              <label class="flex items-center gap-4 cursor-pointer">
-                <input type="hidden" name="endpoint[enabled]" value="false" />
-                <input
-                  type="checkbox"
-                  name="endpoint[enabled]"
-                  value="true"
-                  checked={
-                    Phoenix.HTML.Form.normalize_value("checkbox", @form[:enabled].value)
-                  }
-                  class="toggle toggle-success"
-                />
-                <div class="select-none">
-                  <div class="font-medium">{gettext("Enabled")}</div>
-                  <div class="text-xs text-base-content/60">
-                    {gettext("Disabled endpoints can't be used for AI requests.")}
-                  </div>
-                </div>
-              </label>
+                 Core's checkbox renders the hidden `value="false"` input an
+                 unchecked box needs, or `enabled` would be missing from the
+                 params and the toggle would snap back on. --%>
+            <div :if={@endpoint} class="py-2">
+              <.checkbox field={@form[:enabled]} variant="toggle" label={gettext("Enabled")}>
+                <:description>{gettext("Disabled endpoints can't be used for AI requests.")}</:description>
+              </.checkbox>
             </div>
           </div>
         </.form_section>
@@ -207,33 +190,16 @@
                  fetch uses (Chat vs Text-to-Speech vs Image Generation).
                  Has its own phx-change so it doesn't ride the form's
                  "validate". --%>
-            <div class="fieldset mt-4">
-              <label class="label">
-                <span class="fieldset-legend font-medium">{gettext("Model Type")}</span>
-              </label>
-              <select
+            <div class="mt-4">
+              <.select
+                id="endpoint-model-type"
                 name="model_type"
+                label={gettext("Model Type")}
+                value={Atom.to_string(@model_type)}
+                options={model_type_options(@current_provider)}
                 phx-change="select_model_type"
-                class="select w-full max-w-xs"
-              >
-                <option value="text" selected={@model_type == :text}>
-                  {gettext("Chat / Completion")}
-                </option>
-                <option
-                  :if={PhoenixKitAI.Endpoint.tts_model_picker?(@current_provider)}
-                  value="tts"
-                  selected={@model_type == :tts}
-                >
-                  {gettext("Text-to-Speech")}
-                </option>
-                <option
-                  :if={PhoenixKitAI.Endpoint.image_gen_model_picker?(@current_provider)}
-                  value="image_gen"
-                  selected={@model_type == :image_gen}
-                >
-                  {gettext("Image Generation")}
-                </option>
-              </select>
+                class="max-w-xs"
+              />
               <p class="fieldset-label text-base-content/50 mt-1">
                 <%= case @model_type do %>
                   <% :tts -> %>
@@ -281,34 +247,25 @@
                     (List.first(speakers) && List.first(speakers).key) %>
                 <% active_speaker = Enum.find(speakers, &(&1.key == selected_speaker_key)) %>
                 <div class="flex flex-wrap items-end gap-3">
-                  <div>
-                    <label class="label py-1">
-                      <span class="fieldset-legend text-sm">{gettext("Speaker")}</span>
-                    </label>
-                    <select
+                  <div class="min-w-48">
+                    <.select
+                      id="endpoint-voice-speaker"
                       name="voice_speaker"
+                      label={gettext("Speaker")}
+                      value={selected_speaker_key}
+                      options={for sp <- speakers, do: {sp.label, sp.key}}
                       phx-change="select_voice_speaker"
-                      class="select"
-                    >
-                      <%= for sp <- speakers do %>
-                        <option value={sp.key} selected={sp.key == selected_speaker_key}>
-                          {sp.label}
-                        </option>
-                      <% end %>
-                    </select>
+                    />
                   </div>
-                  <div>
-                    <label class="label py-1">
-                      <span class="fieldset-legend text-sm">{gettext("Mood")}</span>
-                    </label>
-                    <select name="endpoint[provider_settings][voice]" class="select">
-                      <option value="" selected={current_voice == ""}>{gettext("— Select —")}</option>
-                      <%= for voice <- (active_speaker && active_speaker.voices) || [] do %>
-                        <option value={voice.slug} selected={current_voice == voice.slug}>
-                          {voice.mood}
-                        </option>
-                      <% end %>
-                    </select>
+                  <div class="min-w-48">
+                    <.select
+                      id="endpoint-voice-mood"
+                      name="endpoint[provider_settings][voice]"
+                      label={gettext("Mood")}
+                      value={current_voice}
+                      prompt={gettext("— Select —")}
+                      options={for voice <- (active_speaker && active_speaker.voices) || [], do: {voice.mood, voice.slug}}
+                    />
                   </div>
                 </div>
                 <%!-- Mistral requires a voice (or ref_audio) — /audio/speech
@@ -353,37 +310,25 @@
                     (@endpoint && get_in(@endpoint.provider_settings || %{}, ["resolution"])) ||
                     "" %>
                 <div class="flex flex-wrap items-end gap-3">
-                  <div>
-                    <label class="label py-1">
-                      <span class="fieldset-legend font-medium">{gettext("Default Aspect Ratio")}</span>
-                    </label>
-                    <select
+                  <div class="min-w-48">
+                    <.select
+                      id="endpoint-image-aspect"
                       name="endpoint[provider_settings][aspect_ratio]"
-                      class="select"
-                    >
-                      <option value="" selected={current_aspect == ""}>
-                        {gettext("— Provider default —")}
-                      </option>
-                      <%= for {label, value} <- PhoenixKitAI.Endpoint.image_aspect_ratio_options() do %>
-                        <option value={value} selected={current_aspect == value}>{label}</option>
-                      <% end %>
-                    </select>
+                      label={gettext("Default Aspect Ratio")}
+                      value={current_aspect}
+                      prompt={gettext("— Provider default —")}
+                      options={PhoenixKitAI.Endpoint.image_aspect_ratio_options()}
+                    />
                   </div>
-                  <div>
-                    <label class="label py-1">
-                      <span class="fieldset-legend font-medium">{gettext("Default Resolution")}</span>
-                    </label>
-                    <select
+                  <div class="min-w-48">
+                    <.select
+                      id="endpoint-image-resolution"
                       name="endpoint[provider_settings][resolution]"
-                      class="select"
-                    >
-                      <option value="" selected={current_resolution == ""}>
-                        {gettext("— Provider default —")}
-                      </option>
-                      <%= for {label, value} <- PhoenixKitAI.Endpoint.image_resolution_options() do %>
-                        <option value={value} selected={current_resolution == value}>{label}</option>
-                      <% end %>
-                    </select>
+                      label={gettext("Default Resolution")}
+                      value={current_resolution}
+                      prompt={gettext("— Provider default —")}
+                      options={PhoenixKitAI.Endpoint.image_resolution_options()}
+                    />
                   </div>
                 </div>
                 <p class="fieldset-label text-base-content/50 mt-1">
@@ -397,31 +342,25 @@
                 <% current_quality =
                   @form.params["image_quality"] || (@endpoint && @endpoint.image_quality) || "" %>
                 <div class="flex flex-wrap items-end gap-3">
-                  <div>
-                    <label class="label py-1">
-                      <span class="fieldset-legend font-medium">{gettext("Default Size")}</span>
-                    </label>
-                    <select name="endpoint[image_size]" class="select">
-                      <option value="" selected={current_size == ""}>
-                        {gettext("— Provider default —")}
-                      </option>
-                      <%= for {label, value} <- PhoenixKitAI.Endpoint.image_size_options() do %>
-                        <option value={value} selected={current_size == value}>{label}</option>
-                      <% end %>
-                    </select>
+                  <div class="min-w-48">
+                    <.select
+                      id="endpoint-image-size"
+                      name="endpoint[image_size]"
+                      label={gettext("Default Size")}
+                      value={current_size}
+                      prompt={gettext("— Provider default —")}
+                      options={PhoenixKitAI.Endpoint.image_size_options()}
+                    />
                   </div>
-                  <div>
-                    <label class="label py-1">
-                      <span class="fieldset-legend font-medium">{gettext("Default Quality")}</span>
-                    </label>
-                    <select name="endpoint[image_quality]" class="select">
-                      <option value="" selected={current_quality == ""}>
-                        {gettext("— Provider default —")}
-                      </option>
-                      <%= for {label, value} <- PhoenixKitAI.Endpoint.image_quality_options() do %>
-                        <option value={value} selected={current_quality == value}>{label}</option>
-                      <% end %>
-                    </select>
+                  <div class="min-w-48">
+                    <.select
+                      id="endpoint-image-quality"
+                      name="endpoint[image_quality]"
+                      label={gettext("Default Quality")}
+                      value={current_quality}
+                      prompt={gettext("— Provider default —")}
+                      options={PhoenixKitAI.Endpoint.image_quality_options()}
+                    />
                   </div>
                 </div>
                 <p class="fieldset-label text-base-content/50 mt-1">
@@ -593,25 +532,22 @@
                        round-trip, the wrapper "has" that descendant, so
                        descendants with the variant flip on. --%>
                   <div :if={length(@models_grouped) > 1} class="group">
-                    <label class="select w-full group-has-[select.phx-change-loading]:opacity-60 transition-opacity">
-                      <select
-                        id="provider_picker"
-                        name="provider"
-                        phx-change="select_provider"
-                        phx-hook="ResetSelect"
-                      >
-                        <option value="" selected>
-                          — {gettext("Select provider (%{count} available)", count: length(@models_grouped))} —
-                        </option>
-                        <%= for {provider, models} <- @models_grouped do %>
-                          <option value={provider} selected={@selected_provider == provider}>
-                            {PhoenixKitAI.OpenRouterClient.humanize_provider(provider)} ({length(
-                              models
-                            )} models)
-                          </option>
-                        <% end %>
-                      </select>
-                    </label>
+                    <.select
+                      id="provider_picker"
+                      name="provider"
+                      value={@selected_provider}
+                      prompt={
+                        ngettext(
+                          "— Select provider (%{count} available) —",
+                          "— Select provider (%{count} available) —",
+                          length(@models_grouped)
+                        )
+                      }
+                      options={provider_options(@models_grouped)}
+                      phx-change="select_provider"
+                      phx-hook="ResetSelect"
+                      class="group-has-[select.phx-change-loading]:opacity-60 transition-opacity"
+                    />
                     <div class="hidden group-has-[select.phx-change-loading]:flex items-center gap-2 mt-2 text-sm text-base-content/70">
                       <span class="loading loading-spinner loading-xs"></span>
                       {gettext("Loading models…")}
@@ -794,15 +730,9 @@
 
               <%!-- Advanced Parameters --%>
               <%= if advanced_params != [] do %>
-                <div class="collapse collapse-arrow bg-base-200 mt-4">
-                  <input
-                    type="checkbox"
-                    name="_advanced_open"
-                    phx-update="ignore"
-                    id="advanced-params-toggle"
-                  />
-                  <div class="collapse-title font-medium">Advanced Parameters</div>
-                  <div class="collapse-content">
+                <.accordion id="advanced-params" class="bg-base-200 rounded-box mt-4" title_class="font-medium">
+                  <:title>{gettext("Advanced Parameters")}</:title>
+                  <:content>
                     <div class="grid grid-cols-2 md:grid-cols-3 gap-4 pt-2">
                       <%= for {param_key, param_def} <- advanced_params do %>
                         <.param_input
@@ -815,8 +745,8 @@
                         />
                       <% end %>
                     </div>
-                  </div>
-                </div>
+                  </:content>
+                </.accordion>
               <% end %>
           </.form_section>
         <% else %>

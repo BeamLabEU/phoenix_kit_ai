@@ -1770,4 +1770,27 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     # before :erlang.float_to_binary/2, which raises on integer input.
     "$#{:erlang.float_to_binary(value * 1.0 * 1_000_000, decimals: 2)}"
   end
+
+  # The model types the provider can serve; chat always, speech and image
+  # generation only where the provider has a model picker for them.
+  defp model_type_options(provider) do
+    [{gettext("Chat / Completion"), "text"}] ++
+      if(PhoenixKitAI.Endpoint.tts_model_picker?(provider),
+        do: [{gettext("Text-to-Speech"), "tts"}],
+        else: []
+      ) ++
+      if(PhoenixKitAI.Endpoint.image_gen_model_picker?(provider),
+        do: [{gettext("Image Generation"), "image_gen"}],
+        else: []
+      )
+  end
+
+  # "Anthropic (12 models)" for each provider in the model list.
+  defp provider_options(models_grouped) do
+    for {provider, models} <- models_grouped do
+      {ngettext("%{name} (%{count} model)", "%{name} (%{count} models)", length(models),
+         name: PhoenixKitAI.OpenRouterClient.humanize_provider(provider)
+       ), provider}
+    end
+  end
 end

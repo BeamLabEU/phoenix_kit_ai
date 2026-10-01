@@ -35,7 +35,9 @@ defmodule PhoenixKitAI.BudgetCacheTest do
   defp reset do
     RequestCache.clear()
     Budget.reset_warnings()
-    for scope <- [:global, :endpoint, :user], do: {:ok, _} = Budget.set_limit(scope, 0)
+
+    for scope <- [:global, :endpoint, :user, :user_calls],
+        do: {:ok, _} = Budget.set_limit(scope, 0)
 
     {:ok, _} =
       PhoenixKit.Settings.update_setting_with_module("ai_budget_warn_percent", "80", "ai")
@@ -164,6 +166,28 @@ defmodule PhoenixKitAI.BudgetCacheTest do
       assert [%{scope: :endpoint, spent: 0}] = Budget.status(other_ep, [])
       assert {:ok, _} = PhoenixKitAI.ask(other_ep.uuid, "fresh endpoint")
       assert {:error, {:budget_exceeded, :endpoint}} = PhoenixKitAI.ask(ep.uuid, "e")
+    end
+
+    test "a per-user call count caps how often, whatever each call cost", %{endpoint: ep} do
+      # Nearly free calls: a money cap would never bite, a count does.
+      stub_chat(self(), 0.0)
+      user = Fixtures.confirmed_user_fixture().uuid
+      other = Fixtures.confirmed_user_fixture().uuid
+      {:ok, _} = Budget.set_limit(:user_calls, 2)
+
+      assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "a", user_uuid: user)
+      assert [%{scope: :user_calls, spent: 1, limit: 2}] = Budget.status(ep, user_uuid: user)
+      assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "b", user_uuid: user)
+
+      assert {:error, {:budget_exceeded, :user_calls}} =
+               PhoenixKitAI.ask(ep.uuid, "c", user_uuid: user)
+
+      # Others, and anonymous calls, are not counted against that user.
+      assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "d", user_uuid: other)
+      assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "e")
+      assert Budget.status(ep, []) == []
+
+      assert PhoenixKitAI.Errors.message({:budget_exceeded, :user_calls}) =~ "AI requests"
     end
 
     test "an unknown user_uuid still records the call, unattributed, loudly", %{endpoint: ep} do

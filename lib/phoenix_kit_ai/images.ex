@@ -766,7 +766,11 @@ defmodule PhoenixKitAI.Images do
   script is ambiguous, `layout: :markdown` — keep tables and lists as
   Markdown instead of plain lines, `instructions:` — extra wording for the
   prompt, `schema:` — replace the base schema (`fields:` is still added to
-  it), plus `describe/3`'s `:model`, `:system` and sampling options.
+  it), `images_as:` — how several images relate: `:pages` (the default,
+  "pages of one document, in order"), `:separate` (independent photos,
+  e.g. a before/after pair — each transcribed on its own) or a sentence of
+  your own, plus `describe/3`'s `:model`, `:system` and sampling options
+  (`temperature:`, `max_tokens:`, `top_p:`, `seed:`), which apply per call.
   """
   @spec extract_text(Endpoint.t(), [input()] | input(), keyword()) ::
           {:ok, map()} | {:error, error()}
@@ -777,7 +781,7 @@ defmodule PhoenixKitAI.Images do
 
     describe_opts =
       opts
-      |> Keyword.drop([:fields, :language, :layout, :instructions, :question, :json])
+      |> Keyword.drop([:fields, :language, :layout, :instructions, :question, :json, :images_as])
       |> Keyword.put(:prompt, prompt)
       |> Keyword.put(:schema, text_schema_with_fields(opts[:schema] || @text_schema, fields))
 
@@ -866,11 +870,23 @@ defmodule PhoenixKitAI.Images do
     |> Map.update("required", ["fields"], &Enum.uniq(&1 ++ ["fields"]))
   end
 
+  # How several images relate, told to the model. One image needs no framing.
+  defp images_context(count, _images_as) when count < 2, do: nil
+
+  defp images_context(count, :pages),
+    do: "The #{count} images are pages of one document, in order."
+
+  defp images_context(count, :separate) do
+    "The #{count} images are separate photos, not pages of one document. Transcribe each on " <>
+      "its own and set `page` to the image's number (1 = first); do not merge or deduplicate " <>
+      "text across images."
+  end
+
+  defp images_context(_count, text) when is_binary(text) and text != "", do: text
+  defp images_context(count, _other), do: images_context(count, :pages)
+
   defp text_prompt(images, fields, opts) do
-    pages =
-      if length(images) > 1,
-        do: "The #{length(images)} images are pages of one document, in order.",
-        else: nil
+    pages = images_context(length(images), Keyword.get(opts, :images_as, :pages))
 
     layout =
       case opts[:layout] do

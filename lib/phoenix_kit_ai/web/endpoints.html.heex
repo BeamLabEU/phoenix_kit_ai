@@ -27,14 +27,14 @@
             />
           </:toolbar_title>
 
-          <:toolbar_actions>
+          <:toolbar_primary>
             <.link
               navigate={PhoenixKitAI.Routes.ai_path() <> "/endpoints/new"}
               class="btn btn-primary btn-sm"
             >
               <.icon name="hero-plus" class="w-4 h-4 mr-2" /> {gettext("New Endpoint")}
             </.link>
-          </:toolbar_actions>
+          </:toolbar_primary>
 
           <:card_body :let={endpoint}>
             <% stats =
@@ -492,7 +492,7 @@
             <h3 class="card-title text-lg mb-4">{gettext("Recent Requests")}</h3>
 
             <%!-- Filters --%>
-            <form phx-change="usage_filter" class="flex flex-wrap items-center gap-2 mb-4">
+            <form id="ai-usage-filters" phx-change="usage_filter" class="flex flex-wrap items-center gap-2 mb-4">
               <%!-- Date filter (always visible) --%>
               <label class="select select-sm">
                 <select name="date">
@@ -675,9 +675,11 @@
                         {PhoenixKitAI.Request.format_cost(request.cost_cents)}
                       </.table_default_cell>
                       <.table_default_cell>
-                        <span class={"badge badge-sm #{PhoenixKitAI.Request.status_color(request.status)}"}>
-                          {PhoenixKitAI.Request.status_label(request.status)}
-                        </span>
+                        <.status_badge
+                          status={PhoenixKitAI.Request.badge_status(request.status)}
+                          label={PhoenixKitAI.Request.status_label(request.status)}
+                          size={:sm}
+                        />
                         <%= if request.error_message do %>
                           <span title={request.error_message} class="inline-block align-middle">
                             <.icon
@@ -728,36 +730,38 @@
   </div>
 
   <%!-- Request Details Modal --%>
-  <%= if @selected_request do %>
-    <div class="modal modal-open">
-      <div class="modal-box max-w-3xl">
-        <div class="flex justify-between items-center mb-4">
-          <h3 class="font-bold text-lg">{gettext("Request Details")}</h3>
-          <button phx-click="close_request_details" class="btn btn-sm btn-circle btn-ghost">
-            ✕
-          </button>
-        </div>
+  <.modal
+    :if={@selected_request}
+    show
+    on_close="close_request_details"
+    id="ai-request-details"
+    max_width="3xl"
+    max_height="80vh"
+  >
+    <:title>{gettext("Request Details")}</:title>
 
         <%!-- Request Summary --%>
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
           <div>
-            <div class="text-xs text-base-content/70">ID</div>
+            <div class="text-xs text-base-content/70">{gettext("ID")}</div>
             <div class="font-mono text-sm">{@selected_request.uuid}</div>
           </div>
           <div>
-            <div class="text-xs text-base-content/70">Status</div>
-            <span class={"badge badge-sm #{PhoenixKitAI.Request.status_color(@selected_request.status)}"}>
-              {PhoenixKitAI.Request.status_label(@selected_request.status)}
-            </span>
+            <div class="text-xs text-base-content/70">{gettext("Status")}</div>
+            <.status_badge
+              status={PhoenixKitAI.Request.badge_status(@selected_request.status)}
+              label={PhoenixKitAI.Request.status_label(@selected_request.status)}
+              size={:sm}
+            />
           </div>
           <div>
-            <div class="text-xs text-base-content/70">Latency</div>
+            <div class="text-xs text-base-content/70">{gettext("Latency")}</div>
             <div class="text-sm">
               {PhoenixKitAI.Request.format_latency(@selected_request.latency_ms)}
             </div>
           </div>
           <div>
-            <div class="text-xs text-base-content/70">Cost</div>
+            <div class="text-xs text-base-content/70">{gettext("Cost")}</div>
             <div class="text-sm">
               {PhoenixKitAI.Request.format_cost(@selected_request.cost_cents)}
             </div>
@@ -767,11 +771,11 @@
         <%!-- Model, Endpoint & Prompt Info --%>
         <div class="grid grid-cols-3 gap-4 mb-4">
           <div>
-            <div class="text-xs text-base-content/70">Endpoint</div>
+            <div class="text-xs text-base-content/70">{gettext("Endpoint")}</div>
             <div class="text-sm">{@selected_request.endpoint_name || "-"}</div>
           </div>
           <div>
-            <div class="text-xs text-base-content/70">Prompt</div>
+            <div class="text-xs text-base-content/70">{gettext("Prompt")}</div>
             <div class="text-sm">
               <%= if @selected_request.prompt && @selected_request.prompt_name do %>
                 <.link
@@ -786,7 +790,7 @@
             </div>
           </div>
           <div>
-            <div class="text-xs text-base-content/70">Model</div>
+            <div class="text-xs text-base-content/70">{gettext("Model")}</div>
             <div class="text-sm font-mono">{@selected_request.model}</div>
           </div>
         </div>
@@ -794,19 +798,19 @@
         <%!-- Token Usage --%>
         <div class="grid grid-cols-3 gap-4 mb-4">
           <div>
-            <div class="text-xs text-base-content/70">Input Tokens</div>
+            <div class="text-xs text-base-content/70">{gettext("Input Tokens")}</div>
             <div class="text-sm">
               {PhoenixKitAI.Request.format_tokens(@selected_request.input_tokens)}
             </div>
           </div>
           <div>
-            <div class="text-xs text-base-content/70">Output Tokens</div>
+            <div class="text-xs text-base-content/70">{gettext("Output Tokens")}</div>
             <div class="text-sm">
               {PhoenixKitAI.Request.format_tokens(@selected_request.output_tokens)}
             </div>
           </div>
           <div>
-            <div class="text-xs text-base-content/70">Total Tokens</div>
+            <div class="text-xs text-base-content/70">{gettext("Total Tokens")}</div>
             <div class="text-sm font-semibold">
               {PhoenixKitAI.Request.format_tokens(@selected_request.total_tokens)}
             </div>
@@ -815,7 +819,7 @@
 
         <%!-- Timestamp --%>
         <div class="mb-4">
-          <div class="text-xs text-base-content/70">Timestamp</div>
+          <div class="text-xs text-base-content/70">{gettext("Timestamp")}</div>
           <div class="text-sm font-mono">
             {Calendar.strftime(@selected_request.inserted_at, "%Y-%m-%d %H:%M:%S UTC")}
           </div>
@@ -824,7 +828,7 @@
         <%!-- Error Message (if any) --%>
         <%= if @selected_request.error_message do %>
           <div class="mb-4">
-            <div class="text-xs text-base-content/70">Error Message</div>
+            <div class="text-xs text-base-content/70">{gettext("Error Message")}</div>
             <div class="bg-error/10 text-error p-2 rounded text-sm font-mono">
               {@selected_request.error_message}
             </div>
@@ -834,7 +838,7 @@
         <%!-- Messages (Request) --%>
         <%= if @selected_request.metadata["messages"] do %>
           <div class="mb-4">
-            <div class="text-xs text-base-content/70 mb-1">Request Messages</div>
+            <div class="text-xs text-base-content/70 mb-1">{gettext("Request Messages")}</div>
             <div class="space-y-2">
               <%= for msg <- @selected_request.metadata["messages"] do %>
                 <div class={"p-3 rounded #{if msg["role"] == "user", do: "bg-primary/10 border-l-2 border-primary", else: "bg-base-300 border-l-2 border-base-content/30"}"}>
@@ -870,7 +874,11 @@
         <%= if @selected_request.metadata["response_reasoning"] do %>
           <details class="mb-4">
             <summary class="text-xs text-base-content/70 mb-1 cursor-pointer hover:text-base-content">
-              {gettext("Reasoning")} ({String.length(@selected_request.metadata["response_reasoning"])} chars)
+              {ngettext(
+                "Reasoning (%{count} character)",
+                "Reasoning (%{count} characters)",
+                String.length(@selected_request.metadata["response_reasoning"])
+              )}
             </summary>
             <div class="bg-info/10 border-l-2 border-info p-3 rounded mt-1">
               <div class="text-xs font-semibold text-base-content/70 mb-1 uppercase">
@@ -888,7 +896,7 @@
           Map.take(@selected_request.metadata || %{}, ["temperature", "max_tokens"]) %>
         <%= if params_to_show != %{} do %>
           <div class="mb-4">
-            <div class="text-xs text-base-content/70 mb-1">Parameters</div>
+            <div class="text-xs text-base-content/70 mb-1">{gettext("Parameters")}</div>
             <div class="flex flex-wrap gap-2">
               <%= for {key, value} <- params_to_show, not is_nil(value) do %>
                 <span class="badge badge-outline badge-sm h-auto">{key}: {value}</span>
@@ -900,7 +908,7 @@
         <%!-- Source (caller module/function) --%>
         <%= if @selected_request.metadata["source"] do %>
           <div class="mb-4">
-            <div class="text-xs text-base-content/70">Source</div>
+            <div class="text-xs text-base-content/70">{gettext("Source")}</div>
             <div class="text-sm font-mono bg-base-200 px-2 py-1 rounded inline-block">
               {@selected_request.metadata["source"]}
             </div>
@@ -910,25 +918,25 @@
         <%!-- Caller Context (request ID, node, memory, pid) --%>
         <%= if ctx = @selected_request.metadata["caller_context"] do %>
           <div class="mb-4">
-            <div class="text-xs text-base-content/70 mb-1">Caller Context</div>
+            <div class="text-xs text-base-content/70 mb-1">{gettext("Caller Context")}</div>
             <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
               <%= if ctx["request_id"] do %>
                 <div>
-                  <span class="text-base-content/70">Request ID:</span>
+                  <span class="text-base-content/70">{gettext("Request ID")}:</span>
                   <span class="font-mono text-xs">{ctx["request_id"]}</span>
                 </div>
               <% end %>
               <div>
-                <span class="text-base-content/70">Node:</span>
+                <span class="text-base-content/70">{gettext("Node")}:</span>
                 <span class="font-mono text-xs">{ctx["node"]}</span>
               </div>
               <div>
-                <span class="text-base-content/70">PID:</span>
+                <span class="text-base-content/70">{gettext("PID")}:</span>
                 <span class="font-mono text-xs">{ctx["pid"]}</span>
               </div>
               <%= if ctx["memory_bytes"] do %>
                 <div>
-                  <span class="text-base-content/70">Memory:</span>
+                  <span class="text-base-content/70">{gettext("Memory")}:</span>
                   <span>{format_bytes(ctx["memory_bytes"])}</span>
                 </div>
               <% end %>
@@ -938,89 +946,60 @@
 
         <%!-- Stacktrace (collapsible) --%>
         <%= if @selected_request.metadata["stacktrace"] && length(@selected_request.metadata["stacktrace"]) > 0 do %>
-          <div class="collapse collapse-arrow bg-base-200 mb-2">
-            <input
-              type="checkbox"
-              name="stacktrace-toggle"
-              phx-update="ignore"
-              id="stacktrace-toggle"
-            />
-            <div class="collapse-title text-sm font-medium">
-              <.icon name="hero-queue-list" class="w-4 h-4 inline mr-1" />
-              Stacktrace ({length(@selected_request.metadata["stacktrace"])} frames)
-            </div>
-            <div class="collapse-content">
+          <.accordion id="ai-request-stacktrace" class="bg-base-200 rounded-box mb-2" title_class="text-sm font-medium">
+            <:title><.icon name="hero-queue-list" class="w-4 h-4 inline mr-1" />
+              {ngettext(
+                "Stacktrace (%{count} frame)",
+                "Stacktrace (%{count} frames)",
+                length(@selected_request.metadata["stacktrace"])
+              )}</:title>
+            <:content>
               <div class="bg-base-300 p-3 rounded overflow-x-auto">
                 <pre class="text-xs font-mono whitespace-pre-wrap">{Enum.join(@selected_request.metadata["stacktrace"], "\n")}</pre>
               </div>
-            </div>
-          </div>
+            </:content>
+          </.accordion>
         <% end %>
 
         <%!-- Request Payload (what we sent) --%>
         <%= if @selected_request.metadata["request_payload"] do %>
-          <div class="collapse collapse-arrow bg-base-200 mb-2">
-            <input
-              type="checkbox"
-              name="request-payload-toggle"
-              phx-update="ignore"
-              id="request-payload-toggle"
-            />
-            <div class="collapse-title text-sm font-medium">
-              <.icon name="hero-arrow-up-on-square" class="w-4 h-4 inline mr-1" />
-              {gettext("Request Payload (sent to API)")}
-            </div>
-            <div class="collapse-content">
+          <.accordion id="ai-request-payload" class="bg-base-200 rounded-box mb-2" title_class="text-sm font-medium">
+            <:title><.icon name="hero-arrow-up-on-square" class="w-4 h-4 inline mr-1" />
+              {gettext("Request Payload (sent to API)")}</:title>
+            <:content>
               <div class="bg-base-300 p-3 rounded overflow-x-auto">
                 <pre class="text-xs font-mono whitespace-pre-wrap"><code>{Jason.encode!(@selected_request.metadata["request_payload"], pretty: true)}</code></pre>
               </div>
-            </div>
-          </div>
+            </:content>
+          </.accordion>
         <% end %>
 
         <%!-- Raw API Response --%>
         <%= if @selected_request.metadata["raw_response"] do %>
-          <div class="collapse collapse-arrow bg-base-200 mb-2">
-            <input
-              type="checkbox"
-              name="response-json-toggle"
-              phx-update="ignore"
-              id="response-json-toggle"
-            />
-            <div class="collapse-title text-sm font-medium">
-              <.icon name="hero-arrow-down-on-square" class="w-4 h-4 inline mr-1" />
-              {gettext("API Response (raw)")}
-            </div>
-            <div class="collapse-content">
+          <.accordion id="ai-request-response" class="bg-base-200 rounded-box mb-2" title_class="text-sm font-medium">
+            <:title><.icon name="hero-arrow-down-on-square" class="w-4 h-4 inline mr-1" />
+              {gettext("API Response (raw)")}</:title>
+            <:content>
               <div class="bg-base-300 p-3 rounded overflow-x-auto">
                 <pre class="text-xs font-mono whitespace-pre-wrap"><code>{Jason.encode!(@selected_request.metadata["raw_response"], pretty: true)}</code></pre>
               </div>
-            </div>
-          </div>
+            </:content>
+          </.accordion>
         <% end %>
 
         <%!-- Database Record --%>
-        <div class="collapse collapse-arrow bg-base-200">
-          <input
-            type="checkbox"
-            name="db-record-toggle"
-            phx-update="ignore"
-            id="db-record-toggle"
-          />
-          <div class="collapse-title text-sm font-medium">
-            <.icon name="hero-circle-stack" class="w-4 h-4 inline mr-1" /> {gettext("Database Record")}
-          </div>
-          <div class="collapse-content">
-            <div class="bg-base-300 p-3 rounded overflow-x-auto">
+        <.accordion id="ai-request-record" class="bg-base-200 rounded-box" title_class="text-sm font-medium">
+            <:title><.icon name="hero-circle-stack" class="w-4 h-4 inline mr-1" /> {gettext("Database Record")}</:title>
+            <:content>
+              <div class="bg-base-300 p-3 rounded overflow-x-auto">
               <pre class="text-xs font-mono whitespace-pre-wrap"><code>{Jason.encode!(Map.drop(@selected_request, [:metadata]) |> Map.put(:metadata, "...truncated..."), pretty: true)}</code></pre>
-            </div>
-          </div>
-        </div>
+              </div>
+            </:content>
+          </.accordion>
 
-        <div class="modal-action">
-          <button phx-click="close_request_details" class="btn">Close</button>
-        </div>
-      </div>
-      <div class="modal-backdrop" phx-click="close_request_details"></div>
-    </div>
-  <% end %>
+    <:actions>
+      <.button type="button" variant="ghost" phx-click="close_request_details">
+        {gettext("Close")}
+      </.button>
+    </:actions>
+  </.modal>
