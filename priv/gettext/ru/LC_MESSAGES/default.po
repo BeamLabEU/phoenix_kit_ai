@@ -2292,6 +2292,6 @@ msgstr "Вы исчерпали допустимое число запросов
 #, elixir-autogen, elixir-format
 msgid "%{name} (%{count} model)"
 msgid_plural "%{name} (%{count} models)"
-msgstr[0] ""
-msgstr[1] ""
-msgstr[2] ""
+msgstr[0] "%{name} (%{count} модель)"
+msgstr[1] "%{name} (%{count} модели)"
+msgstr[2] "%{name} (%{count} моделей)"

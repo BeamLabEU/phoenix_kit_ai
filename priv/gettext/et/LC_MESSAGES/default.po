@@ -2285,5 +2285,5 @@ msgstr "Oled viimase 24 tunni jooksul teinud lubatud arvu AI-päringuid"
 #, elixir-autogen, elixir-format
 msgid "%{name} (%{count} model)"
 msgid_plural "%{name} (%{count} models)"
-msgstr[0] ""
-msgstr[1] ""
+msgstr[0] "%{name} (%{count} mudel)"
+msgstr[1] "%{name} (%{count} mudelit)"
