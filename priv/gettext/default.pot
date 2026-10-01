@@ -33,7 +33,7 @@ msgstr ""
 msgid "AI module is not enabled"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:975
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:981
 #, elixir-autogen, elixir-format
 msgid "API Response (raw)"
 msgstr ""
@@ -153,10 +153,10 @@ msgstr ""
 msgid "Choose a model from the list below"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:577
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:578
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:563
 #: lib/phoenix_kit_ai/web/playground.html.heex:133
-#: lib/phoenix_kit_ai/web/playground.html.heex:261
+#: lib/phoenix_kit_ai/web/playground.html.heex:262
 #, elixir-autogen, elixir-format
 msgid "Clear"
 msgstr ""
@@ -170,7 +170,7 @@ msgid "Clear model"
 msgstr ""
 
 #: lib/phoenix_kit_ai/components/ai_translate.ex:122
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:996
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:1002
 #, elixir-autogen, elixir-format
 msgid "Close"
 msgstr ""
@@ -215,7 +215,7 @@ msgstr ""
 msgid "Content must be a string"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:638
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:639
 #, elixir-autogen, elixir-format
 msgid "Context: %{tokens} tokens"
 msgstr ""
@@ -253,7 +253,7 @@ msgstr ""
 msgid "Could not start translation."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:847
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:848
 #, elixir-autogen, elixir-format
 msgid "Create Endpoint"
 msgstr ""
@@ -321,12 +321,12 @@ msgstr ""
 msgid "Current tab only (%{lang})"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:986
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:992
 #, elixir-autogen, elixir-format
 msgid "Database Record"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:692
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:693
 #, elixir-autogen, elixir-format
 msgid "Default (medium)"
 msgstr ""
@@ -361,12 +361,12 @@ msgstr ""
 msgid "Default translation prompt generated."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:834
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:835
 #, elixir-autogen, elixir-format
 msgid "Defaults to project_title (%{title}) from"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:809
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:810
 #, elixir-autogen, elixir-format
 msgid "Defaults to site_url from"
 msgstr ""
@@ -455,7 +455,7 @@ msgstr ""
 msgid "Edit"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:691
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:692
 #, elixir-autogen, elixir-format
 msgid "Effort Level"
 msgstr ""
@@ -474,7 +474,7 @@ msgstr ""
 msgid "Enable"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:677
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:678
 #, elixir-autogen, elixir-format
 msgid "Enable Thinking"
 msgstr ""
@@ -539,7 +539,7 @@ msgid "Enter your prompt template...\n\nUse {{VariableName}} for dynamic content
 msgstr ""
 
 #: lib/phoenix_kit_ai/request.ex:214
-#: lib/phoenix_kit_ai/web/playground.html.heex:456
+#: lib/phoenix_kit_ai/web/playground.html.heex:457
 #, elixir-autogen, elixir-format
 msgid "Error"
 msgstr ""
@@ -569,7 +569,7 @@ msgstr ""
 msgid "Failed to update prompt"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:593
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:594
 #, elixir-autogen, elixir-format
 msgid "Filter models…"
 msgstr ""
@@ -589,12 +589,12 @@ msgstr ""
 msgid "Filters the model list below. Text-to-Speech endpoints are called via PhoenixKitAI.speak/3."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:814
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:815
 #, elixir-autogen, elixir-format
 msgid "For OpenRouter rankings. Set site_url in"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:679
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:680
 #, elixir-autogen, elixir-format
 msgid "For models like DeepSeek R1, Qwen QwQ that support chain-of-thought reasoning"
 msgstr ""
@@ -609,18 +609,18 @@ msgstr ""
 msgid "Generate Default Prompt"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:632
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:756
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:633
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:757
 #, elixir-autogen, elixir-format
 msgid "Generation Parameters"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:799
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:800
 #, elixir-autogen, elixir-format
 msgid "HTTP Referer"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:721
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:722
 #, elixir-autogen, elixir-format
 msgid "Hide from response"
 msgstr ""
@@ -716,8 +716,8 @@ msgstr ""
 msgid "Latency"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:812
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:837
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:813
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:838
 #, elixir-autogen, elixir-format
 msgid "Leave blank to inherit."
 msgstr ""
@@ -737,7 +737,7 @@ msgstr ""
 msgid "Loading models..."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:552
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:553
 #, elixir-autogen, elixir-format
 msgid "Loading models…"
 msgstr ""
@@ -747,7 +747,7 @@ msgstr ""
 msgid "Manual"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:641
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:642
 #, elixir-autogen, elixir-format
 msgid "Max output: %{tokens} tokens"
 msgstr ""
@@ -880,7 +880,7 @@ msgstr ""
 msgid "No model selected"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:789
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:790
 #, elixir-autogen, elixir-format
 msgid "No optional settings for this provider."
 msgstr ""
@@ -913,7 +913,7 @@ msgstr ""
 msgid "Nothing to translate."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:779
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:780
 #, elixir-autogen, elixir-format
 msgid "Optional Provider Settings"
 msgstr ""
@@ -953,12 +953,12 @@ msgstr ""
 msgid "Pick an integration above to load available models."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:785
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:786
 #, elixir-autogen, elixir-format
 msgid "Pick an integration above to see optional provider-specific settings."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:761
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:762
 #, elixir-autogen, elixir-format
 msgid "Pick an integration above, then a model, to configure generation parameters."
 msgstr ""
@@ -1070,7 +1070,7 @@ msgstr ""
 msgid "Request Details"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:962
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:968
 #, elixir-autogen, elixir-format
 msgid "Request Payload (sent to API)"
 msgstr ""
@@ -1102,7 +1102,7 @@ msgid "Requests / Tokens today"
 msgstr ""
 
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:858
-#: lib/phoenix_kit_ai/web/playground.html.heex:465
+#: lib/phoenix_kit_ai/web/playground.html.heex:466
 #, elixir-autogen, elixir-format
 msgid "Response"
 msgstr ""
@@ -1127,7 +1127,7 @@ msgstr ""
 msgid "Select Model"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:759
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:760
 #, elixir-autogen, elixir-format
 msgid "Select a model above to configure generation parameters. Available parameters depend on the selected model."
 msgstr ""
@@ -1137,7 +1137,7 @@ msgstr ""
 msgid "Select a prompt..."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:612
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:613
 #, elixir-autogen, elixir-format
 msgid "Select a provider to see available models with pricing details"
 msgstr ""
@@ -1156,11 +1156,6 @@ msgstr ""
 #: lib/phoenix_kit_ai/web/playground.html.heex:14
 #, elixir-autogen, elixir-format
 msgid "Select an endpoint..."
-msgstr ""
-
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:541
-#, elixir-autogen, elixir-format
-msgid "Select provider (%{count} available)"
 msgstr ""
 
 #: lib/phoenix_kit_ai/web/playground.ex:305
@@ -1189,9 +1184,9 @@ msgstr ""
 msgid "Set Model"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:811
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:816
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:836
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:812
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:817
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:837
 #, elixir-autogen, elixir-format
 msgid "Settings"
 msgstr ""
@@ -1223,7 +1218,7 @@ msgid "Something went wrong. Please try again."
 msgstr ""
 
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:637
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:909
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:911
 #, elixir-autogen, elixir-format
 msgid "Source"
 msgstr ""
@@ -1233,7 +1228,7 @@ msgstr ""
 msgid "Source: %{lang}. Each translation runs as a background job — you can keep editing while it finishes."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:219
+#: lib/phoenix_kit_ai/web/playground.html.heex:220
 #, elixir-autogen, elixir-format
 msgid "Speak"
 msgstr ""
@@ -1344,7 +1339,7 @@ msgstr ""
 msgid "The selected integration is not connected — requests will fail until you connect it in Settings → Integrations."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:787
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:788
 #, elixir-autogen, elixir-format
 msgid "These settings apply only to OpenRouter."
 msgstr ""
@@ -1374,7 +1369,7 @@ msgstr ""
 msgid "Today"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:701
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:702
 #, elixir-autogen, elixir-format
 msgid "Token Limit"
 msgstr ""
@@ -1481,7 +1476,7 @@ msgstr ""
 msgid "Unknown"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:847
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:848
 #, elixir-autogen, elixir-format
 msgid "Update Endpoint"
 msgstr ""
@@ -1563,7 +1558,7 @@ msgstr ""
 msgid "View"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:712
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:713
 #, elixir-autogen, elixir-format
 msgid "Visibility"
 msgstr ""
@@ -1573,12 +1568,12 @@ msgstr ""
 msgid "Voice"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:435
+#: lib/phoenix_kit_ai/web/playground.html.heex:436
 #, elixir-autogen, elixir-format
 msgid "Waiting for response..."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:826
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:827
 #, elixir-autogen, elixir-format
 msgid "X-Title"
 msgstr ""
@@ -1593,7 +1588,7 @@ msgstr ""
 msgid "auto-generated-slug"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:883
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:885
 #, elixir-autogen, elixir-format
 msgid "chain of thought"
 msgstr ""
@@ -1613,7 +1608,7 @@ msgstr ""
 msgid "e.g., Translator, Code Reviewer"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:476
+#: lib/phoenix_kit_ai/web/playground.html.heex:477
 #, elixir-autogen, elixir-format
 msgid "in"
 msgstr ""
@@ -1633,7 +1628,7 @@ msgstr ""
 msgid "or"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:482
+#: lib/phoenix_kit_ai/web/playground.html.heex:483
 #, elixir-autogen, elixir-format
 msgid "out"
 msgstr ""
@@ -1648,12 +1643,12 @@ msgstr ""
 msgid "the primary language"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:817
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:818
 #, elixir-autogen, elixir-format
 msgid "to use it as the default."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:486
+#: lib/phoenix_kit_ai/web/playground.html.heex:487
 #, elixir-autogen, elixir-format
 msgid "total"
 msgstr ""
@@ -1688,7 +1683,7 @@ msgstr ""
 
 #: lib/phoenix_kit_ai/web/endpoint_form.ex:195
 #: lib/phoenix_kit_ai/web/endpoint_form.html.heex:408
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:574
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:575
 #, elixir-autogen, elixir-format
 msgid "…"
 msgstr ""
@@ -1802,27 +1797,27 @@ msgstr ""
 msgid "Prompts"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:252
+#: lib/phoenix_kit_ai/web/playground.html.heex:253
 #, elixir-autogen, elixir-format
 msgid "Add image"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:363
+#: lib/phoenix_kit_ai/web/playground.html.heex:364
 #, elixir-autogen, elixir-format
 msgid "Edit image"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:396
+#: lib/phoenix_kit_ai/web/playground.html.heex:397
 #, elixir-autogen, elixir-format
 msgid "Edited image"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:361
+#: lib/phoenix_kit_ai/web/playground.html.heex:362
 #, elixir-autogen, elixir-format
 msgid "Editing…"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:235
+#: lib/phoenix_kit_ai/web/playground.html.heex:236
 #, elixir-autogen, elixir-format
 msgid "Image edit"
 msgstr ""
@@ -1838,7 +1833,7 @@ msgstr ""
 msgid "Please add at least one image"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:277
+#: lib/phoenix_kit_ai/web/playground.html.heex:278
 #, elixir-autogen, elixir-format
 msgid "Remove"
 msgstr ""
@@ -1849,43 +1844,43 @@ msgstr ""
 msgid "The model returned no image"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:377
+#: lib/phoenix_kit_ai/web/playground.html.heex:378
 #, elixir-autogen, elixir-format
 msgid "Usually 10–40 seconds…"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:316
+#: lib/phoenix_kit_ai/web/playground.html.heex:317
 #, elixir-autogen, elixir-format
 msgid "e.g. Repaint the cabinet fronts in matte sage green; keep everything else as it is"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:371
+#: lib/phoenix_kit_ai/web/playground.html.heex:372
 #, elixir-autogen, elixir-format
 msgid "Asking…"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:400
+#: lib/phoenix_kit_ai/web/playground.html.heex:401
 #, elixir-autogen, elixir-format
 msgid "Check flagged changes"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:400
+#: lib/phoenix_kit_ai/web/playground.html.heex:401
 #, elixir-autogen, elixir-format
 msgid "Check passed"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:356
+#: lib/phoenix_kit_ai/web/playground.html.heex:357
 #, elixir-autogen, elixir-format
 msgid "Check the result against the original with the same endpoint (one more call)"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:374
-#: lib/phoenix_kit_ai/web/playground.html.heex:382
+#: lib/phoenix_kit_ai/web/playground.html.heex:375
+#: lib/phoenix_kit_ai/web/playground.html.heex:383
 #, elixir-autogen, elixir-format
 msgid "Describe"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:340
+#: lib/phoenix_kit_ai/web/playground.html.heex:341
 #, elixir-autogen, elixir-format
 msgid "Endpoint's model"
 msgstr ""
@@ -1895,17 +1890,17 @@ msgstr ""
 msgid "Image operation %{operation} needs %{key}"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:313
+#: lib/phoenix_kit_ai/web/playground.html.heex:314
 #, elixir-autogen, elixir-format
 msgid "Instruction (optional with operations; the question for Describe)"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:330
+#: lib/phoenix_kit_ai/web/playground.html.heex:331
 #, elixir-autogen, elixir-format
 msgid "Load model list"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:338
+#: lib/phoenix_kit_ai/web/playground.html.heex:339
 #, elixir-autogen, elixir-format
 msgid "Model (override)"
 msgstr ""
@@ -1915,8 +1910,8 @@ msgstr ""
 msgid "Not supported by this provider"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:288
 #: lib/phoenix_kit_ai/web/playground.html.heex:289
+#: lib/phoenix_kit_ai/web/playground.html.heex:290
 #, elixir-autogen, elixir-format
 msgid "Operations"
 msgstr ""
@@ -1926,12 +1921,12 @@ msgstr ""
 msgid "Pick an operation or write an instruction"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:414
+#: lib/phoenix_kit_ai/web/playground.html.heex:415
 #, elixir-autogen, elixir-format
 msgid "Prompt sent"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:241
+#: lib/phoenix_kit_ai/web/playground.html.heex:242
 #, elixir-autogen, elixir-format
 msgid "Send one or more images to an image-capable endpoint. The first image is the one being edited; the rest are references. Pick operations, add an instruction, or both — they become one prompt, and options are fitted to what the model accepts."
 msgstr ""
@@ -1997,7 +1992,7 @@ msgstr ""
 msgid "%{count} bytes of image data"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:259
+#: lib/phoenix_kit_ai/web/playground.html.heex:260
 #, elixir-autogen, elixir-format
 msgid "%{count} image kept from the last run"
 msgid_plural "%{count} images kept from the last run"
@@ -2059,7 +2054,7 @@ msgstr ""
 msgid "Free-form instruction"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:328
+#: lib/phoenix_kit_ai/web/playground.html.heex:329
 #, elixir-autogen, elixir-format
 msgid "Loading…"
 msgstr ""
@@ -2154,7 +2149,7 @@ msgstr ""
 msgid "Two images at most"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.html.heex:265
+#: lib/phoenix_kit_ai/web/playground.html.heex:266
 #, elixir-autogen, elixir-format
 msgid "Uploaded image"
 msgstr ""
@@ -2191,12 +2186,12 @@ msgstr ""
 msgid "New prompt"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:733
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:734
 #, elixir-autogen, elixir-format
 msgid "Advanced Parameters"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:919
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:921
 #, elixir-autogen, elixir-format
 msgid "Caller Context"
 msgstr ""
@@ -2216,12 +2211,12 @@ msgstr ""
 msgid "Input Tokens"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:937
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:939
 #, elixir-autogen, elixir-format
 msgid "Memory"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:928
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:930
 #, elixir-autogen, elixir-format
 msgid "Node"
 msgstr ""
@@ -2231,22 +2226,17 @@ msgstr ""
 msgid "Output Tokens"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:932
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:934
 #, elixir-autogen, elixir-format
 msgid "PID"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:897
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:899
 #, elixir-autogen, elixir-format
 msgid "Parameters"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:877
-#, elixir-autogen, elixir-format
-msgid "Reasoning (%{count} characters)"
-msgstr ""
-
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:923
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:925
 #, elixir-autogen, elixir-format
 msgid "Request ID"
 msgstr ""
@@ -2254,11 +2244,6 @@ msgstr ""
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:841
 #, elixir-autogen, elixir-format
 msgid "Request Messages"
-msgstr ""
-
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:949
-#, elixir-autogen, elixir-format
-msgid "Stacktrace (%{count} frames)"
 msgstr ""
 
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:822
@@ -2285,5 +2270,31 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "%{name} (%{count} model)"
 msgid_plural "%{name} (%{count} models)"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:877
+#, elixir-autogen, elixir-format
+msgid "Reasoning (%{count} character)"
+msgid_plural "Reasoning (%{count} characters)"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/phoenix_kit_ai/web/playground.html.heex:217
+#, elixir-autogen, elixir-format
+msgid "Speaking…"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:951
+#, elixir-autogen, elixir-format
+msgid "Stacktrace (%{count} frame)"
+msgid_plural "Stacktrace (%{count} frames)"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:540
+#, elixir-autogen, elixir-format
+msgid "— Select provider (%{count} available) —"
+msgid_plural "— Select provider (%{count} available) —"
 msgstr[0] ""
 msgstr[1] ""

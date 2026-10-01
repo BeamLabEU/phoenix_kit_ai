@@ -19,6 +19,21 @@ defmodule PhoenixKitAI.EndpointNameAndSourcePrefixTest do
       assert {:ok, %{uuid: _}} = PhoenixKitAI.resolve_endpoint_by_name("label reader")
     end
 
+    test "a name stored with surrounding spaces is found, and the exact name wins" do
+      padded = endpoint!(%{name: " Padded reader "})
+      assert PhoenixKitAI.get_endpoint_by_name("padded reader").uuid == padded.uuid
+
+      exact = endpoint!(%{name: "padded reader"})
+      assert PhoenixKitAI.get_endpoint_by_name("Padded Reader").uuid == exact.uuid
+    end
+
+    test "badge_status maps request statuses onto core's badge colours" do
+      assert PhoenixKitAI.Request.badge_status("success") == "completed"
+      assert PhoenixKitAI.Request.badge_status("error") == "error"
+      assert PhoenixKitAI.Request.badge_status("timeout") == "offline"
+      assert PhoenixKitAI.Request.badge_status("anything") == "unknown"
+    end
+
     test "unknown, blank or non-string names are nil" do
       assert PhoenixKitAI.get_endpoint_by_name("nothing like it") == nil
       assert PhoenixKitAI.get_endpoint_by_name("  ") == nil

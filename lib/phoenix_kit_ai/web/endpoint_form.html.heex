@@ -537,10 +537,11 @@
                       name="provider"
                       value={@selected_provider}
                       prompt={
-                        "— " <>
-                          gettext("Select provider (%{count} available)",
-                            count: length(@models_grouped)
-                          ) <> " —"
+                        ngettext(
+                          "— Select provider (%{count} available) —",
+                          "— Select provider (%{count} available) —",
+                          length(@models_grouped)
+                        )
                       }
                       options={provider_options(@models_grouped)}
                       phx-change="select_provider"

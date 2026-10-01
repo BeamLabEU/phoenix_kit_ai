@@ -42,8 +42,8 @@ defmodule PhoenixKitAI do
 
   - `user_uuid:` - a PhoenixKit user uuid recorded on the usage row and
     selecting the per-user spend cap. Host-supplied identity: the module has
-    no session of its own. An unknown uuid means the row is not written
-    (logged as a warning).
+    no session of its own. An unknown uuid is logged as a warning and the
+    row is written without it, so that call is not attributed or capped.
   - `source:`, `attribution:`, `idempotency_key:` - tracking only; never
     part of a cache key.
   - `cache:` - `true`, `[ttl: seconds | :infinity, key: term]` or
@@ -1270,9 +1270,11 @@ defmodule PhoenixKitAI do
   def get_endpoint(_), do: nil
 
   @doc """
-  Gets an endpoint by its name — case-insensitive and trimmed, matching the
-  unique index on `lower(name)`, so an app can refer to "Label reader"
-  instead of carrying a uuid through config.
+  Gets an endpoint by its name — case-insensitive, and with surrounding
+  spaces ignored on both sides (a name saved as `" Label reader"` is still
+  found), so an app can refer to "Label reader" instead of carrying a uuid
+  through config. The unique index is on `lower(name)` alone, so two names
+  differing only in surrounding spaces can both exist; the exact one wins.
 
   Disabled endpoints are returned too; calling one is refused at call time
   (`{:error, :endpoint_disabled}`). Returns `nil` when there is none.
@@ -1286,7 +1288,11 @@ defmodule PhoenixKitAI do
       trimmed ->
         normalized = String.downcase(trimmed)
 
-        from(e in Endpoint, where: fragment("lower(?)", e.name) == ^normalized, limit: 1)
+        from(e in Endpoint,
+          where: fragment("lower(btrim(?))", e.name) == ^normalized,
+          order_by: [desc: fragment("lower(?) = ?", e.name, ^normalized)],
+          limit: 1
+        )
         |> repo().one()
     end
   end

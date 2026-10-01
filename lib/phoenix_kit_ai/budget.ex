@@ -28,7 +28,9 @@ defmodule PhoenixKitAI.Budget do
   call still runs, but a `Logger.warning` and a
   `[:phoenix_kit_ai, :budget, :warning]` telemetry event fire once per
   crossing per scope (the flag clears when spend drops back under the
-  line).
+  line). Its `spent` / `limit` measurements are in the scope's unit:
+  nanodollars, or a call count for `:user_calls` — check the `scope`
+  metadata before adding them up.
 
   Once a cap is reached every verb returns `{:error, {:budget_exceeded,
   scope}}` without a provider call — cached answers included: a cap is a
@@ -41,8 +43,8 @@ defmodule PhoenixKitAI.Budget do
 
   The per-user cap only bites when the caller passes `user_uuid:`, and the
   value must be a PhoenixKit user uuid (the usage row has a foreign key on
-  it; a row with an unknown user is not written and is logged as a
-  warning). Anonymous visitors cannot be capped individually; cap the
+  it; a row with an unknown user is written without it, with a warning, so
+  it counts toward no user). Anonymous visitors cannot be capped individually; cap the
   endpoint or the site instead.
   """
 

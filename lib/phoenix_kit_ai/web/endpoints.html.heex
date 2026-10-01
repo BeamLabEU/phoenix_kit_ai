@@ -874,8 +874,10 @@
         <%= if @selected_request.metadata["response_reasoning"] do %>
           <details class="mb-4">
             <summary class="text-xs text-base-content/70 mb-1 cursor-pointer hover:text-base-content">
-              {gettext("Reasoning (%{count} characters)",
-                count: String.length(@selected_request.metadata["response_reasoning"])
+              {ngettext(
+                "Reasoning (%{count} character)",
+                "Reasoning (%{count} characters)",
+                String.length(@selected_request.metadata["response_reasoning"])
               )}
             </summary>
             <div class="bg-info/10 border-l-2 border-info p-3 rounded mt-1">
@@ -946,7 +948,11 @@
         <%= if @selected_request.metadata["stacktrace"] && length(@selected_request.metadata["stacktrace"]) > 0 do %>
           <.accordion id="ai-request-stacktrace" class="bg-base-200 rounded-box mb-2" title_class="text-sm font-medium">
             <:title><.icon name="hero-queue-list" class="w-4 h-4 inline mr-1" />
-              {gettext("Stacktrace (%{count} frames)", count: length(@selected_request.metadata["stacktrace"]))}</:title>
+              {ngettext(
+                "Stacktrace (%{count} frame)",
+                "Stacktrace (%{count} frames)",
+                length(@selected_request.metadata["stacktrace"])
+              )}</:title>
             <:content>
               <div class="bg-base-300 p-3 rounded overflow-x-auto">
                 <pre class="text-xs font-mono whitespace-pre-wrap">{Enum.join(@selected_request.metadata["stacktrace"], "\n")}</pre>

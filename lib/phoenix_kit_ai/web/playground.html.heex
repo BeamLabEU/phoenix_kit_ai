@@ -214,6 +214,7 @@
                 <.button
                   type="submit"
                   size="sm"
+                  phx-disable-with={gettext("Speaking…")}
                   disabled={@voice_status != :connected || @voice_text == ""}
                 >
                   <.icon name="hero-speaker-wave" class="w-4 h-4 mr-1" /> {gettext("Speak")}
