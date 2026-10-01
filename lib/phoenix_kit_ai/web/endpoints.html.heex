@@ -675,9 +675,11 @@
                         {PhoenixKitAI.Request.format_cost(request.cost_cents)}
                       </.table_default_cell>
                       <.table_default_cell>
-                        <span class={"badge badge-sm #{PhoenixKitAI.Request.status_color(request.status)}"}>
-                          {PhoenixKitAI.Request.status_label(request.status)}
-                        </span>
+                        <.status_badge
+                          status={PhoenixKitAI.Request.badge_status(request.status)}
+                          label={PhoenixKitAI.Request.status_label(request.status)}
+                          size={:sm}
+                        />
                         <%= if request.error_message do %>
                           <span title={request.error_message} class="inline-block align-middle">
                             <.icon
@@ -746,9 +748,11 @@
           </div>
           <div>
             <div class="text-xs text-base-content/70">{gettext("Status")}</div>
-            <span class={"badge badge-sm #{PhoenixKitAI.Request.status_color(@selected_request.status)}"}>
-              {PhoenixKitAI.Request.status_label(@selected_request.status)}
-            </span>
+            <.status_badge
+              status={PhoenixKitAI.Request.badge_status(@selected_request.status)}
+              label={PhoenixKitAI.Request.status_label(@selected_request.status)}
+              size={:sm}
+            />
           </div>
           <div>
             <div class="text-xs text-base-content/70">{gettext("Latency")}</div>

@@ -129,17 +129,11 @@
 
           <%!-- Actions --%>
           <div class="flex justify-end gap-2 mt-4">
-            <button
-              type="button"
-              class="btn btn-ghost btn-sm"
-              phx-click="clear"
-              disabled={@sending}
-            >
+            <.button type="button" variant="ghost" size="sm" phx-click="clear" disabled={@sending}>
               {gettext("Clear")}
-            </button>
-            <button
+            </.button>
+            <.button
               type="submit"
-              class="btn btn-primary"
               phx-disable-with={gettext("Sending…")}
               disabled={@sending || is_nil(@selected_endpoint_uuid)}
             >
@@ -148,7 +142,7 @@
               <% else %>
                 <.icon name="hero-paper-airplane" class="w-4 h-4 mr-1" /> {gettext("Send")}
               <% end %>
-            </button>
+            </.button>
           </div>
         </.form_section>
       </form>
@@ -199,29 +193,31 @@
               </span>
 
               <div class="flex gap-2">
-                <button
+                <.button
                   type="button"
-                  class="btn btn-sm"
+                  size="sm"
+                  variant="neutral"
                   phx-click="start_voice"
                   disabled={@voice_status == :connected}
                 >
                   {gettext("Connect")}
-                </button>
-                <button
+                </.button>
+                <.button
                   type="button"
-                  class="btn btn-sm btn-ghost"
+                  size="sm"
+                  variant="ghost"
                   phx-click="stop_voice"
                   disabled={@voice_status != :connected}
                 >
                   {gettext("Disconnect")}
-                </button>
-                <button
+                </.button>
+                <.button
                   type="submit"
-                  class="btn btn-sm btn-primary"
+                  size="sm"
                   disabled={@voice_status != :connected || @voice_text == ""}
                 >
                   <.icon name="hero-speaker-wave" class="w-4 h-4 mr-1" /> {gettext("Speak")}
-                </button>
+                </.button>
               </div>
             </div>
           </form>
@@ -353,10 +349,12 @@
               />
             </div>
 
-            <label class="flex items-center gap-2 text-sm cursor-pointer">
-              <input type="checkbox" name="verify" value="true" checked={@edit_verify} class="checkbox checkbox-sm" />
-              {gettext("Check the result against the original with the same endpoint (one more call)")}
-            </label>
+            <.checkbox
+              name="verify"
+              checked={@edit_verify}
+              class="checkbox-sm"
+              label={gettext("Check the result against the original with the same endpoint (one more call)")}
+            />
 
             <p :if={@edit_error} class="text-sm text-error" role="alert">{@edit_error}</p>
             <div class="flex flex-wrap items-center gap-3">

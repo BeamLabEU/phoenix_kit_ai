@@ -190,33 +190,16 @@
                  fetch uses (Chat vs Text-to-Speech vs Image Generation).
                  Has its own phx-change so it doesn't ride the form's
                  "validate". --%>
-            <div class="fieldset mt-4">
-              <label class="label">
-                <span class="fieldset-legend font-medium">{gettext("Model Type")}</span>
-              </label>
-              <select
+            <div class="mt-4">
+              <.select
+                id="endpoint-model-type"
                 name="model_type"
+                label={gettext("Model Type")}
+                value={Atom.to_string(@model_type)}
+                options={model_type_options(@current_provider)}
                 phx-change="select_model_type"
-                class="select w-full max-w-xs"
-              >
-                <option value="text" selected={@model_type == :text}>
-                  {gettext("Chat / Completion")}
-                </option>
-                <option
-                  :if={PhoenixKitAI.Endpoint.tts_model_picker?(@current_provider)}
-                  value="tts"
-                  selected={@model_type == :tts}
-                >
-                  {gettext("Text-to-Speech")}
-                </option>
-                <option
-                  :if={PhoenixKitAI.Endpoint.image_gen_model_picker?(@current_provider)}
-                  value="image_gen"
-                  selected={@model_type == :image_gen}
-                >
-                  {gettext("Image Generation")}
-                </option>
-              </select>
+                class="max-w-xs"
+              />
               <p class="fieldset-label text-base-content/50 mt-1">
                 <%= case @model_type do %>
                   <% :tts -> %>

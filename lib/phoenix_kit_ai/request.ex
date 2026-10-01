@@ -216,6 +216,17 @@ defmodule PhoenixKitAI.Request do
   def status_label(_), do: gettext("Unknown")
 
   @doc """
+  The core `status_badge` status that colours a request's status: green for
+  a success, red for an error, amber for a timeout. The label stays
+  `status_label/1`.
+  """
+  @spec badge_status(String.t()) :: String.t()
+  def badge_status("success"), do: "completed"
+  def badge_status("error"), do: "error"
+  def badge_status("timeout"), do: "offline"
+  def badge_status(_), do: "unknown"
+
+  @doc """
   Returns a CSS class for the status badge.
   """
   @spec status_color(String.t()) :: String.t()
