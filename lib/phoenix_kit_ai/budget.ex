@@ -18,6 +18,12 @@ defmodule PhoenixKitAI.Budget do
   `:user_calls`). A cheap model makes a money cap meaningless as a limit on
   how much one person can use, and a count says it directly.
 
+  It counts **successful** calls (cached answers included — each writes a
+  zero-cost success row); failed provider calls cost nothing and do not
+  count. Like the money cap it reads the usage rows by `user_uuid`, so a
+  `user_uuid:` that is not a PhoenixKit user (its rows are written
+  unattributed, with a warning) is never capped — pass real user uuids.
+
   `ai_budget_warn_percent` (default 80) marks when a scope is close: the
   call still runs, but a `Logger.warning` and a
   `[:phoenix_kit_ai, :budget, :warning]` telemetry event fire once per
