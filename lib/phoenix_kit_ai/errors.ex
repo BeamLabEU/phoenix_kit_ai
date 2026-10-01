@@ -135,6 +135,9 @@ defmodule PhoenixKitAI.Errors do
   def message({:budget_exceeded, :user}),
     do: gettext("You have used your AI allowance for the last 24 hours")
 
+  def message({:budget_exceeded, :user_calls}),
+    do: gettext("You have made as many AI requests as allowed for the last 24 hours")
+
   def message({:capabilities_unavailable, _reason}),
     do: gettext("The provider's model list could not be fetched")
 

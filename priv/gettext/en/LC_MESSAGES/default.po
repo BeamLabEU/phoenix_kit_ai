@@ -1471,7 +1471,7 @@ msgstr "Type text to speak..."
 msgid "Type your message to the AI..."
 msgstr "Type your message to the AI..."
 
-#: lib/phoenix_kit_ai/errors.ex:166
+#: lib/phoenix_kit_ai/errors.ex:169
 #, elixir-autogen, elixir-format
 msgid "Unexpected error: %{reason}"
 msgstr "Unexpected error: %{reason}"
@@ -1966,28 +1966,28 @@ msgstr "Too many images: %{count} given, the model takes at most %{max}"
 msgid "Unknown image operation: %{operation}"
 msgstr "Unknown image operation: %{operation}"
 
-#: lib/phoenix_kit_ai/errors.ex:142
+#: lib/phoenix_kit_ai/errors.ex:145
 #, elixir-autogen, elixir-format
 msgid "Image operations %{first} and %{second} cannot be combined"
 msgstr "Image operations %{first} and %{second} cannot be combined"
 
-#: lib/phoenix_kit_ai/errors.ex:153
+#: lib/phoenix_kit_ai/errors.ex:156
 #, elixir-autogen, elixir-format
 msgid "Image too large: %{bytes} bytes, the limit is %{max}"
 msgstr "Image too large: %{bytes} bytes, the limit is %{max}"
 
-#: lib/phoenix_kit_ai/errors.ex:156
+#: lib/phoenix_kit_ai/errors.ex:159
 #, elixir-autogen, elixir-format
 msgid "That image URL cannot be fetched from here"
 msgstr "That image URL cannot be fetched from here"
 
-#: lib/phoenix_kit_ai/errors.ex:158
-#: lib/phoenix_kit_ai/errors.ex:159
+#: lib/phoenix_kit_ai/errors.ex:161
+#: lib/phoenix_kit_ai/errors.ex:162
 #, elixir-autogen, elixir-format
 msgid "The image could not be downloaded"
 msgstr "The image could not be downloaded"
 
-#: lib/phoenix_kit_ai/errors.ex:149
+#: lib/phoenix_kit_ai/errors.ex:152
 #, elixir-autogen, elixir-format
 msgid "The provider refused this content: %{reason}"
 msgstr "The provider refused this content: %{reason}"
@@ -2129,7 +2129,7 @@ msgstr "Straighten"
 msgid "That file is too large (8 MB at most)"
 msgstr "That file is too large (8 MB at most)"
 
-#: lib/phoenix_kit_ai/errors.ex:139
+#: lib/phoenix_kit_ai/errors.ex:142
 #, elixir-autogen, elixir-format
 msgid "The provider's model list could not be fetched"
 msgstr "The provider's model list could not be fetched"
@@ -2274,4 +2274,9 @@ msgstr ""
 #: lib/phoenix_kit_ai/web/prompts.html.heex:65
 #, elixir-autogen, elixir-format
 msgid "Variables:"
+msgstr ""
+
+#: lib/phoenix_kit_ai/errors.ex:139
+#, elixir-autogen, elixir-format
+msgid "You have made as many AI requests as allowed for the last 24 hours"
 msgstr ""

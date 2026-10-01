@@ -1473,7 +1473,7 @@ msgstr "Введите текст для озвучивания…"
 msgid "Type your message to the AI..."
 msgstr "Введите сообщение для AI…"
 
-#: lib/phoenix_kit_ai/errors.ex:166
+#: lib/phoenix_kit_ai/errors.ex:169
 #, elixir-autogen, elixir-format
 msgid "Unexpected error: %{reason}"
 msgstr "Неожиданная ошибка: %{reason}"
@@ -1972,28 +1972,28 @@ msgstr "Слишком много изображений: передано %{cou
 msgid "Unknown image operation: %{operation}"
 msgstr "Неизвестная операция с изображением: %{operation}"
 
-#: lib/phoenix_kit_ai/errors.ex:142
+#: lib/phoenix_kit_ai/errors.ex:145
 #, elixir-autogen, elixir-format
 msgid "Image operations %{first} and %{second} cannot be combined"
 msgstr "Операции %{first} и %{second} нельзя сочетать"
 
-#: lib/phoenix_kit_ai/errors.ex:153
+#: lib/phoenix_kit_ai/errors.ex:156
 #, elixir-autogen, elixir-format
 msgid "Image too large: %{bytes} bytes, the limit is %{max}"
 msgstr "Изображение слишком большое: %{bytes} байт, предел %{max}"
 
-#: lib/phoenix_kit_ai/errors.ex:156
+#: lib/phoenix_kit_ai/errors.ex:159
 #, elixir-autogen, elixir-format
 msgid "That image URL cannot be fetched from here"
 msgstr "Этот URL изображения нельзя загрузить отсюда"
 
-#: lib/phoenix_kit_ai/errors.ex:158
-#: lib/phoenix_kit_ai/errors.ex:159
+#: lib/phoenix_kit_ai/errors.ex:161
+#: lib/phoenix_kit_ai/errors.ex:162
 #, elixir-autogen, elixir-format
 msgid "The image could not be downloaded"
 msgstr "Не удалось загрузить изображение"
 
-#: lib/phoenix_kit_ai/errors.ex:149
+#: lib/phoenix_kit_ai/errors.ex:152
 #, elixir-autogen, elixir-format
 msgid "The provider refused this content: %{reason}"
 msgstr "Провайдер отклонил этот контент: %{reason}"
@@ -2136,7 +2136,7 @@ msgstr "Выровнять"
 msgid "That file is too large (8 MB at most)"
 msgstr "Файл слишком большой (не более 8 МБ)"
 
-#: lib/phoenix_kit_ai/errors.ex:139
+#: lib/phoenix_kit_ai/errors.ex:142
 #, elixir-autogen, elixir-format
 msgid "The provider's model list could not be fetched"
 msgstr "Не удалось получить список моделей провайдера"
@@ -2282,3 +2282,8 @@ msgstr "Всего токенов"
 #, elixir-autogen, elixir-format
 msgid "Variables:"
 msgstr "Переменные:"
+
+#: lib/phoenix_kit_ai/errors.ex:139
+#, elixir-autogen, elixir-format
+msgid "You have made as many AI requests as allowed for the last 24 hours"
+msgstr "Вы исчерпали допустимое число запросов к ИИ за последние 24 часа"
