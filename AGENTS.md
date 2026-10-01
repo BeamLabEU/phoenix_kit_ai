@@ -297,7 +297,8 @@ Settings: `ai_enabled` (boolean, default `false`) is the module toggle;
 translation sweep's last outcome, written by `PhoenixKitAI.TranslationSweep`.
 Spend caps (`PhoenixKitAI.Budget`): `ai_daily_budget`,
 `ai_daily_budget_per_endpoint`, `ai_daily_budget_per_user` — nanodollars per
-trailing 24 hours, `0` = no cap — and `ai_budget_warn_percent` (default 80),
+trailing 24 hours, `0` = no cap — plus `ai_daily_calls_per_user` (a count of
+successful calls per user, scope `:user_calls`), and `ai_budget_warn_percent` (default 80),
 read through the settings cache. Every provider-calling verb (not the
 realtime voice session) checks them first and returns
 `{:error, {:budget_exceeded, scope}}` once one is reached, cached answers
@@ -366,6 +367,16 @@ provided the API exposes `<base_url>/chat/completions` and `/models`.
   in `start/stop_model_fetch_indicators/1`.
 
 ### Completion behaviour
+
+- **Endpoints by name**: `get_endpoint_by_name/1` / `resolve_endpoint_by_name/1`
+  let an app name an endpoint ("Label reader") instead of carrying its uuid;
+  case-insensitive, surrounding spaces ignored on both sides.
+- **Usage by source prefix**: `list_requests/1` and `get_usage_stats/1` take
+  `source_prefix:` (LIKE-escaped) to total one app's calls across its many
+  `source:` strings.
+- **Several images in `extract_text/3`**: `images_as:` says how they relate —
+  `:pages` (one document, the default), `:separate`, or a caller's own
+  sentence — and is part of a caller-supplied cache key.
 
 - **Reasoning capture**: `extract_reasoning/1` is persisted to
   `phoenix_kit_ai_requests.metadata.response_reasoning` by `log_request/8` and
