@@ -14,6 +14,17 @@ defmodule PhoenixKitAI.TranslationGlossaryPromptTest do
   alias PhoenixKitAI.Translation
   alias PhoenixKitAI.Translations
 
+  test "the shared prompt renders only the supplied fields, including custom field names" do
+    variables =
+      Translation.build_variables(%{"seo_title" => "A useful widget"}, "en", "de")
+
+    assert {:ok, rendered} =
+             Prompt.render_content(Translations.default_prompt_content(), variables)
+
+    assert rendered =~ "---SEO_TITLE---\nA useful widget"
+    assert Prompt.unbound_placeholders(rendered) == []
+  end
+
   describe "shared translation prompt carries the {{Glossary}} slot" do
     test "the template has exactly one {{Glossary}} slot" do
       content = Translations.default_prompt_content()

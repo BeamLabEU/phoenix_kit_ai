@@ -76,7 +76,7 @@ defmodule PhoenixKitAI.EndpointNameAndSourcePrefixTest do
 
     test "counts every source starting with the prefix", %{ep: ep} do
       {requests, _total} =
-        list(endpoint_uuid: ep.uuid, source_prefix: "App.")
+        PhoenixKitAI.list_requests(endpoint_uuid: ep.uuid, source_prefix: "App.")
 
       assert requests |> Enum.map(& &1.metadata["source"]) |> Enum.sort() == [
                "App.Foo",
@@ -88,16 +88,8 @@ defmodule PhoenixKitAI.EndpointNameAndSourcePrefixTest do
     end
 
     test "LIKE wildcards in the prefix are literal", %{ep: ep} do
-      {requests, _} = list(endpoint_uuid: ep.uuid, source_prefix: "A_")
+      {requests, _} = PhoenixKitAI.list_requests(endpoint_uuid: ep.uuid, source_prefix: "A_")
       assert Enum.map(requests, & &1.metadata["source"]) == ["A_b"]
-    end
-  end
-
-  defp list(opts) do
-    case PhoenixKitAI.list_requests(opts) do
-      {requests, total} -> {requests, total}
-      %{requests: requests} = page -> {requests, page[:total]}
-      requests when is_list(requests) -> {requests, length(requests)}
     end
   end
 end

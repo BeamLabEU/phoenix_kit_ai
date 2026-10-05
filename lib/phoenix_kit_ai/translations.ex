@@ -303,14 +303,9 @@ defmodule PhoenixKitAI.Translations do
   # `{{Glossary}}` line to its own prompt when it wants the feature; until
   # then the bound variable is simply unused.
   #
-  # The SOURCE block enumerates the common translatable field names across
-  # PhoenixKit modules (name/title/description/summary/body/content). The
-  # engine binds only the fields an adapter actually provides; any unbound
-  # `{{placeholder}}` stays literal in the rendered prompt and the RULES tell
-  # the model to skip it, and only requested fields are parsed back. An
-  # adapter whose `source_fields/2` returns a field name NOT listed here must
-  # supply its own prompt (pass `prompt_uuid`) — its value would otherwise
-  # never reach the model and the parse would report a missing field.
+  # SourceFields includes exactly the fields the adapter supplies, including
+  # custom names. Fixed per-field slots left absent fields unbound, provoking
+  # placeholder commentary, and omitted custom fields from the model's input.
   defp default_prompt_attrs do
     %{
       slug: @prompt_slug,
@@ -336,15 +331,16 @@ defmodule PhoenixKitAI.Translations do
     - Do NOT translate text inside code blocks, inline code, or URLs.
     - Translate naturally and idiomatically — match the tone of the source.
     - Keep any HTML tags and special syntax unchanged.
+    - Preserve literal template placeholders inside field values.
+    - Keep Markdown headings inside their field; never turn them into extra field markers.
     - Output ONLY the structured markers below — no commentary, no preface, no closing remarks.
 
     {{Glossary}}
 
-    OUTPUT FORMAT — for each non-empty field in the SOURCE section below,
-    emit ONE marker named after the field (uppercased), followed by the
-    translation:
+    OUTPUT FORMAT — for each field in the SOURCE section below,
+    repeat its marker exactly once, followed by the translation:
 
-        ---<FIELD_NAME_UPPERCASE>---
+        ---<FIELD_MARKER>---
         [translated value]
 
     Example:
@@ -355,24 +351,9 @@ defmodule PhoenixKitAI.Translations do
         ---DESCRIPTION---
         <translated description>
 
-    Skip any field that is missing, blank, or still a literal placeholder
-    (e.g. a value that looks like `{{title}}` means the caller did not bind
-    it) — do NOT emit a marker for it, and do NOT translate the placeholder
-    text itself.
-
     === SOURCE ===
 
-    Name: {{name}}
-
-    Title: {{title}}
-
-    Summary: {{summary}}
-
-    Description: {{description}}
-
-    Body: {{body}}
-
-    Content: {{content}}
+    {{SourceFields}}
     """
   end
 

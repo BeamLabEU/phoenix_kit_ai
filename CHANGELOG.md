@@ -1,3 +1,23 @@
+## 0.25.2 - 2026-10-05
+
+### Fixed
+
+- Changing a sweep interval leaves an already-due scheduled tick at its original
+  time instead of postponing it again.
+- Translation sweep back-off checks the latest job even when it was queued
+  before the 24-hour window. An older job discarded recently no longer masks a
+  later success and holds the resource back.
+- HexDocs source links use the `v`-prefixed release tags.
+- Source-prefix tests use the public tuple return shape, removing unreachable
+  branches and Elixir type warnings.
+
+### Changed
+
+- Newly provisioned shared translation prompts use `{{SourceFields}}` to send
+  exactly the supplied fields, including custom names, without leaving absent
+  fields as unbound slots. Existing operator-edited prompts are preserved;
+  update their SOURCE block to `{{SourceFields}}` to adopt this format.
+
 ## 0.25.1 - 2026-10-05
 
 ### Fixed

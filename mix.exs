@@ -1,7 +1,7 @@
 defmodule PhoenixKitAI.MixProject do
   use Mix.Project
 
-  @version "0.25.1"
+  @version "0.25.2"
   @source_url "https://github.com/BeamLabEU/phoenix_kit_ai"
 
   def project do
@@ -196,9 +196,7 @@ defmodule PhoenixKitAI.MixProject do
   defp docs do
     [
       main: "PhoenixKitAI",
-      # Tags in this repo are bare version numbers, not v-prefixed — a "v" ref
-      # points at a tag that does not exist and 404s every HexDocs source link.
-      source_ref: @version
+      source_ref: "v#{@version}"
     ]
   end
 end

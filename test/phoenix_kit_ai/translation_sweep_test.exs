@@ -285,6 +285,23 @@ defmodule PhoenixKitAI.TranslationSweepTest do
 
       assert {:ok, %{backed_off: 0, enqueued: 1}} = TranslationSweep.run_tick(Source)
     end
+
+    test "a later success clears the back-off even when both jobs were queued before the window" do
+      uuid = Ecto.UUID.generate()
+      old = DateTime.add(DateTime.utc_now(), -48 * 3600, :second)
+
+      translate_job!(uuid, "de", "discarded")
+      |> Ecto.Changeset.change(inserted_at: old)
+      |> TestRepo.update!()
+
+      translate_job!(uuid, "de", "completed")
+      |> Ecto.Changeset.change(inserted_at: old, completed_at: DateTime.utc_now())
+      |> TestRepo.update!()
+
+      Process.put(:sweep_candidates, [candidate(uuid, ~w(de))])
+
+      assert {:ok, %{backed_off: 0, enqueued: 1}} = TranslationSweep.run_tick(Source)
+    end
   end
 
   describe "the chain" do
@@ -317,6 +334,22 @@ defmodule PhoenixKitAI.TranslationSweepTest do
       refute successor.id == tick.id
       assert DateTime.diff(TranslationSweep.next_tick_at(Source), DateTime.utc_now()) in 290..300
       assert TranslationSweep.status(Source).running?
+    end
+
+    test "reschedule leaves an already-due scheduled tick at its original time" do
+      assert {:ok, tick} = TranslationSweep.ensure_scheduled(Source)
+      due = DateTime.add(DateTime.utc_now(), -60, :second)
+
+      tick
+      |> Ecto.Changeset.change(scheduled_at: due)
+      |> TestRepo.update!()
+
+      Process.put(:sweep_settings, %{interval_minutes: 5})
+      assert {:ok, waiting} = TranslationSweep.reschedule(Source)
+
+      assert waiting.id == tick.id
+      assert TestRepo.get!(Oban.Job, tick.id).scheduled_at == due
+      assert TestRepo.aggregate(Oban.Job, :count) == 1
     end
 
     test "reschedule starts a chain that has none waiting" do

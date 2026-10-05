@@ -167,9 +167,13 @@ defmodule PhoenixKitAI.TranslationSweep do
   """
   @spec reschedule(module()) :: {:ok, Oban.Job.t()} | {:error, term()}
   def reschedule(source) do
-    at = DateTime.add(DateTime.utc_now(), settings(source).interval_minutes * 60, :second)
+    now = DateTime.utc_now()
+    at = DateTime.add(now, settings(source).interval_minutes * 60, :second)
 
-    from(j in Oban.Job, where: j.worker == ^worker_name(source) and j.state == "scheduled")
+    from(j in Oban.Job,
+      where: j.worker == ^worker_name(source) and j.state == "scheduled",
+      where: j.scheduled_at > ^now
+    )
     |> repo().update_all(set: [scheduled_at: at])
 
     ensure_scheduled(source)
@@ -458,24 +462,41 @@ defmodule PhoenixKitAI.TranslationSweep do
   defp recently_failed(types) do
     since = DateTime.add(DateTime.utc_now(), -@backoff_hours * 3600, :second)
 
+    # A newer job can have been queued before the window too. Filtering by
+    # insertion time before finding the latest would hide that job and let
+    # an older, recently discarded attempt hold back a successful pair.
+    newer =
+      from(j in "oban_jobs",
+        where: j.worker == ^@translate_worker and j.id > parent_as(:failed_job).id,
+        where:
+          fragment(
+            "?->>'resource_type' = ?->>'resource_type'",
+            j.args,
+            parent_as(:failed_job).args
+          ),
+        where:
+          fragment(
+            "?->>'resource_uuid' = ?->>'resource_uuid'",
+            j.args,
+            parent_as(:failed_job).args
+          ),
+        where:
+          fragment("?->>'target_lang' = ?->>'target_lang'", j.args, parent_as(:failed_job).args),
+        select: 1
+      )
+
     from(j in "oban_jobs",
-      where: j.worker == ^@translate_worker,
-      where: j.inserted_at > ^since or j.discarded_at > ^since,
+      as: :failed_job,
+      where: j.worker == ^@translate_worker and j.state == "discarded",
+      where: j.discarded_at > ^since,
       where: fragment("?->>'resource_type'", j.args) in ^types,
-      distinct: [
-        fragment("?->>'resource_type'", j.args),
-        fragment("?->>'resource_uuid'", j.args),
-        fragment("?->>'target_lang'", j.args)
-      ],
-      order_by: [desc: j.id],
+      where: not exists(subquery(newer)),
       select:
         {fragment("?->>'resource_type'", j.args), fragment("?->>'resource_uuid'", j.args),
-         fragment("?->>'target_lang'", j.args), j.state,
-         fragment("coalesce(? > ?, false)", j.discarded_at, ^since)}
+         fragment("?->>'target_lang'", j.args)}
     )
     |> repo().all()
-    |> Enum.filter(fn {_t, _u, _l, state, recent?} -> state == "discarded" and recent? end)
-    |> Map.new(fn {t, u, l, _state, _recent?} -> {{t, u, l}, true} end)
+    |> Map.new(&{&1, true})
   rescue
     _ -> %{}
   catch

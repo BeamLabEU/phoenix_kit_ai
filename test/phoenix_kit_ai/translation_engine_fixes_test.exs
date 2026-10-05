@@ -16,6 +16,7 @@ defmodule PhoenixKitAI.TranslationEngineFixesTest do
   import ExUnit.CaptureLog
 
   alias PhoenixKitAI.Translation
+  alias PhoenixKitAI.Translations
 
   setup do
     Application.put_env(:phoenix_kit_ai, :req_options,
@@ -102,6 +103,34 @@ defmodule PhoenixKitAI.TranslationEngineFixesTest do
   # ==========================================================================
 
   describe "§9.1 — {{SourceFields}} round trip" do
+    test "a newly provisioned shared prompt sends custom fields without unbound slots" do
+      ep = endpoint_fixture()
+      assert {:ok, prompt} = Translations.ensure_default_prompt()
+      stub_capturing_body(200, success_payload("---SEO_TITLE---\nEin nützlicher Artikel"), self())
+
+      assert {:ok, %{"seo_title" => "Ein nützlicher Artikel"}} =
+               Translation.translate_fields(ep.uuid, prompt.uuid, "en", "de", %{
+                 "seo_title" => "A useful widget"
+               })
+
+      assert_received {:captured_request_body, body}
+      content = body["messages"] |> List.last() |> Map.fetch!("content")
+
+      assert content =~ "=== SOURCE ===\n\n---SEO_TITLE---\nA useful widget"
+      assert PhoenixKitAI.Prompt.unbound_placeholders(content) == []
+      refute Map.has_key?(latest_request_for(ep).metadata, "unbound_placeholders")
+    end
+
+    test "provisioning leaves an existing operator-edited shared prompt intact" do
+      assert {:ok, prompt} = Translations.ensure_default_prompt()
+      content = "Operator's translation instructions: {{title}}"
+      assert {:ok, _} = PhoenixKitAI.update_prompt(prompt, %{content: content})
+
+      assert {:ok, existing} = Translations.ensure_default_prompt()
+      assert existing.uuid == prompt.uuid
+      assert existing.content == content
+    end
+
     test "the rendered prompt sent over the wire carries one marker per field, alphabetically" do
       ep = endpoint_fixture()
 
