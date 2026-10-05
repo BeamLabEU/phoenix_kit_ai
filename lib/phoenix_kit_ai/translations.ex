@@ -33,6 +33,8 @@ defmodule PhoenixKitAI.Translations do
   """
 
   import Ecto.Query
+
+  require Logger
   alias PhoenixKit.PubSub.Manager, as: PubSubManager
   alias PhoenixKit.Settings
   alias PhoenixKitAI.Endpoint
@@ -458,11 +460,83 @@ defmodule PhoenixKitAI.Translations do
   @spec enqueue(map()) :: {:ok, %{conflict?: boolean()}} | {:error, term()}
   def enqueue(%{} = params) do
     with :ok <- validate(params, full_required()) do
-      if job_in_flight?(params), do: {:ok, %{conflict?: true}}, else: insert_job(params)
+      enqueue_once(params)
     end
   end
 
   def enqueue(_other), do: {:error, {:invalid, :not_a_map}}
+
+  # Check and insert as ONE step per (resource, scope, target language).
+  #
+  # They used to be two: "is a job in flight?" and then the insert, with
+  # nothing between them. A double click, or the same page open in two tabs,
+  # ran both checks before either insert and queued the translation twice —
+  # two model calls billed for one result, and the second overwriting the
+  # first.
+  #
+  # A transaction-level advisory lock on the job's identity closes the gap:
+  # the second caller waits for the first to commit, then sees its job and
+  # answers `conflict?: true`. The lock is released with the transaction, so
+  # there is nothing to clean up, and callers for OTHER resources or languages
+  # hash to other keys and do not wait. `Oban.insert/1` joins the transaction
+  # because it runs through the same repo in the same process.
+  #
+  # Still fails open: if anything under the lock raises, the check and the
+  # insert are tried once more without it — a rare duplicate is better than a
+  # translation that silently never runs.
+  defp enqueue_once(params) do
+    repo = PhoenixKit.RepoHelper.repo()
+
+    # Inside a caller's transaction (a sweep tick queues many jobs in one)
+    # this takes no lock and opens no transaction of its own: a lock taken
+    # there would be held until the caller commits, and a failed statement
+    # or a rollback here would poison the caller's whole transaction. Such a
+    # caller is one process working through a list, not two people clicking.
+    if repo.in_transaction?() do
+      check_then_insert(params)
+    else
+      enqueue_locked(repo, params)
+    end
+  end
+
+  defp enqueue_locked(repo, params) do
+    repo.transaction(fn ->
+      lock_identity!(repo, params)
+
+      case check_then_insert(params) do
+        {:ok, outcome} -> outcome
+        {:error, reason} -> repo.rollback(reason)
+      end
+    end)
+  rescue
+    error ->
+      Logger.warning(
+        "[PhoenixKitAI.Translations] enqueue failed under its lock, retrying without it: " <>
+          Exception.message(error)
+      )
+
+      check_then_insert(params)
+  end
+
+  defp check_then_insert(params) do
+    if job_in_flight?(params), do: {:ok, %{conflict?: true}}, else: insert_job(params)
+  end
+
+  defp lock_identity!(repo, params) do
+    identity =
+      Enum.join(
+        [
+          "phoenix_kit_ai:translate",
+          value_for(params, :resource_type),
+          value_for(params, :resource_uuid),
+          normalize_scope(value_for(params, :resource_scope)) || "",
+          value_for(params, :target_lang)
+        ],
+        "|"
+      )
+
+    repo.query!("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [identity])
+  end
 
   defp insert_job(params) do
     case params |> to_args() |> TranslateWorker.new() |> Oban.insert() do
