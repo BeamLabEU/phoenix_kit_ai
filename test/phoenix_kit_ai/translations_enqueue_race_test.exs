@@ -95,7 +95,7 @@ defmodule PhoenixKitAI.TranslationsEnqueueRaceTest do
     assert jobs_for(params.resource_uuid, "de") == 1
   end
 
-  # A sweep tick queues many jobs inside ONE transaction of its own. There the
+  # A host may queue many jobs inside ONE transaction of its own. There the
   # enqueue must not open a nested transaction or take a lock held until the
   # tick commits — and a refused insert must not poison the caller's.
   test "inside a caller's transaction it queues without nesting one", %{params: params} do

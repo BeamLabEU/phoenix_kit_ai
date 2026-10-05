@@ -1,3 +1,19 @@
+## 0.25.1 - 2026-10-05
+
+### Fixed
+
+- A translation could be queued twice by two simultaneous requests (a double
+  click, or the same page open in two tabs) (PR #34). Both callers ran "is a
+  job in flight?" before either inserted, so the model was called and billed
+  twice and the second result overwrote the first. `Translations.enqueue/1`
+  now takes a transaction-level advisory lock on the
+  (resource, scope, target language) identity around the check and the insert.
+  The second caller waits, then answers `conflict?: true`. Other resources and
+  languages do not wait. A caller already inside its own transaction takes no
+  lock and opens no nested transaction. If anything fails under the lock, the
+  check and insert run once more without it, so a translation is never
+  silently skipped.
+
 ## 0.25.0 - 2026-10-01
 
 ### Added

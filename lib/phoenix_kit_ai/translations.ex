@@ -487,8 +487,8 @@ defmodule PhoenixKitAI.Translations do
   defp enqueue_once(params) do
     repo = PhoenixKit.RepoHelper.repo()
 
-    # Inside a caller's transaction (a sweep tick queues many jobs in one)
-    # this takes no lock and opens no transaction of its own: a lock taken
+    # Inside a caller's transaction (a host queuing many jobs in one, or the
+    # Ecto sandbox in a test) this takes no lock and opens no transaction of its own: a lock taken
     # there would be held until the caller commits, and a failed statement
     # or a rollback here would poison the caller's whole transaction. Such a
     # caller is one process working through a list, not two people clicking.
