@@ -24,11 +24,10 @@ defmodule PhoenixKitAI.TranslationsEnqueueRaceTest do
   @callers 16
 
   setup do
-    Sandbox.mode(TestRepo, :auto)
-    start_supervised!({Oban, name: Oban, repo: TestRepo, testing: :manual})
-
     resource_uuid = Ecto.UUID.generate()
 
+    # Registered BEFORE anything can fail, so a setup that dies half-way
+    # still hands the next test its sandbox back.
     on_exit(fn ->
       Sandbox.mode(TestRepo, :auto)
 
@@ -38,6 +37,9 @@ defmodule PhoenixKitAI.TranslationsEnqueueRaceTest do
 
       Sandbox.mode(TestRepo, :manual)
     end)
+
+    Sandbox.mode(TestRepo, :auto)
+    start_supervised!({Oban, name: Oban, repo: TestRepo, testing: :manual})
 
     %{
       params: %{
@@ -91,6 +93,30 @@ defmodule PhoenixKitAI.TranslationsEnqueueRaceTest do
     assert Enum.count(results, &(&1 == {:ok, %{conflict?: false}})) == 1
     assert Enum.count(results, &(&1 == {:ok, %{conflict?: true}})) == @callers - 1
     assert jobs_for(params.resource_uuid, "de") == 1
+  end
+
+  # A sweep tick queues many jobs inside ONE transaction of its own. There the
+  # enqueue must not open a nested transaction or take a lock held until the
+  # tick commits — and a refused insert must not poison the caller's.
+  test "inside a caller's transaction it queues without nesting one", %{params: params} do
+    assert {:ok, results} =
+             TestRepo.transaction(fn ->
+               first = Translations.enqueue(params)
+               second = Translations.enqueue(params)
+               other = Translations.enqueue(%{params | target_lang: "fr"})
+               # the caller's transaction is still usable afterwards
+               assert %{rows: [[1]]} = TestRepo.query!("SELECT 1")
+               [first, second, other]
+             end)
+
+    assert results == [
+             {:ok, %{conflict?: false}},
+             {:ok, %{conflict?: true}},
+             {:ok, %{conflict?: false}}
+           ]
+
+    assert jobs_for(params.resource_uuid, "de") == 1
+    assert jobs_for(params.resource_uuid, "fr") == 1
   end
 
   test "a different target language is not made to wait for, or conflict with, this one", %{

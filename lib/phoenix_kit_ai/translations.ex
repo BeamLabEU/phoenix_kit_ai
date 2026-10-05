@@ -481,19 +481,29 @@ defmodule PhoenixKitAI.Translations do
   # hash to other keys and do not wait. `Oban.insert/1` joins the transaction
   # because it runs through the same repo in the same process.
   #
-  # Still fails open: if the lock or the transaction cannot be taken, the job
-  # is inserted without it — a rare duplicate is better than a translation
-  # that silently never runs.
+  # Still fails open: if anything under the lock raises, the check and the
+  # insert are tried once more without it — a rare duplicate is better than a
+  # translation that silently never runs.
   defp enqueue_once(params) do
     repo = PhoenixKit.RepoHelper.repo()
 
+    # Inside a caller's transaction (a sweep tick queues many jobs in one)
+    # this takes no lock and opens no transaction of its own: a lock taken
+    # there would be held until the caller commits, and a failed statement
+    # or a rollback here would poison the caller's whole transaction. Such a
+    # caller is one process working through a list, not two people clicking.
+    if repo.in_transaction?() do
+      check_then_insert(params)
+    else
+      enqueue_locked(repo, params)
+    end
+  end
+
+  defp enqueue_locked(repo, params) do
     repo.transaction(fn ->
       lock_identity!(repo, params)
 
-      result =
-        if job_in_flight?(params), do: {:ok, %{conflict?: true}}, else: insert_job(params)
-
-      case result do
+      case check_then_insert(params) do
         {:ok, outcome} -> outcome
         {:error, reason} -> repo.rollback(reason)
       end
@@ -501,11 +511,15 @@ defmodule PhoenixKitAI.Translations do
   rescue
     error ->
       Logger.warning(
-        "[PhoenixKitAI.Translations] enqueue could not take its lock, inserting without it: " <>
+        "[PhoenixKitAI.Translations] enqueue failed under its lock, retrying without it: " <>
           Exception.message(error)
       )
 
-      if job_in_flight?(params), do: {:ok, %{conflict?: true}}, else: insert_job(params)
+      check_then_insert(params)
+  end
+
+  defp check_then_insert(params) do
+    if job_in_flight?(params), do: {:ok, %{conflict?: true}}, else: insert_job(params)
   end
 
   defp lock_identity!(repo, params) do
