@@ -105,6 +105,7 @@ defmodule PhoenixKitAI do
   alias PhoenixKit.Dashboard.Tab
   alias PhoenixKit.PubSub.Manager, as: PubSub
   alias PhoenixKit.Settings
+  alias PhoenixKit.Settings.Queries, as: SettingsQueries
   alias PhoenixKit.Utils.Date, as: UtilsDate
   alias PhoenixKit.Utils.Reorder
   alias PhoenixKit.Utils.UUID, as: UUIDUtils
@@ -120,6 +121,10 @@ defmodule PhoenixKitAI do
   @endpoints_topic "phoenix_kit:ai:endpoints"
   @prompts_topic "phoenix_kit:ai:prompts"
   @requests_topic "phoenix_kit:ai:requests"
+
+  # Set once the legacy api_key auto-migrator has run; see
+  # `run_legacy_api_key_migration/0`.
+  @legacy_migration_marker "ai_legacy_api_key_migration_completed_at"
 
   # Single-sourced from mix.exs so a release bump touches one place only.
   @version Mix.Project.config()[:version]
@@ -487,8 +492,16 @@ defmodule PhoenixKitAI do
     end
   end
 
+  # Read from the row itself, not through `Settings.get_setting/2`: with
+  # core's `update_mode` on (`mix phoenix_kit.update` / `mix
+  # phoenix_kit.doctor` start the host app that way, and its boot runs this)
+  # `get_setting/2` answers nil without reading, while writes still go
+  # through. The marker looked absent, a later guard marked the migration
+  # complete again (an existing OpenRouter connection, or no candidates
+  # left), and each such run stamped a new value — a new permanent
+  # settings-history entry. Present once = done for good.
   defp legacy_api_key_migration_completed? do
-    Settings.get_setting("ai_legacy_api_key_migration_completed_at", nil) != nil
+    SettingsQueries.get_setting_by_key(@legacy_migration_marker) != nil
   rescue
     # Settings table missing in this environment — treat as not completed
     # but the next guard (any_openrouter_integration_exists?) will trip
@@ -684,7 +697,7 @@ defmodule PhoenixKitAI do
 
   defp mark_legacy_api_key_migration_complete do
     Settings.update_setting_with_module(
-      "ai_legacy_api_key_migration_completed_at",
+      @legacy_migration_marker,
       DateTime.utc_now() |> DateTime.to_iso8601(),
       module_key()
     )

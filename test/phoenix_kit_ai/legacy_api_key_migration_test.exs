@@ -46,6 +46,46 @@ defmodule PhoenixKitAI.LegacyApiKeyMigrationTest do
     _ -> :ok
   end
 
+  # The marker as stored — read straight from the table, so the check does
+  # not depend on the settings reader it is about.
+  defp marker_value do
+    %{rows: rows} =
+      SQL.query!(
+        TestRepo,
+        "SELECT value FROM phoenix_kit_settings WHERE key = $1",
+        ["ai_legacy_api_key_migration_completed_at"]
+      )
+
+    case rows do
+      [[value]] -> value
+      [] -> nil
+    end
+  end
+
+  # One ordinary run writes the marker; then, with `update_mode` on, two more
+  # runs must leave it — its value and its settings history — as it was.
+  defp assert_marker_written_once do
+    assert :ok = PhoenixKitAI.run_legacy_api_key_migration()
+    stamped = marker_value()
+    assert is_binary(stamped)
+    assert [_] = Settings.history("ai_legacy_api_key_migration_completed_at")
+
+    previous = Application.get_env(:phoenix_kit, :update_mode)
+    Application.put_env(:phoenix_kit, :update_mode, true)
+
+    try do
+      assert :ok = PhoenixKitAI.run_legacy_api_key_migration()
+      assert :ok = PhoenixKitAI.run_legacy_api_key_migration()
+    after
+      if is_nil(previous),
+        do: Application.delete_env(:phoenix_kit, :update_mode),
+        else: Application.put_env(:phoenix_kit, :update_mode, previous)
+    end
+
+    assert length(Settings.history("ai_legacy_api_key_migration_completed_at")) == 1
+    assert marker_value() == stamped
+  end
+
   defp legacy_endpoint_fixture(api_key, attrs \\ %{}) do
     {:ok, ep} =
       PhoenixKitAI.create_endpoint(
@@ -108,6 +148,23 @@ defmodule PhoenixKitAI.LegacyApiKeyMigrationTest do
 
       # Completion flag set → second call is also a no-op.
       assert is_binary(Settings.get_setting("ai_legacy_api_key_migration_completed_at", nil))
+    end
+
+    # `mix phoenix_kit.update` and `mix phoenix_kit.doctor` start the host app
+    # with core's `update_mode` on, and the host's boot runs every module's
+    # `migrate_legacy/0`. In that mode `Settings.get_setting/2` answers nil
+    # without reading, while writes still go through, so a marker read through
+    # it looked absent and a later guard marked the migration complete again:
+    # every such run stamped a new value — a new permanent settings-history
+    # entry. Both guards that mark it are pinned: an existing OpenRouter
+    # connection, and no candidates left to migrate.
+    test "a marker written once stays, under update_mode — existing connection" do
+      {:ok, _} = Integrations.add_connection("openrouter", "manual-setup")
+      assert_marker_written_once()
+    end
+
+    test "a marker written once stays, under update_mode — no candidates left" do
+      assert_marker_written_once()
     end
 
     test "second call after a real migration is a clean no-op" do
