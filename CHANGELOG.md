@@ -1,3 +1,16 @@
+## 0.25.3 - 2026-10-06
+
+### Fixed
+
+- The legacy `api_key` migration marker is written once and stays
+  (PR #35). `mix phoenix_kit.update` and `mix phoenix_kit.doctor` start the host
+  with core's `update_mode` on, where `Settings.get_setting/2` answers `nil`
+  without reading, so the marker looked absent and every such boot stamped a
+  new value, adding a permanent settings-history entry each time. The check now
+  reads the row itself.
+- The `run_legacy_api_key_migration/0` docs said the legacy `api_key` column is
+  never cleared; it is cleared to `""` when an endpoint is migrated.
+
 ## 0.25.2 - 2026-10-05
 
 ### Fixed

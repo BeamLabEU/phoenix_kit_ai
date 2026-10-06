@@ -400,11 +400,11 @@ defmodule PhoenixKitAI do
   3. Update each endpoint's `provider` field to point at the new
      connection key (e.g., `"openrouter:default"`).
 
-  The legacy `api_key` column is NEVER cleared — it stays on each row
-  as a safety net. `OpenRouterClient.resolve_api_key/2` prefers
-  Integrations, so post-migration endpoints stop firing the legacy
-  warning; if Integrations later breaks for any reason, the column
-  still has the value and the fallback path keeps working.
+  The legacy `api_key` column is cleared to `""` in the same `UPDATE`
+  that sets `provider` and `integration_uuid`, so the Integrations row
+  is the only credential source and the two cannot drift apart.
+  `OpenRouterClient.resolve_api_key/2` still falls back to the column
+  for endpoints this run did not reach.
 
   ## Idempotency guards (any one short-circuits)
 
