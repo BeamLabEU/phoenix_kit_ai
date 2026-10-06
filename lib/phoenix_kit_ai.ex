@@ -105,6 +105,7 @@ defmodule PhoenixKitAI do
   alias PhoenixKit.Dashboard.Tab
   alias PhoenixKit.PubSub.Manager, as: PubSub
   alias PhoenixKit.Settings
+  alias PhoenixKit.Settings.Queries, as: SettingsQueries
   alias PhoenixKit.Utils.Date, as: UtilsDate
   alias PhoenixKit.Utils.Reorder
   alias PhoenixKit.Utils.UUID, as: UUIDUtils
@@ -487,8 +488,15 @@ defmodule PhoenixKitAI do
     end
   end
 
+  # Read from the row itself, not through `Settings.get_setting/2`: with
+  # core's `update_mode` on (`mix phoenix_kit.update` / `mix
+  # phoenix_kit.doctor` start the host app that way, and its boot runs this)
+  # every settings read answers nil while writes still go through, so the
+  # marker looked absent and was stamped again — a new permanent
+  # settings-history entry on every such run. Present once = done for good.
   defp legacy_api_key_migration_completed? do
-    Settings.get_setting("ai_legacy_api_key_migration_completed_at", nil) != nil
+    SettingsQueries.get_setting_by_key("ai_legacy_api_key_migration_completed_at") !=
+      nil
   rescue
     # Settings table missing in this environment — treat as not completed
     # but the next guard (any_openrouter_integration_exists?) will trip
