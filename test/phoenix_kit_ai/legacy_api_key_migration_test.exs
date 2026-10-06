@@ -62,6 +62,30 @@ defmodule PhoenixKitAI.LegacyApiKeyMigrationTest do
     end
   end
 
+  # One ordinary run writes the marker; then, with `update_mode` on, two more
+  # runs must leave it — its value and its settings history — as it was.
+  defp assert_marker_written_once do
+    assert :ok = PhoenixKitAI.run_legacy_api_key_migration()
+    stamped = marker_value()
+    assert is_binary(stamped)
+    assert [_] = Settings.history("ai_legacy_api_key_migration_completed_at")
+
+    previous = Application.get_env(:phoenix_kit, :update_mode)
+    Application.put_env(:phoenix_kit, :update_mode, true)
+
+    try do
+      assert :ok = PhoenixKitAI.run_legacy_api_key_migration()
+      assert :ok = PhoenixKitAI.run_legacy_api_key_migration()
+    after
+      if is_nil(previous),
+        do: Application.delete_env(:phoenix_kit, :update_mode),
+        else: Application.put_env(:phoenix_kit, :update_mode, previous)
+    end
+
+    assert length(Settings.history("ai_legacy_api_key_migration_completed_at")) == 1
+    assert marker_value() == stamped
+  end
+
   defp legacy_endpoint_fixture(api_key, attrs \\ %{}) do
     {:ok, ep} =
       PhoenixKitAI.create_endpoint(
@@ -129,31 +153,18 @@ defmodule PhoenixKitAI.LegacyApiKeyMigrationTest do
     # `mix phoenix_kit.update` and `mix phoenix_kit.doctor` start the host app
     # with core's `update_mode` on, and the host's boot runs every module's
     # `migrate_legacy/0`. In that mode `Settings.get_setting/2` answers nil
-    # without reading — while writes still go through — so a marker read
-    # through it looked absent and was stamped again on every such run, each
-    # time a new permanent settings-history entry.
-    test "a marker already written is never rewritten, even when settings reads answer nil" do
+    # without reading, while writes still go through, so a marker read through
+    # it looked absent and a later guard marked the migration complete again:
+    # every such run stamped a new value — a new permanent settings-history
+    # entry. Both guards that mark it are pinned: an existing OpenRouter
+    # connection, and no candidates left to migrate.
+    test "a marker written once stays, under update_mode — existing connection" do
       {:ok, _} = Integrations.add_connection("openrouter", "manual-setup")
+      assert_marker_written_once()
+    end
 
-      Settings.update_setting_with_module(
-        "ai_legacy_api_key_migration_completed_at",
-        "2026-01-01T00:00:00Z",
-        "ai"
-      )
-
-      previous = Application.get_env(:phoenix_kit, :update_mode)
-      Application.put_env(:phoenix_kit, :update_mode, true)
-
-      on_exit(fn ->
-        if is_nil(previous),
-          do: Application.delete_env(:phoenix_kit, :update_mode),
-          else: Application.put_env(:phoenix_kit, :update_mode, previous)
-      end)
-
-      assert :ok = PhoenixKitAI.run_legacy_api_key_migration()
-      assert :ok = PhoenixKitAI.run_legacy_api_key_migration()
-
-      assert marker_value() == "2026-01-01T00:00:00Z"
+    test "a marker written once stays, under update_mode — no candidates left" do
+      assert_marker_written_once()
     end
 
     test "second call after a real migration is a clean no-op" do
