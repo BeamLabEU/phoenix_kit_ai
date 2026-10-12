@@ -872,7 +872,7 @@
              actual answer and would otherwise dominate the panel.
              Source field varies by provider — see Completion.extract_reasoning/1. --%>
         <%= if @selected_request.metadata["response_reasoning"] do %>
-          <details class="mb-4">
+          <details class="mb-4" phx-mounted={Phoenix.LiveView.JS.ignore_attributes(["open"])}>
             <summary class="text-xs text-base-content/70 mb-1 cursor-pointer hover:text-base-content">
               {ngettext(
                 "Reasoning (%{count} character)",

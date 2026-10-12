@@ -411,7 +411,7 @@
             <p :if={@edit_result.text && @edit_result.text != ""} class="text-sm whitespace-pre-wrap">
               {@edit_result.text}
             </p>
-            <details :if={@edit_result.prompt} class="text-xs">
+            <details :if={@edit_result.prompt} class="text-xs" phx-mounted={Phoenix.LiveView.JS.ignore_attributes(["open"])}>
               <summary class="cursor-pointer text-base-content/60">{gettext("Prompt sent")}</summary>
               <pre class="whitespace-pre-wrap font-[inherit] mt-1 bg-base-300 rounded p-2">{@edit_result.prompt}</pre>
             </details>
