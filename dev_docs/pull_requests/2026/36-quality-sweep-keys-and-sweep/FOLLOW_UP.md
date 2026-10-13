@@ -22,7 +22,7 @@ Triaged 2026-10-13. Ships in 0.25.4.
 
 `mix precommit` clean; `mix test` 1233 tests, 0 failures.
 
-## Codex follow-up — unreleased
+## Codex follow-up — ships in 0.25.5
 
 An independent review of 0.25.4 found four remaining issues, detailed in
 [GPT_REVIEW.md](GPT_REVIEW.md). Fixed the model-type switch's orphaned spinner,
@@ -30,7 +30,7 @@ discovery overwriting the current model's details, redirects in model/voice
 discovery, and payload-bearing failure logs. Added regression tests covering
 the races, redirects, and exceptions/exits/throws with a canary credential.
 
-These changes are recorded under `Unreleased`; they are not part of the
+These changes are recorded under 0.25.5; they are not part of the
 already-published 0.25.4 package.
 
 Validation: `mix test` 1,241 tests, zero failures; `mix precommit` passed.
