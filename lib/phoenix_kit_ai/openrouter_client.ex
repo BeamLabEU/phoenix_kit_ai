@@ -27,6 +27,7 @@ defmodule PhoenixKitAI.OpenRouterClient do
   alias PhoenixKit.Utils.Values
   alias PhoenixKitAI.AIModel
   alias PhoenixKitAI.Endpoint
+  alias PhoenixKitAI.Web.MessageShape
 
   require Logger
 
@@ -87,7 +88,10 @@ defmodule PhoenixKitAI.OpenRouterClient do
         {:error, {:api_error, status}}
 
       {:error, reason} ->
-        Logger.warning("OpenRouter API key validation transport error: #{inspect(reason)}")
+        Logger.warning(
+          "OpenRouter API key validation transport error: #{MessageShape.describe(reason)}"
+        )
+
         {:error, {:connection_error, reason}}
     end
   end
@@ -139,7 +143,10 @@ defmodule PhoenixKitAI.OpenRouterClient do
         {:error, {:api_error, status}}
 
       {:error, reason} ->
-        Logger.warning("OpenRouter models fetch transport error: #{inspect(reason)}")
+        Logger.warning(
+          "OpenRouter models fetch transport error: #{MessageShape.describe(reason)}"
+        )
+
         {:error, {:connection_error, reason}}
     end
   end
@@ -230,7 +237,7 @@ defmodule PhoenixKitAI.OpenRouterClient do
         {:error, {:api_error, status}}
 
       {:error, reason} ->
-        Logger.warning("Voices fetch transport error: #{inspect(reason)}")
+        Logger.warning("Voices fetch transport error: #{MessageShape.describe(reason)}")
         {:error, {:connection_error, reason}}
     end
   end
@@ -294,7 +301,7 @@ defmodule PhoenixKitAI.OpenRouterClient do
         {:error, {:api_error, status}}
 
       {:error, reason} ->
-        Logger.warning("xAI voices fetch transport error: #{inspect(reason)}")
+        Logger.warning("xAI voices fetch transport error: #{MessageShape.describe(reason)}")
         {:error, {:connection_error, reason}}
     end
   end
@@ -798,6 +805,9 @@ defmodule PhoenixKitAI.OpenRouterClient do
 
     base_opts = [
       headers: headers_map,
+      # Discovery shares the saved endpoint's host policy with completions.
+      # A redirect must not turn an allowed URL into an internal request.
+      redirect: false,
       receive_timeout: @timeout,
       connect_options: [timeout: @timeout]
     ]
@@ -823,11 +833,11 @@ defmodule PhoenixKitAI.OpenRouterClient do
         {:error, :timeout}
 
       {:error, %Req.TransportError{reason: reason}} ->
-        Logger.error("HTTP request failed: #{inspect(reason)}")
+        Logger.error("HTTP request failed: #{MessageShape.describe(reason)}")
         {:error, reason}
 
       {:error, reason} ->
-        Logger.error("HTTP request failed: #{inspect(reason)}")
+        Logger.error("HTTP request failed: #{MessageShape.describe(reason)}")
         {:error, reason}
     end
   end

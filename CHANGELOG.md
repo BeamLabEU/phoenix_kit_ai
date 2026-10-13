@@ -1,3 +1,17 @@
+## Unreleased
+
+### Fixed
+
+- Switching the endpoint form's model type clears loading indicators when
+  its connection is no longer connected and no replacement fetch starts.
+- Model discovery resolves the current form selection when it finishes,
+  preserving a model chosen during the fetch and an explicitly cleared model.
+- Model and voice discovery no longer follows redirects, matching the
+  completions and provider-adapter URL policy.
+- Endpoint-form failures and discovery transport errors log only their shape.
+  Model-fetch raises, exits and throws are caught before a task crash report
+  can expose exception messages or stack arguments; the picker offers Retry.
+
 ## 0.25.4 - 2026-10-13
 
 ### Changed

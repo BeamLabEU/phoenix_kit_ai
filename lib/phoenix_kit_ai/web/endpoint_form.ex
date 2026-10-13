@@ -705,12 +705,13 @@ defmodule PhoenixKitAI.Web.EndpointForm do
       |> assign(:models_grouped, [])
       |> assign(:voices, [])
       |> assign(:selected_speaker, nil)
+      |> assign(:models_error, nil)
 
     if socket.assigns[:integration_connected] do
       send(self(), :fetch_models_from_integration)
       {:noreply, start_model_fetch_indicators(socket)}
     else
-      {:noreply, socket}
+      {:noreply, stop_model_fetch_indicators(socket)}
     end
   end
 
@@ -1043,7 +1044,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     e ->
       Logger.error(
         "Endpoint save failed: " <>
-          Exception.format(:error, e, __STACKTRACE__)
+          MessageShape.describe(e)
       )
 
       {:noreply, put_flash(socket, :error, gettext("Something went wrong. Please try again."))}
@@ -1298,7 +1299,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
   # leaving the picker loading forever.
   def handle_async(:model_fetch, {:exit, reason}, socket) do
     Logger.warning(fn ->
-      "[PhoenixKitAI.Web.EndpointForm] model fetch crashed: #{Exception.format_exit(reason)}"
+      "[PhoenixKitAI.Web.EndpointForm] model fetch crashed: #{MessageShape.describe(reason)}"
     end)
 
     socket =
@@ -1355,6 +1356,12 @@ defmodule PhoenixKitAI.Web.EndpointForm do
           {:ok, grouped, fetch_voices(api_key, model_type, base_url)}
         end
     end
+  rescue
+    # Catch before the task terminates: OTP's crash report would include
+    # the exception message and stack arguments, which may carry a key.
+    _ -> {:error, :request_failed}
+  catch
+    _kind, _reason -> {:error, :request_failed}
   end
 
   # For TTS endpoints, also fetch the provider's voice catalogue so the
@@ -1386,15 +1393,9 @@ defmodule PhoenixKitAI.Web.EndpointForm do
       grouped
       |> Enum.flat_map(fn {_provider, models} -> models end)
 
-    # Set selected model if editing existing endpoint
-    selected_model =
-      case socket.assigns.endpoint do
-        %{model: model_id} when is_binary(model_id) and model_id != "" ->
-          find_model(models, model_id)
-
-        _ ->
-          nil
-      end
+    # Discovery may finish after the operator changes or clears the model.
+    # Resolve the current form value, including an explicit blank.
+    selected_model = find_model(models, socket.assigns.form[:model].value)
 
     # When the response groups under a single provider (Mistral /
     # DeepSeek / any direct API whose model IDs don't carry a
@@ -1427,14 +1428,14 @@ defmodule PhoenixKitAI.Web.EndpointForm do
   end
 
   defp apply_model_fetch(socket, {:error, reason}) do
-    # Log the failure with grep-able context (provider + reason) so
+    # Log the failure with grep-able context (provider + reason shape) so
     # operators can correlate "model dropdown is empty" reports with
     # upstream API issues. Provider is the form-side selection at
     # the time of fetch.
     Logger.warning(fn ->
       "[PhoenixKitAI.Web.EndpointForm] model fetch failed: " <>
         "provider=#{inspect(socket.assigns[:current_provider])}, " <>
-        "reason=#{inspect(reason)}"
+        "reason=#{MessageShape.describe(reason)}"
     end)
 
     socket

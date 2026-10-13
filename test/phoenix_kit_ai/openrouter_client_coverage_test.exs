@@ -98,6 +98,28 @@ defmodule PhoenixKitAI.OpenRouterClientCoverageTest do
   end
 
   describe "fetch_models/2" do
+    test "does not follow a redirect from the discovery endpoint" do
+      test_pid = self()
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        case conn.request_path do
+          "/models" ->
+            conn
+            |> Plug.Conn.put_resp_header("location", "/redirected-models")
+            |> Plug.Conn.send_resp(302, "")
+
+          _ ->
+            send(test_pid, :redirect_followed)
+            Req.Test.json(conn, %{"data" => []})
+        end
+      end)
+
+      assert {:error, {:api_error, 302}} =
+               OpenRouterClient.fetch_models("sk-x", base_url: "https://example.com")
+
+      refute_received :redirect_followed
+    end
+
     test "200 with data returns normalized models" do
       stub_response(200, %{
         "data" => [

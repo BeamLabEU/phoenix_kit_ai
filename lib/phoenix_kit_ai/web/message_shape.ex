@@ -1,13 +1,13 @@
 defmodule PhoenixKitAI.Web.MessageShape do
   @moduledoc """
-  Describes a process message by its shape, for the LiveViews' catch-all
-  `handle_info/2` log lines.
+  Describes a process message or failure by its shape, for log lines.
 
   A LiveView mailbox receives messages this module does not own (PubSub
   from other modules, late task replies), and any of them may carry a
   credential or user content. The catch-alls therefore log what kind of
   message arrived — its tag and arity, or its struct name — and never the
-  message itself.
+  message itself. Failure logs use the same description because exception
+  messages, stack arguments and transport errors can carry those payloads too.
   """
 
   @doc """

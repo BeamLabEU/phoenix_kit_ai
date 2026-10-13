@@ -15,6 +15,8 @@ defmodule PhoenixKitAI.Web.EndpointFormModelFetchTest do
 
   import ExUnit.CaptureLog
 
+  alias PhoenixKitAI.Web.EndpointForm
+
   @api_key "sk-or-v1-canary-key-0123456789abcdef"
 
   @models %{
@@ -274,6 +276,72 @@ defmodule PhoenixKitAI.Web.EndpointFormModelFetchTest do
       html = render_async(view, 2_000)
 
       refute html =~ "Claude 3 Haiku"
+      refute html =~ "Loading models..."
+      refute html =~ "taking longer than usual"
+    end
+
+    test "a model chosen during discovery gets its fetched details", %{conn: conn} do
+      test_pid = self()
+
+      stub =
+        stub_models(fn conn ->
+          send(test_pid, {:models_requested, self()})
+
+          receive do
+            :release -> models_ok(conn)
+          after
+            5_000 -> models_ok(conn)
+          end
+        end)
+
+      {view, uuid} = form_awaiting_validation(conn, stub)
+      send(view.pid, {:validation_done, uuid, :ok})
+      assert_receive {:models_requested, fetcher}, 2_000
+
+      render_hook(view, "set_manual_model", %{"model" => "anthropic/claude-3-haiku"})
+      send(fetcher, :release)
+      html = render_async(view, 2_000)
+
+      refute html =~ "Not in current model list"
+
+      assert :sys.get_state(view.pid).socket.assigns.selected_model.id ==
+               "anthropic/claude-3-haiku"
+    end
+
+    test "a cleared saved model stays cleared when discovery finishes", %{conn: conn} do
+      test_pid = self()
+
+      stub =
+        stub_models(fn conn ->
+          send(test_pid, {:models_requested, self()})
+
+          receive do
+            :release -> models_ok(conn)
+          after
+            5_000 -> models_ok(conn)
+          end
+        end)
+
+      name = "clear-model-#{System.unique_integer([:positive])}"
+      %{uuid: uuid} = seed_openrouter_connection(name)
+
+      endpoint =
+        fixture_endpoint(%{integration_uuid: uuid, model: "anthropic/claude-3-haiku"})
+
+      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/#{endpoint.uuid}/edit")
+      Req.Test.allow(stub, self(), view.pid)
+      seed_openrouter_connection(name, data: %{"api_key" => @api_key})
+
+      send(view.pid, {:validation_done, uuid, :ok})
+      assert_receive {:models_requested, fetcher}, 2_000
+      render_hook(view, "clear_model", %{})
+      send(fetcher, :release)
+      render_async(view, 2_000)
+
+      assigns = :sys.get_state(view.pid).socket.assigns
+      assert assigns.form[:model].value == ""
+      assert assigns.form.params["model"] == ""
+      assert is_nil(assigns.selected_model)
     end
   end
 
@@ -316,6 +384,87 @@ defmodule PhoenixKitAI.Web.EndpointFormModelFetchTest do
       assert log =~ "unhandled handle_info: {:fetch_models, …}/3"
       assert log =~ "unhandled handle_info: %URI{}"
       assert log =~ "unhandled handle_info: binary"
+      refute log =~ @api_key
+    end
+
+    test "a model fetch exception settles the picker without logging its payload", %{conn: conn} do
+      stub = stub_models(fn _conn -> raise "provider echoed #{@api_key}" end)
+      {view, uuid} = form_awaiting_validation(conn, stub)
+
+      log =
+        capture_log([level: :debug], fn ->
+          send(view.pid, {:validation_done, uuid, :ok})
+          html = render_async(view, 2_000)
+
+          refute html =~ "Loading models..."
+          assert html =~ "The request could not be completed"
+        end)
+
+      assert log =~ "model fetch"
+      refute log =~ @api_key
+    end
+
+    for kind <- [:exit, :throw] do
+      test "a model fetch #{kind} settles the picker without logging its payload", %{conn: conn} do
+        stub =
+          stub_models(fn _conn ->
+            case unquote(kind) do
+              :exit -> exit({:provider_error, @api_key})
+              :throw -> throw({:provider_error, @api_key})
+            end
+          end)
+
+        {view, uuid} = form_awaiting_validation(conn, stub)
+
+        log =
+          capture_log([level: :debug], fn ->
+            send(view.pid, {:validation_done, uuid, :ok})
+            html = render_async(view, 2_000)
+
+            refute html =~ "Loading models..."
+            assert html =~ "The request could not be completed"
+          end)
+
+        refute log =~ @api_key
+      end
+    end
+
+    test "model fetch transport errors keep their payload out of logs", %{conn: conn} do
+      reason = {:bad_alpn_protocol, @api_key}
+      stub = stub_models(fn conn -> Req.Test.transport_error(conn, reason) end)
+      {view, uuid} = form_awaiting_validation(conn, stub)
+
+      log =
+        capture_log([level: :debug], fn ->
+          send(view.pid, {:validation_done, uuid, :ok})
+          html = render_async(view, 2_000)
+          refute html =~ "Loading models..."
+          assert html =~ "Connection error"
+        end)
+
+      assert log =~ "model fetch failed"
+      refute log =~ @api_key
+    end
+
+    test "an unexpected async exit logs only its shape", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/new")
+      socket = :sys.get_state(view.pid).socket
+      reason = {%RuntimeError{message: @api_key}, [{__MODULE__, :secret, [@api_key], []}]}
+
+      log =
+        capture_log(fn ->
+          assert {:noreply, updated} =
+                   EndpointForm.handle_async(
+                     :model_fetch,
+                     {:exit, reason},
+                     socket
+                   )
+
+          refute updated.assigns.models_loading
+          assert updated.assigns.models_error == "Something went wrong. Please try again."
+        end)
+
+      assert log =~ "model fetch crashed"
       refute log =~ @api_key
     end
   end
