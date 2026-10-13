@@ -41,6 +41,10 @@ defmodule PhoenixKitAI.ErrorsTest do
       assert Errors.message(:endpoint_disabled) == "Endpoint is disabled"
     end
 
+    test ":request_failed" do
+      assert Errors.message(:request_failed) == "The request could not be completed"
+    end
+
     test ":invalid_endpoint_identifier" do
       assert Errors.message(:invalid_endpoint_identifier) == "Invalid endpoint identifier"
     end

@@ -658,7 +658,7 @@ defmodule PhoenixKitAI.Endpoint do
   #
   # The host is judged by the image-fetch policy
   # (`Providers.HTTP.host_class/2`), names included: a name is resolved so
-  # `127.0.0.1.nip.io` is refused like `127.0.0.1`. Three choices bound
+  # `127.0.0.1.nip.io` is refused like `127.0.0.1`. Four choices bound
   # that lookup:
   #
   # - It runs only when `base_url` is being changed. A stored URL passed

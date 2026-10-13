@@ -35,6 +35,7 @@ defmodule PhoenixKitAI.Errors do
   @spec message(term()) :: String.t()
   def message(:endpoint_not_found), do: gettext("Endpoint not found")
   def message(:endpoint_disabled), do: gettext("Endpoint is disabled")
+  def message(:request_failed), do: gettext("The request could not be completed")
   def message(:invalid_endpoint_identifier), do: gettext("Invalid endpoint identifier")
   def message(:invalid_api_key), do: gettext("Invalid API key")
   def message(:api_key_forbidden), do: gettext("API key forbidden")

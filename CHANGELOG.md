@@ -1,3 +1,45 @@
+## 0.25.4 - 2026-10-13
+
+### Changed
+
+- Keys and user content stay out of process messages and logs (PR #36): change
+  broadcasts carry the record's uuid only, the endpoint form and the
+  Playground pass connection / endpoint uuids and resolve the key where it is
+  used, catch-all `handle_info/2` clauses log the message's shape, and a
+  translation failure is logged and broadcast as a static `{category, detail}`
+  pair.
+- The endpoint form's model and voice fetch runs off the LiveView process
+  (`start_async/3`), drops results for a connection or model type the operator
+  has left, and always settles the loading state, including when the fetch or
+  the validation task crashes.
+- A saved `base_url` is checked against the image-fetch host policy, names
+  included: a name resolving to an internal address (or ending `.internal`) is
+  refused. Resolution happens only when the URL changes, in at most two
+  seconds; the form's per-keystroke changeset never resolves. Chat and adapter
+  requests no longer follow redirects.
+- The translation sweep translates with `Translations.unattended_endpoint_uuid/0`:
+  an explicit endpoint setting is binding (gone or disabled stops the tick as
+  `:ai_unavailable`), and the "last used" endpoint is never consulted. A
+  rate-limited translation job snoozes at most five times before it counts as
+  an ordinary failure.
+- `duplicate_prompt/3`, `enable_prompt/2`, `disable_prompt/2` and
+  `reset_prompt_usage/2` take `:actor_uuid`; resetting usage logs
+  `prompt.usage_reset`. A duplicated prompt keeps its system prompt.
+  `search_prompts/2` matches LIKE metacharacters literally.
+
+### Fixed
+
+- Every `Integrations.validate_connection/2` result is handled (`:ok`,
+  `{:ok, note}`, `:unverified`, `{:error, _}`); the latter two used to crash
+  the endpoint form.
+- A raise inside the translation engine ends in a terminal
+  `translation_failed` event instead of a silent retry.
+- Fold-out sections (`<details>`) stay open across re-renders.
+- Toggling or deleting an endpoint or prompt that was removed in another tab
+  shows a flash instead of crashing; client sort params are whitelisted.
+- A failed validation task shows "The request could not be completed" rather
+  than `Unexpected error: :request_failed`.
+
 ## 0.25.3 - 2026-10-06
 
 ### Fixed
