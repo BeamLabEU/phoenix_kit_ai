@@ -9,11 +9,14 @@ defmodule PhoenixKitAI.Web.PromptForm do
   use PhoenixKitWeb, :live_view
   use Gettext, backend: PhoenixKitAI.Gettext
 
+  require Logger
+
   alias PhoenixKit.Settings
   alias PhoenixKit.Utils.Routes
   alias PhoenixKitAI, as: AI
   alias PhoenixKitAI.Prompt
   alias PhoenixKitAI.Web.AuthHelpers
+  alias PhoenixKitAI.Web.MessageShape
 
   # ===========================================
   # LIFECYCLE
@@ -168,8 +171,6 @@ defmodule PhoenixKitAI.Web.PromptForm do
     end
   rescue
     e ->
-      require Logger
-
       Logger.error(
         "Prompt save failed: " <>
           Exception.format(:error, e, __STACKTRACE__)
@@ -181,9 +182,15 @@ defmodule PhoenixKitAI.Web.PromptForm do
   defp actor_opts(socket), do: AuthHelpers.actor_opts(socket)
 
   # Catch-all so an unexpected PubSub message or deferred-task reply
-  # from a future code path can't crash the form silently. The LV
-  # doesn't subscribe today, but the catch-all matches the endpoints
-  # LV's defensive coverage.
+  # from a future code path can't crash the form. The LV doesn't
+  # subscribe today; the message is logged by shape at :debug, as the
+  # other admin LVs do.
   @impl true
-  def handle_info(_msg, socket), do: {:noreply, socket}
+  def handle_info(msg, socket) do
+    Logger.debug(fn ->
+      "[PhoenixKitAI.Web.PromptForm] unhandled handle_info: #{MessageShape.describe(msg)}"
+    end)
+
+    {:noreply, socket}
+  end
 end

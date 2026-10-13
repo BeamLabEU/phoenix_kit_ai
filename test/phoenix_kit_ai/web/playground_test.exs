@@ -152,7 +152,7 @@ defmodule PhoenixKitAI.Web.PlaygroundTest do
       render_change(view, "change", %{"endpoint_uuid" => endpoint.uuid})
 
       render_click(view, "load_image_models", %{})
-      html = render_async(view)
+      html = render_async(view, 2_000)
       assert html =~ "Nano Banana"
       assert has_element?(view, "select[name=edit_model]")
       assert has_element?(view, "select[name='opt[aspect_ratio]']")
@@ -221,7 +221,7 @@ defmodule PhoenixKitAI.Web.PlaygroundTest do
       end)
 
       send(edit_request, :go)
-      html = render_async(view)
+      html = render_async(view, 2_000)
       assert html =~ "data:image/png;base64,"
       refute html =~ "Usually 10–40 seconds"
     end
@@ -247,7 +247,7 @@ defmodule PhoenixKitAI.Web.PlaygroundTest do
 
       assert html =~ "Editing…" or html =~ "Usually 10–40 seconds"
 
-      html = render_async(view)
+      html = render_async(view, 2_000)
       assert html =~ "data:image/png;base64,"
       assert html =~ "Prompt sent"
 
@@ -257,13 +257,13 @@ defmodule PhoenixKitAI.Web.PlaygroundTest do
       # A second run needs no new upload: the bytes were kept.
       assert render(view) =~ "kept from the last run"
       render_submit(view, "edit_send", %{"edit_prompt" => "Make it pop", "ops" => []})
-      render_async(view)
+      render_async(view, 2_000)
       assert_received {:images_post, %{"prompt" => prompt}}
       assert prompt =~ "Make it pop"
 
       # Describe shares the same inputs.
       render_submit(view, "edit_send", %{"action" => "describe", "edit_prompt" => "What is it?"})
-      html = render_async(view)
+      html = render_async(view, 2_000)
       assert_received :chat_post
       assert html =~ "A bar."
     end

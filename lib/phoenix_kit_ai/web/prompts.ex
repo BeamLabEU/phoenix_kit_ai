@@ -24,7 +24,9 @@ defmodule PhoenixKitAI.Web.Prompts do
 
   alias PhoenixKit.Settings
   alias PhoenixKitAI, as: AI
+  alias PhoenixKitAI.Prompt
   alias PhoenixKitAI.Web.AuthHelpers
+  alias PhoenixKitAI.Web.MessageShape
   alias PhoenixKitAI.Web.SortHelpers
 
   # Static field list (atoms) for compile-time `?sort=…` validation.
@@ -106,17 +108,24 @@ defmodule PhoenixKitAI.Web.Prompts do
 
   @impl true
   def handle_event("toggle_prompt", %{"uuid" => uuid}, socket) do
-    prompt = AI.get_prompt!(uuid)
+    # The row can be gone already (deleted in another tab while this list
+    # was open): say so and refresh the list, rather than raise.
+    with %Prompt{} = prompt <- AI.get_prompt(uuid),
+         {:ok, updated} <-
+           AI.update_prompt(prompt, %{enabled: !prompt.enabled}, actor_opts(socket)) do
+      message =
+        if updated.enabled, do: gettext("Prompt enabled"), else: gettext("Prompt disabled")
 
-    case AI.update_prompt(prompt, %{enabled: !prompt.enabled}, actor_opts(socket)) do
-      {:ok, updated} ->
-        message =
-          if updated.enabled, do: gettext("Prompt enabled"), else: gettext("Prompt disabled")
-
+      {:noreply,
+       socket
+       |> reload_prompts()
+       |> put_flash(:info, message)}
+    else
+      nil ->
         {:noreply,
          socket
          |> reload_prompts()
-         |> put_flash(:info, message)}
+         |> put_flash(:error, gettext("Prompt not found"))}
 
       {:error, _changeset} ->
         {:noreply, put_flash(socket, :error, gettext("Failed to update prompt"))}
@@ -125,14 +134,18 @@ defmodule PhoenixKitAI.Web.Prompts do
 
   @impl true
   def handle_event("delete_prompt", %{"uuid" => uuid}, socket) do
-    prompt = AI.get_prompt!(uuid)
-
-    case AI.delete_prompt(prompt, actor_opts(socket)) do
-      {:ok, _} ->
+    with %Prompt{} = prompt <- AI.get_prompt(uuid),
+         {:ok, _} <- AI.delete_prompt(prompt, actor_opts(socket)) do
+      {:noreply,
+       socket
+       |> reload_prompts()
+       |> put_flash(:info, gettext("Prompt deleted"))}
+    else
+      nil ->
         {:noreply,
          socket
          |> reload_prompts()
-         |> put_flash(:info, gettext("Prompt deleted"))}
+         |> put_flash(:error, gettext("Prompt not found"))}
 
       {:error, _} ->
         {:noreply, put_flash(socket, :error, gettext("Failed to delete prompt"))}
@@ -211,7 +224,7 @@ defmodule PhoenixKitAI.Web.Prompts do
   @impl true
   def handle_info(msg, socket) do
     Logger.debug(fn ->
-      "[PhoenixKitAI.Web.Prompts] unhandled handle_info: #{inspect(msg)}"
+      "[PhoenixKitAI.Web.Prompts] unhandled handle_info: #{MessageShape.describe(msg)}"
     end)
 
     {:noreply, socket}

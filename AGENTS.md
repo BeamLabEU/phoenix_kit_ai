@@ -157,6 +157,12 @@ Repo-local aliases:
   otherwise the row records `content_redacted: true` and keeps tokens, latency,
   model and cost. Any new field carrying user text must sit behind the same
   gate.
+- **No credential or user content in a process message, a broadcast or a
+  log line.** A LiveView message names a connection or endpoint by uuid and
+  the handler resolves the key; the change topics broadcast `{event, uuid}`;
+  a catch-all `handle_info/2` logs `PhoenixKitAI.Web.MessageShape.describe/1`,
+  never `inspect(msg)`; a translation failure is logged and broadcast as
+  `TranslateWorker.classify_reason/1`'s pair, never the raw reason.
 - **Costs** are stored in nanodollars.
 - **Error returns** are atoms or `{atom, detail}` tuples, rendered through
   `PhoenixKitAI.Errors.message/1`.
@@ -289,6 +295,9 @@ Notes on the less obvious modules:
 | `phoenix_kit:ai:prompts` | `subscribe_prompts/0` |
 | `phoenix_kit:ai:requests` | `subscribe_requests/0` |
 
+Every message is `{event, uuid}`; a subscriber that needs the record reads
+it by uuid.
+
 ### Settings & permissions
 
 Settings: `ai_enabled` (boolean, default `false`) is the module toggle;
@@ -322,7 +331,7 @@ checked with `Scope.has_module_access?/2`. No sub-permissions.
 |-----|---------|---------|
 | `:capture_request_content` | `true` | Persist message/response content in request `metadata`; `false` writes `content_redacted: true` instead (tokens/latency/cost still recorded) |
 | `:capture_request_memory` | `false` | Opt-in per-request `:memory` snapshot in metadata — debug only |
-| `:allow_internal_endpoint_urls` | `false` | Bypass the SSRF guard on `Endpoint.base_url` (loopback/RFC1918/`*.local`/non-http(s) rejected) — for self-hosted Ollama etc. |
+| `:allow_internal_endpoint_urls` | `false` | Bypass the SSRF guard on `Endpoint.base_url` (an internal address, a name resolving to one, `*.local` / `*.internal` are rejected; non-http(s) always is) — for self-hosted Ollama etc. |
 | `:embedding_models` | `[]` | Extra embedding models appended to `OpenRouterClient.fetch_embedding_models/2`; non-list values are warned about and ignored |
 | `:req_options` | `[]` | Extra `Req` opts appended to every HTTP call — tests use it for `Req.Test` plug stubs |
 | `:realtime_module` | `Xai.Realtime` | Swappable realtime client; tests point it at a Mox mock of `Xai.RealtimeBehaviour` |
@@ -364,7 +373,15 @@ provided the API exposes `<base_url>/chat/completions` and `/models`.
   a `:provider_adapters` entry — no edits to `Completion` or `Images`.
 - Endpoint-form model fetching drives `models_loading` /
   `models_loading_slow` (10s hint) / `models_error` with Retry, all consolidated
-  in `start/stop_model_fetch_indicators/1`.
+  in `start/stop_model_fetch_indicators/1`. Neither round-trip runs in the
+  LiveView process: validation is a supervised task, the `/models` fetch is
+  `start_async(:model_fetch)`, and a result for a connection or model type
+  the operator has left is dropped.
+- The `base_url` guard resolves a name only when the URL is being changed,
+  for two seconds at most, never for the provider's registry default and
+  never from `change_endpoint/2` (a form's per-keystroke changeset); a name
+  that does not resolve is accepted. Chat, embeddings, TTS and adapter calls
+  do not follow redirects.
 
 ### Completion behaviour
 
@@ -511,6 +528,15 @@ Test database `phoenix_kit_ai_test`.
   was discarded in the last day, and the recorded outcome. A module whose
   `phoenix_kit_ai` dependency is optional implements the callbacks without
   declaring the behaviour.
+- The sweep translates with `Translations.unattended_endpoint_uuid/0`, not
+  the modal's `default_endpoint_uuid/0`: an explicit
+  `ai_translation_endpoint_uuid` is binding (gone or disabled stops the tick
+  as `:ai_unavailable` with the reason under `"endpoint"`, nothing is
+  enqueued), and the "last used" endpoint is never consulted.
+- A rate-limited translation job snoozes at most five times (30 s,
+  doubling); after that a 429 is an ordinary retryable failure, so an
+  exhausted quota ends in `ai.translation_failed` instead of holding its
+  in-flight slot.
 - Host translatables (`config :phoenix_kit_ai, translatables:`) implement
   `PhoenixKitAI.Translatable` (`fetch/2`, `source_fields/2`,
   `put_translation/4`); a configured entry wins over a module's adapter

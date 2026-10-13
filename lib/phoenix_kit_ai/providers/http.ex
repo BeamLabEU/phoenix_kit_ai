@@ -32,10 +32,18 @@ defmodule PhoenixKitAI.Providers.HTTP do
   defp request(method, url, req_opts, opts) do
     timeout = Keyword.get(opts, :timeout, @timeout)
 
+    # Redirects are not followed: the endpoint's base URL passed the host
+    # policy when it was saved, and a 30x would let that public host send
+    # the request — body and all — to an internal one. No supported
+    # provider answers its API with a redirect.
     all =
       [method: method, url: url] ++
         req_opts ++
-        [receive_timeout: timeout, connect_options: [timeout: min(timeout, 10_000)]] ++
+        [
+          redirect: false,
+          receive_timeout: timeout,
+          connect_options: [timeout: min(timeout, 10_000)]
+        ] ++
         Application.get_env(:phoenix_kit_ai, :req_options, [])
 
     case Req.request(all) do
@@ -121,7 +129,7 @@ defmodule PhoenixKitAI.Providers.HTTP do
       %URI{scheme: scheme, host: host}
       when scheme in ["http", "https"] and is_binary(host) and host != "" ->
         Application.get_env(:phoenix_kit_ai, :allow_internal_image_urls, false) or
-          not internal_host?(host)
+          host_class(host) != :internal
 
       _ ->
         false
@@ -130,32 +138,74 @@ defmodule PhoenixKitAI.Providers.HTTP do
 
   def safe_url?(_url), do: false
 
-  defp internal_host?(host) do
-    host = host |> String.downcase() |> String.trim_leading("[") |> String.trim_trailing("]")
+  @doc """
+  Where a host leads, by the policy `safe_url?/1` describes: `:internal`
+  (it is, is named like, or resolves to an internal address), `:public`
+  (a public literal, or a name whose every address is public), or
+  `:unresolved` (a name with no address right now).
 
-    cond do
-      host in ["localhost", "0.0.0.0"] -> true
-      String.ends_with?(host, ".local") or String.ends_with?(host, ".internal") -> true
-      true -> Enum.any?(addresses(host), &private_address?/1)
-    end
-  end
+  Options: `:resolve` (default `true`) — `false` judges literals and
+  reserved names only and answers `:unresolved` for any other name,
+  without a lookup; `:timeout` (default `:infinity`) — milliseconds the
+  lookup may take in all, after which the name counts as `:unresolved`.
+  """
+  @spec host_class(String.t(), keyword()) :: :internal | :public | :unresolved
+  def host_class(host, opts \\ []) when is_binary(host) do
+    host =
+      host
+      |> String.downcase()
+      |> String.trim_leading("[")
+      |> String.trim_trailing("]")
+      # FQDN form: `127.0.0.1.` and `localhost.` are the same hosts.
+      |> String.trim_trailing(".")
 
-  # A literal address is itself; a name is every address it resolves to
-  # right now. This is a best-effort check — a host that changes its
-  # answer between this lookup and the connection (DNS rebinding) is out
-  # of its reach; production installs should also firewall egress.
-  defp addresses(host) do
     chars = String.to_charlist(host)
 
-    case :inet.parse_address(chars) do
-      {:ok, address} -> [address]
-      {:error, _} -> resolve(chars)
+    cond do
+      host in ["localhost", "0.0.0.0"] ->
+        :internal
+
+      String.ends_with?(host, ".local") or String.ends_with?(host, ".internal") ->
+        :internal
+
+      match?({:ok, _}, :inet.parse_address(chars)) ->
+        {:ok, address} = :inet.parse_address(chars)
+        if private_address?(address), do: :internal, else: :public
+
+      Keyword.get(opts, :resolve, true) ->
+        classify_addresses(resolve(chars, Keyword.get(opts, :timeout, :infinity)))
+
+      true ->
+        :unresolved
     end
   end
 
-  defp resolve(chars) do
-    # A name that does not resolve yields [] — not internal; there is
-    # nothing to connect to, and the fetch fails on its own.
+  # A name is every address it resolves to right now. This is a
+  # best-effort check — a host that changes its answer between this lookup
+  # and the connection (DNS rebinding) is out of its reach; production
+  # installs should also firewall egress.
+  #
+  # A name that does not resolve is `:unresolved`, not internal: there is
+  # nothing to connect to, and the request fails on its own.
+  defp classify_addresses([]), do: :unresolved
+
+  defp classify_addresses(addresses),
+    do: if(Enum.any?(addresses, &private_address?/1), do: :internal, else: :public)
+
+  defp resolve(chars, :infinity), do: lookup(chars)
+
+  # The resolver has no deadline of its own that covers both families, so
+  # the lookup runs in a task the caller abandons at `timeout`.
+  defp resolve(chars, timeout) when is_integer(timeout) do
+    task = Task.async(fn -> lookup(chars) end)
+
+    case Task.yield(task, timeout) || Task.shutdown(task, :brutal_kill) do
+      {:ok, addresses} -> addresses
+      _ -> []
+    end
+  end
+
+  defp lookup(chars) do
     Enum.flat_map([:inet, :inet6], fn family ->
       case :inet.getaddrs(chars, family) do
         {:ok, list} -> list

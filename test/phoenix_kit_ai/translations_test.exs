@@ -359,6 +359,34 @@ defmodule PhoenixKitAI.TranslationsTest do
 
       assert Translations.default_endpoint_uuid() == disabled_ep.uuid
     end
+
+    # `unattended_endpoint_uuid/0` — the sweep's resolution.
+    test "an explicit setting is binding: usable, or the reason it is not" do
+      live_ep = fixture_ep()
+      {:ok, disabled_ep} = PhoenixKitAI.update_endpoint(fixture_ep(), %{enabled: false})
+
+      Settings.update_setting_with_module("ai_translation_endpoint_uuid", live_ep.uuid, "ai")
+      assert Translations.unattended_endpoint_uuid() == {:ok, live_ep.uuid}
+
+      Settings.update_setting_with_module("ai_translation_endpoint_uuid", disabled_ep.uuid, "ai")
+      assert Translations.unattended_endpoint_uuid() == {:error, :disabled}
+
+      Settings.update_setting_with_module(
+        "ai_translation_endpoint_uuid",
+        Ecto.UUID.generate(),
+        "ai"
+      )
+
+      assert Translations.unattended_endpoint_uuid() == {:error, :not_found}
+
+      Settings.update_setting_with_module("ai_translation_endpoint_uuid", "not-a-uuid", "ai")
+      assert Translations.unattended_endpoint_uuid() == {:error, :not_found}
+    end
+
+    test "with nothing set and no enabled endpoint there is none" do
+      {:ok, _} = PhoenixKitAI.update_endpoint(fixture_ep(), %{enabled: false})
+      assert Translations.unattended_endpoint_uuid() == {:error, :not_configured}
+    end
   end
 
   describe "enqueue/1 + job_in_flight?/1 dedup identity" do

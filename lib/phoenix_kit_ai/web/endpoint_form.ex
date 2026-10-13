@@ -20,6 +20,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
   alias PhoenixKitAI.Endpoint
   alias PhoenixKitAI.OpenRouterClient
   alias PhoenixKitAI.Web.AuthHelpers
+  alias PhoenixKitAI.Web.MessageShape
 
   # ===========================================
   # FUNCTION COMPONENTS
@@ -650,12 +651,14 @@ defmodule PhoenixKitAI.Web.EndpointForm do
       |> assign(:voices, [])
       |> assign(:selected_speaker, nil)
 
-    # Reload models with new connection
+    # Reload models with new connection. With nothing to fetch, a spinner
+    # left by the previous connection's fetch is cleared here — that
+    # fetch's result will be dropped as stale and would never clear it.
     if connected do
       send(self(), :fetch_models_from_integration)
       {:noreply, start_model_fetch_indicators(socket)}
     else
-      {:noreply, socket}
+      {:noreply, stop_model_fetch_indicators(socket)}
     end
   end
 
@@ -853,6 +856,19 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     end
   end
 
+  # The task that runs this is unlinked, so a raise or exit in it would
+  # otherwise send nothing and leave the picker loading forever. Whatever
+  # happens, the LiveView gets a result.
+  defp validate_and_record(connection_uuid) do
+    result = Integrations.validate_connection(connection_uuid)
+    Integrations.record_validation(connection_uuid, result)
+    result
+  rescue
+    _ -> {:error, :request_failed}
+  catch
+    _kind, _reason -> {:error, :request_failed}
+  end
+
   defp reload_connections(socket) do
     connections = load_all_provider_connections()
     current_active = socket.assigns[:active_connection]
@@ -863,12 +879,21 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     connected = active && Integrations.connected?(active)
 
     socket
+    |> settle_fetch_for_lost_connection(current_active, active)
     |> assign(:provider_connections, connections)
     |> assign(:active_connection, active)
     |> assign(:selected_uuids, selected_uuids)
     |> assign(:integration_connected, connected)
     |> refresh_provider_options(connections)
   end
+
+  # A validation or model fetch in flight for a connection that has just
+  # gone away will be dropped by the uuid guards when it lands, so the
+  # loading state it would have cleared is cleared here.
+  defp settle_fetch_for_lost_connection(socket, was, now) when was != now,
+    do: stop_model_fetch_indicators(socket)
+
+  defp settle_fetch_for_lost_connection(socket, _was, _now), do: socket
 
   # Re-resolves the active connection after the connection list reloads.
   # Keeps the current selection if it still exists; otherwise surfaces a
@@ -1146,109 +1171,86 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     # policy).
     active_key = socket.assigns[:active_connection]
 
-    case active_key && Integrations.get_credentials(active_key) do
-      {:ok, %{"api_key" => api_key}} when is_binary(api_key) and api_key != "" ->
-        # Validate-then-fetch. The model fetch is gated on a real
-        # auth check (`Integrations.validate_connection/2` hits the
-        # provider's `validation.url` — `/auth/key` for OpenRouter,
-        # which actually verifies the Bearer token) so a bad key
-        # can't paint a working-looking model grid.
-        #
-        # The validation runs in a supervised Task to keep the LV
-        # responsive (Req.get is blocking; inline would freeze the LV
-        # process for the round-trip). The Task records the validation
-        # result (PubSub auto-broadcasts on status change → picker
-        # badge updates) and sends `{:validation_done, uuid, result,
-        # api_key}` back so the LV can decide whether to continue
-        # with the model fetch.
-        #
-        # `Task.Supervisor.start_child` (not bare `Task.start`) is the
-        # playbook-mandated shape for fire-and-forget LV-spawned work:
-        # if the Task crashes (HTTP transport error not caught by
-        # `validate_connection`, sandbox exit in tests, etc.) the
-        # supervisor restarts/discards rather than orphaning the
-        # process. `Task.start_link` is wrong here — a linked crash
-        # would take down the LV process.
-        #
-        # `$callers` propagation: `Task.Supervisor.start_child`
-        # doesn't carry the caller chain that `Req.Test.allow/3`
-        # walks to find the stubbed plug. We copy the LV's chain
-        # into the Task so tests that allow the LV pid also cover
-        # this Task.
-        parent = self()
-        callers = [parent | Process.get(:"$callers", [])]
+    if connection_api_key(active_key) do
+      # Validate-then-fetch. The model fetch is gated on a real
+      # auth check (`Integrations.validate_connection/2` hits the
+      # provider's `validation.url` — `/auth/key` for OpenRouter,
+      # which actually verifies the Bearer token) so a bad key
+      # can't paint a working-looking model grid.
+      #
+      # The validation runs in a supervised Task to keep the LV
+      # responsive (Req.get is blocking; inline would freeze the LV
+      # process for the round-trip). The Task records the validation
+      # result (PubSub auto-broadcasts on status change → picker
+      # badge updates) and sends `{:validation_done, uuid, result}`
+      # back so the LV can decide whether to continue with the model
+      # fetch. The message names the connection only — the key is
+      # re-resolved wherever it is needed, so a credential never sits
+      # in the mailbox.
+      #
+      # `Task.Supervisor.start_child` (not bare `Task.start`) is the
+      # playbook-mandated shape for fire-and-forget LV-spawned work:
+      # if the Task crashes (HTTP transport error not caught by
+      # `validate_connection`, sandbox exit in tests, etc.) the
+      # supervisor restarts/discards rather than orphaning the
+      # process. `Task.start_link` is wrong here — a linked crash
+      # would take down the LV process.
+      #
+      # `$callers` propagation: `Task.Supervisor.start_child`
+      # doesn't carry the caller chain that `Req.Test.allow/3`
+      # walks to find the stubbed plug. We copy the LV's chain
+      # into the Task so tests that allow the LV pid also cover
+      # this Task.
+      parent = self()
+      callers = [parent | Process.get(:"$callers", [])]
 
-        Task.Supervisor.start_child(PhoenixKit.TaskSupervisor, fn ->
-          Process.put(:"$callers", callers)
-          result = Integrations.validate_connection(active_key)
-          Integrations.record_validation(active_key, result)
-          send(parent, {:validation_done, active_key, result, api_key})
-        end)
+      Task.Supervisor.start_child(PhoenixKit.TaskSupervisor, fn ->
+        Process.put(:"$callers", callers)
+        send(parent, {:validation_done, active_key, validate_and_record(active_key)})
+      end)
 
-        # Loading-state assigns were already set by the caller's
-        # `start_model_fetch_indicators`; leave them alone so the
-        # spinner stays visible until validation resolves.
-        {:noreply, socket}
-
-      _ ->
-        socket =
-          socket
-          |> stop_model_fetch_indicators()
-          |> assign(:models_error, "No API key configured")
-
-        {:noreply, socket}
-    end
-  end
-
-  # Validation succeeded — proceed with the model fetch.
-  # Guarded on `active_connection` matching the uuid the Task ran for
-  # so a stale completion from a previously-picked integration can't
-  # repopulate models after the operator switched.
-  @impl true
-  def handle_info({:validation_done, uuid, :ok, api_key}, socket) do
-    if socket.assigns[:active_connection] == uuid do
-      send(self(), {:fetch_models, api_key, uuid})
+      # Loading-state assigns were already set by the caller's
+      # `start_model_fetch_indicators`; leave them alone so the
+      # spinner stays visible until validation resolves.
       {:noreply, socket}
     else
-      {:noreply, socket}
-    end
-  end
-
-  # Validation failed — clear loading + surface the auth error.
-  # No model fetch is issued so the grid stays empty (no false-positive
-  # "look, models are loading!" while the key can't actually auth).
-  def handle_info({:validation_done, uuid, {:error, reason}, _api_key}, socket) do
-    if socket.assigns[:active_connection] == uuid do
       socket =
         socket
         |> stop_model_fetch_indicators()
-        |> assign(:models_error, format_validation_error(reason))
+        |> assign(:models_error, gettext("No API key configured"))
 
-      {:noreply, socket}
-    else
       {:noreply, socket}
     end
   end
 
+  # Validation finished. Guarded on `active_connection` matching the
+  # uuid the Task ran for so a stale completion from a previously-picked
+  # integration can't repopulate models after the operator switched.
+  #
+  # Only `{:error, reason}` is a failure: it clears loading and surfaces
+  # the auth error, and no model fetch is issued so the grid stays empty
+  # (no false-positive "look, models are loading!" while the key can't
+  # actually auth). Every other result core returns — `:ok`,
+  # `{:ok, note}`, and `:unverified` for a provider with no way to check
+  # a connection — proceeds to the model fetch.
   @impl true
-  def handle_info({:fetch_models, api_key, uuid}, socket) do
-    # Stale-fetch guard: if the operator picked a different
-    # integration between Task scheduling and message delivery,
-    # `uuid` no longer matches the active connection — drop the
-    # response so it can't repopulate models for the wrong
-    # integration. Defence in depth; `:validation_done` already
-    # gates the producer side.
-    #
-    # Both sides have to be concrete uuids for the guard to fire.
-    # A nil `active_connection` (operator deselected, or unit-test
-    # direct send) bypasses the guard — the section gating renders
-    # an empty body in that state anyway, so stale data is harmless.
-    active = socket.assigns[:active_connection]
+  def handle_info({:validation_done, uuid, result}, socket) do
+    cond do
+      socket.assigns[:active_connection] != uuid ->
+        {:noreply, socket}
 
-    if is_binary(uuid) and is_binary(active) and active != uuid do
-      {:noreply, socket}
-    else
-      do_fetch_models(socket, api_key)
+      match?({:error, _}, result) ->
+        {:error, reason} = result
+
+        socket =
+          socket
+          |> stop_model_fetch_indicators()
+          |> assign(:models_error, format_validation_error(reason))
+
+        {:noreply, socket}
+
+      true ->
+        {:noreply, start_model_fetch(socket, uuid)}
     end
   end
 
@@ -1273,116 +1275,171 @@ defmodule PhoenixKitAI.Web.EndpointForm do
   @impl true
   def handle_info(msg, socket) do
     Logger.debug(fn ->
-      "[PhoenixKitAI.Web.EndpointForm] unhandled handle_info: #{inspect(msg)}"
+      "[PhoenixKitAI.Web.EndpointForm] unhandled handle_info: #{MessageShape.describe(msg)}"
     end)
+
+    {:noreply, socket}
+  end
+
+  # Model fetch finished. The result is applied only while the picker
+  # still shows the connection and model type it was fetched for —
+  # switching either starts a fetch of its own, and a late answer for
+  # the previous selection must not repopulate the grid.
+  @impl true
+  def handle_async(:model_fetch, {:ok, {uuid, model_type, result}}, socket) do
+    if socket.assigns[:active_connection] == uuid and socket.assigns.model_type == model_type do
+      {:noreply, apply_model_fetch(socket, result)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  # The fetch task died. Clear the spinner and offer Retry rather than
+  # leaving the picker loading forever.
+  def handle_async(:model_fetch, {:exit, reason}, socket) do
+    Logger.warning(fn ->
+      "[PhoenixKitAI.Web.EndpointForm] model fetch crashed: #{Exception.format_exit(reason)}"
+    end)
+
+    socket =
+      socket
+      |> stop_model_fetch_indicators()
+      |> assign(:models_error, gettext("Something went wrong. Please try again."))
 
     {:noreply, socket}
   end
 
   # Private helpers
 
+  # The connection's stored API key, or nil when there is none to use.
+  defp connection_api_key(uuid) when is_binary(uuid) do
+    case Integrations.get_credentials(uuid) do
+      {:ok, %{"api_key" => api_key}} when is_binary(api_key) and api_key != "" -> api_key
+      _ -> nil
+    end
+  end
+
+  defp connection_api_key(_uuid), do: nil
+
+  # Runs the `/models` fetch (and, for TTS, the voice catalogue) off the
+  # LV process: the round-trip can take the client's full 15s timeout,
+  # and inline it would freeze the form and starve the 10s "still
+  # loading" timer of the chance to render its hint.
+  #
+  # The result is tagged with the connection and model type it was
+  # fetched for; `handle_async/3` drops it when the operator has moved
+  # on from either.
+  defp start_model_fetch(socket, uuid) do
+    model_type = socket.assigns.model_type
+    base_url = current_models_base_url(socket)
+
+    fetch_opts = [
+      # Always assigned in mount (defaults to :text), so no fallback needed.
+      model_type: model_type,
+      base_url: base_url,
+      fallback_provider: socket.assigns[:current_provider]
+    ]
+
+    start_async(socket, :model_fetch, fn ->
+      {uuid, model_type, fetch_models_and_voices(uuid, model_type, base_url, fetch_opts)}
+    end)
+  end
+
+  defp fetch_models_and_voices(uuid, model_type, base_url, fetch_opts) do
+    case connection_api_key(uuid) do
+      nil ->
+        {:error, :no_api_key}
+
+      api_key ->
+        with {:ok, grouped} <- OpenRouterClient.fetch_models_grouped(api_key, fetch_opts) do
+          {:ok, grouped, fetch_voices(api_key, model_type, base_url)}
+        end
+    end
+  end
+
   # For TTS endpoints, also fetch the provider's voice catalogue so the
   # form can render a picker instead of a free-text field. Mistral-only
   # (`/audio/voices`); any non-200 (e.g. OpenRouter has no such endpoint)
   # falls back to an empty list, which the template renders as the
-  # free-text voice input. Runs inline after the model fetch — it reuses
-  # the already-validated api_key + base_url and only fires for `:tts`.
-  defp maybe_fetch_voices(socket, api_key, base_url) do
-    if socket.assigns.model_type == :tts do
-      case OpenRouterClient.fetch_voices(api_key, base_url: base_url) do
-        {:ok, voices} -> assign(socket, :voices, voices)
-        {:error, _reason} -> assign(socket, :voices, [])
-      end
-    else
-      assign(socket, :voices, [])
+  # free-text voice input. Runs right after the model fetch, in the same
+  # task, and only fires for `:tts`.
+  defp fetch_voices(api_key, :tts, base_url) do
+    case OpenRouterClient.fetch_voices(api_key, base_url: base_url) do
+      {:ok, voices} -> voices
+      {:error, _reason} -> []
     end
   end
 
-  defp do_fetch_models(socket, api_key) do
-    base_url = current_models_base_url(socket)
-    fallback_provider = socket.assigns[:current_provider]
+  defp fetch_voices(_api_key, _model_type, _base_url), do: []
 
-    fetch_opts = [
-      # Always assigned in mount (defaults to :text), so no fallback needed.
-      model_type: socket.assigns.model_type,
-      base_url: base_url,
-      fallback_provider: fallback_provider
-    ]
+  defp apply_model_fetch(socket, {:ok, grouped, voices}) do
+    # Intentionally NOT calling `record_validation(:ok)` here —
+    # OpenRouter's `/models` endpoint is effectively public
+    # (returns 200 + the model list for any / no Bearer token),
+    # so fetch success doesn't prove the api_key can actually
+    # authenticate a chat completion. The real auth check is the
+    # provider's `validation.url` (`/auth/key` for OpenRouter),
+    # which runs before this fetch is started.
 
-    case OpenRouterClient.fetch_models_grouped(api_key, fetch_opts) do
-      {:ok, grouped} ->
-        # Intentionally NOT calling `record_validation(:ok)` here —
-        # OpenRouter's `/models` endpoint is effectively public
-        # (returns 200 + the model list for any / no Bearer token),
-        # so fetch success doesn't prove the api_key can actually
-        # authenticate a chat completion. The real auth check is the
-        # provider's `validation.url` (`/auth/key` for OpenRouter),
-        # which `:validate_integration` kicks off in parallel.
+    # Flatten for easy lookup
+    models =
+      grouped
+      |> Enum.flat_map(fn {_provider, models} -> models end)
 
-        # Flatten for easy lookup
-        models =
-          grouped
-          |> Enum.flat_map(fn {_provider, models} -> models end)
+    # Set selected model if editing existing endpoint
+    selected_model =
+      case socket.assigns.endpoint do
+        %{model: model_id} when is_binary(model_id) and model_id != "" ->
+          find_model(models, model_id)
 
-        # Set selected model if editing existing endpoint
-        selected_model =
-          case socket.assigns.endpoint do
-            %{model: model_id} when is_binary(model_id) and model_id != "" ->
-              find_model(models, model_id)
+        _ ->
+          nil
+      end
 
-            _ ->
-              nil
-          end
+    # When the response groups under a single provider (Mistral /
+    # DeepSeek / any direct API whose model IDs don't carry a
+    # `provider/model` slash), the "select provider" dropdown is a
+    # one-option click that gates the grid behind needless friction.
+    # Auto-select the sole group so the operator lands directly on
+    # the model cards. The grid clear-button still lets them empty
+    # the selection if they want to dismiss the picker.
+    {selected_provider, provider_models} =
+      case grouped do
+        [{provider, models}] -> {provider, models}
+        _ -> {socket.assigns[:selected_provider], socket.assigns[:provider_models] || []}
+      end
 
-        # When the response groups under a single provider (Mistral /
-        # DeepSeek / any direct API whose model IDs don't carry a
-        # `provider/model` slash), the "select provider" dropdown is a
-        # one-option click that gates the grid behind needless friction.
-        # Auto-select the sole group so the operator lands directly on
-        # the model cards. The grid clear-button still lets them empty
-        # the selection if they want to dismiss the picker.
-        {selected_provider, provider_models} =
-          case grouped do
-            [{provider, models}] -> {provider, models}
-            _ -> {socket.assigns[:selected_provider], socket.assigns[:provider_models] || []}
-          end
+    socket
+    |> stop_model_fetch_indicators()
+    |> assign(:models, models)
+    |> assign(:models_grouped, grouped)
+    |> assign(:models_error, nil)
+    |> assign(:selected_model, selected_model)
+    |> assign(:selected_provider, selected_provider)
+    |> assign(:provider_models, provider_models)
+    |> assign(:voices, voices)
+  end
 
-        socket =
-          socket
-          |> stop_model_fetch_indicators()
-          |> assign(:models, models)
-          |> assign(:models_grouped, grouped)
-          |> assign(:models_error, nil)
-          |> assign(:selected_model, selected_model)
-          |> assign(:selected_provider, selected_provider)
-          |> assign(:provider_models, provider_models)
-          |> maybe_fetch_voices(api_key, base_url)
+  defp apply_model_fetch(socket, {:error, :no_api_key}) do
+    socket
+    |> stop_model_fetch_indicators()
+    |> assign(:models_error, gettext("No API key configured"))
+  end
 
-        {:noreply, socket}
+  defp apply_model_fetch(socket, {:error, reason}) do
+    # Log the failure with grep-able context (provider + reason) so
+    # operators can correlate "model dropdown is empty" reports with
+    # upstream API issues. Provider is the form-side selection at
+    # the time of fetch.
+    Logger.warning(fn ->
+      "[PhoenixKitAI.Web.EndpointForm] model fetch failed: " <>
+        "provider=#{inspect(socket.assigns[:current_provider])}, " <>
+        "reason=#{inspect(reason)}"
+    end)
 
-      {:error, reason} ->
-        # Same rationale as the success branch above — fetch_models
-        # isn't the right validation signal. The parallel
-        # `:validate_integration` Task handles the real check.
-        translated = PhoenixKitAI.Errors.message(reason)
-
-        # Log the failure with grep-able context (provider + reason) so
-        # operators can correlate "model dropdown is empty" reports with
-        # upstream API issues. Provider is the form-side selection at
-        # the time of fetch.
-        Logger.warning(fn ->
-          "[PhoenixKitAI.Web.EndpointForm] model fetch failed: " <>
-            "provider=#{inspect(socket.assigns[:current_provider])}, " <>
-            "reason=#{inspect(reason)}"
-        end)
-
-        socket =
-          socket
-          |> stop_model_fetch_indicators()
-          |> assign(:models_error, translated)
-
-        {:noreply, socket}
-    end
+    socket
+    |> stop_model_fetch_indicators()
+    |> assign(:models_error, PhoenixKitAI.Errors.message(reason))
   end
 
   defp format_validation_error(reason) when is_binary(reason), do: reason

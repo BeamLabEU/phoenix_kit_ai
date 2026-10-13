@@ -57,6 +57,71 @@ defmodule PhoenixKitAI.Web.PlaygroundVoiceTest do
     end
   end
 
+  describe "the voice list" do
+    @api_key "xai-canary-key-0123456789abcdef"
+
+    setup do
+      test_pid = self()
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        send(test_pid, {:voices_requested, Plug.Conn.get_req_header(conn, "authorization")})
+        Req.Test.json(conn, %{"voices" => [%{"voice_id" => "cloned-1", "name" => "My Clone"}]})
+      end)
+
+      Application.put_env(:phoenix_kit_ai, :req_options,
+        plug: {Req.Test, __MODULE__},
+        retry: false
+      )
+
+      on_exit(fn -> Application.delete_env(:phoenix_kit_ai, :req_options) end)
+
+      previous = Logger.level()
+      Logger.configure(level: :debug)
+      on_exit(fn -> Logger.configure(level: previous) end)
+    end
+
+    test "is fetched with the endpoint's key, which never reaches the log", %{conn: conn} do
+      endpoint = fixture_endpoint(provider: "xai", model: "grok-4.5", api_key: @api_key)
+      {:ok, view, _html} = live(conn, "/en/admin/ai/playground")
+      Req.Test.allow(__MODULE__, self(), view.pid)
+
+      log =
+        ExUnit.CaptureLog.capture_log([level: :debug], fn ->
+          select_endpoint(view, endpoint)
+          assert render(view) =~ "My Clone"
+        end)
+
+      assert_received {:voices_requested, ["Bearer " <> @api_key]}
+      refute log =~ @api_key
+    end
+
+    test "a fetch for an endpoint no longer selected is dropped", %{conn: conn} do
+      endpoint = fixture_endpoint(provider: "xai", model: "grok-4.5", api_key: @api_key)
+      {:ok, view, _html} = live(conn, "/en/admin/ai/playground")
+      Req.Test.allow(__MODULE__, self(), view.pid)
+
+      send(view.pid, {:fetch_xai_voices, endpoint.uuid})
+
+      refute render(view) =~ "My Clone"
+      refute_received {:voices_requested, _}
+    end
+
+    test "a message carrying a key is logged by shape only", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/en/admin/ai/playground")
+
+      log =
+        ExUnit.CaptureLog.capture_log([level: :debug], fn ->
+          send(view.pid, {:fetch_xai_voices, Ecto.UUID.generate(), @api_key})
+          render(view)
+        end)
+
+      assert log =~
+               "[PhoenixKitAI.Web.Playground] unhandled handle_info: {:fetch_xai_voices, …}/3"
+
+      refute log =~ @api_key
+    end
+  end
+
   describe "start_voice" do
     test "connects through the realtime module and shows Connected", %{conn: conn} do
       endpoint =

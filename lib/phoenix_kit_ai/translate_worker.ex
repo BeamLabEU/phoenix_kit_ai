@@ -76,7 +76,8 @@ defmodule PhoenixKitAI.TranslateWorker do
         adapter: adapter,
         resource: resource,
         attempt: job.attempt,
-        max_attempts: job.max_attempts
+        max_attempts: job.max_attempts,
+        snoozed: snooze_count(job)
       })
     else
       {:error, reason} ->
@@ -89,7 +90,7 @@ defmodule PhoenixKitAI.TranslateWorker do
           resource_scope: Map.get(args, "resource_scope"),
           source_lang: Map.get(args, "source_lang"),
           target_lang: Map.get(args, "target_lang"),
-          reason: reason
+          reason: classify_reason(reason)
         })
 
         log_failed(
@@ -124,7 +125,7 @@ defmodule PhoenixKitAI.TranslateWorker do
         :ok
 
       fields ->
-        case Translation.translate_fields(
+        case safe_translate_fields(
                ctx.endpoint,
                ctx.prompt,
                ctx.source,
@@ -152,12 +153,34 @@ defmodule PhoenixKitAI.TranslateWorker do
           # burst of concurrent jobs (enqueue_all_missing) backs off and
           # drains rather than exhausting max_attempts. The language stays
           # in-flight on the UI (no terminal broadcast) until it lands.
-          {:error, {:ai_error, :rate_limited}} ->
-            {:snooze, 30}
+          #
+          # A snooze never consumes an attempt, so it is bounded here: once
+          # the budget is spent the 429 is an ordinary retryable failure, and
+          # an exhausted quota ends in a terminal event instead of holding
+          # its in-flight slot forever.
+          {:error, {:ai_error, :rate_limited} = reason} ->
+            snooze_or_fail(ctx, reason)
 
           {:error, reason} ->
             fail(ctx, reason, retry?: retryable?(reason))
         end
+    end
+  end
+
+  # A raise inside the engine would otherwise retry in silence and, on the
+  # last attempt, be discarded by Oban with no terminal event: the host's
+  # spinner would never clear. It becomes an ordinary failure, which is
+  # terminal at once because a raise is not in `retryable?/1`.
+  defp safe_translate_fields(endpoint, prompt, source, target, fields, opts) do
+    Translation.translate_fields(endpoint, prompt, source, target, fields, opts)
+  rescue
+    e -> {:error, {:translate_raised, e.__struct__}}
+  end
+
+  defp snooze_or_fail(ctx, reason) do
+    case rate_limit_snooze(ctx.snoozed) do
+      {:snooze, _seconds} = snooze -> snooze
+      :exhausted -> fail(ctx, reason, retry?: true)
     end
   end
 
@@ -169,10 +192,6 @@ defmodule PhoenixKitAI.TranslateWorker do
         :ok
 
       {:error, reason} ->
-        Logger.warning(
-          "[AI.TranslateWorker] persist failed for #{ctx.type} #{ctx.uuid}: #{inspect(reason)}"
-        )
-
         # Persist failures are deterministic (changeset/constraint) — discard.
         fail(ctx, {:persist_error, reason}, retry?: false)
     end
@@ -182,10 +201,17 @@ defmodule PhoenixKitAI.TranslateWorker do
   # deterministic, or the final attempt). During a pending retry we stay
   # silent so a host UI keeps its spinner rather than flashing a failure the
   # next attempt may clear.
+  #
+  # The log line and the broadcast carry the classified reason, never the
+  # raw term: a persist error wraps the adapter's changeset (the translated
+  # text) and an unexpected provider answer wraps the whole response.
   defp fail(ctx, reason, retry?: retry?) do
+    {category, detail} = classified = classify_reason(reason)
+
     Logger.warning(
       "[AI.TranslateWorker] translation failed for #{ctx.type} #{ctx.uuid} → #{ctx.target} " <>
-        "(attempt #{ctx.attempt}/#{ctx.max_attempts}): #{inspect(reason)}"
+        "(attempt #{ctx.attempt}/#{ctx.max_attempts}): #{category}" <>
+        if(detail, do: " (#{detail})", else: "")
     )
 
     final? = ctx.attempt >= ctx.max_attempts
@@ -196,12 +222,12 @@ defmodule PhoenixKitAI.TranslateWorker do
 
       retry? ->
         # Out of attempts — now it's terminal, so surface it.
-        broadcast(ctx, :translation_failed, %{reason: reason})
+        broadcast(ctx, :translation_failed, %{reason: classified})
         log_failed(ctx, reason)
         {:error, reason}
 
       true ->
-        broadcast(ctx, :translation_failed, %{reason: reason})
+        broadcast(ctx, :translation_failed, %{reason: classified})
         log_failed(ctx, reason)
         {:discard, reason}
     end
@@ -451,6 +477,27 @@ defmodule PhoenixKitAI.TranslateWorker do
   defp classify_ai_detail(detail) when is_atom(detail), do: Atom.to_string(detail)
   defp classify_ai_detail(_detail), do: "unclassified"
 
+  # ── Rate-limit snoozing ──────────────────────────────────────────
+
+  @max_rate_limit_snoozes 5
+  @rate_limit_snooze_base 30
+
+  @doc false
+  # How long to snooze a rate-limited job that has already snoozed
+  # `snoozed` times: 30s doubling per snooze (30, 60, 120, 240, 480 —
+  # about a quarter of an hour in all), then `:exhausted`.
+  @spec rate_limit_snooze(non_neg_integer()) :: {:snooze, pos_integer()} | :exhausted
+  def rate_limit_snooze(snoozed) when snoozed < @max_rate_limit_snoozes,
+    do: {:snooze, @rate_limit_snooze_base * Integer.pow(2, snoozed)}
+
+  def rate_limit_snooze(_snoozed), do: :exhausted
+
+  # Oban counts a job's snoozes in `meta["snoozed"]`.
+  defp snooze_count(%Oban.Job{meta: %{"snoozed" => count}}) when is_integer(count) and count >= 0,
+    do: count
+
+  defp snooze_count(_job), do: 0
+
   # ── Retry classification ─────────────────────────────────────────
 
   @doc false
@@ -466,8 +513,8 @@ defmodule PhoenixKitAI.TranslateWorker do
   def retryable?({:ai_error, {:exit, _}}), do: true
 
   # Defense-in-depth: the built-in OpenRouter client maps HTTP 429 to the
-  # `:rate_limited` atom (handled as `{:snooze, 30}` in `do_translate/1`, before
-  # this is consulted). A custom/future provider that instead surfaces a bare
+  # `:rate_limited` atom (snoozed in `do_translate/1`, before this is
+  # consulted). A custom/future provider that instead surfaces a bare
   # `{:api_error, 429}` should still retry — 429 is the canonical retry-after.
   def retryable?({:ai_error, {:api_error, 429}}), do: true
 

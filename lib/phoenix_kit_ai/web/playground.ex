@@ -23,6 +23,7 @@ defmodule PhoenixKitAI.Web.Playground do
   alias PhoenixKitAI.OpenRouterClient
   alias PhoenixKitAI.Prompt
   alias PhoenixKitAI.Realtime.Session
+  alias PhoenixKitAI.Web.MessageShape
 
   # Fallback shown until the live `GET /v1/tts/voices` fetch resolves (or
   # if it fails) — xAI's 5 built-in voices. Any custom/cloned voices on
@@ -354,7 +355,8 @@ defmodule PhoenixKitAI.Web.Playground do
 
       {:error, reason} ->
         Logger.warning(
-          "[PhoenixKitAI.Web.Playground] failed to start xAI realtime voice session: #{inspect(reason)}"
+          "[PhoenixKitAI.Web.Playground] failed to start xAI realtime voice session: " <>
+            MessageShape.describe(reason)
         )
 
         socket
@@ -434,10 +436,9 @@ defmodule PhoenixKitAI.Web.Playground do
   # inline — this runs inside the shared `phx-change="change"` handler,
   # and an HTTP round trip has no business blocking every keystroke in
   # the rest of the form.
-  defp maybe_fetch_xai_voices(socket, %{provider: provider, uuid: uuid} = endpoint) do
+  defp maybe_fetch_xai_voices(socket, %{provider: provider, uuid: uuid}) do
     if Endpoint.realtime_voice_capable?(provider) do
-      api_key = OpenRouterClient.resolve_api_key(endpoint)
-      send(self(), {:fetch_xai_voices, uuid, api_key})
+      send(self(), {:fetch_xai_voices, uuid})
     end
 
     socket
@@ -565,21 +566,22 @@ defmodule PhoenixKitAI.Web.Playground do
   # Stale-fetch guard: if the operator picked a different endpoint between
   # `send/2` and this message arriving, `uuid` no longer matches — drop it
   # rather than repopulating the voice list for the wrong endpoint.
+  #
+  # The message names the endpoint only; the key is resolved here so a
+  # credential never sits in the mailbox.
   @impl true
-  def handle_info({:fetch_xai_voices, uuid, api_key}, socket) do
-    if socket.assigns.selected_endpoint_uuid == uuid do
-      case OpenRouterClient.fetch_xai_voices(api_key) do
-        {:ok, voices} when voices != [] ->
-          options = Enum.map(voices, &{&1.name, &1.voice_id})
-          {:noreply, assign(socket, :voice_options, options)}
-
-        _ ->
-          # Keep the built-in fallback list already assigned — better
-          # than an empty dropdown.
-          {:noreply, socket}
-      end
+  def handle_info({:fetch_xai_voices, uuid}, socket) do
+    with true <- socket.assigns.selected_endpoint_uuid == uuid,
+         %Endpoint{} = endpoint <- AI.get_endpoint(uuid),
+         api_key when is_binary(api_key) and api_key != "" <-
+           OpenRouterClient.resolve_api_key(endpoint),
+         {:ok, [_ | _] = voices} <- OpenRouterClient.fetch_xai_voices(api_key) do
+      options = Enum.map(voices, &{&1.name, &1.voice_id})
+      {:noreply, assign(socket, :voice_options, options)}
     else
-      {:noreply, socket}
+      # Keep the built-in fallback list already assigned — better
+      # than an empty dropdown.
+      _ -> {:noreply, socket}
     end
   end
 
@@ -606,7 +608,7 @@ defmodule PhoenixKitAI.Web.Playground do
   @impl true
   def handle_info(msg, socket) do
     Logger.debug(fn ->
-      "[PhoenixKitAI.Web.Playground] unhandled handle_info: #{inspect(msg)}"
+      "[PhoenixKitAI.Web.Playground] unhandled handle_info: #{MessageShape.describe(msg)}"
     end)
 
     {:noreply, socket}
@@ -681,7 +683,7 @@ defmodule PhoenixKitAI.Web.Playground do
   defp extract_text(response) do
     case Completion.extract_content(response) do
       {:ok, text} -> String.trim(text)
-      {:error, _} -> "(No content in response)"
+      {:error, _} -> gettext("(No content in response)")
     end
   end
 

@@ -128,4 +128,25 @@ defmodule PhoenixKitAI.Web.PromptFormTest do
       assert html =~ "can&#39;t be blank" or html =~ "blank"
     end
   end
+
+  describe "handle_info catch-all" do
+    test "logs an unexpected message by shape at :debug and keeps the form", %{conn: conn} do
+      previous_level = Logger.level()
+      Logger.configure(level: :debug)
+      on_exit(fn -> Logger.configure(level: previous_level) end)
+
+      {:ok, view, _html} = live(conn, "/en/admin/ai/prompts/new")
+
+      log =
+        ExUnit.CaptureLog.capture_log([level: :debug], fn ->
+          send(view.pid, {:something_we_dont_care_about, "private payload"})
+          assert render(view) =~ "New prompt"
+        end)
+
+      assert log =~
+               "[PhoenixKitAI.Web.PromptForm] unhandled handle_info: {:something_we_dont_care_about, …}/2"
+
+      refute log =~ "private payload"
+    end
+  end
 end

@@ -12,11 +12,12 @@ defmodule PhoenixKitAI.Translatable do
 
   ## Registration
 
-  The feature module exposes its adapters via the optional
-  `ai_translatables/0` callback on `PhoenixKit.Module`, returning
-  `[{resource_type, adapter_module}]`:
+  The feature module — the one that `use`s `PhoenixKit.Module` — exports a
+  plain `ai_translatables/0` function returning
+  `[{resource_type, adapter_module}]`. It is found by duck typing
+  (`PhoenixKitAI.Translatables`) and is **not** a `PhoenixKit.Module`
+  callback, so it takes no `@impl`:
 
-      @impl PhoenixKit.Module
       def ai_translatables do
         [
           {"catalogue", PhoenixKitCatalogue.AITranslatable},

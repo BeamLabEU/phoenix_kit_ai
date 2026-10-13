@@ -150,6 +150,8 @@ defmodule PhoenixKitAI do
 
   @doc """
   Subscribes the current process to AI endpoint changes.
+
+  Messages are `{:endpoint_created | :endpoint_updated | :endpoint_deleted, uuid}` — the uuid only, never the record.
   """
   @spec subscribe_endpoints() :: :ok | {:error, term()}
   def subscribe_endpoints do
@@ -158,6 +160,8 @@ defmodule PhoenixKitAI do
 
   @doc """
   Subscribes the current process to AI prompt changes.
+
+  Messages are `{:prompt_created | :prompt_updated | :prompt_deleted, uuid}` — the uuid only, never the record.
   """
   @spec subscribe_prompts() :: :ok | {:error, term()}
   def subscribe_prompts do
@@ -166,6 +170,8 @@ defmodule PhoenixKitAI do
 
   @doc """
   Subscribes the current process to AI request/usage changes.
+
+  Messages are `{:request_created, uuid}` — the uuid only, never the record.
   """
   @spec subscribe_requests() :: :ok | {:error, term()}
   def subscribe_requests do
@@ -189,38 +195,25 @@ defmodule PhoenixKitAI do
     byte_size(string) == 36 and UUIDUtils.valid?(string)
   end
 
-  defp broadcast_endpoint_change(result, event) do
-    case result do
-      {:ok, endpoint} ->
-        PubSub.broadcast(@endpoints_topic, {event, endpoint})
-        {:ok, endpoint}
+  # Change broadcasts carry the record's uuid and nothing else. A topic is
+  # readable by anything on the node that subscribes to it, and the records
+  # hold what must not travel that way: an endpoint its legacy `api_key`
+  # column, a request the prompt and response text, a prompt its content.
+  # A subscriber that needs the record reads it by uuid.
+  defp broadcast_endpoint_change(result, event),
+    do: broadcast_change(result, @endpoints_topic, event)
 
-      error ->
-        error
-    end
+  defp broadcast_prompt_change(result, event), do: broadcast_change(result, @prompts_topic, event)
+
+  defp broadcast_request_change(result, event),
+    do: broadcast_change(result, @requests_topic, event)
+
+  defp broadcast_change({:ok, %{uuid: uuid}} = result, topic, event) do
+    PubSub.broadcast(topic, {event, uuid})
+    result
   end
 
-  defp broadcast_prompt_change(result, event) do
-    case result do
-      {:ok, prompt} ->
-        PubSub.broadcast(@prompts_topic, {event, prompt})
-        {:ok, prompt}
-
-      error ->
-        error
-    end
-  end
-
-  defp broadcast_request_change(result, event) do
-    case result do
-      {:ok, request} ->
-        PubSub.broadcast(@requests_topic, {event, request})
-        {:ok, request}
-
-      error ->
-        error
-    end
-  end
+  defp broadcast_change(result, _topic, _event), do: result
 
   # ===========================================
   # ACTIVITY LOGGING HELPERS
@@ -1230,6 +1223,7 @@ defmodule PhoenixKitAI do
 
   Returns a map of endpoint_uuid => %{request_count, total_tokens, total_cost, last_used_at}
   """
+  @spec get_endpoint_usage_stats() :: %{optional(String.t()) => map()}
   def get_endpoint_usage_stats do
     query =
       from(r in Request,
@@ -1418,7 +1412,9 @@ defmodule PhoenixKitAI do
   """
   @spec change_endpoint(Endpoint.t(), map()) :: Ecto.Changeset.t()
   def change_endpoint(%Endpoint{} = endpoint, attrs \\ %{}) do
-    Endpoint.changeset(endpoint, attrs)
+    # Built on every keystroke: the base URL's host is not resolved here
+    # (`create_endpoint/2` and `update_endpoint/3` do that on save).
+    Endpoint.changeset(endpoint, attrs, resolve_base_url: false)
   end
 
   @doc """
@@ -1665,6 +1661,7 @@ defmodule PhoenixKitAI do
 
   Returns `{:ok, prompt}` or `{:error, reason}`.
   """
+  @spec resolve_prompt(term()) :: {:ok, Prompt.t()} | {:error, {:prompt_error, atom()}}
   def resolve_prompt(%Prompt{} = prompt), do: {:ok, prompt}
 
   def resolve_prompt(id_or_slug) when is_binary(id_or_slug) do
@@ -1690,6 +1687,7 @@ defmodule PhoenixKitAI do
 
   Returns `{:ok, rendered_text}` or `{:error, reason}`.
   """
+  @spec render_prompt(String.t() | Prompt.t(), map()) :: {:ok, String.t()} | {:error, term()}
   def render_prompt(prompt_uuid, variables \\ %{}) do
     with {:ok, prompt} <- resolve_prompt(prompt_uuid) do
       Prompt.render(prompt, variables)
@@ -1699,6 +1697,7 @@ defmodule PhoenixKitAI do
   @doc """
   Increments the usage count for a prompt and updates last_used_at.
   """
+  @spec increment_prompt_usage(String.t() | Prompt.t()) :: {:ok, Prompt.t()} | {:error, term()}
   def increment_prompt_usage(prompt_uuid) do
     with {:ok, prompt} <- resolve_prompt(prompt_uuid) do
       record_prompt_usage(prompt)
@@ -1711,6 +1710,8 @@ defmodule PhoenixKitAI do
   The prompt content is rendered with the provided variables and sent as
   the user message.
   """
+  @spec ask_with_prompt(String.t() | Endpoint.t(), String.t() | Prompt.t(), map(), keyword()) ::
+          {:ok, map()} | {:error, term()}
   def ask_with_prompt(endpoint_uuid, prompt_uuid, variables \\ %{}, opts \\ []) do
     with {:ok, prompt} <- resolve_prompt(prompt_uuid),
          {:ok, _} <- validate_prompt(prompt),
@@ -1793,6 +1794,13 @@ defmodule PhoenixKitAI do
   The prompt is rendered and used as the system message, with the user_message
   as the user message.
   """
+  @spec complete_with_system_prompt(
+          String.t() | Endpoint.t(),
+          String.t() | Prompt.t(),
+          map(),
+          String.t(),
+          keyword()
+        ) :: {:ok, map()} | {:error, term()}
   def complete_with_system_prompt(endpoint_uuid, prompt_uuid, variables, user_message, opts \\ []) do
     with {:ok, prompt} <- resolve_prompt(prompt_uuid),
          {:ok, _} <- validate_prompt(prompt),
@@ -1834,6 +1842,7 @@ defmodule PhoenixKitAI do
 
   Returns `{:ok, prompt}` if valid, or `{:error, reason}` if not.
   """
+  @spec validate_prompt(Prompt.t()) :: {:ok, Prompt.t()} | {:error, {:prompt_error, atom()}}
   def validate_prompt(prompt) do
     cond do
       prompt.content == nil or prompt.content == "" ->
@@ -1849,44 +1858,55 @@ defmodule PhoenixKitAI do
 
   @doc """
   Duplicates a prompt with a new name.
+
+  Everything the operator wrote is copied (description, system prompt,
+  content, enabled, position, metadata); the slug and variables are derived
+  afresh and the usage counters start at zero. `opts` takes `:actor_uuid`,
+  as `create_prompt/2` does.
   """
-  @spec duplicate_prompt(String.t(), String.t()) :: {:ok, Prompt.t()} | {:error, term()}
-  def duplicate_prompt(prompt_uuid, new_name) when is_binary(new_name) do
+  @spec duplicate_prompt(String.t(), String.t(), keyword()) ::
+          {:ok, Prompt.t()} | {:error, term()}
+  def duplicate_prompt(prompt_uuid, new_name, opts \\ []) when is_binary(new_name) do
     with {:ok, prompt} <- resolve_prompt(prompt_uuid) do
-      create_prompt(%{
-        name: new_name,
-        description: prompt.description,
-        content: prompt.content,
-        enabled: prompt.enabled,
-        sort_order: prompt.sort_order,
-        metadata: prompt.metadata
-      })
+      create_prompt(
+        %{
+          name: new_name,
+          description: prompt.description,
+          system_prompt: prompt.system_prompt,
+          content: prompt.content,
+          enabled: prompt.enabled,
+          sort_order: prompt.sort_order,
+          metadata: prompt.metadata
+        },
+        opts
+      )
     end
   end
 
   @doc """
-  Enables a prompt.
+  Enables a prompt. `opts` takes `:actor_uuid`, as `update_prompt/3` does.
   """
-  @spec enable_prompt(String.t()) :: {:ok, Prompt.t()} | {:error, term()}
-  def enable_prompt(prompt_uuid) do
+  @spec enable_prompt(String.t(), keyword()) :: {:ok, Prompt.t()} | {:error, term()}
+  def enable_prompt(prompt_uuid, opts \\ []) do
     with {:ok, prompt} <- resolve_prompt(prompt_uuid) do
-      update_prompt(prompt, %{enabled: true})
+      update_prompt(prompt, %{enabled: true}, opts)
     end
   end
 
   @doc """
-  Disables a prompt.
+  Disables a prompt. `opts` takes `:actor_uuid`, as `update_prompt/3` does.
   """
-  @spec disable_prompt(String.t()) :: {:ok, Prompt.t()} | {:error, term()}
-  def disable_prompt(prompt_uuid) do
+  @spec disable_prompt(String.t(), keyword()) :: {:ok, Prompt.t()} | {:error, term()}
+  def disable_prompt(prompt_uuid, opts \\ []) do
     with {:ok, prompt} <- resolve_prompt(prompt_uuid) do
-      update_prompt(prompt, %{enabled: false})
+      update_prompt(prompt, %{enabled: false}, opts)
     end
   end
 
   @doc """
   Gets the variables defined in a prompt.
   """
+  @spec get_prompt_variables(String.t() | Prompt.t()) :: {:ok, [String.t()]} | {:error, term()}
   def get_prompt_variables(prompt_uuid) do
     with {:ok, prompt} <- resolve_prompt(prompt_uuid) do
       {:ok, prompt.variables || []}
@@ -1896,6 +1916,7 @@ defmodule PhoenixKitAI do
   @doc """
   Previews a rendered prompt without making an AI call.
   """
+  @spec preview_prompt(String.t() | Prompt.t(), map()) :: {:ok, String.t()} | {:error, term()}
   def preview_prompt(prompt_uuid, variables \\ %{}) do
     render_prompt(prompt_uuid, variables)
   end
@@ -1903,6 +1924,8 @@ defmodule PhoenixKitAI do
   @doc """
   Validates that all required variables are provided for a prompt.
   """
+  @spec validate_prompt_variables(String.t() | Prompt.t(), term()) ::
+          :ok | {:error, term()}
   def validate_prompt_variables(prompt_uuid, variables) do
     with {:ok, prompt} <- resolve_prompt(prompt_uuid) do
       Prompt.validate_variables(prompt, variables)
@@ -1910,10 +1933,12 @@ defmodule PhoenixKitAI do
   end
 
   @doc """
-  Searches prompts by name, description, or content.
+  Searches prompts by name, description, or content. LIKE metacharacters in
+  `query` (`%`, `_`, `\\`) are matched literally.
   """
+  @spec search_prompts(String.t(), keyword()) :: [Prompt.t()]
   def search_prompts(query, opts \\ []) when is_binary(query) do
-    pattern = "%#{query}%"
+    pattern = "%#{escape_like(query)}%"
     limit = Keyword.get(opts, :limit, 50)
 
     base_query =
@@ -1938,6 +1963,7 @@ defmodule PhoenixKitAI do
   @doc """
   Finds all prompts that use a specific variable.
   """
+  @spec get_prompts_with_variable(String.t()) :: [Prompt.t()]
   def get_prompts_with_variable(variable_name) when is_binary(variable_name) do
     query =
       from(p in Prompt,
@@ -1951,6 +1977,7 @@ defmodule PhoenixKitAI do
   @doc """
   Validates that the content has valid variable syntax.
   """
+  @spec validate_prompt_content(term()) :: :ok | {:error, term()}
   def validate_prompt_content(content) when is_binary(content) do
     all_patterns = Regex.scan(~r/\{\{([^}]+)\}\}/, content)
 
@@ -1971,6 +1998,7 @@ defmodule PhoenixKitAI do
   @doc """
   Gets usage statistics for all prompts.
   """
+  @spec get_prompt_usage_stats(keyword()) :: [map()]
   def get_prompt_usage_stats(opts \\ []) do
     query =
       from(p in Prompt,
@@ -1998,13 +2026,17 @@ defmodule PhoenixKitAI do
   end
 
   @doc """
-  Resets the usage statistics for a prompt.
+  Resets the usage statistics for a prompt, logging a `prompt.usage_reset`
+  activity row. `opts` takes `:actor_uuid`, as `update_prompt/3` does.
   """
-  def reset_prompt_usage(prompt_uuid) do
+  @spec reset_prompt_usage(String.t(), keyword()) :: {:ok, Prompt.t()} | {:error, term()}
+  def reset_prompt_usage(prompt_uuid, opts \\ []) do
     with {:ok, prompt} <- resolve_prompt(prompt_uuid) do
       prompt
       |> Ecto.Changeset.change(%{usage_count: 0, last_used_at: nil})
       |> repo().update()
+      |> log_prompt_activity("prompt.usage_reset", opts)
+      |> log_failed_prompt_mutation("prompt.usage_reset", opts)
     end
   end
 
@@ -2128,6 +2160,7 @@ defmodule PhoenixKitAI do
   ## Returns
   `{requests, total_count}`
   """
+  @spec list_requests(keyword()) :: {[Request.t()], non_neg_integer()}
   def list_requests(opts \\ []) do
     page = Keyword.get(opts, :page, 1)
     page_size = Keyword.get(opts, :page_size, 20)
@@ -2177,6 +2210,7 @@ defmodule PhoenixKitAI do
   @doc """
   Gets a single request by UUID.
   """
+  @spec get_request!(String.t()) :: Request.t()
   def get_request!(id) do
     case get_request(id) do
       nil -> raise Ecto.NoResultsError, queryable: Request
@@ -2191,6 +2225,7 @@ defmodule PhoenixKitAI do
 
   Returns `nil` if the request does not exist.
   """
+  @spec get_request(term()) :: Request.t() | nil
   def get_request(id) when is_binary(id) do
     if textual_uuid?(id) do
       repo().get_by(Request, uuid: id)
@@ -2236,6 +2271,7 @@ defmodule PhoenixKitAI do
   projects work ledger's AI attribution. Best-effort per sink: a raising
   sink is logged and never breaks request logging.
   """
+  @spec dispatch_usage_sinks(Request.t()) :: :ok
   def dispatch_usage_sinks(%Request{} = request) do
     PhoenixKit.ModuleRegistry.all_modules()
     |> Enum.filter(fn module ->
@@ -2279,6 +2315,7 @@ defmodule PhoenixKitAI do
 
   Any other validation failure still returns `{:error, changeset}`.
   """
+  @spec create_request(map()) :: {:ok, Request.t()} | {:error, term()}
   def create_request(attrs) do
     result =
       attrs
@@ -2733,6 +2770,7 @@ defmodule PhoenixKitAI do
   @doc """
   Returns filter options for requests (distinct endpoints, models, and sources).
   """
+  @spec get_request_filter_options() :: map()
   def get_request_filter_options do
     endpoints_query =
       from(r in Request,
@@ -2784,6 +2822,7 @@ defmodule PhoenixKitAI do
   ## Returns
   Map with statistics including total_requests, total_tokens, success_rate, etc.
   """
+  @spec get_usage_stats(keyword()) :: map()
   def get_usage_stats(opts \\ []) do
     base_query = from(r in Request)
     base_query = apply_request_filters(base_query, opts)
@@ -2825,6 +2864,7 @@ defmodule PhoenixKitAI do
 
   Returns stats for the last 30 days plus all-time totals.
   """
+  @spec get_dashboard_stats() :: map()
   def get_dashboard_stats do
     thirty_days_ago = UtilsDate.utc_now() |> DateTime.add(-30, :day)
     today_start = Date.utc_today() |> DateTime.new!(~T[00:00:00], "Etc/UTC")
@@ -2848,6 +2888,7 @@ defmodule PhoenixKitAI do
   @doc """
   Gets token usage grouped by model.
   """
+  @spec get_tokens_by_model(keyword()) :: [map()]
   def get_tokens_by_model(opts \\ []) do
     base_query = from(r in Request)
     base_query = apply_request_filters(base_query, opts)
@@ -2870,6 +2911,7 @@ defmodule PhoenixKitAI do
   @doc """
   Gets request counts grouped by day.
   """
+  @spec get_requests_by_day(keyword()) :: [map()]
   def get_requests_by_day(opts \\ []) do
     base_query = from(r in Request)
     base_query = apply_request_filters(base_query, opts)

@@ -59,15 +59,36 @@ defmodule PhoenixKitAI.TranslationSweepTest do
 
     {:ok, _} = PhoenixKitAI.enable_system()
 
-    {:ok, _endpoint} =
-      PhoenixKitAI.create_endpoint(%{
-        name: "Sweep-#{System.unique_integer([:positive])}",
-        provider: "openrouter",
-        model: "a/b",
-        api_key: "sk-test-key"
-      })
+    {:ok, endpoint: endpoint!()}
+  end
 
-    :ok
+  defp endpoint!(attrs \\ %{}) do
+    {:ok, endpoint} =
+      PhoenixKitAI.create_endpoint(
+        Map.merge(
+          %{
+            name: "Sweep-#{System.unique_integer([:positive])}",
+            provider: "openrouter",
+            model: "a/b",
+            api_key: "sk-test-key"
+          },
+          attrs
+        )
+      )
+
+    endpoint
+  end
+
+  defp configure_endpoint(uuid) do
+    {:ok, _} =
+      PhoenixKit.Settings.update_setting_with_module("ai_translation_endpoint_uuid", uuid, "ai")
+  end
+
+  defp job_endpoints do
+    from(j in Oban.Job, where: j.worker == "PhoenixKitAI.TranslateWorker")
+    |> TestRepo.all()
+    |> Enum.map(& &1.args["endpoint_uuid"])
+    |> Enum.uniq()
   end
 
   defp candidate(uuid, langs), do: %{resource_type: "sweep_thing", uuid: uuid, languages: langs}
@@ -154,6 +175,63 @@ defmodule PhoenixKitAI.TranslationSweepTest do
 
       {:ok, _} = PhoenixKitAI.disable_system()
       assert {:ai_unavailable, _} = TranslationSweep.run_tick(Source)
+    end
+
+    test "a configured endpoint that is gone or disabled stops the tick; nothing is enqueued",
+         %{endpoint: endpoint} do
+      Process.put(:sweep_candidates, [candidate(Ecto.UUID.generate(), ~w(de fr))])
+
+      configure_endpoint(Ecto.UUID.generate())
+      assert {:ai_unavailable, %{endpoint: "not_found"}} = TranslationSweep.run_tick(Source)
+      assert translate_jobs() == []
+
+      assert %{"reason" => "ai_unavailable", "endpoint" => "not_found"} =
+               TranslationSweep.last_run(Source)
+
+      # Another enabled endpoint exists, and is not quietly used instead.
+      other = endpoint!()
+      {:ok, _} = PhoenixKitAI.update_endpoint(endpoint, %{enabled: false})
+      configure_endpoint(endpoint.uuid)
+
+      assert {:ai_unavailable, %{endpoint: "disabled"}} = TranslationSweep.run_tick(Source)
+      assert translate_jobs() == []
+
+      assert %{"reason" => "ai_unavailable", "endpoint" => "disabled"} =
+               TranslationSweep.last_run(Source)
+
+      configure_endpoint(other.uuid)
+      assert {:ok, %{enqueued: 2}} = TranslationSweep.run_tick(Source)
+      assert job_endpoints() == [other.uuid]
+    end
+
+    test "the endpoint last used in the Playground is not the sweep's endpoint",
+         %{endpoint: endpoint} do
+      # A reasoning model someone tried once: the newest successful chat
+      # request is what the translate modal preselects.
+      tried = endpoint!(%{model: "expensive/thinker", reasoning_enabled: true})
+
+      {:ok, _} =
+        PhoenixKitAI.create_request(%{
+          endpoint_uuid: tried.uuid,
+          endpoint_name: tried.name,
+          model: tried.model,
+          request_type: "chat",
+          status: "success"
+        })
+
+      assert PhoenixKitAI.Translations.default_endpoint_uuid() == tried.uuid
+
+      Process.put(:sweep_candidates, [candidate(Ecto.UUID.generate(), ~w(de))])
+      assert {:ok, %{enqueued: 1}} = TranslationSweep.run_tick(Source)
+      assert job_endpoints() == [endpoint.uuid]
+    end
+
+    test "with no enabled endpoint the tick stops as unavailable", %{endpoint: endpoint} do
+      {:ok, _} = PhoenixKitAI.update_endpoint(endpoint, %{enabled: false})
+      Process.put(:sweep_candidates, [candidate(Ecto.UUID.generate(), ~w(de))])
+
+      assert {:ai_unavailable, _} = TranslationSweep.run_tick(Source)
+      assert translate_jobs() == []
     end
 
     test "the in-flight ceiling counts the source's incomplete jobs" do

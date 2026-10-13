@@ -19,7 +19,9 @@ defmodule PhoenixKitAI.Web.PromptFormCoverageTest do
           }
         })
 
-      assert is_binary(html)
+      assert html =~ "Detected Variables"
+      assert html =~ "{{Name}}"
+      assert html =~ "{{City}}"
     end
 
     test "validate with no variables leaves extracted_variables empty", %{conn: conn} do
@@ -30,12 +32,24 @@ defmodule PhoenixKitAI.Web.PromptFormCoverageTest do
           "prompt" => %{"name" => "X", "content" => "Plain text"}
         })
 
-      assert is_binary(html)
+      refute html =~ "Detected Variables"
+    end
+
+    test "variables removed from the content leave the preview", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/en/admin/ai/prompts/new")
+
+      assert render_change(view, "validate", %{
+               "prompt" => %{"name" => "X", "content" => "Hi {{Name}}"}
+             }) =~ "Detected Variables"
+
+      refute render_change(view, "validate", %{
+               "prompt" => %{"name" => "X", "content" => "Hi there"}
+             }) =~ "Detected Variables"
     end
   end
 
   describe "save event — update path" do
-    test "saving an existing prompt navigates to /prompts and flashes :updated",
+    test "saving an existing prompt persists the change and navigates to /prompts",
          %{conn: conn} do
       prompt = fixture_prompt(name: "ToUpdate-#{System.unique_integer([:positive])}")
 
@@ -49,8 +63,12 @@ defmodule PhoenixKitAI.Web.PromptFormCoverageTest do
           }
         })
 
-      # push_navigate result OR error html
-      assert match?({:error, {:live_redirect, _}}, result) or is_binary(result)
+      assert {:error, {:live_redirect, %{to: to}}} = result
+      assert to =~ "/admin/ai/prompts"
+
+      saved = PhoenixKitAI.get_prompt(prompt.uuid)
+      assert saved.content == "New content {{V}}"
+      assert saved.variables == ["V"]
     end
 
     test "save with invalid attrs renders inline errors", %{conn: conn} do

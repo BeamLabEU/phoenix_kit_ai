@@ -28,7 +28,12 @@ defmodule PhoenixKitAI.Web.Endpoints do
   alias PhoenixKitAI, as: AI
   alias PhoenixKitAI.Endpoint
   alias PhoenixKitAI.Web.AuthHelpers
+  alias PhoenixKitAI.Web.MessageShape
   alias PhoenixKitAI.Web.SortHelpers
+
+  @usage_refresh_ms 500
+
+  @valid_usage_sort_fields ~w(inserted_at endpoint_name model total_tokens latency_ms cost_cents status)
 
   # Static field list (atoms only) — used for compile-time validation
   # of incoming `?sort=…` params. Labels live in `sort_options/0` below
@@ -44,6 +49,8 @@ defmodule PhoenixKitAI.Web.Endpoints do
     :cost,
     :last_used
   ]
+
+  @valid_sort_fields Enum.map(@sort_field_keys, &Atom.to_string/1)
 
   defp sort_options do
     [
@@ -121,6 +128,7 @@ defmodule PhoenixKitAI.Web.Endpoints do
       |> assign(:selected_request, nil)
       # Usage tab filters and sorting
       |> assign(:usage_sort_by, :inserted_at)
+      |> assign(:usage_refresh_timer, nil)
       |> assign(:usage_sort_dir, :desc)
       |> assign(:usage_filter_endpoint, nil)
       |> assign(:usage_filter_model, nil)
@@ -195,8 +203,6 @@ defmodule PhoenixKitAI.Web.Endpoints do
     end
   end
 
-  @valid_sort_fields Enum.map(@sort_field_keys, &Atom.to_string/1)
-
   defp parse_sort_params(params) do
     SortHelpers.parse_sort_params(params,
       valid_fields: @valid_sort_fields,
@@ -206,8 +212,6 @@ defmodule PhoenixKitAI.Web.Endpoints do
       default_dir: :desc
     )
   end
-
-  @valid_usage_sort_fields ~w(inserted_at endpoint_name model total_tokens latency_ms cost_cents status)
 
   defp parse_usage_params(params) do
     sort_by =
@@ -293,19 +297,25 @@ defmodule PhoenixKitAI.Web.Endpoints do
 
   @impl true
   def handle_event("toggle_endpoint", %{"uuid" => uuid}, socket) do
-    endpoint = AI.get_endpoint!(uuid)
+    # Same stale-row handling as `delete_endpoint` below.
+    with %Endpoint{} = endpoint <- AI.get_endpoint(uuid),
+         {:ok, updated} <-
+           AI.update_endpoint(endpoint, %{enabled: !endpoint.enabled}, actor_opts(socket)) do
+      message =
+        if updated.enabled,
+          do: gettext("Endpoint enabled"),
+          else: gettext("Endpoint disabled")
 
-    case AI.update_endpoint(endpoint, %{enabled: !endpoint.enabled}, actor_opts(socket)) do
-      {:ok, updated} ->
-        message =
-          if updated.enabled,
-            do: gettext("Endpoint enabled"),
-            else: gettext("Endpoint disabled")
-
+      {:noreply,
+       socket
+       |> reload_endpoints()
+       |> put_flash(:info, message)}
+    else
+      nil ->
         {:noreply,
          socket
-         |> reload_endpoints()
-         |> put_flash(:info, message)}
+         |> reload_endpoints_and_presence()
+         |> put_flash(:error, gettext("Endpoint not found"))}
 
       {:error, _changeset} ->
         {:noreply, put_flash(socket, :error, gettext("Failed to update endpoint"))}
@@ -314,16 +324,20 @@ defmodule PhoenixKitAI.Web.Endpoints do
 
   @impl true
   def handle_event("delete_endpoint", %{"uuid" => uuid}, socket) do
-    endpoint = AI.get_endpoint!(uuid)
-
-    case AI.delete_endpoint(endpoint, actor_opts(socket)) do
-      {:ok, _} ->
-        socket = reload_endpoints(socket)
-
+    # The row can be gone already (deleted in another tab while this
+    # list was open): say so and refresh the list, rather than raise.
+    with %Endpoint{} = endpoint <- AI.get_endpoint(uuid),
+         {:ok, _} <- AI.delete_endpoint(endpoint, actor_opts(socket)) do
+      {:noreply,
+       socket
+       |> reload_endpoints_and_presence()
+       |> put_flash(:info, gettext("Endpoint deleted"))}
+    else
+      nil ->
         {:noreply,
          socket
-         |> assign(:has_endpoints, not Enum.empty?(socket.assigns.endpoints))
-         |> put_flash(:info, gettext("Endpoint deleted"))}
+         |> reload_endpoints_and_presence()
+         |> put_flash(:error, gettext("Endpoint not found"))}
 
       {:error, _} ->
         {:noreply, put_flash(socket, :error, gettext("Failed to delete endpoint"))}
@@ -332,8 +346,8 @@ defmodule PhoenixKitAI.Web.Endpoints do
 
   @impl true
   def handle_event("sort", %{"by" => field}, socket) do
-    field = String.to_existing_atom(field)
     current_sort_by = socket.assigns.sort_by
+    field = SortHelpers.parse_sort_field(field, @valid_sort_fields, current_sort_by)
     current_sort_dir = socket.assigns.sort_dir
 
     # Toggle direction if same field, otherwise default to desc
@@ -433,8 +447,8 @@ defmodule PhoenixKitAI.Web.Endpoints do
 
   @impl true
   def handle_event("usage_sort", %{"by" => field}, socket) do
-    field = String.to_existing_atom(field)
     current_sort_by = socket.assigns.usage_sort_by
+    field = SortHelpers.parse_sort_field(field, @valid_usage_sort_fields, current_sort_by)
     current_sort_dir = socket.assigns.usage_sort_dir
 
     sort_dir =
@@ -509,9 +523,24 @@ defmodule PhoenixKitAI.Web.Endpoints do
     {:noreply, reload_endpoints(socket)}
   end
 
+  # A request was logged. Reloading the usage tab runs the request list
+  # and the dashboard aggregates, and a busy site logs many requests a
+  # second, so the reload is coalesced: the first message starts a timer
+  # and the ones arriving before it fires are covered by that one reload.
   @impl true
   def handle_info({:request_created, _request}, socket) do
-    # Reload usage data if on usage tab
+    if socket.assigns.active_tab == "usage" and is_nil(socket.assigns.usage_refresh_timer) do
+      timer = Process.send_after(self(), :refresh_usage, @usage_refresh_ms)
+      {:noreply, assign(socket, :usage_refresh_timer, timer)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_info(:refresh_usage, socket) do
+    socket = assign(socket, :usage_refresh_timer, nil)
+
     socket =
       if socket.assigns.active_tab == "usage" do
         socket
@@ -530,7 +559,7 @@ defmodule PhoenixKitAI.Web.Endpoints do
   @impl true
   def handle_info(msg, socket) do
     Logger.debug(fn ->
-      "[PhoenixKitAI.Web.Endpoints] unhandled handle_info: #{inspect(msg)}"
+      "[PhoenixKitAI.Web.Endpoints] unhandled handle_info: #{MessageShape.describe(msg)}"
     end)
 
     {:noreply, socket}
@@ -539,6 +568,11 @@ defmodule PhoenixKitAI.Web.Endpoints do
   # ===========================================
   # PRIVATE HELPERS
   # ===========================================
+
+  defp reload_endpoints_and_presence(socket) do
+    socket = reload_endpoints(socket)
+    assign(socket, :has_endpoints, not Enum.empty?(socket.assigns.endpoints))
+  end
 
   defp reload_endpoints(socket) do
     sort_by = socket.assigns.sort_by

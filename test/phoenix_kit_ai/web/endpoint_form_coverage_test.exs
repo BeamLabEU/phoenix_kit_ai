@@ -13,81 +13,191 @@ defmodule PhoenixKitAI.Web.EndpointFormCoverageTest do
   alias PhoenixKitAI.AIModel
   alias PhoenixKitAI.Web.EndpointForm
 
-  describe "select_provider event" do
-    test "selecting a provider populates provider_models", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/new")
+  @models %{
+    "data" => [
+      %{
+        "id" => "anthropic/claude-3-haiku",
+        "name" => "Claude 3 Haiku",
+        "context_length" => 200_000,
+        "architecture" => %{"input_modalities" => ["text"], "output_modalities" => ["text"]},
+        "pricing" => %{"prompt" => "0.00000025", "completion" => "0.00000125"}
+      },
+      %{
+        "id" => "openai/gpt-4o-probe",
+        "name" => "GPT-4o Probe",
+        "context_length" => 128_000,
+        "architecture" => %{"input_modalities" => ["text"], "output_modalities" => ["text"]},
+        "pricing" => %{"prompt" => "0.000005", "completion" => "0.000015"}
+      }
+    ]
+  }
 
-      render_hook(view, "select_provider", %{"provider" => "openai"})
-      render_hook(view, "select_provider", %{"provider" => ""})
-      assert is_binary(render(view))
+  @model_input "input[name='endpoint[model]']"
+
+  # Routes this module's HTTP through a stub answering `/models`, reporting
+  # each request's host and path to the test.
+  defp stub_models(body \\ @models) do
+    stub = Module.concat(__MODULE__, "Stub#{System.unique_integer([:positive])}")
+    test_pid = self()
+
+    Req.Test.stub(stub, fn conn ->
+      send(test_pid, {:fetched_url, conn.host, conn.request_path})
+      Plug.Conn.send_resp(conn, 200, Jason.encode!(body))
+    end)
+
+    Application.put_env(:phoenix_kit_ai, :req_options, plug: {Req.Test, stub}, retry: false)
+    on_exit(fn -> Application.delete_env(:phoenix_kit_ai, :req_options) end)
+    stub
+  end
+
+  # Picks `connection` in the form's integration picker. It is picked while
+  # it has no key, so the form starts no validation of its own (core's
+  # validation goes over the network).
+  defp pick(view, %{uuid: uuid}) do
+    render_hook(view, "select_provider_connection", %{"uuid" => uuid})
+  end
+
+  # Gives the picked connection a key and delivers the validation result
+  # the form would have received, then waits for the model list.
+  defp load_models(view, seed, %{uuid: uuid, name: name}) do
+    seed.(name, data: %{"api_key" => "sk-test-key"})
+    send(view.pid, {:validation_done, uuid, :ok})
+    render_async(view, 2_000)
+  end
+
+  # The new-endpoint form with an OpenRouter connection picked and its
+  # model list loaded.
+  defp form_with_models(conn) do
+    stub = stub_models()
+    connection = seed_openrouter_connection("cov-#{System.unique_integer([:positive])}")
+
+    {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/new")
+    Req.Test.allow(stub, self(), view.pid)
+    pick(view, connection)
+    load_models(view, &seed_openrouter_connection/2, connection)
+
+    view
+  end
+
+  defp model_input_value(view) do
+    view
+    |> element(@model_input)
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.attribute("value")
+  end
+
+  describe "select_provider event" do
+    test "shows the picked provider's models, and none once the pick is cleared", %{conn: conn} do
+      view = form_with_models(conn)
+
+      # Two providers answered, so nothing is auto-selected.
+      refute render(view) =~ "GPT-4o Probe"
+
+      html = render_hook(view, "select_provider", %{"provider" => "openai"})
+      assert html =~ "GPT-4o Probe"
+      refute html =~ "Claude 3 Haiku"
+
+      html = render_hook(view, "select_provider", %{"provider" => ""})
+      refute html =~ "GPT-4o Probe"
+    end
+
+    test "a provider the list does not have shows no models", %{conn: conn} do
+      view = form_with_models(conn)
+
+      html = render_hook(view, "select_provider", %{"provider" => "nobody"})
+      refute html =~ "GPT-4o Probe"
+      refute html =~ "Claude 3 Haiku"
     end
   end
 
   describe "select_model + clear_model + set_manual_model" do
-    test "select_model with empty string is a no-op", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/new")
+    test "select_model makes the model current; the placeholder and stray params leave it", %{
+      conn: conn
+    } do
+      view = form_with_models(conn)
+
+      html = render_hook(view, "select_model", %{"model" => "openai/gpt-4o-probe"})
+      assert html =~ "GPT-4o Probe"
+      assert model_input_value(view) == ["openai/gpt-4o-probe"]
 
       render_hook(view, "select_model", %{"_target" => ["model"], "model" => ""})
-      assert is_binary(render(view))
-    end
-
-    test "select_model with arbitrary fallback params is a no-op", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/new")
+      assert model_input_value(view) == ["openai/gpt-4o-probe"]
 
       render_hook(view, "select_model", %{"weird" => "params"})
-      assert is_binary(render(view))
+      assert model_input_value(view) == ["openai/gpt-4o-probe"]
     end
 
-    test "clear_model nils selected_model and updates form", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/new")
-      render_hook(view, "clear_model", %{})
-      assert is_binary(render(view))
+    test "clear_model empties the selection", %{conn: conn} do
+      view = form_with_models(conn)
+      render_hook(view, "select_model", %{"model" => "openai/gpt-4o-probe"})
+
+      html = render_hook(view, "clear_model", %{})
+
+      assert html =~ "No model selected"
+      assert model_input_value(view) == [""]
     end
 
-    test "set_manual_model with non-empty model_id stamps the form", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/new")
-      render_hook(view, "set_manual_model", %{"model" => "anthropic/claude-3-haiku"})
-      assert is_binary(render(view))
-    end
+    test "set_manual_model stamps an id the list does not have, and ignores an empty one", %{
+      conn: conn
+    } do
+      view = form_with_models(conn)
 
-    test "set_manual_model with empty params is a no-op", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/new")
+      html = render_hook(view, "set_manual_model", %{"model" => "vendor/unlisted-model"})
+      assert html =~ "Not in current model list"
+      assert model_input_value(view) == ["vendor/unlisted-model"]
+
       render_hook(view, "set_manual_model", %{})
-      assert is_binary(render(view))
+      assert model_input_value(view) == ["vendor/unlisted-model"]
+
+      render_hook(view, "set_manual_model", %{"model" => ""})
+      assert model_input_value(view) == ["vendor/unlisted-model"]
     end
   end
 
   describe "toggle_reasoning event" do
-    test "toggle flips reasoning_enabled in form params", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/new")
-      render_hook(view, "toggle_reasoning", %{})
-      render_hook(view, "toggle_reasoning", %{})
-      assert is_binary(render(view))
+    test "shows the reasoning options, then hides them again", %{conn: conn} do
+      view = form_with_models(conn)
+      render_hook(view, "select_model", %{"model" => "openai/gpt-4o-probe"})
+      refute render(view) =~ "Effort Level"
+
+      assert render_hook(view, "toggle_reasoning", %{}) =~ "Effort Level"
+      refute render_hook(view, "toggle_reasoning", %{}) =~ "Effort Level"
     end
   end
 
   describe "select_provider_connection event" do
-    test "selects an unknown UUID with no matching integration", %{conn: conn} do
+    test "a uuid naming no connection starts no fetch and keeps manual entry locked", %{
+      conn: conn
+    } do
       {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/new")
 
-      render_hook(view, "select_provider_connection", %{
-        "uuid" => "01234567-89ab-7def-8000-000000000abc"
-      })
+      html =
+        render_hook(view, "select_provider_connection", %{
+          "uuid" => "01234567-89ab-7def-8000-000000000abc"
+        })
 
-      assert is_binary(render(view))
+      refute html =~ "Loading models..."
+      assert has_element?(view, "#manual_model_input[disabled]")
     end
   end
 
   describe "save event — success + error paths" do
-    test "successful save navigates to /endpoints", %{conn: conn} do
+    test "successful save creates the endpoint and navigates back to the AI section", %{
+      conn: conn
+    } do
+      connection = seed_openrouter_connection("save-#{System.unique_integer([:positive])}")
+      name = "SavedViaLV-#{System.unique_integer([:positive])}"
+
       {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/new")
+      pick(view, connection)
 
       # Drive the save event directly (bypasses DOM lookup so we don't
       # depend on which form fields are conditionally rendered).
       result =
         render_hook(view, "save", %{
           "endpoint" => %{
-            "name" => "SavedViaLV-#{System.unique_integer([:positive])}",
+            "name" => name,
             "provider" => "openrouter",
             "model" => "anthropic/claude-3-haiku",
             "temperature" => "0.5",
@@ -104,9 +214,13 @@ defmodule PhoenixKitAI.Web.EndpointFormCoverageTest do
           }
         })
 
-      # save_endpoint either redirects (success) or stays on the page
-      # (validation error). Both code paths are now exercised.
-      assert match?({:error, {:live_redirect, _}}, result) or is_binary(result)
+      assert {:error, {:live_redirect, %{to: to}}} = result
+      assert to == "/en/admin/ai"
+
+      assert %PhoenixKitAI.Endpoint{temperature: 0.5, max_tokens: 100, top_k: 40} =
+               saved = PhoenixKitAI.get_endpoint_by_name(name)
+
+      assert saved.integration_uuid == connection.uuid
     end
 
     test "validation error keeps the form on-page with errors", %{conn: conn} do
@@ -128,28 +242,28 @@ defmodule PhoenixKitAI.Web.EndpointFormCoverageTest do
   end
 
   describe "validate event with model field" do
-    test "validate updates selected_model when model is non-empty", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/new")
+    test "validate makes a listed model current, and an empty one clears it", %{conn: conn} do
+      view = form_with_models(conn)
 
-      render_change(view, "validate", %{
-        "endpoint" => %{
-          "name" => "X",
-          "provider" => "openrouter",
-          "model" => "anthropic/claude-3-haiku"
-        }
-      })
+      html =
+        render_change(view, "validate", %{
+          "endpoint" => %{
+            "name" => "X",
+            "provider" => "openrouter",
+            "model" => "anthropic/claude-3-haiku"
+          }
+        })
 
-      assert is_binary(render(view))
-    end
+      # The model's own limits render only once it is the selected model.
+      assert html =~ "200,000"
 
-    test "validate with empty model nils selected_model", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/new")
+      html =
+        render_change(view, "validate", %{
+          "endpoint" => %{"name" => "X", "provider" => "openrouter", "model" => ""}
+        })
 
-      render_change(view, "validate", %{
-        "endpoint" => %{"name" => "X", "provider" => "openrouter", "model" => ""}
-      })
-
-      assert is_binary(render(view))
+      assert html =~ "No model selected"
+      refute html =~ "200,000"
     end
 
     # Pins the provider-change handling: when the operator switches
@@ -291,213 +405,101 @@ defmodule PhoenixKitAI.Web.EndpointFormCoverageTest do
   end
 
   describe "Integration PubSub handle_info clauses" do
-    test "{event, :openrouter, _} 3-tuple clause runs", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/new")
+    # Each integration event reloads the picker's connections; the form
+    # shows a connection created after it mounted.
+    for {label, message} <- [
+          {"setup saved", {:integration_setup_saved, "openrouter", %{"status" => "connected"}}},
+          {"connected", {:integration_connected, "openrouter", %{}}},
+          {"connection added", {:integration_connection_added, "openrouter", %{}}},
+          {"disconnected", {:integration_disconnected, "openrouter"}},
+          {"connection removed", {:integration_connection_removed, "openrouter"}},
+          {"validated", {:integration_validated, "openrouter", true}}
+        ] do
+      test "#{label} reloads the connection picker", %{conn: conn} do
+        {:ok, view, html} = live(conn, "/en/admin/ai/endpoints/new")
+        name = "late-arrival-#{System.unique_integer([:positive])}"
+        refute html =~ name
 
-      send(
-        view.pid,
-        {:integration_setup_saved, "openrouter", %{"status" => "connected"}}
-      )
+        seed_openrouter_connection(name)
+        send(view.pid, unquote(Macro.escape(message)))
 
-      send(
-        view.pid,
-        {:integration_credentials_updated, "openrouter", %{}}
-      )
-
-      assert is_binary(render(view))
+        assert render(view) =~ name
+      end
     end
 
-    test "{event, :openrouter} 2-tuple clause runs", %{conn: conn} do
+    test "an integration event unlocks manual model entry once the picked connection has a key",
+         %{conn: conn} do
+      connection = seed_openrouter_connection("unlock-#{System.unique_integer([:positive])}")
       {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/new")
-      send(view.pid, {:integration_disconnected, "openrouter"})
-      assert is_binary(render(view))
+      pick(view, connection)
+      assert has_element?(view, "#manual_model_input[disabled]")
+
+      seed_openrouter_connection(connection.name, data: %{"api_key" => "sk-test-key"})
+      send(view.pid, {:integration_setup_saved, "openrouter", %{}})
+      render(view)
+
+      refute has_element?(view, "#manual_model_input[disabled]")
     end
 
-    test ":integration_validated runs", %{conn: conn} do
+    test ":fetch_models_from_integration with no key on the connection says so", %{conn: conn} do
+      connection = seed_openrouter_connection("nokey-#{System.unique_integer([:positive])}")
       {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/new")
-      send(view.pid, {:integration_validated, "openrouter", true})
-      assert is_binary(render(view))
-    end
+      pick(view, connection)
 
-    test ":fetch_models_from_integration triggers a model fetch", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/new")
       send(view.pid, :fetch_models_from_integration)
-      assert is_binary(render(view))
-    end
 
-    test "{:fetch_models, api_key} runs without crashing", %{conn: conn} do
-      stub_module = PhoenixKitAI.Web.EndpointFormCoverageTest.FetchModelsStub
-
-      Req.Test.stub(stub_module, fn conn ->
-        Plug.Conn.send_resp(conn, 200, Jason.encode!(%{"data" => []}))
-      end)
-
-      Application.put_env(:phoenix_kit_ai, :req_options,
-        plug: {Req.Test, stub_module},
-        retry: false
-      )
-
-      on_exit(fn -> Application.delete_env(:phoenix_kit_ai, :req_options) end)
-
-      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/new")
-      Req.Test.allow(stub_module, self(), view.pid)
-      send(view.pid, {:fetch_models, "sk-test-key", "01900000-0000-7000-8000-000000000000"})
-      assert is_binary(render(view))
+      assert render(view) =~ "No API key configured"
     end
 
     # Regression: when editing an existing endpoint and the operator
     # switches the provider dropdown, the next model fetch must hit the
     # NEW provider's URL — not the saved `endpoint.base_url` (which is
-    # for the old provider). Pre-fix, `current_models_base_url/1`
-    # preferred the saved URL unconditionally, so a Mistral integration
-    # picked after switching providers would have its model list fetched
-    # from openrouter.ai with the Mistral key (wrong host, wrong list).
-    test "{:fetch_models, _} after provider switch hits the new provider URL",
-         %{conn: conn} do
-      stub_module = PhoenixKitAI.Web.EndpointFormCoverageTest.ProviderSwitchUrlStub
-      test_pid = self()
-
-      Req.Test.stub(stub_module, fn conn ->
-        send(test_pid, {:fetched_url, conn.host, conn.request_path})
-        Plug.Conn.send_resp(conn, 200, Jason.encode!(%{"data" => []}))
-      end)
-
-      Application.put_env(:phoenix_kit_ai, :req_options,
-        plug: {Req.Test, stub_module},
-        retry: false
-      )
-
-      on_exit(fn -> Application.delete_env(:phoenix_kit_ai, :req_options) end)
+    # for the old provider): a Mistral integration picked after switching
+    # providers would otherwise have its model list fetched from
+    # openrouter.ai with the Mistral key (wrong host, wrong list).
+    test "a model fetch after a provider switch hits the new provider's URL", %{conn: conn} do
+      stub = stub_models(%{"data" => []})
 
       # Endpoint is saved as openrouter. base_url is set to OpenRouter's
       # URL by the changeset's `maybe_set_default_base_url`.
       ep = fixture_endpoint(provider: "openrouter")
+      mistral = seed_mistral_connection("switch-#{System.unique_integer([:positive])}")
 
       {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/#{ep.uuid}/edit")
-      Req.Test.allow(stub_module, self(), view.pid)
+      Req.Test.allow(stub, self(), view.pid)
 
       # Operator switches to Mistral via the form. `current_provider`
       # flips to "mistral" but `socket.assigns.endpoint.base_url` is
       # still the OpenRouter URL until save.
       render_change(view, "validate", %{
-        "endpoint" => %{
-          "name" => ep.name,
-          "provider" => "mistral",
-          "model" => ""
-        }
+        "endpoint" => %{"name" => ep.name, "provider" => "mistral", "model" => ""}
       })
 
-      send(view.pid, {:fetch_models, "sk-test-key", "01900000-0000-7000-8000-000000000000"})
-      _ = render(view)
+      pick(view, mistral)
+      load_models(view, &seed_mistral_connection/2, mistral)
 
       assert_receive {:fetched_url, host, path}, 1_000
       assert host == "api.mistral.ai", "expected mistral host, got #{inspect(host)}"
       assert path == "/v1/models", "expected /v1/models, got #{inspect(path)}"
     end
 
-    test "{:fetch_models, api_key} success path populates models_grouped + selected_model",
-         %{conn: conn} do
-      # Drive the success branch of `handle_info({:fetch_models, _}, _)`
-      # — `OpenRouterClient.fetch_models_grouped/2` returns `{:ok,
-      # grouped}`, the LV flattens, finds the selected_model, and
-      # assigns `models`/`models_grouped`/`selected_model`.
-      stub_module = PhoenixKitAI.Web.EndpointFormCoverageTest.FetchModelsSuccessStub
+    test "a model fetch on the edit form selects the endpoint's saved model", %{conn: conn} do
+      stub = stub_models()
+      connection = seed_openrouter_connection("edit-#{System.unique_integer([:positive])}")
 
-      Req.Test.stub(stub_module, fn conn ->
-        body = %{
-          "data" => [
-            %{
-              "id" => "anthropic/claude-3-haiku",
-              "name" => "Claude 3 Haiku",
-              "context_length" => 200_000,
-              "architecture" => %{
-                "input_modalities" => ["text"],
-                "output_modalities" => ["text"]
-              },
-              "pricing" => %{"prompt" => "0.00000025", "completion" => "0.00000125"}
-            }
-          ]
-        }
+      ep =
+        fixture_endpoint(model: "anthropic/claude-3-haiku", integration_uuid: connection.uuid)
 
-        Plug.Conn.send_resp(conn, 200, Jason.encode!(body))
-      end)
+      {:ok, view, html} = live(conn, "/en/admin/ai/endpoints/#{ep.uuid}/edit")
+      Req.Test.allow(stub, self(), view.pid)
+      # Not in the (empty) list yet, so the saved id renders as drift.
+      assert html =~ "Not in current model list"
 
-      Application.put_env(:phoenix_kit_ai, :req_options,
-        plug: {Req.Test, stub_module},
-        retry: false
-      )
+      html = load_models(view, &seed_openrouter_connection/2, connection)
 
-      on_exit(fn -> Application.delete_env(:phoenix_kit_ai, :req_options) end)
-
-      ep = fixture_endpoint(model: "anthropic/claude-3-haiku")
-
-      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/#{ep.uuid}/edit")
-      Req.Test.allow(stub_module, self(), view.pid)
-      send(view.pid, {:fetch_models, "sk-test-key", "01900000-0000-7000-8000-000000000000"})
-
-      html = render(view)
-      # Once the fetch succeeds, selected_model gets populated. Generation
-      # Parameters section renders the model's context_length info instead
-      # of the "Select a model above" placeholder. Assert the placeholder
-      # is gone — that's a robust signal that the success branch ran.
-      refute html =~ "Select a model above to configure generation parameters",
-             "expected the placeholder copy to disappear once selected_model is set"
-    end
-
-    test "{:fetch_models, api_key} error path populates models_error", %{conn: conn} do
-      stub_module = PhoenixKitAI.Web.EndpointFormCoverageTest.FetchModelsErrorStub
-
-      Req.Test.stub(stub_module, fn conn ->
-        Req.Test.transport_error(conn, :nxdomain)
-      end)
-
-      Application.put_env(:phoenix_kit_ai, :req_options,
-        plug: {Req.Test, stub_module},
-        retry: false
-      )
-
-      on_exit(fn -> Application.delete_env(:phoenix_kit_ai, :req_options) end)
-
-      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/new")
-      Req.Test.allow(stub_module, self(), view.pid)
-      send(view.pid, {:fetch_models, "sk-test-key", "01900000-0000-7000-8000-000000000000"})
-
-      html = render(view)
-      # `OpenRouterClient` returns `{:connection_error, :nxdomain}`,
-      # `Errors.message/1` translates to a user-facing string. We
-      # render whatever models_error landed.
-      assert is_binary(html)
-    end
-
-    test ":fetch_models_from_integration with no api_key writes models_error",
-         %{conn: conn} do
-      # Drive the `_ -> {:noreply, assign(socket, models_loading: false,
-      # models_error: "No OpenRouter API key configured")}` branch in
-      # `handle_info(:fetch_models_from_integration, _)` — the
-      # Integrations lookup returns `:not_found` because no connection
-      # is seeded.
-      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/new")
-      send(view.pid, :fetch_models_from_integration)
-
-      html = render(view)
-      assert html =~ "No OpenRouter API key configured" or is_binary(html)
-    end
-
-    test ":fetch_models_from_integration with seeded api_key sends {:fetch_models, _}",
-         %{conn: conn} do
-      # Drive the success branch — `Integrations.get_credentials/1`
-      # returns `{:ok, %{"api_key" => key}}` because we seed one.
-      seed_openrouter_connection("default",
-        data: %{"api_key" => "sk-test-from-creds", "status" => "connected"}
-      )
-
-      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/new")
-
-      # The mount itself triggers `:fetch_models_from_integration` for
-      # the connected integration. We just need to confirm the LV
-      # reached `:models_loading = true` state without crashing.
-      html = render(view)
-      assert is_binary(html)
+      refute html =~ "Not in current model list"
+      assert html =~ "Claude 3 Haiku"
+      assert html =~ "200,000"
     end
 
     test ":model_fetch_slow flips models_loading_slow when fetch is in progress",
@@ -654,68 +656,6 @@ defmodule PhoenixKitAI.Web.EndpointFormCoverageTest do
       assert assigns.models_error != nil
     end
 
-    test "select_provider + select_model after a successful model fetch",
-         %{conn: conn} do
-      # Drive `select_provider` `{_, models} -> models` (line 314)
-      # AND `select_model` with non-empty model_id (lines 333-346)
-      # AND the connected-integration EDIT mount path (lines 233-234)
-      # — all three need a populated `models_grouped` assign, which
-      # only happens after `:fetch_models` succeeds.
-      stub_module = PhoenixKitAI.Web.EndpointFormCoverageTest.SelectFlowStub
-
-      Req.Test.stub(stub_module, fn conn ->
-        body = %{
-          "data" => [
-            %{
-              "id" => "anthropic/claude-3-haiku",
-              "context_length" => 200_000,
-              "architecture" => %{
-                "input_modalities" => ["text"],
-                "output_modalities" => ["text"]
-              },
-              "pricing" => %{"prompt" => "0.000001", "completion" => "0.000002"}
-            },
-            %{
-              "id" => "anthropic/claude-3-opus",
-              "context_length" => 200_000,
-              "architecture" => %{
-                "input_modalities" => ["text"],
-                "output_modalities" => ["text"]
-              },
-              "pricing" => %{"prompt" => "0.000015", "completion" => "0.000075"}
-            }
-          ]
-        }
-
-        Plug.Conn.send_resp(conn, 200, Jason.encode!(body))
-      end)
-
-      Application.put_env(:phoenix_kit_ai, :req_options,
-        plug: {Req.Test, stub_module},
-        retry: false
-      )
-
-      on_exit(fn -> Application.delete_env(:phoenix_kit_ai, :req_options) end)
-
-      ep = fixture_endpoint(model: "anthropic/claude-3-haiku")
-
-      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/#{ep.uuid}/edit")
-      Req.Test.allow(stub_module, self(), view.pid)
-
-      # Populate models_grouped via the fetch.
-      send(view.pid, {:fetch_models, "sk-test-key", "01900000-0000-7000-8000-000000000000"})
-      _ = render(view)
-
-      # Drive select_provider with a real provider in models_grouped.
-      render_change(view, "select_provider", %{"provider" => "anthropic"})
-
-      # Drive select_model with a non-empty model_id (lines 333-346).
-      render_change(view, "select_model", %{"model" => "anthropic/claude-3-opus"})
-
-      html = render(view)
-      assert is_binary(html)
-    end
-
     test "EndpointForm handle_info catch-all logs at :debug for unknown messages",
          %{conn: conn} do
       previous_level = Logger.level()
@@ -767,22 +707,21 @@ defmodule PhoenixKitAI.Web.EndpointFormCoverageTest do
       assert log =~ "Endpoint save failed"
     end
 
-    test "save with parse-failing numeric params keeps the original strings",
+    test "save with non-numeric params is refused by the changeset, not by a crash",
          %{conn: conn} do
       # Drive the `:error -> original` branches of `parse_float/2` and
-      # `parse_integer/2` (lines 519, 528) — when the user submits a
-      # non-numeric string, the parser returns the original value
-      # untouched so the changeset can emit its own type error.
+      # `parse_integer/2` — when the user submits a non-numeric string,
+      # the parser returns the original value untouched so the changeset
+      # can emit its own type error.
       {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/new")
+      name = "ParseProbe-#{System.unique_integer([:positive])}"
 
-      result =
+      html =
         render_hook(view, "save", %{
           "endpoint" => %{
-            "name" => "ParseProbe-#{System.unique_integer([:positive])}",
+            "name" => name,
             "provider" => "openrouter",
             "model" => "a/b",
-            # Non-numeric strings — parse_float/parse_integer fall
-            # through to `:error -> original`.
             "temperature" => "not-a-float",
             "max_tokens" => "not-an-int",
             "top_p" => "abc",
@@ -790,17 +729,13 @@ defmodule PhoenixKitAI.Web.EndpointFormCoverageTest do
           }
         })
 
-      # Save fails validation but doesn't crash. The LV stays mounted.
-      assert is_binary(result) or match?({:error, _}, result)
+      # Still on the form, with what was typed, and nothing was created.
+      assert html =~ name
+      refute html =~ "Something went wrong"
+      assert PhoenixKitAI.get_endpoint_by_name(name) == nil
     end
 
-    test "select_provider_connection with a connected integration triggers fetch",
-         %{conn: conn} do
-      # Drive the `if connected do send(self(), :fetch_models_from_integration);
-      # {:noreply, assign(socket, :models_loading, true)}` branch
-      # of select_provider_connection (line 432-434) AND
-      # reload_connections's `current_active && Enum.any?(...) -> current_active`
-      # branch (line 484).
+    test "picking a connected integration starts the model fetch", %{conn: conn} do
       seeded =
         seed_openrouter_connection("default",
           data: %{"api_key" => "sk-test", "status" => "connected"}
@@ -808,41 +743,9 @@ defmodule PhoenixKitAI.Web.EndpointFormCoverageTest do
 
       {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/new")
 
-      render_change(view, "select_provider_connection", %{"uuid" => seeded.uuid})
+      html = render_change(view, "select_provider_connection", %{"uuid" => seeded.uuid})
 
-      html = render(view)
-      assert is_binary(html)
-    end
-  end
-
-  describe "save_endpoint rescue branch" do
-    test "save with a payload that triggers a raise lands the rescue + error flash",
-         %{conn: conn} do
-      # Force a save to raise by passing a non-string `name` — the
-      # changeset cast/3 normally handles this, but we drive the rescue
-      # via a deliberately broken hook payload so the rescue's
-      # Logger.error path runs.
-      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/new")
-
-      # Direct `render_hook` with a payload that bypasses normal form
-      # validation and causes a raise inside save_endpoint via
-      # missing-required-key on Endpoint.changeset.
-      result =
-        ExUnit.CaptureLog.capture_log(fn ->
-          render_hook(view, "save", %{
-            "endpoint" => %{
-              # Trigger a validation error — name is required, model is required
-              "name" => "Probe-#{System.unique_integer([:positive])}",
-              "provider" => "openrouter",
-              "model" => "x/y"
-            }
-          })
-        end)
-
-      # The save will succeed (valid endpoint) — we just exercise the
-      # success path here. The rescue branch only fires on actual
-      # raises which don't happen via the normal changeset path.
-      assert is_binary(result)
+      assert html =~ "Loading models..."
     end
   end
 
