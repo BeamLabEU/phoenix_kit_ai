@@ -119,6 +119,38 @@ defmodule PhoenixKitAI.Web.EndpointFormModelFetchTest do
     end
   end
 
+  describe "a connection that goes away mid-validation" do
+    test "the picker stops loading when its connection is removed", %{conn: conn} do
+      stub = stub_models(&models_ok/1)
+      {view, uuid} = form_awaiting_validation(conn, stub)
+
+      :ok = PhoenixKit.Integrations.remove_connection(uuid)
+      send(view.pid, {:integration_connection_removed, uuid})
+
+      # With no connection picked the picker is not on the page, so the
+      # loading flag is read from the socket: it is what the next pick
+      # would inherit.
+      _ = render(view)
+      refute :sys.get_state(view.pid).socket.assigns.models_loading
+
+      # The late result is for a connection that is no longer picked.
+      send(view.pid, {:validation_done, uuid, :ok})
+      html = render_async(view, 2_000)
+
+      refute html =~ "Loading models..."
+      refute html =~ "Claude 3 Haiku"
+    end
+
+    test "a reload that keeps the picked connection leaves the fetch in flight", %{conn: conn} do
+      stub = stub_models(&models_ok/1)
+      {view, uuid} = form_awaiting_validation(conn, stub)
+
+      send(view.pid, {:integration_connected, "openrouter", uuid})
+
+      assert render(view) =~ "Loading models..."
+    end
+  end
+
   describe "the model fetch" do
     test "says so when the connection's key is gone by the time it runs", %{conn: conn} do
       stub = stub_models(&models_ok/1)

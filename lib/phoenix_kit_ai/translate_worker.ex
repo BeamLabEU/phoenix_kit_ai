@@ -125,7 +125,7 @@ defmodule PhoenixKitAI.TranslateWorker do
         :ok
 
       fields ->
-        case Translation.translate_fields(
+        case safe_translate_fields(
                ctx.endpoint,
                ctx.prompt,
                ctx.source,
@@ -165,6 +165,16 @@ defmodule PhoenixKitAI.TranslateWorker do
             fail(ctx, reason, retry?: retryable?(reason))
         end
     end
+  end
+
+  # A raise inside the engine would otherwise retry in silence and, on the
+  # last attempt, be discarded by Oban with no terminal event: the host's
+  # spinner would never clear. It becomes an ordinary failure, which is
+  # terminal at once because a raise is not in `retryable?/1`.
+  defp safe_translate_fields(endpoint, prompt, source, target, fields, opts) do
+    Translation.translate_fields(endpoint, prompt, source, target, fields, opts)
+  rescue
+    e -> {:error, {:translate_raised, e.__struct__}}
   end
 
   defp snooze_or_fail(ctx, reason) do

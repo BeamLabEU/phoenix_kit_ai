@@ -856,6 +856,19 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     end
   end
 
+  # The task that runs this is unlinked, so a raise or exit in it would
+  # otherwise send nothing and leave the picker loading forever. Whatever
+  # happens, the LiveView gets a result.
+  defp validate_and_record(connection_uuid) do
+    result = Integrations.validate_connection(connection_uuid)
+    Integrations.record_validation(connection_uuid, result)
+    result
+  rescue
+    _ -> {:error, :request_failed}
+  catch
+    _kind, _reason -> {:error, :request_failed}
+  end
+
   defp reload_connections(socket) do
     connections = load_all_provider_connections()
     current_active = socket.assigns[:active_connection]
@@ -866,12 +879,21 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     connected = active && Integrations.connected?(active)
 
     socket
+    |> settle_fetch_for_lost_connection(current_active, active)
     |> assign(:provider_connections, connections)
     |> assign(:active_connection, active)
     |> assign(:selected_uuids, selected_uuids)
     |> assign(:integration_connected, connected)
     |> refresh_provider_options(connections)
   end
+
+  # A validation or model fetch in flight for a connection that has just
+  # gone away will be dropped by the uuid guards when it lands, so the
+  # loading state it would have cleared is cleared here.
+  defp settle_fetch_for_lost_connection(socket, was, now) when was != now,
+    do: stop_model_fetch_indicators(socket)
+
+  defp settle_fetch_for_lost_connection(socket, _was, _now), do: socket
 
   # Re-resolves the active connection after the connection list reloads.
   # Keeps the current selection if it still exists; otherwise surfaces a
@@ -1184,9 +1206,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
 
       Task.Supervisor.start_child(PhoenixKit.TaskSupervisor, fn ->
         Process.put(:"$callers", callers)
-        result = Integrations.validate_connection(active_key)
-        Integrations.record_validation(active_key, result)
-        send(parent, {:validation_done, active_key, result})
+        send(parent, {:validation_done, active_key, validate_and_record(active_key)})
       end)
 
       # Loading-state assigns were already set by the caller's
