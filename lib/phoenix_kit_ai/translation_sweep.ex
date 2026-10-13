@@ -31,9 +31,11 @@ defmodule PhoenixKitAI.TranslationSweep do
      must be able to schedule its successor).
   2. Stop, recording why, when the source is not ready (`sweep_ready/1`),
      the automatic sweep is off (a manual run skips only this check), AI
-     is unavailable or its default endpoint is gone, no target language
-     is set, or a cap is below 1 (`:sweep_stalled` — nothing could ever
-     be admitted).
+     is unavailable or has no usable endpoint for an unattended run
+     (`:ai_unavailable`; `Translations.unattended_endpoint_uuid/0` decides,
+     and its reason — `not_configured`, `not_found`, `disabled` — is
+     recorded as `"endpoint"`), no target language is set, or a cap is
+     below 1 (`:sweep_stalled` — nothing could ever be admitted).
   3. Stop at `:ceiling_reached` when the source's incomplete
      `TranslateWorker` jobs already fill `max_in_flight`.
   4. Take the candidates in the source's order, drop each language that
@@ -210,7 +212,8 @@ defmodule PhoenixKitAI.TranslationSweep do
   `{reason, info}` — `reason` is `:ok` (it swept; `info` counts
   candidates, enqueued, conflicts, errors, backed_off, in_flight) or why
   it stopped: the source's own reason, `:sweep_disabled`,
-  `:ai_unavailable`, `:no_target_languages`, `:sweep_stalled`,
+  `:ai_unavailable` (with `endpoint:` saying why, when it is the endpoint),
+  `:no_target_languages`, `:sweep_stalled`,
   `:ceiling_reached`, `:prompts_unavailable`, or — for a manual run while
   the scheduled tick is running — `:sweep_running`.
   """
@@ -228,11 +231,11 @@ defmodule PhoenixKitAI.TranslationSweep do
 
     with :ok <- ready(source, trigger),
          :ok <- automatic_on(settings, trigger),
-         :ok <- ai_available(),
+         {:ok, endpoint_uuid} <- ai_available(),
          :ok <- has_languages(settings),
          :ok <- caps_admit(settings),
          {:ok, busy, room} <- room(source, settings) do
-      sweep(source, settings, busy, room)
+      sweep(source, settings, endpoint_uuid, busy, room)
     else
       {:stop, reason, info} -> finish(source, reason, info)
     end
@@ -263,10 +266,18 @@ defmodule PhoenixKitAI.TranslationSweep do
   defp automatic_on(_settings, :manual), do: :ok
   defp automatic_on(_settings, :interval), do: {:stop, :sweep_disabled, %{}}
 
+  # Every job a tick enqueues names this endpoint, so one that is gone or
+  # disabled stops the tick here: enqueued anyway, each job would discard
+  # and write a failure row, and the pairs would come back a day later.
   defp ai_available do
-    if Translations.available?() and is_binary(Translations.default_endpoint_uuid()),
-      do: :ok,
-      else: {:stop, :ai_unavailable, %{}}
+    if Translations.available?() do
+      case Translations.unattended_endpoint_uuid() do
+        {:ok, endpoint_uuid} -> {:ok, endpoint_uuid}
+        {:error, why} -> {:stop, :ai_unavailable, %{endpoint: to_string(why)}}
+      end
+    else
+      {:stop, :ai_unavailable, %{}}
+    end
   end
 
   defp has_languages(%{languages: []}), do: {:stop, :no_target_languages, %{}}
@@ -288,7 +299,7 @@ defmodule PhoenixKitAI.TranslationSweep do
       else: {:ok, busy, max - in_flight}
   end
 
-  defp sweep(source, settings, busy, room) do
+  defp sweep(source, settings, endpoint_uuid, busy, room) do
     targets = settings.languages
 
     {candidates, _in_flight} =
@@ -304,7 +315,7 @@ defmodule PhoenixKitAI.TranslationSweep do
 
     case prompts(source, selected) do
       {:ok, prompts} ->
-        counts = enqueue(selected, prompts, settings.source_language)
+        counts = enqueue(selected, prompts, endpoint_uuid, settings.source_language)
 
         finish(
           source,
@@ -397,9 +408,7 @@ defmodule PhoenixKitAI.TranslationSweep do
   end
 
   # Errors are counted per language, whichever way a language failed.
-  defp enqueue(selected, prompts, source_lang) do
-    endpoint_uuid = Translations.default_endpoint_uuid()
-
+  defp enqueue(selected, prompts, endpoint_uuid, source_lang) do
     Enum.reduce(selected, %{enqueued: 0, conflicts: 0, errors: 0}, fn c, acc ->
       case Map.get(prompts, c.resource_type) do
         nil -> %{acc | errors: acc.errors + length(c.languages)}

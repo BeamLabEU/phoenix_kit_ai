@@ -215,7 +215,8 @@ defmodule PhoenixKitAI.TranslateWorkerTest do
       assert_receive {:ai_translation, :translation_failed, payload}
       assert payload.resource_type == "totally_unregistered"
       assert payload.target_lang == "es"
-      assert payload.reason == {:no_adapter, "totally_unregistered"}
+      # The broadcast carries the classified reason, not the raw term.
+      assert payload.reason == {"no_adapter", "totally_unregistered"}
     end
   end
 end

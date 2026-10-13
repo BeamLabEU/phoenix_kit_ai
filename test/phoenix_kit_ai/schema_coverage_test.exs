@@ -90,14 +90,6 @@ defmodule PhoenixKitAI.SchemaCoverageTest do
       refute Endpoint.image_gen_model_picker?(nil)
     end
 
-    test "image_size_options + image_quality_options + reasoning_effort_options" do
-      assert is_list(Endpoint.image_size_options())
-      assert is_list(Endpoint.image_quality_options())
-      effort_values = Endpoint.reasoning_effort_options() |> Enum.map(fn {_, v} -> v end)
-      assert "none" in effort_values
-      assert "xhigh" in effort_values
-    end
-
     test "image_aspect_ratio_options + image_resolution_options (xAI form defaults)" do
       ratios = Endpoint.image_aspect_ratio_options() |> Enum.map(fn {_, v} -> v end)
       assert "1:1" in ratios

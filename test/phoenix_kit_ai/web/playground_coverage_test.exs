@@ -50,25 +50,61 @@ defmodule PhoenixKitAI.Web.PlaygroundCoverageTest do
     }
   end
 
+  # Like `stub_response/2`, and hands each request's decoded body to the test.
+  defp stub_capturing(status, body) do
+    test_pid = self()
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      {:ok, raw, conn} = Plug.Conn.read_body(conn)
+      send(test_pid, {:request_body, Jason.decode!(raw)})
+
+      conn
+      |> Plug.Conn.put_resp_content_type("application/json")
+      |> Plug.Conn.send_resp(status, Jason.encode!(body))
+    end)
+  end
+
+  # The `send` event queues the request for the view itself; the render
+  # that follows returns once it has been handled.
+  defp send_and_render(view) do
+    render_hook(view, "send", %{})
+    render(view)
+  end
+
+  defp textarea(view, name), do: view |> element("textarea[name='#{name}']") |> render()
+
   describe "change event — endpoint + prompt + content + variables + freeform" do
-    test "selecting an endpoint stores the uuid; clearing it nils it", %{conn: conn} do
+    test "a selected endpoint is the one a send goes to; cleared, there is none", %{conn: conn} do
+      stub_response(200, success_payload("Hi back!"))
       ep = fixture_endpoint()
       {:ok, view, _html} = live(conn, "/en/admin/ai/playground")
+      render_change(view, "change", %{"message" => "Hello"})
 
       render_change(view, "change", %{"endpoint_uuid" => ep.uuid})
+      assert send_and_render(view) =~ "Hi back!"
+
       render_change(view, "change", %{"endpoint_uuid" => ""})
-      assert is_binary(render(view))
+      assert render_hook(view, "send", %{}) =~ "Please select an endpoint"
     end
 
-    test "selecting a prompt extracts variables; switching prompts re-init", %{conn: conn} do
+    test "selecting a prompt offers its variables; switching swaps them; clearing returns to freeform",
+         %{conn: conn} do
       p1 = fixture_prompt(name: "P1", content: "Hi {{Name}}")
       p2 = fixture_prompt(name: "P2", content: "Hi {{Other}}")
       {:ok, view, _html} = live(conn, "/en/admin/ai/playground")
+      assert has_element?(view, "textarea[name=message]")
 
       render_change(view, "change", %{"prompt_uuid" => p1.uuid})
+      assert has_element?(view, "textarea[name='variables[Name]']")
+      refute has_element?(view, "textarea[name=message]")
+
       render_change(view, "change", %{"prompt_uuid" => p2.uuid})
+      assert has_element?(view, "textarea[name='variables[Other]']")
+      refute has_element?(view, "textarea[name='variables[Name]']")
+
       render_change(view, "change", %{"prompt_uuid" => ""})
-      assert is_binary(render(view))
+      assert has_element?(view, "textarea[name=message]")
+      refute has_element?(view, "textarea[name='variables[Other]']")
     end
 
     test "edited content updates extracted variables, preserving values", %{conn: conn} do
@@ -78,14 +114,21 @@ defmodule PhoenixKitAI.Web.PlaygroundCoverageTest do
       render_change(view, "change", %{"prompt_uuid" => p.uuid})
       render_change(view, "change", %{"variables" => %{"Name" => "World"}})
       render_change(view, "change", %{"edited_content" => "Hi {{Name}} and {{Other}}"})
+
+      assert textarea(view, "variables[Name]") =~ "World"
+      assert has_element?(view, "textarea[name='variables[Other]']")
+
       render_change(view, "change", %{"variables" => %{"Other" => "Y"}})
-      assert is_binary(render(view))
+      assert textarea(view, "variables[Other]") =~ "Y"
+      assert textarea(view, "variables[Name]") =~ "World"
     end
 
-    test "freeform message + system fields update assigns", %{conn: conn} do
+    test "freeform message + system fields keep what was typed", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/en/admin/ai/playground")
       render_change(view, "change", %{"message" => "Hello", "system" => "Be polite."})
-      assert is_binary(render(view))
+
+      assert textarea(view, "message") =~ "Hello"
+      assert textarea(view, "system") =~ "Be polite."
     end
   end
 
@@ -96,33 +139,43 @@ defmodule PhoenixKitAI.Web.PlaygroundCoverageTest do
       assert html =~ ~r/select an endpoint/i
     end
 
-    test "freeform send with stubbed completion populates response_text", %{conn: conn} do
-      stub_response(200, success_payload("Hi back!"))
+    test "freeform send shows the answer and its token usage", %{conn: conn} do
+      stub_capturing(200, success_payload("Hi back!"))
       ep = fixture_endpoint()
 
       {:ok, view, _html} = live(conn, "/en/admin/ai/playground")
       render_change(view, "change", %{"endpoint_uuid" => ep.uuid})
       render_change(view, "change", %{"message" => "Hello"})
 
-      render_hook(view, "send", %{})
-      # Trigger the synchronous :do_send via send/2
-      send(view.pid, :do_send)
-      html = render(view)
-      assert is_binary(html)
+      html = send_and_render(view)
+
+      assert html =~ "Hi back!"
+      assert html =~ "8 total"
+
+      assert_received {:request_body,
+                       %{"messages" => [%{"role" => "user", "content" => "Hello"}]}}
+
+      # One click, one request.
+      refute_received {:request_body, _}
     end
 
-    test "freeform send with empty message returns :empty_input error", %{conn: conn} do
+    test "freeform send with an empty message is refused without a request", %{conn: conn} do
+      stub_capturing(200, success_payload("unreachable"))
       ep = fixture_endpoint()
       {:ok, view, _html} = live(conn, "/en/admin/ai/playground")
       render_change(view, "change", %{"endpoint_uuid" => ep.uuid})
       render_change(view, "change", %{"message" => ""})
-      render_hook(view, "send", %{})
-      send(view.pid, :do_send)
-      assert is_binary(render(view))
+
+      html = send_and_render(view)
+
+      assert html =~ "Input cannot be empty"
+      refute_received {:request_body, _}
     end
 
-    test "prompt-based send increments usage_count", %{conn: conn} do
-      stub_response(200, success_payload("Bonjour"))
+    test "prompt-based send renders the variables, shows the answer and counts one use", %{
+      conn: conn
+    } do
+      stub_capturing(200, success_payload("Bonjour"))
       ep = fixture_endpoint()
       p = fixture_prompt(content: "Translate {{X}}")
 
@@ -131,47 +184,40 @@ defmodule PhoenixKitAI.Web.PlaygroundCoverageTest do
       render_change(view, "change", %{"prompt_uuid" => p.uuid})
       render_change(view, "change", %{"variables" => %{"X" => "Hello"}})
 
-      render_hook(view, "send", %{})
-      send(view.pid, :do_send)
-      assert is_binary(render(view))
+      assert send_and_render(view) =~ "Bonjour"
 
-      reloaded = PhoenixKitAI.get_prompt(p.uuid)
-      assert reloaded.usage_count >= 1
+      assert_received {:request_body, %{"messages" => messages}}
+      assert Enum.any?(messages, &(&1["content"] == "Translate Hello"))
+      assert PhoenixKitAI.get_prompt(p.uuid).usage_count == 1
     end
 
-    test "send error path is rendered via Errors.message/1", %{conn: conn} do
+    test "a provider error is shown in the user's words", %{conn: conn} do
       stub_response(401, %{})
       ep = fixture_endpoint()
       {:ok, view, _html} = live(conn, "/en/admin/ai/playground")
 
       render_change(view, "change", %{"endpoint_uuid" => ep.uuid})
       render_change(view, "change", %{"message" => "Hi"})
-      render_hook(view, "send", %{})
-      send(view.pid, :do_send)
-      assert is_binary(render(view))
+
+      assert send_and_render(view) =~ "Invalid API key"
     end
 
-    test "freeform send WITH a system prompt threads :system through to ask",
-         %{conn: conn} do
-      # Pin `maybe_add_system(opts, system)` non-nil branch
-      # (`Keyword.put(opts, :system, system)`).
-      stub_response(200, success_payload("Reply"))
+    test "freeform send WITH a system prompt sends it as the system message", %{conn: conn} do
+      stub_capturing(200, success_payload("Reply"))
       ep = fixture_endpoint()
       {:ok, view, _html} = live(conn, "/en/admin/ai/playground")
 
       render_change(view, "change", %{"endpoint_uuid" => ep.uuid})
       render_change(view, "change", %{"message" => "Hi", "system" => "Be very polite."})
-      render_hook(view, "send", %{})
-      send(view.pid, :do_send)
 
-      assert is_binary(render(view))
+      assert send_and_render(view) =~ "Reply"
+
+      assert_received {:request_body, %{"messages" => messages}}
+      assert %{"role" => "system", "content" => "Be very polite."} in messages
+      assert %{"role" => "user", "content" => "Hi"} in messages
     end
 
-    test "prompt-based send error path returns the underlying reason", %{conn: conn} do
-      # Pin the `{:error, reason}` branch of execute_prompt_request
-      # (`AI.ask(...)` returning `{:error, _}` for a prompt-driven
-      # request — the freeform-send error test only covers the
-      # freeform path).
+    test "prompt-based send shows a provider error too", %{conn: conn} do
       stub_response(401, %{})
       ep = fixture_endpoint()
       p = fixture_prompt(content: "Translate {{X}}")
@@ -181,24 +227,13 @@ defmodule PhoenixKitAI.Web.PlaygroundCoverageTest do
       render_change(view, "change", %{"prompt_uuid" => p.uuid})
       render_change(view, "change", %{"variables" => %{"X" => "Hello"}})
 
-      render_hook(view, "send", %{})
-      send(view.pid, :do_send)
-
-      html = render(view)
-      # Errors.message/1 renders the user-facing error text — assert
-      # the response_error region appears (not the success path).
-      refute html =~ ~r/Reply\b/
+      assert send_and_render(view) =~ "Invalid API key"
     end
 
-    test "extract_text falls back to placeholder when extract_content errors",
-         %{conn: conn} do
-      # Stub a malformed response — Completion.extract_content/1
-      # returns `{:error, :no_content}`, extract_text's `_ ->
-      # "(No content in response)"` branch fires.
+    test "an answer with no choices is reported, not rendered blank", %{conn: conn} do
       malformed = %{
         "id" => "gen-x",
         "model" => "anthropic/claude-3-haiku",
-        # `choices` empty — extract_content returns :error.
         "choices" => [],
         "usage" => %{"prompt_tokens" => 1, "completion_tokens" => 0, "total_tokens" => 1}
       }
@@ -209,11 +244,8 @@ defmodule PhoenixKitAI.Web.PlaygroundCoverageTest do
 
       render_change(view, "change", %{"endpoint_uuid" => ep.uuid})
       render_change(view, "change", %{"message" => "Hi"})
-      render_hook(view, "send", %{})
-      send(view.pid, :do_send)
 
-      html = render(view)
-      assert html =~ "(No content in response)" or is_binary(html)
+      assert send_and_render(view) =~ "(No content in response)"
     end
   end
 
@@ -250,25 +282,24 @@ defmodule PhoenixKitAI.Web.PlaygroundCoverageTest do
       # Edit content but keep the same variable set.
       render_change(view, "change", %{"edited_content" => "Hi {{Name}}!"})
 
-      html = render(view)
-      assert html =~ "World" or html =~ "Name"
+      assert textarea(view, "variables[Name]") =~ "World"
     end
   end
 
   describe "clear event" do
-    test "clear resets response + freeform", %{conn: conn} do
+    test "clear drops the answer and empties the freeform fields", %{conn: conn} do
+      stub_response(200, success_payload("Hi back!"))
+      ep = fixture_endpoint()
       {:ok, view, _html} = live(conn, "/en/admin/ai/playground")
-      render_change(view, "change", %{"message" => "Hello"})
-      render_hook(view, "clear", %{})
-      assert is_binary(render(view))
-    end
-  end
+      render_change(view, "change", %{"endpoint_uuid" => ep.uuid})
+      render_change(view, "change", %{"message" => "Hello", "system" => "Be polite."})
+      assert send_and_render(view) =~ "Hi back!"
 
-  describe "handle_info catch-all" do
-    test "ignores unrelated PubSub messages", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/en/admin/ai/playground")
-      send(view.pid, :unknown_msg)
-      assert is_binary(render(view))
+      html = render_hook(view, "clear", %{})
+
+      refute html =~ "Hi back!"
+      refute textarea(view, "message") =~ "Hello"
+      refute textarea(view, "system") =~ "Be polite."
     end
   end
 end

@@ -747,9 +747,14 @@ defmodule PhoenixKitAI.Completion do
     # Convert headers list to map format for Req
     headers_map = Map.new(headers)
 
+    # Redirects are not followed: the endpoint's base URL passed the SSRF
+    # guard when it was saved, and a 30x would let that public host send
+    # the request to an internal one. No supported provider answers its
+    # API with a redirect.
     base_opts = [
       json: body,
       headers: headers_map,
+      redirect: false,
       receive_timeout: @timeout,
       connect_options: [timeout: @timeout]
     ]

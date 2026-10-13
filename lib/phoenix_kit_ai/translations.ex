@@ -13,8 +13,9 @@ defmodule PhoenixKitAI.Translations do
 
   ## What a consumer does
 
-  1. Implement a `Translatable` adapter and register it via
-     `ai_translatables/0` on its `PhoenixKit.Module`.
+  1. Implement a `Translatable` adapter and register it by exporting
+     `ai_translatables/0` from its kit module (a plain function, not a
+     `PhoenixKit.Module` callback).
   2. From a form LV: `subscribe/1`, then on a button click call
      `enqueue/1` (or `enqueue_all_missing/2`), and react to the
      `{:ai_translation, event, payload}` messages.
@@ -29,7 +30,9 @@ defmodule PhoenixKitAI.Translations do
   `payload` always has `:resource_type`, `:resource_uuid`, `:source_lang`,
   `:target_lang`. `:translation_completed` adds `:fields` (the translated
   `%{field => text}` map, possibly empty); `:translation_failed` adds
-  `:reason`.
+  `:reason`, a `{category, detail}` pair of short static strings (`detail`
+  may be `nil`) — never the raw failure term, which can wrap the translated
+  text or a whole provider response.
   """
 
   import Ecto.Query
@@ -63,6 +66,7 @@ defmodule PhoenixKitAI.Translations do
             [
               {PhoenixKitAI, :enabled?, 0},
               {PhoenixKitAI, :list_endpoints, 1},
+              {PhoenixKitAI, :get_endpoint, 1},
               {PhoenixKitAI, :list_prompts, 1},
               {PhoenixKitAI, :get_prompt_by_slug, 1},
               {PhoenixKitAI, :create_prompt, 1},
@@ -130,6 +134,47 @@ defmodule PhoenixKitAI.Translations do
       last_used_endpoint_uuid() ||
       preferred_endpoint_uuid() ||
       first_endpoint_uuid()
+  end
+
+  @doc """
+  The endpoint an unattended run (the translation sweep) translates with,
+  or why there is none.
+
+  Unlike `default_endpoint_uuid/0`, which preselects a modal an operator
+  then confirms, nobody looks at this choice before it spends money, so:
+
+  - the "most recently used" step is left out — one Playground try of an
+    expensive model must not make it the endpoint for all background
+    translation;
+  - an explicit `#{@endpoint_setting_key}` setting is binding: when the
+    endpoint it names is gone or disabled the answer is
+    `{:error, :not_found | :disabled}`, never a quiet switch to another
+    endpoint;
+  - with the setting unset, the first enabled non-reasoning chat endpoint
+    is used, else the first enabled endpoint, else `{:error, :not_configured}`.
+  """
+  @spec unattended_endpoint_uuid() ::
+          {:ok, String.t()} | {:error, :not_configured | :not_found | :disabled}
+  def unattended_endpoint_uuid do
+    case blank_to_nil(Settings.get_setting(@endpoint_setting_key)) do
+      nil -> first_usable_endpoint()
+      uuid -> configured_endpoint(uuid)
+    end
+  end
+
+  defp first_usable_endpoint do
+    case preferred_endpoint_uuid() || first_endpoint_uuid() do
+      nil -> {:error, :not_configured}
+      uuid -> {:ok, uuid}
+    end
+  end
+
+  defp configured_endpoint(uuid) do
+    case safe_ai(fn -> PhoenixKitAI.get_endpoint(uuid) end, nil) do
+      %Endpoint{enabled: true} -> {:ok, uuid}
+      %Endpoint{} -> {:error, :disabled}
+      _ -> {:error, :not_found}
+    end
   end
 
   defp first_endpoint_uuid do

@@ -719,13 +719,14 @@ defmodule PhoenixKitAI.Web.EndpointFormTest do
   end
 
   describe "handle_info catch-all" do
-    test "ignores unrelated PubSub messages without crashing", %{conn: conn} do
+    test "unrelated messages leave the form as it was", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/new")
+      before = render(view)
 
       send(view.pid, :unknown_msg_from_another_module)
       send(view.pid, {:something_we_dont_care_about, %{}, %{}})
 
-      assert is_binary(render(view))
+      assert render(view) == before
     end
   end
 

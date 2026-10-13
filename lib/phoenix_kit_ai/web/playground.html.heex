@@ -198,6 +198,7 @@
                   size="sm"
                   variant="neutral"
                   phx-click="start_voice"
+                  phx-disable-with={gettext("Connecting…")}
                   disabled={@voice_status == :connected}
                 >
                   {gettext("Connect")}

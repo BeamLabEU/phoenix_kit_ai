@@ -713,7 +713,11 @@
 
               <%= if length(@usage_requests) < @usage_total_requests do %>
                 <div class="mt-4 text-center">
-                  <button phx-click="load_more_requests" class="btn btn-outline btn-sm">
+                  <button
+                    phx-click="load_more_requests"
+                    phx-disable-with={gettext("Loading…")}
+                    class="btn btn-outline btn-sm"
+                  >
                     {gettext("Load More")}
                   </button>
                 </div>

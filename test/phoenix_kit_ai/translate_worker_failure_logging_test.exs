@@ -384,4 +384,173 @@ defmodule PhoenixKitAI.TranslateWorkerFailureLoggingTest do
       )
     end
   end
+
+  # A connected endpoint, a prompt, and this module's `Req.Test` stub in
+  # front of the provider.
+  defp ai_fixture do
+    Application.put_env(:phoenix_kit_ai, :req_options, plug: {Req.Test, __MODULE__}, retry: false)
+    on_exit(fn -> Application.delete_env(:phoenix_kit_ai, :req_options) end)
+
+    {:ok, _} =
+      PhoenixKit.Settings.update_json_setting(
+        "integration:openrouter:default",
+        %{"api_key" => "sk-test-key", "status" => "connected", "provider" => "openrouter"}
+      )
+
+    {:ok, endpoint} =
+      PhoenixKitAI.create_endpoint(%{
+        name: "EP-worker-#{System.unique_integer([:positive])}",
+        provider: "openrouter",
+        model: "anthropic/claude-3-haiku",
+        api_key: "sk-test-key"
+      })
+
+    {:ok, prompt} =
+      PhoenixKitAI.create_prompt(%{
+        name: "Prompt-worker-#{System.unique_integer([:positive])}",
+        content: "Translate {{name}} from {{SourceLanguage}} to {{TargetLanguage}}."
+      })
+
+    %{endpoint: endpoint, prompt: prompt}
+  end
+
+  defp job(type, uuid, %{endpoint: endpoint, prompt: prompt}, fields) do
+    struct!(
+      %Oban.Job{
+        args: %{
+          "resource_type" => type,
+          "resource_uuid" => uuid,
+          "endpoint_uuid" => endpoint.uuid,
+          "prompt_uuid" => prompt.uuid,
+          "source_lang" => "en",
+          "target_lang" => "fr"
+        },
+        attempt: 1,
+        max_attempts: 3
+      },
+      fields
+    )
+  end
+
+  describe "a rate-limited job" do
+    setup do
+      :ok = PhoenixKit.ModuleRegistry.register(FakeTranslatableValid)
+      on_exit(fn -> PhoenixKit.ModuleRegistry.unregister(FakeTranslatableValid) end)
+      Req.Test.stub(__MODULE__, fn conn -> Plug.Conn.send_resp(conn, 429, "{}") end)
+      ai_fixture()
+    end
+
+    test "snoozes with a growing delay while its snooze budget lasts", ctx do
+      uuid = Ecto.UUID.generate()
+      type = FakeTranslatableValid.resource_type()
+      :ok = PhoenixKitAI.Translations.subscribe(type, uuid)
+
+      # A job that never snoozed carries no count at all.
+      assert {:snooze, 30} = TranslateWorker.perform(job(type, uuid, ctx, []))
+      assert {:snooze, 30} = TranslateWorker.perform(job(type, uuid, ctx, meta: %{}))
+
+      for {snoozed, seconds} <- [{0, 30}, {1, 60}, {2, 120}, {3, 240}, {4, 480}] do
+        assert {:snooze, ^seconds} =
+                 TranslateWorker.perform(job(type, uuid, ctx, meta: %{"snoozed" => snoozed})),
+               "after #{snoozed} snoozes"
+      end
+
+      # Still in flight for the UI: nothing terminal was said or logged.
+      refute_received {:ai_translation, :translation_failed, _}
+      refute_activity_logged("ai.translation_failed", resource_uuid: uuid)
+    end
+
+    test "out of snoozes, it fails like any retryable error instead of snoozing again", ctx do
+      uuid = Ecto.UUID.generate()
+      type = FakeTranslatableValid.resource_type()
+      :ok = PhoenixKitAI.Translations.subscribe(type, uuid)
+
+      for snoozed <- [5, 6, 40] do
+        assert {:error, {:ai_error, :rate_limited}} =
+                 TranslateWorker.perform(job(type, uuid, ctx, meta: %{"snoozed" => snoozed}))
+      end
+
+      # Attempts remain, so Oban retries it: still nothing terminal.
+      refute_received {:ai_translation, :translation_failed, _}
+      refute_activity_logged("ai.translation_failed", resource_uuid: uuid)
+    end
+
+    test "out of snoozes and attempts, it ends with the terminal event and activity row", ctx do
+      uuid = Ecto.UUID.generate()
+      type = FakeTranslatableValid.resource_type()
+      :ok = PhoenixKitAI.Translations.subscribe(type, uuid)
+
+      assert {:error, {:ai_error, :rate_limited}} =
+               TranslateWorker.perform(
+                 job(type, uuid, ctx, meta: %{"snoozed" => 5}, attempt: 3, max_attempts: 3)
+               )
+
+      assert_received {:ai_translation, :translation_failed, payload}
+      assert payload.reason == {"ai_error", "rate_limited"}
+
+      assert_activity_logged("ai.translation_failed",
+        resource_uuid: uuid,
+        metadata_has: %{"reason" => "ai_error", "reason_detail" => "rate_limited"}
+      )
+    end
+  end
+
+  describe "a failure whose reason wraps content" do
+    defmodule RejectingAdapter do
+      @moduledoc false
+      @behaviour PhoenixKitAI.Translatable
+
+      @impl true
+      def fetch(_type, uuid), do: {:ok, %{uuid: uuid}}
+
+      @impl true
+      def source_fields(_resource, _source_lang), do: %{"name" => "Hello world"}
+
+      # The shape a real adapter fails with: the rejected write, translated
+      # text included.
+      @impl true
+      def put_translation(_resource, _target_lang, fields, _opts),
+        do: {:error, {:rejected, fields}}
+    end
+
+    setup do
+      Application.put_env(:phoenix_kit_ai, :translatables, [
+        {"ai_test_rejecting", RejectingAdapter}
+      ])
+
+      on_exit(fn -> Application.delete_env(:phoenix_kit_ai, :translatables) end)
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        Req.Test.json(conn, %{
+          "choices" => [%{"message" => %{"content" => "---NAME---\nBonjour le monde secret"}}]
+        })
+      end)
+
+      ai_fixture()
+    end
+
+    test "is logged and broadcast as its classification, on every topic", ctx do
+      uuid = Ecto.UUID.generate()
+      :ok = PhoenixKitAI.Translations.subscribe()
+      :ok = PhoenixKitAI.Translations.subscribe("ai_test_rejecting", uuid)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          # The job's own result keeps the raw reason for Oban.
+          assert {:discard, {:persist_error, {:rejected, %{"name" => "Bonjour le monde secret"}}}} =
+                   TranslateWorker.perform(job("ai_test_rejecting", uuid, ctx, []))
+        end)
+
+      assert log =~ "translation failed for ai_test_rejecting #{uuid}"
+      assert log =~ "persist_error"
+      refute log =~ "Bonjour le monde secret"
+
+      # Once from the global topic, once from the resource's own.
+      for _ <- 1..2 do
+        assert_received {:ai_translation, :translation_failed, payload}
+        assert payload.reason == {"persist_error", nil}
+        refute inspect(payload) =~ "Bonjour"
+      end
+    end
+  end
 end

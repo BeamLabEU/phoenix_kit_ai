@@ -76,10 +76,13 @@ defmodule PhoenixKitAI.Endpoint do
 
   use Ecto.Schema
   use PhoenixKit.SchemaPrefix
+  use Gettext, backend: PhoenixKitAI.Gettext
+
   import Ecto.Changeset
 
   alias PhoenixKit.Integrations.Providers
   alias PhoenixKit.Utils.Date, as: UtilsDate
+  alias PhoenixKitAI.Providers.HTTP
 
   @type t :: %__MODULE__{}
 
@@ -190,8 +193,14 @@ defmodule PhoenixKitAI.Endpoint do
 
   @doc """
   Creates a changeset for endpoint creation and updates.
+
+  A changed `base_url` whose host is a name is resolved, so a public name
+  pointing at an internal address is refused like the address itself.
+  `resolve_base_url: false` skips that lookup (literal addresses and
+  reserved names are still judged) — for a form's per-keystroke changeset,
+  which must not wait on DNS; the save path resolves.
   """
-  def changeset(endpoint, attrs) do
+  def changeset(endpoint, attrs, opts \\ []) do
     endpoint
     |> cast(attrs, [
       :name,
@@ -229,7 +238,7 @@ defmodule PhoenixKitAI.Endpoint do
     |> validate_penalties()
     |> validate_reasoning()
     |> maybe_set_default_base_url()
-    |> validate_base_url()
+    |> validate_base_url(Keyword.get(opts, :resolve_base_url, true))
     |> maybe_clear_legacy_api_key()
     |> unique_constraint(:name)
   end
@@ -313,7 +322,7 @@ defmodule PhoenixKitAI.Endpoint do
   @doc """
   Masks the API key for display.
 
-  - `nil` or `""` → `"Not set"`.
+  - `nil` or `""` → `"Not set"` (translated).
   - Keys shorter than 14 chars → `"•••"` (a 13-char key would otherwise
     leak most of itself with the head+tail shape).
   - Longer keys → first 8 + `…` + last 4 (e.g. `"sk-or-v1…mnop"`).
@@ -322,8 +331,8 @@ defmodule PhoenixKitAI.Endpoint do
     still hiding the bulk of the secret.
   """
   @spec masked_api_key(String.t() | nil) :: String.t()
-  def masked_api_key(nil), do: "Not set"
-  def masked_api_key(""), do: "Not set"
+  def masked_api_key(nil), do: gettext("Not set")
+  def masked_api_key(""), do: gettext("Not set")
 
   def masked_api_key(api_key) when is_binary(api_key) do
     if String.length(api_key) < 14 do
@@ -335,7 +344,7 @@ defmodule PhoenixKitAI.Endpoint do
     end
   end
 
-  def masked_api_key(_), do: "Not set"
+  def masked_api_key(_), do: gettext("Not set")
 
   @doc """
   Returns a display label for the provider, read from the Integrations
@@ -490,23 +499,25 @@ defmodule PhoenixKitAI.Endpoint do
   def kind_icon(:chat), do: "hero-chat-bubble-left-right"
 
   @doc """
-  Returns image size options for form selects.
+  Returns image size options for form selects. Labels are translated; the
+  stored values are not.
   """
   def image_size_options do
     [
-      {"1024x1024 (Square)", "1024x1024"},
-      {"1792x1024 (Landscape)", "1792x1024"},
-      {"1024x1792 (Portrait)", "1024x1792"}
+      {gettext("1024x1024 (Square)"), "1024x1024"},
+      {gettext("1792x1024 (Landscape)"), "1792x1024"},
+      {gettext("1024x1792 (Portrait)"), "1024x1792"}
     ]
   end
 
   @doc """
-  Returns image quality options for form selects.
+  Returns image quality options for form selects. Labels are translated;
+  the stored values are not.
   """
   def image_quality_options do
     [
-      {"Standard", "standard"},
-      {"HD", "hd"}
+      {gettext("Standard"), "standard"},
+      {gettext("HD"), "hd"}
     ]
   end
 
@@ -518,9 +529,9 @@ defmodule PhoenixKitAI.Endpoint do
   """
   def image_aspect_ratio_options do
     [
-      {"1:1 (Square)", "1:1"},
-      {"16:9 (Landscape)", "16:9"},
-      {"9:16 (Portrait)", "9:16"},
+      {gettext("1:1 (Square)"), "1:1"},
+      {gettext("16:9 (Landscape)"), "16:9"},
+      {gettext("9:16 (Portrait)"), "9:16"},
       {"4:3", "4:3"},
       {"3:4", "3:4"},
       {"3:2", "3:2"},
@@ -546,12 +557,12 @@ defmodule PhoenixKitAI.Endpoint do
   """
   def reasoning_effort_options do
     [
-      {"None (disabled)", "none"},
-      {"Minimal (~10%)", "minimal"},
-      {"Low (~20%)", "low"},
-      {"Medium (~50%)", "medium"},
-      {"High (~80%)", "high"},
-      {"Extra High (~95%)", "xhigh"}
+      {gettext("None (disabled)"), "none"},
+      {gettext("Minimal (~10%)"), "minimal"},
+      {gettext("Low (~20%)"), "low"},
+      {gettext("Medium (~50%)"), "medium"},
+      {gettext("High (~80%)"), "high"},
+      {gettext("Extra High (~95%)"), "xhigh"}
     ]
   end
 
@@ -644,17 +655,40 @@ defmodule PhoenixKitAI.Endpoint do
   # public-only allowlist; deployments that need self-hosted /
   # localhost endpoints (Ollama, intranet inference servers) opt in
   # explicitly via `config :phoenix_kit_ai, allow_internal_endpoint_urls: true`.
-  defp validate_base_url(changeset) do
+  #
+  # The host is judged by the image-fetch policy
+  # (`Providers.HTTP.host_class/2`), names included: a name is resolved so
+  # `127.0.0.1.nip.io` is refused like `127.0.0.1`. Three choices bound
+  # that lookup:
+  #
+  # - It runs only when `base_url` is being changed. A stored URL passed
+  #   when it was saved; re-resolving it on every unrelated update would
+  #   make toggling an endpoint depend on DNS.
+  # - It is skipped for the provider's own registry default, which no
+  #   operator typed.
+  # - It gets two seconds. A changeset must not hang on a slow resolver.
+  # - A name that does not resolve — or not in time — is accepted. There
+  #   is nothing to connect to yet, refusing it would make saving an
+  #   endpoint depend on DNS health, and a name that later starts
+  #   answering with an internal address is the DNS-rebinding case this
+  #   check cannot reach either way.
+  @base_url_resolve_timeout 2_000
+
+  defp validate_base_url(changeset, resolve?) do
     case get_field(changeset, :base_url) do
       nil -> changeset
       "" -> changeset
-      url when is_binary(url) -> validate_base_url_string(changeset, url)
+      url when is_binary(url) -> validate_base_url_string(changeset, url, resolve?)
       _ -> add_error(changeset, :base_url, "must be a string")
     end
   end
 
-  defp validate_base_url_string(changeset, url) do
+  defp validate_base_url_string(changeset, url, resolve?) do
     uri = URI.parse(url)
+
+    resolve? =
+      resolve? and Map.has_key?(changeset.changes, :base_url) and
+        url != default_base_url(get_field(changeset, :provider))
 
     cond do
       uri.scheme not in ["http", "https"] ->
@@ -666,21 +700,28 @@ defmodule PhoenixKitAI.Endpoint do
       Application.get_env(:phoenix_kit_ai, :allow_internal_endpoint_urls, false) ->
         changeset
 
-      String.ends_with?(uri.host, ".local") ->
+      true ->
+        validate_public_host(changeset, uri.host, resolve?)
+    end
+  end
+
+  defp validate_public_host(changeset, host, resolve?) do
+    cond do
+      String.ends_with?(host, ".local") ->
         add_error(
           changeset,
           :base_url,
           "cannot point at .local mDNS hostnames (set allow_internal_endpoint_urls if you need this)"
         )
 
-      uri.host == "localhost" ->
+      host == "localhost" ->
         add_error(
           changeset,
           :base_url,
           "cannot point at localhost (set allow_internal_endpoint_urls if you need this)"
         )
 
-      internal_host?(uri.host) ->
+      HTTP.host_class(host, resolve: resolve?, timeout: @base_url_resolve_timeout) == :internal ->
         add_error(
           changeset,
           :base_url,
@@ -691,52 +732,4 @@ defmodule PhoenixKitAI.Endpoint do
         changeset
     end
   end
-
-  # Returns true for any hostname that resolves to an RFC1918, loopback,
-  # link-local, or unspecified IP literal. Hostnames that aren't IP
-  # literals fall through to `false` — DNS-rebinding attacks aren't
-  # mitigated here (would require resolution at request time, which is
-  # racy). The acute threat we're guarding is the literal IP shape
-  # (cloud-metadata is always `169.254.169.254` literal).
-  #
-  # Strips a single trailing dot (FQDN form): `127.0.0.1.` is the same
-  # loopback host to the OS resolver, so it must not bypass the guard.
-  defp internal_host?(host) when is_binary(host) do
-    normalized = String.trim_trailing(host, ".")
-
-    case :inet.parse_address(to_charlist(normalized)) do
-      {:ok, ip} -> internal_ip?(ip)
-      _ -> false
-    end
-  end
-
-  # IPv4 ranges
-  defp internal_ip?({0, _, _, _}), do: true
-  defp internal_ip?({10, _, _, _}), do: true
-  defp internal_ip?({127, _, _, _}), do: true
-  defp internal_ip?({169, 254, _, _}), do: true
-  defp internal_ip?({172, b, _, _}) when b in 16..31, do: true
-  defp internal_ip?({192, 168, _, _}), do: true
-  # CGNAT / shared address space (RFC 6598). Used by ISPs and on-prem
-  # Kubernetes pod networks; not internet-routable.
-  defp internal_ip?({100, b, _, _}) when b in 64..127, do: true
-  # IPv6 — loopback `::1`, unspecified `::`, link-local `fe80::/10`,
-  # unique-local `fc00::/7`.
-  defp internal_ip?({0, 0, 0, 0, 0, 0, 0, 0}), do: true
-  defp internal_ip?({0, 0, 0, 0, 0, 0, 0, 1}), do: true
-  defp internal_ip?({a, _, _, _, _, _, _, _}) when a in 0xFC00..0xFDFF, do: true
-  defp internal_ip?({a, _, _, _, _, _, _, _}) when a in 0xFE80..0xFEBF, do: true
-  # IPv4-mapped IPv6 (`::ffff:a.b.c.d`). Without this clause an attacker
-  # could wrap any IPv4 restriction — `::ffff:127.0.0.1` and
-  # `::ffff:169.254.169.254` were both bypasses before. Recurse against
-  # the embedded IPv4 to keep the guard list authoritative.
-  defp internal_ip?({0, 0, 0, 0, 0, 0xFFFF, hi, lo}) do
-    a = div(hi, 256)
-    b = rem(hi, 256)
-    c = div(lo, 256)
-    d = rem(lo, 256)
-    internal_ip?({a, b, c, d})
-  end
-
-  defp internal_ip?(_), do: false
 end

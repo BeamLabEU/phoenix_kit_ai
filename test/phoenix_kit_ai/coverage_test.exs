@@ -12,7 +12,7 @@ defmodule PhoenixKitAI.CoverageTest do
   use PhoenixKitAI.DataCase, async: false
 
   alias PhoenixKit.Test.Fixtures
-  alias PhoenixKitAI.{Endpoint, Prompt, Request}
+  alias PhoenixKitAI.Prompt
 
   defp endpoint_fixture(attrs \\ %{}) do
     base = %{
@@ -67,26 +67,53 @@ defmodule PhoenixKitAI.CoverageTest do
       assert PhoenixKitAI.requests_topic() == "phoenix_kit:ai:requests"
     end
 
-    test "subscribe_endpoints + create_endpoint broadcasts :endpoint_created" do
+    # Every change is broadcast as `{event, uuid}`: a topic is no place for
+    # an endpoint's stored key, a prompt's text or a request's content.
+    test "endpoint changes are broadcast by uuid, never with the record" do
       :ok = PhoenixKitAI.subscribe_endpoints()
-      ep = endpoint_fixture()
-      assert_receive {:endpoint_created, %Endpoint{uuid: uuid}}, 500
-      assert uuid == ep.uuid
+
+      ep = endpoint_fixture(%{api_key: "sk-broadcast-canary-key"})
+      uuid = ep.uuid
+      assert_receive {:endpoint_created, ^uuid}, 500
+
+      {:ok, ep} = PhoenixKitAI.update_endpoint(ep, %{description: "x"})
+      assert_receive {:endpoint_updated, ^uuid}, 500
+
+      {:ok, _} = PhoenixKitAI.delete_endpoint(ep)
+      assert_receive {:endpoint_deleted, ^uuid}, 500
+
+      refute_received _anything_else
     end
 
-    test "subscribe_prompts + update_prompt broadcasts :prompt_updated" do
-      prompt = prompt_fixture()
+    test "prompt changes are broadcast by uuid, never with the record" do
       :ok = PhoenixKitAI.subscribe_prompts()
-      {:ok, _} = PhoenixKitAI.update_prompt(prompt, %{description: "x"})
-      assert_receive {:prompt_updated, %Prompt{uuid: uuid}}, 500
-      assert uuid == prompt.uuid
+
+      prompt = prompt_fixture()
+      uuid = prompt.uuid
+      assert_receive {:prompt_created, ^uuid}, 500
+
+      {:ok, prompt} = PhoenixKitAI.update_prompt(prompt, %{description: "x"})
+      assert_receive {:prompt_updated, ^uuid}, 500
+
+      {:ok, _} = PhoenixKitAI.delete_prompt(prompt)
+      assert_receive {:prompt_deleted, ^uuid}, 500
+
+      refute_received _anything_else
     end
 
-    test "subscribe_requests + create_request broadcasts :request_created" do
+    test "a logged request is broadcast by uuid, never with its content" do
       ep = endpoint_fixture()
       :ok = PhoenixKitAI.subscribe_requests()
-      _ = request_fixture(%{endpoint_uuid: ep.uuid})
-      assert_receive {:request_created, %Request{}}, 500
+
+      request =
+        request_fixture(%{
+          endpoint_uuid: ep.uuid,
+          metadata: %{"messages" => [%{"role" => "user", "content" => "private question"}]}
+        })
+
+      uuid = request.uuid
+      assert_receive {:request_created, ^uuid}, 500
+      refute_received _anything_else
     end
   end
 
@@ -324,11 +351,9 @@ defmodule PhoenixKitAI.CoverageTest do
       assert updated.last_validated_at != nil
     end
 
-    test "delete_endpoint/2 removes the row + broadcasts :endpoint_deleted" do
-      :ok = PhoenixKitAI.subscribe_endpoints()
+    test "delete_endpoint/2 removes the row" do
       ep = endpoint_fixture()
       assert {:ok, _} = PhoenixKitAI.delete_endpoint(ep)
-      assert_receive {:endpoint_deleted, %Endpoint{}}, 500
       assert PhoenixKitAI.get_endpoint(ep.uuid) == nil
     end
 
@@ -358,11 +383,10 @@ defmodule PhoenixKitAI.CoverageTest do
       assert ^p = %{PhoenixKitAI.get_prompt_by_slug(p.slug) | __meta__: p.__meta__}
     end
 
-    test "delete_prompt/2 removes + broadcasts" do
-      :ok = PhoenixKitAI.subscribe_prompts()
+    test "delete_prompt/2 removes the row" do
       p = prompt_fixture()
       assert {:ok, _} = PhoenixKitAI.delete_prompt(p)
-      assert_receive {:prompt_deleted, %Prompt{}}, 500
+      assert PhoenixKitAI.get_prompt(p.uuid) == nil
     end
 
     test "update_prompt/3 with enable flip from true→false logs prompt.disabled" do
@@ -494,12 +518,44 @@ defmodule PhoenixKitAI.CoverageTest do
       assert {:ok, ^p} = PhoenixKitAI.validate_prompt(p)
     end
 
-    test "duplicate_prompt/2 copies the source prompt with the new name" do
-      p = prompt_fixture(%{content: "{{X}}", description: "src"})
-      assert {:ok, copy} = PhoenixKitAI.duplicate_prompt(p.uuid, "Copy-#{p.uuid}")
+    test "duplicate_prompt/3 copies everything the operator wrote, under the new name" do
+      p =
+        prompt_fixture(%{
+          content: "Translate {{X}}",
+          system_prompt: "You are a careful translator.",
+          description: "src",
+          enabled: false,
+          sort_order: 7,
+          metadata: %{"owner" => "shop"}
+        })
+
+      {:ok, _} = PhoenixKitAI.record_prompt_usage(p)
+      actor = Ecto.UUID.generate()
+
+      assert {:ok, copy} =
+               PhoenixKitAI.duplicate_prompt(p.uuid, "Copy-#{p.uuid}", actor_uuid: actor)
+
       assert copy.uuid != p.uuid
-      assert copy.content == p.content
-      assert copy.description == p.description
+      assert copy.name == "Copy-#{p.uuid}"
+      assert copy.slug != p.slug
+
+      for field <- [
+            :description,
+            :system_prompt,
+            :content,
+            :variables,
+            :enabled,
+            :sort_order,
+            :metadata
+          ] do
+        assert Map.fetch!(copy, field) == Map.fetch!(p, field), "#{field} was not copied"
+      end
+
+      # A copy starts unused.
+      assert copy.usage_count == 0
+      assert copy.last_used_at == nil
+
+      assert_activity_logged("prompt.created", resource_uuid: copy.uuid, actor_uuid: actor)
     end
 
     test "duplicate_prompt/2 returns :not_found for unknown uuid" do
@@ -507,12 +563,17 @@ defmodule PhoenixKitAI.CoverageTest do
       assert {:error, {:prompt_error, :not_found}} = PhoenixKitAI.duplicate_prompt(uuid, "X")
     end
 
-    test "enable_prompt/1 + disable_prompt/1 flip the flag" do
+    test "enable_prompt/2 + disable_prompt/2 flip the flag and name who did it" do
       p = prompt_fixture(%{enabled: false})
-      assert {:ok, p2} = PhoenixKitAI.enable_prompt(p.uuid)
+      actor = Ecto.UUID.generate()
+
+      assert {:ok, p2} = PhoenixKitAI.enable_prompt(p.uuid, actor_uuid: actor)
       assert p2.enabled == true
-      assert {:ok, p3} = PhoenixKitAI.disable_prompt(p.uuid)
+      assert_activity_logged("prompt.enabled", resource_uuid: p.uuid, actor_uuid: actor)
+
+      assert {:ok, p3} = PhoenixKitAI.disable_prompt(p.uuid, actor_uuid: actor)
       assert p3.enabled == false
+      assert_activity_logged("prompt.disabled", resource_uuid: p.uuid, actor_uuid: actor)
     end
   end
 
@@ -532,6 +593,23 @@ defmodule PhoenixKitAI.CoverageTest do
       uuids = Enum.map(results, & &1.uuid)
       assert a.uuid in uuids
       refute b.uuid in uuids
+    end
+
+    test "search_prompts/2 matches LIKE metacharacters literally" do
+      percent = prompt_fixture(%{name: "Discount 50% off"})
+      underscore = prompt_fixture(%{name: "snake_case helper"})
+      backslash = prompt_fixture(%{name: "path C:\\temp"})
+      plain = prompt_fixture(%{name: "Discount 500 off, snakeXcase"})
+
+      found = fn query -> query |> PhoenixKitAI.search_prompts() |> Enum.map(& &1.uuid) end
+
+      assert found.("50%") == [percent.uuid]
+      assert found.("snake_case") == [underscore.uuid]
+      assert found.("C:\\temp") == [backslash.uuid]
+      # Unescaped, each of these would match every prompt.
+      assert found.("%") == [percent.uuid]
+      assert found.("_") == [underscore.uuid]
+      refute plain.uuid in found.("0% off")
     end
 
     test "get_prompts_with_variable/1 returns prompts using that variable" do
@@ -572,12 +650,19 @@ defmodule PhoenixKitAI.CoverageTest do
       assert is_list(PhoenixKitAI.get_prompt_usage_stats())
     end
 
-    test "reset_prompt_usage/1 zeroes the counter" do
+    test "reset_prompt_usage/2 zeroes the counter and logs who did it" do
       p = prompt_fixture()
       {:ok, _} = PhoenixKitAI.record_prompt_usage(p)
-      assert {:ok, p2} = PhoenixKitAI.reset_prompt_usage(p.uuid)
+      actor = Ecto.UUID.generate()
+      assert {:ok, p2} = PhoenixKitAI.reset_prompt_usage(p.uuid, actor_uuid: actor)
       assert p2.usage_count == 0
       assert p2.last_used_at == nil
+
+      assert_activity_logged("prompt.usage_reset",
+        resource_uuid: p.uuid,
+        actor_uuid: actor,
+        metadata_has: %{"name" => p.name}
+      )
     end
 
     test "reset_prompt_usage/1 returns error for missing uuid" do
