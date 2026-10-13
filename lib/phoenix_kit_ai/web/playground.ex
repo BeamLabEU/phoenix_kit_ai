@@ -355,7 +355,8 @@ defmodule PhoenixKitAI.Web.Playground do
 
       {:error, reason} ->
         Logger.warning(
-          "[PhoenixKitAI.Web.Playground] failed to start xAI realtime voice session: #{inspect(reason)}"
+          "[PhoenixKitAI.Web.Playground] failed to start xAI realtime voice session: " <>
+            MessageShape.describe(reason)
         )
 
         socket
