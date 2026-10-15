@@ -11,5 +11,10 @@ defmodule PhoenixKitAI.Gettext do
   `guides/` path doesn't resolve for a Hex consumer, since that directory
   isn't shipped in core's package `files:`.
   """
-  use Gettext.Backend, otp_app: :phoenix_kit_ai
+  # One compiled module per locale and domain: the catalogues are large, and
+  # split modules compile in parallel instead of one long serial compile that
+  # blocks every app depending on this package. Lookups are unchanged.
+  use Gettext.Backend,
+    otp_app: :phoenix_kit_ai,
+    split_module_by: [:locale, :domain]
 end
