@@ -721,6 +721,31 @@ defmodule PhoenixKitAI.Completion do
   defp parse_cost(cost) when is_number(cost), do: round(cost * 1_000_000)
   defp parse_cost(_), do: nil
 
+  @doc false
+  # A message as it goes over the wire and into the usage log, string keys
+  # either way. `role` and `content` always; the tool fields only where the
+  # protocol has them and only when present, so a message without them
+  # encodes exactly as it always did: `tool_calls` on `assistant`,
+  # `tool_call_id` and `name` on `tool`. `content` may be nil (an assistant
+  # message that only calls tools).
+  def normalize_message(msg) do
+    role = to_string(msg[:role] || msg["role"])
+
+    %{"role" => role, "content" => msg[:content] || msg["content"]}
+    |> put_tool_fields(role, msg)
+  end
+
+  defp put_tool_fields(message, "assistant", msg),
+    do: maybe_add(message, "tool_calls", msg[:tool_calls] || msg["tool_calls"])
+
+  defp put_tool_fields(message, "tool", msg) do
+    message
+    |> maybe_add("tool_call_id", msg[:tool_call_id] || msg["tool_call_id"])
+    |> maybe_add("name", msg[:name] || msg["name"])
+  end
+
+  defp put_tool_fields(message, _role, _msg), do: message
+
   # Private functions
 
   defp build_chat_body(model, messages, opts) do
@@ -746,31 +771,6 @@ defmodule PhoenixKitAI.Completion do
     |> maybe_add("parallel_tool_calls", Keyword.get(opts, :parallel_tool_calls))
     |> maybe_add_reasoning(opts)
   end
-
-  @doc false
-  # A message as it goes over the wire and into the usage log, string keys
-  # either way. `role` and `content` always; the tool fields only where the
-  # protocol has them and only when present, so a message without them
-  # encodes exactly as it always did: `tool_calls` on `assistant`,
-  # `tool_call_id` and `name` on `tool`. `content` may be nil (an assistant
-  # message that only calls tools).
-  def normalize_message(msg) do
-    role = to_string(msg[:role] || msg["role"])
-
-    %{"role" => role, "content" => msg[:content] || msg["content"]}
-    |> put_tool_fields(role, msg)
-  end
-
-  defp put_tool_fields(message, "assistant", msg),
-    do: maybe_add(message, "tool_calls", msg[:tool_calls] || msg["tool_calls"])
-
-  defp put_tool_fields(message, "tool", msg) do
-    message
-    |> maybe_add("tool_call_id", msg[:tool_call_id] || msg["tool_call_id"])
-    |> maybe_add("name", msg[:name] || msg["name"])
-  end
-
-  defp put_tool_fields(message, _role, _msg), do: message
 
   # Build reasoning object for OpenRouter API
   # See: https://openrouter.ai/docs/guides/best-practices/reasoning-tokens

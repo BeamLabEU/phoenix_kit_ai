@@ -377,6 +377,25 @@ defmodule PhoenixKitAI.ChatToolsTest do
     end
   end
 
+  describe "complete/3 tool options" do
+    test "tools, tool_choice and parallel_tool_calls reach the request body" do
+      stub(text_answer("ok"))
+      ep = endpoint_fixture()
+
+      assert {:ok, _} =
+               PhoenixKitAI.complete(ep.uuid, [%{role: "user", content: "hi"}],
+                 tools: @tools,
+                 tool_choice: "auto",
+                 parallel_tool_calls: false
+               )
+
+      assert_received {:post, _, _, body}
+      assert body["tools"] == @tools
+      assert body["tool_choice"] == "auto"
+      assert body["parallel_tool_calls"] == false
+    end
+  end
+
   describe "capture_request_content: per call" do
     test "false overrides the global default (true): no content, base metadata stays" do
       stub(text_answer("secret answer"))
@@ -399,20 +418,35 @@ defmodule PhoenixKitAI.ChatToolsTest do
       assert row.total_tokens == 8
     end
 
-    test "true overrides the global false" do
+    test "true does not override the global false: the operator's switch wins" do
       Application.put_env(:phoenix_kit_ai, :capture_request_content, false)
-      stub(text_answer("kept answer"))
+      stub(text_answer("secret answer"))
       ep = endpoint_fixture()
 
       assert {:ok, _} =
-               PhoenixKitAI.complete(ep.uuid, [%{role: "user", content: "kept"}],
+               PhoenixKitAI.complete(ep.uuid, [%{role: "user", content: "secret"}],
                  capture_request_content: true
                )
 
       row = row(ep)
-      refute Map.has_key?(row.metadata, "content_redacted")
-      assert row.metadata["response"] == "kept answer"
-      assert [%{"content" => "kept"}] = row.metadata["messages"]
+      assert row.metadata["content_redacted"] == true
+      refute Map.has_key?(row.metadata, "messages")
+      refute Map.has_key?(row.metadata, "response")
+    end
+
+    test "false with the global true: not recorded" do
+      Application.put_env(:phoenix_kit_ai, :capture_request_content, true)
+      stub(text_answer("secret answer"))
+      ep = endpoint_fixture()
+
+      assert {:ok, _} =
+               PhoenixKitAI.complete(ep.uuid, [%{role: "user", content: "secret"}],
+                 capture_request_content: false
+               )
+
+      row = row(ep)
+      assert row.metadata["content_redacted"] == true
+      refute Map.has_key?(row.metadata, "messages")
     end
 
     test "not given: the global setting decides, as before" do
@@ -443,11 +477,11 @@ defmodule PhoenixKitAI.ChatToolsTest do
       Application.put_env(:phoenix_kit_ai, :capture_request_content, false)
 
       assert {:error, {:api_error, 500}} =
-               PhoenixKitAI.complete(ep.uuid, [%{role: "user", content: "shown"}],
+               PhoenixKitAI.complete(ep.uuid, [%{role: "user", content: "hidden"}],
                  capture_request_content: true
                )
 
-      assert Enum.any?(rows(ep), &match?(%{"messages" => [%{"content" => "shown"}]}, &1.metadata))
+      refute Enum.any?(rows(ep), &Map.has_key?(&1.metadata, "messages"))
     end
 
     test "the option does not change the cache key" do
@@ -485,7 +519,7 @@ defmodule PhoenixKitAI.ChatToolsTest do
       refute Map.has_key?(row.metadata, "response")
     end
 
-    test "describe_image/3: true overrides the global false" do
+    test "describe_image/3: true does not override the global false" do
       Application.put_env(:phoenix_kit_ai, :capture_request_content, false)
       stub(text_answer("A chocolate bar."))
       ep = endpoint_fixture(%{model: "google/gemini-2.5-flash"})
@@ -497,8 +531,32 @@ defmodule PhoenixKitAI.ChatToolsTest do
                )
 
       row = row(ep)
-      assert row.metadata["input"] == "What is on the label?"
-      assert row.metadata["response"] == "A chocolate bar."
+      refute Map.has_key?(row.metadata, "input")
+      refute Map.has_key?(row.metadata, "response")
+    end
+
+    test "extract_text/3: false redacts the transcription row" do
+      stub(
+        text_answer(
+          Jason.encode!(%{
+            "text" => "SECRET LABEL",
+            "blocks" => [],
+            "language" => "en",
+            "confidence" => 1,
+            "has_illegible_text" => false
+          })
+        )
+      )
+
+      ep = endpoint_fixture(%{model: "google/gemini-2.5-flash"})
+
+      assert {:ok, %{text: "SECRET LABEL"}} =
+               PhoenixKitAI.extract_text(ep.uuid, @jpeg, capture_request_content: false)
+
+      row = row(ep)
+      assert row.request_type == "vision"
+      refute Map.has_key?(row.metadata, "input")
+      refute Map.has_key?(row.metadata, "response")
     end
 
     test "describe_image/3: the failed row and the unparsed-JSON row honour it" do

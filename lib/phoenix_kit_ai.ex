@@ -38,7 +38,9 @@ defmodule PhoenixKitAI do
   - `generate_image/3`, `edit_image/4`, `process_image/4` - Images
   - `describe_image/3`, `extract_text/3`, `compare_images/4` - Vision
 
-  ### Options every verb takes
+  ### Options
+
+  Taken by every verb, except `capture_request_content:` (see its entry):
 
   - `user_uuid:` - a PhoenixKit user uuid recorded on the usage row and
     selecting the per-user spend cap. Host-supplied identity: the module has
@@ -46,11 +48,15 @@ defmodule PhoenixKitAI do
     row is written without it, so that call is not attributed or capped.
   - `source:`, `attribution:`, `idempotency_key:` - tracking only; never
     part of a cache key.
-  - `capture_request_content:` - `true` / `false` for this call's usage row(s)
-    only, over the global `config :phoenix_kit_ai, capture_request_content`
-    (below). Source, user, tokens, cost and the other base metadata are
-    written either way. Honoured by `complete/3` and the image verbs
-    (`describe_image/3` included).
+  - `capture_request_content: false` - keeps this call's message, prompt and
+    response content out of its usage row(s); source, user, tokens, cost and
+    the other base metadata are written either way. It only narrows: the
+    global `config :phoenix_kit_ai, capture_request_content` (below) is the
+    operator's switch, and `true` on a call never turns capture on while it
+    is `false`. Honoured by `complete/3` and the image verbs
+    (`describe_image/3`, `extract_text/3`, `compare_images/4`,
+    `generate_image/3`, `edit_image/4`, `process_image/4`); `speak/3` and
+    `embed/3` ignore it and follow the global setting only.
   - `cache:` - `true`, `[ttl: seconds | :infinity, key: term]` or
     `:refresh`; see `PhoenixKitAI.RequestCache`. Entries are shared across
     users.
@@ -2954,6 +2960,9 @@ defmodule PhoenixKitAI do
 
   All standard completion parameters plus:
   - `:source` - Override auto-detected source for request tracking
+  - `:capture_request_content` - `false` keeps this call's content out of its
+    usage row. It only narrows: `true` does not override a global
+    `config :phoenix_kit_ai, capture_request_content: false`.
 
   ## Examples
 
@@ -4283,9 +4292,10 @@ defmodule PhoenixKitAI do
     Application.get_env(:phoenix_kit_ai, :capture_request_content, true)
   end
 
-  # A call's own `capture_request_content: true | false` beats the global
-  # setting; anything else (the option absent) leaves it to the setting.
-  defp capture_request_content?(override) when is_boolean(override), do: override
+  # A call's own `capture_request_content: false` switches capture off for
+  # that call; it never switches it on — the global setting is the
+  # operator's PII/retention switch. Anything else leaves it to the setting.
+  defp capture_request_content?(false), do: false
   defp capture_request_content?(_override), do: capture_request_content?()
 
   # Messages as stored with the usage row: what was sent, tool fields included.
