@@ -1367,9 +1367,10 @@ defmodule PhoenixKitAI do
   @spec create_endpoint(map(), keyword()) ::
           {:ok, Endpoint.t()} | {:error, Ecto.Changeset.t()}
   def create_endpoint(attrs, opts \\ []) do
+    # `log: false`: the query log would print the api key.
     %Endpoint{}
     |> Endpoint.changeset(attrs)
-    |> repo().insert()
+    |> repo().insert(log: false)
     |> broadcast_endpoint_change(:endpoint_created)
     |> log_endpoint_activity("endpoint.created", opts)
     |> log_failed_endpoint_mutation("endpoint.created", opts)
@@ -1392,8 +1393,9 @@ defmodule PhoenixKitAI do
     # via a bare `%{enabled: x}` still attributes correctly.
     has_changes = changeset.changes != %{}
 
+    # `log: false`: the query log would print the api key.
     changeset
-    |> repo().update()
+    |> repo().update(log: false)
     |> broadcast_endpoint_change(:endpoint_updated)
     |> maybe_log_endpoint_update(has_changes, opts)
     |> maybe_log_endpoint_toggle(was_enabled, opts)
@@ -1579,9 +1581,10 @@ defmodule PhoenixKitAI do
   @spec create_prompt(map(), keyword()) ::
           {:ok, Prompt.t()} | {:error, Ecto.Changeset.t()}
   def create_prompt(attrs, opts \\ []) do
+    # `log: false`: the query log would print the prompt text.
     %Prompt{}
     |> Prompt.changeset(attrs)
-    |> repo().insert()
+    |> repo().insert(log: false)
     |> broadcast_prompt_change(:prompt_created)
     |> log_prompt_activity("prompt.created", opts)
     |> log_failed_prompt_mutation("prompt.created", opts)
@@ -1601,8 +1604,9 @@ defmodule PhoenixKitAI do
     changeset = Prompt.changeset(prompt, attrs)
     has_changes = changeset.changes != %{}
 
+    # `log: false`: the query log would print the prompt text.
     changeset
-    |> repo().update()
+    |> repo().update(log: false)
     |> broadcast_prompt_change(:prompt_updated)
     |> maybe_log_prompt_update(has_changes, opts)
     |> maybe_log_prompt_toggle(was_enabled, opts)
@@ -2384,8 +2388,9 @@ defmodule PhoenixKitAI do
   # transaction, so the retry (and every later query of the caller) would fail
   # with `in_failed_sql_transaction`. A savepoint confines the failure to this
   # statement. Outside a transaction there is nothing to protect.
+  # `log: false`: the query log would print the captured messages and reply.
   defp insert_row(attrs) do
-    opts = if repo().in_transaction?(), do: [mode: :savepoint], else: []
+    opts = if repo().in_transaction?(), do: [mode: :savepoint, log: false], else: [log: false]
 
     %Request{}
     |> Request.changeset(attrs)
