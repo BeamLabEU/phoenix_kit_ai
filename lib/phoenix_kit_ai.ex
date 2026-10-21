@@ -3120,7 +3120,17 @@ defmodule PhoenixKitAI do
   # succeeded (the usage row is already written).
   defp attach_json(response, false), do: {:ok, response}
 
+  # A round that ended in tool calls has no answer to parse yet: the caller
+  # runs the tools and asks again. Without this the model's calls would be
+  # reported as `:no_json_in_response` and lost with the error.
   defp attach_json(response, true) do
+    case Completion.extract_tool_calls(response) do
+      [] -> parse_json_answer(response)
+      _calls -> {:ok, response}
+    end
+  end
+
+  defp parse_json_answer(response) do
     text =
       case Completion.extract_content(response) do
         {:ok, text} when is_binary(text) -> text
@@ -4205,12 +4215,14 @@ defmodule PhoenixKitAI do
           max_tokens: endpoint.max_tokens
         }
 
-        Map.merge(base_metadata, %{
+        base_metadata
+        |> Map.merge(%{
           messages: normalized,
           response: response_content,
           response_reasoning: response_reasoning,
           request_payload: request_payload
         })
+        |> maybe_put_tool_calls(Completion.extract_tool_calls(response))
       else
         Map.put(base_metadata, :content_redacted, true)
       end
@@ -4296,6 +4308,11 @@ defmodule PhoenixKitAI do
   defp capture_request_content? do
     Application.get_env(:phoenix_kit_ai, :capture_request_content, true)
   end
+
+  # What a tool-calling round answered with: no text, so `response` is nil and
+  # the calls (names and JSON arguments, user content) are what the row keeps.
+  defp maybe_put_tool_calls(metadata, []), do: metadata
+  defp maybe_put_tool_calls(metadata, calls), do: Map.put(metadata, :response_tool_calls, calls)
 
   # A call's own `capture_request_content: false` switches capture off for
   # that call; it never switches it on — the global setting is the

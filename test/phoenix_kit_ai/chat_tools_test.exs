@@ -302,7 +302,48 @@ defmodule PhoenixKitAI.ChatToolsTest do
       assert row.status == "success"
       assert row.total_tokens == 29
       assert row.metadata["response"] == nil
+      assert row.metadata["response_tool_calls"] == [@tool_call]
       assert [%{"role" => "user", "content" => "A-1?"}] = row.metadata["messages"]
+    end
+
+    test "the tool calls stay out of the row when capture is off for the call" do
+      stub(tool_call_answer(%{"content" => nil}))
+      ep = endpoint_fixture()
+
+      assert {:ok, _} =
+               PhoenixKitAI.complete(ep.uuid, [%{role: "user", content: "A-1?"}],
+                 tools: @tools,
+                 capture_request_content: false
+               )
+
+      row = row(ep)
+      assert row.metadata["content_redacted"] == true
+      refute Map.has_key?(row.metadata, "response_tool_calls")
+    end
+
+    test "json: true with tools: a tool-calling round returns the calls, not :no_json_in_response" do
+      stub(tool_call_answer(%{"content" => nil}))
+      ep = endpoint_fixture()
+
+      assert {:ok, response} =
+               PhoenixKitAI.complete(ep.uuid, [%{role: "user", content: "A-1?"}],
+                 tools: @tools,
+                 json: true
+               )
+
+      assert PhoenixKitAI.extract_tool_calls(response) == [@tool_call]
+      refute Map.has_key?(response, "json")
+    end
+
+    test "json: true with tools: the final text round is still parsed" do
+      stub(text_answer(~s({"paid":true})))
+      ep = endpoint_fixture()
+
+      assert {:ok, %{"json" => %{"paid" => true}}} =
+               PhoenixKitAI.complete(ep.uuid, [%{role: "user", content: "A-1?"}],
+                 tools: @tools,
+                 json: true
+               )
     end
 
     test "the journal keeps the tool messages of a later round" do
