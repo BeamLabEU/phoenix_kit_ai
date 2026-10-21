@@ -156,7 +156,9 @@ Repo-local aliases:
   reasoning are all persisted only when `capture_request_content?/0` is true;
   otherwise the row records `content_redacted: true` and keeps tokens, latency,
   model and cost. Any new field carrying user text must sit behind the same
-  gate.
+  gate. A call's `capture_request_content: false` may switch it off for that
+  call; `true` on a call never overrides a global `false`. `speak/3` and
+  `embed/3` ignore the per-call option.
 - **No credential or user content in a process message, a broadcast or a
   log line.** A LiveView message names a connection or endpoint by uuid and
   the handler resolves the key; the change topics broadcast `{event, uuid}`;
@@ -329,7 +331,7 @@ checked with `Scope.has_module_access?/2`. No sub-permissions.
 
 | Key | Default | Purpose |
 |-----|---------|---------|
-| `:capture_request_content` | `true` | Persist message/response content in request `metadata`; `false` writes `content_redacted: true` instead (tokens/latency/cost still recorded) |
+| `:capture_request_content` | `true` | Persist message/response content in request `metadata`; `false` writes `content_redacted: true` instead (tokens/latency/cost still recorded). A call may only narrow it: `capture_request_content: false` on `complete/3` / the image verbs redacts that call; `true` does not override a global `false` |
 | `:capture_request_memory` | `false` | Opt-in per-request `:memory` snapshot in metadata — debug only |
 | `:allow_internal_endpoint_urls` | `false` | Bypass the SSRF guard on `Endpoint.base_url` (an internal address, a name resolving to one, `*.local` / `*.internal` are rejected; non-http(s) always is) — for self-hosted Ollama etc. |
 | `:embedding_models` | `[]` | Extra embedding models appended to `OpenRouterClient.fetch_embedding_models/2`; non-list values are warned about and ignored |

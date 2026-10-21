@@ -271,7 +271,8 @@ which shape your provider uses):
 The trace lands in `phoenix_kit_ai_requests.metadata.response_reasoning`.
 Subject to the same `capture_request_content?` privacy gate as
 `response` content (see "Privacy / retention controls" below) — when
-content capture is off, reasoning is dropped too. Reasoning can mirror
+content capture is off (globally, or for the call with
+`capture_request_content: false`), reasoning is dropped too. Reasoning can mirror
 prompt content and is PII-equivalent.
 
 ## Prompt templates
@@ -392,7 +393,10 @@ config :phoenix_kit_ai,
   # Set to `false` for deployments with PII / data-retention
   # obligations — token counts, latency, model, and cost are still
   # recorded; only the user-supplied strings get redacted (replaced
-  # with `metadata.content_redacted: true`).
+  # with `metadata.content_redacted: true`). A call can only narrow this:
+  # `capture_request_content: false` on complete/3 or an image verb redacts
+  # that call; `true` on a call never overrides a global `false`
+  # (speak/3 and embed/3 ignore the per-call option).
   capture_request_content: true,
 
   # Capture process memory in request `caller_context` (default off).

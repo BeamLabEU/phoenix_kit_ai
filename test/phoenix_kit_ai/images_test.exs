@@ -1277,6 +1277,47 @@ defmodule PhoenixKitAI.ImagesTest do
       assert {:ok, %{images: [_], verification: %{error: {:api_error, 500}}}} =
                PhoenixKitAI.process_image(ep.uuid, [@jpeg], [:enhance], verify: true)
     end
+
+    test "verify: the check inherits capture_request_content: false from the edit" do
+      Req.Test.stub(__MODULE__, fn conn ->
+        case {conn.method, conn.request_path} do
+          {"GET", _} ->
+            Req.Test.json(conn, %{"data" => @listing})
+
+          {"POST", "/api/v1/images"} ->
+            Req.Test.json(conn, image_answer())
+
+          {"POST", "/api/v1/chat/completions"} ->
+            Req.Test.json(
+              conn,
+              chat_answer(
+                Jason.encode!(%{
+                  "same_subject" => true,
+                  "text_and_logos_preserved" => true,
+                  "unwanted_changes" => [],
+                  "summary" => "Clean."
+                })
+              )
+            )
+        end
+      end)
+
+      ep = endpoint_fixture()
+
+      assert {:ok, %{verification: %{passed: true}}} =
+               PhoenixKitAI.process_image(ep.uuid, [@jpeg], [:enhance],
+                 verify: true,
+                 capture_request_content: false
+               )
+
+      assert [vision] = TestRepo.all(from(r in Request, where: r.request_type == "vision"))
+      assert vision.metadata["content_redacted"] == true
+      refute Map.has_key?(vision.metadata, "input")
+      refute Map.has_key?(vision.metadata, "response")
+
+      assert [edit] = TestRepo.all(from(r in Request, where: r.request_type == "image_edit"))
+      assert edit.metadata["content_redacted"] == true
+    end
   end
 
   describe "extract_text images_as:" do

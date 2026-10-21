@@ -47,6 +47,18 @@ defmodule PhoenixKitAI.Completion do
   - `:stop` - Stop sequences (list of strings)
   - `:seed` - Random seed for reproducibility
   - `:stream` - Enable streaming (default: false)
+  - `:tools` - OpenAI function-tools (a list of `%{"type" => "function",
+    "function" => %{"name" => …, "parameters" => …}}`); sent only when given
+  - `:tool_choice` - `"auto"`, `"none"`, `"required"` or a function selector;
+    sent only when given
+  - `:parallel_tool_calls` - boolean (`false` is sent); sent only when given
+
+  ## Tool calling
+
+  Messages keep the tool fields the provider needs for the next round:
+  `tool_calls` on `assistant` messages (whose `content` may be `nil`),
+  `tool_call_id` and `name` on `tool` messages. Read the model's calls from
+  the response with `extract_tool_calls/1`.
 
   ## Returns
 
@@ -597,6 +609,10 @@ defmodule PhoenixKitAI.Completion do
       %{"choices" => [%{"message" => %{"content" => content}} | _]} ->
         {:ok, content}
 
+      # Some providers leave `content` out of a tool-calling answer.
+      %{"choices" => [%{"message" => %{"tool_calls" => [_ | _]}} | _]} ->
+        {:ok, nil}
+
       %{"choices" => []} ->
         {:error, :no_choices_in_response}
 
@@ -604,6 +620,25 @@ defmodule PhoenixKitAI.Completion do
         {:error, :invalid_response_format}
     end
   end
+
+  @doc """
+  Extracts the tool calls the model asked for from a chat completion response
+  (`choices[0].message.tool_calls`), as the provider sent them:
+
+      [%{"id" => "call_1", "type" => "function",
+         "function" => %{"name" => "get_order", "arguments" => "{\\"number\\":\\"A-1\\"}"}}]
+
+  `arguments` stays the JSON string the model wrote; decoding it is the
+  caller's job. Returns `[]` when the model called nothing or the response
+  has no such shape.
+  """
+  @spec extract_tool_calls(term()) :: [map()]
+  def extract_tool_calls(%{
+        "choices" => [%{"message" => %{"tool_calls" => [_ | _] = calls}} | _]
+      }),
+      do: calls
+
+  def extract_tool_calls(_response), do: []
 
   @doc """
   Extracts the reasoning / chain-of-thought from a chat completion response,
@@ -686,17 +721,35 @@ defmodule PhoenixKitAI.Completion do
   defp parse_cost(cost) when is_number(cost), do: round(cost * 1_000_000)
   defp parse_cost(_), do: nil
 
+  @doc false
+  # A message as it goes over the wire and into the usage log, string keys
+  # either way. `role` and `content` always; the tool fields only where the
+  # protocol has them and only when present, so a message without them
+  # encodes exactly as it always did: `tool_calls` on `assistant`,
+  # `tool_call_id` and `name` on `tool`. `content` may be nil (an assistant
+  # message that only calls tools).
+  def normalize_message(msg) do
+    role = to_string(msg[:role] || msg["role"])
+
+    %{"role" => role, "content" => msg[:content] || msg["content"]}
+    |> put_tool_fields(role, msg)
+  end
+
+  defp put_tool_fields(message, "assistant", msg),
+    do: maybe_add(message, "tool_calls", msg[:tool_calls] || msg["tool_calls"])
+
+  defp put_tool_fields(message, "tool", msg) do
+    message
+    |> maybe_add("tool_call_id", msg[:tool_call_id] || msg["tool_call_id"])
+    |> maybe_add("name", msg[:name] || msg["name"])
+  end
+
+  defp put_tool_fields(message, _role, _msg), do: message
+
   # Private functions
 
   defp build_chat_body(model, messages, opts) do
-    # Normalize messages to ensure string keys
-    normalized_messages =
-      Enum.map(messages, fn msg ->
-        %{
-          "role" => to_string(msg[:role] || msg["role"]),
-          "content" => msg[:content] || msg["content"]
-        }
-      end)
+    normalized_messages = Enum.map(messages, &normalize_message/1)
 
     %{
       "model" => model,
@@ -713,6 +766,9 @@ defmodule PhoenixKitAI.Completion do
     |> maybe_add("seed", Keyword.get(opts, :seed))
     |> maybe_add("stream", Keyword.get(opts, :stream))
     |> maybe_add("response_format", Keyword.get(opts, :response_format))
+    |> maybe_add("tools", Keyword.get(opts, :tools))
+    |> maybe_add("tool_choice", Keyword.get(opts, :tool_choice))
+    |> maybe_add("parallel_tool_calls", Keyword.get(opts, :parallel_tool_calls))
     |> maybe_add_reasoning(opts)
   end
 

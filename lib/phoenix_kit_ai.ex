@@ -38,7 +38,9 @@ defmodule PhoenixKitAI do
   - `generate_image/3`, `edit_image/4`, `process_image/4` - Images
   - `describe_image/3`, `extract_text/3`, `compare_images/4` - Vision
 
-  ### Options every verb takes
+  ### Options
+
+  Taken by every verb, except `capture_request_content:` (see its entry):
 
   - `user_uuid:` - a PhoenixKit user uuid recorded on the usage row and
     selecting the per-user spend cap. Host-supplied identity: the module has
@@ -46,6 +48,15 @@ defmodule PhoenixKitAI do
     row is written without it, so that call is not attributed or capped.
   - `source:`, `attribution:`, `idempotency_key:` - tracking only; never
     part of a cache key.
+  - `capture_request_content: false` - keeps this call's message, prompt and
+    response content out of its usage row(s); source, user, tokens, cost and
+    the other base metadata are written either way. It only narrows: the
+    global `config :phoenix_kit_ai, capture_request_content` (below) is the
+    operator's switch, and `true` on a call never turns capture on while it
+    is `false`. Honoured by `complete/3` and the image verbs
+    (`describe_image/3`, `extract_text/3`, `compare_images/4`,
+    `generate_image/3`, `edit_image/4`, `process_image/4`); `speak/3` and
+    `embed/3` ignore it and follow the global setting only.
   - `cache:` - `true`, `[ttl: seconds | :infinity, key: term]` or
     `:refresh`; see `PhoenixKitAI.RequestCache`. Entries are shared across
     users.
@@ -2949,6 +2960,9 @@ defmodule PhoenixKitAI do
 
   All standard completion parameters plus:
   - `:source` - Override auto-detected source for request tracking
+  - `:capture_request_content` - `false` keeps this call's content out of its
+    usage row. It only narrows: `true` does not override a global
+    `config :phoenix_kit_ai, capture_request_content: false`.
 
   ## Examples
 
@@ -2979,6 +2993,14 @@ defmodule PhoenixKitAI do
   - `{:error, reason}` - Error atom or tagged tuple. See
     `PhoenixKitAI.Errors` for the vocabulary and translation.
 
+  ## Tool calling
+
+  `tools:` (OpenAI function-tools), `tool_choice:` and `parallel_tool_calls:`
+  go into the request when given. Messages keep `tool_calls` (on `assistant`;
+  `content` may be `nil`) and `tool_call_id` / `name` (on `tool`). Read the
+  model's calls with `extract_tool_calls/1`. A call with `tools:` is never
+  cached, whatever `cache:` says.
+
   ## Structured output
 
   `schema: %{"type" => "object", …}` requests the answer as that JSON
@@ -3006,7 +3028,8 @@ defmodule PhoenixKitAI do
         prompt_name: Keyword.get(opts, :prompt_name),
         prompt_snapshot: Keyword.get(opts, :prompt_snapshot),
         attribution: normalize_attribution(Keyword.get(opts, :attribution)),
-        unbound_placeholders: Keyword.get(opts, :unbound_placeholders, [])
+        unbound_placeholders: Keyword.get(opts, :unbound_placeholders, []),
+        capture: Keyword.get(opts, :capture_request_content)
       }
 
       merged_opts = merge_endpoint_opts(endpoint, opts)
@@ -3017,7 +3040,7 @@ defmodule PhoenixKitAI do
         with_cache(
           :complete,
           endpoint,
-          opts,
+          cache_opts_for(opts),
           fn -> {messages, cacheable(merged_opts), format} end,
           %{source: source, caller_context: caller_context, prompt_info: prompt_info},
           fn ->
@@ -3055,12 +3078,24 @@ defmodule PhoenixKitAI do
     end
   end
 
+  # A call with `tools:` is one round of a tool-calling turn: its answer
+  # depends on tool results that are not in the key's material, and a
+  # replayed `tool_calls` answer would skip running the tools. Never cached,
+  # whatever `cache:` or the global default says.
+  defp cache_opts_for(opts) do
+    case Keyword.get(opts, :tools) do
+      [_ | _] -> Keyword.put(opts, :cache, false)
+      _ -> opts
+    end
+  end
+
   # The request-shaping options only: what the caller is tracked by
-  # (source, attribution, idempotency, user, cache mode) must not change
-  # the cache key.
+  # (source, attribution, idempotency, user, cache mode, content capture)
+  # must not change the cache key.
   defp cacheable(opts) do
     opts
     |> Keyword.drop([
+      :capture_request_content,
       :source,
       :attribution,
       :idempotency_key,
@@ -3530,7 +3565,12 @@ defmodule PhoenixKitAI do
 
     # The check is billed to whoever asked for the edit. The idempotency key
     # stays on the edit's own row: it names that call, not this one.
-    check_opts = [intent: intent, source: opts[:source], user_uuid: opts[:user_uuid]]
+    check_opts = [
+      intent: intent,
+      source: opts[:source],
+      user_uuid: opts[:user_uuid],
+      capture_request_content: opts[:capture_request_content]
+    ]
 
     case compare_images(checker, original, data, check_opts) do
       {:ok, verdict} -> Map.put(result, :verification, verdict)
@@ -3743,7 +3783,8 @@ defmodule PhoenixKitAI do
       started: System.monotonic_time(:millisecond),
       idempotency_key: opts[:idempotency_key],
       model: opts[:model],
-      user_uuid: opts[:user_uuid]
+      user_uuid: opts[:user_uuid],
+      capture: opts[:capture_request_content]
     }
   end
 
@@ -3760,7 +3801,7 @@ defmodule PhoenixKitAI do
   # the images — never the image bytes; prompt and any text under the PII
   # gate. `trace` comes from `trace/4`.
   defp log_image_op_request(endpoint, type, prompt, images, result, extra, trace) do
-    capture_content = capture_request_content?()
+    capture_content = capture_request_content?(trace[:capture])
     usage = result[:usage] || %{}
     outputs = result[:images] || []
     prompt = to_string(prompt)
@@ -3801,7 +3842,7 @@ defmodule PhoenixKitAI do
   end
 
   defp log_failed_image_op_request(endpoint, type, prompt, images, reason, trace) do
-    capture_content = capture_request_content?()
+    capture_content = capture_request_content?(trace[:capture])
     prompt = to_string(prompt)
     emit_image_telemetry(type, endpoint, %{}, %{error: reason}, trace, images, [], :error)
 
@@ -3887,6 +3928,13 @@ defmodule PhoenixKitAI do
       # => "Hello! How can I help you today?"
   """
   defdelegate extract_content(response), to: Completion
+
+  @doc """
+  The tool calls the model asked for in a chat completion response, as the
+  provider sent them; `[]` when there are none. See
+  `PhoenixKitAI.Completion.extract_tool_calls/1`.
+  """
+  defdelegate extract_tool_calls(response), to: Completion
 
   @doc """
   Extracts usage information from a response.
@@ -4127,7 +4175,7 @@ defmodule PhoenixKitAI do
     # data-retention obligations can flip it off via
     # `config :phoenix_kit_ai, capture_request_content: false`. Token
     # counts, latency, model, and cost are always recorded.
-    capture_content = capture_request_content?()
+    capture_content = capture_request_content?(prompt_info[:capture])
     normalized = if capture_content, do: normalize_messages(messages), else: nil
 
     base_metadata =
@@ -4189,7 +4237,7 @@ defmodule PhoenixKitAI do
          caller_context,
          prompt_info
        ) do
-    capture_content = capture_request_content?()
+    capture_content = capture_request_content?(prompt_info[:capture])
 
     metadata =
       %{
@@ -4244,15 +4292,14 @@ defmodule PhoenixKitAI do
     Application.get_env(:phoenix_kit_ai, :capture_request_content, true)
   end
 
-  # Normalize messages to ensure consistent format for storage
-  defp normalize_messages(messages) do
-    Enum.map(messages, fn msg ->
-      %{
-        "role" => to_string(msg[:role] || msg["role"]),
-        "content" => msg[:content] || msg["content"]
-      }
-    end)
-  end
+  # A call's own `capture_request_content: false` switches capture off for
+  # that call; it never switches it on — the global setting is the
+  # operator's PII/retention switch. Anything else leaves it to the setting.
+  defp capture_request_content?(false), do: false
+  defp capture_request_content?(_override), do: capture_request_content?()
+
+  # Messages as stored with the usage row: what was sent, tool fields included.
+  defp normalize_messages(messages), do: Enum.map(messages, &Completion.normalize_message/1)
 
   defp log_embedding_request(endpoint, input, response, source, stacktrace, caller_context) do
     usage = Completion.extract_usage(response)
