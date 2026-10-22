@@ -1017,6 +1017,18 @@ defmodule PhoenixKitAI do
         parent: :admin_ai,
         gettext_backend: PhoenixKitAI.Gettext,
         gettext_domain: "default"
+      },
+      %Tab{
+        id: :admin_ai_tasks,
+        label: "Tasks",
+        icon: "hero-clipboard-document-check",
+        path: "ai/tasks",
+        priority: 645,
+        level: :admin,
+        permission: module_key(),
+        parent: :admin_ai,
+        gettext_backend: PhoenixKitAI.Gettext,
+        gettext_domain: "default"
       }
     ]
   end
@@ -1048,7 +1060,8 @@ defmodule PhoenixKitAI do
       dgettext_noop("default", "Endpoints"),
       dgettext_noop("default", "Prompts"),
       dgettext_noop("default", "Playground"),
-      dgettext_noop("default", "Usage")
+      dgettext_noop("default", "Usage"),
+      dgettext_noop("default", "Tasks")
     ]
   end
 

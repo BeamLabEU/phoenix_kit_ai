@@ -1507,7 +1507,7 @@ msgstr "Обновите конфигурацию конечной точки AI
 msgid "Updating…"
 msgstr "Обновление…"
 
-#: lib/phoenix_kit_ai.ex:1051
+#: lib/phoenix_kit_ai.ex:1063
 #: lib/phoenix_kit_ai/web/endpoints.ex:76
 #: lib/phoenix_kit_ai/web/prompts.ex:41
 #, elixir-autogen, elixir-format
@@ -1779,31 +1779,32 @@ msgstr[0] "токен"
 msgstr[1] "токена"
 msgstr[2] "токенов"
 
-#: lib/phoenix_kit_ai.ex:1047
+#: lib/phoenix_kit_ai.ex:1059
 #: lib/phoenix_kit_ai/web/endpoint_form.ex:398
 #: lib/phoenix_kit_ai/web/endpoints.ex:106
 #: lib/phoenix_kit_ai/web/playground.ex:52
 #: lib/phoenix_kit_ai/web/prompt_form.ex:36
 #: lib/phoenix_kit_ai/web/prompts.ex:62
+#: lib/phoenix_kit_ai/web/tasks.ex:31
 #, elixir-autogen, elixir-format
 msgid "AI"
 msgstr "AI"
 
-#: lib/phoenix_kit_ai.ex:1048
+#: lib/phoenix_kit_ai.ex:1060
 #: lib/phoenix_kit_ai/web/endpoint_form.ex:458
 #: lib/phoenix_kit_ai/web/endpoints.ex:80
 #, elixir-autogen, elixir-format
 msgid "Endpoints"
 msgstr "Конечные точки"
 
-#: lib/phoenix_kit_ai.ex:1050
-#: lib/phoenix_kit_ai.ex:1076
+#: lib/phoenix_kit_ai.ex:1062
+#: lib/phoenix_kit_ai.ex:1089
 #: lib/phoenix_kit_ai/web/playground.ex:55
 #, elixir-autogen, elixir-format
 msgid "Playground"
 msgstr "Песочница"
 
-#: lib/phoenix_kit_ai.ex:1049
+#: lib/phoenix_kit_ai.ex:1061
 #: lib/phoenix_kit_ai/web/prompt_form.ex:81
 #: lib/phoenix_kit_ai/web/prompts.ex:65
 #, elixir-autogen, elixir-format
@@ -2463,6 +2464,21 @@ msgstr "Провайдер не сообщает, что умеет эта мо�
 msgid "Tools"
 msgstr "Инструменты"
 
+#: lib/phoenix_kit_ai/web/tasks.ex:107
+#, elixir-autogen, elixir-format
+msgid "Each task is declared by a module. A call with a task is refused before it reaches the provider when the model lacks something the task needs."
+msgstr "Каждую задачу объявляет модуль. Вызов с задачей отклоняется до обращения к провайдеру, если модель не умеет того, что нужно задаче."
+
+#: lib/phoenix_kit_ai/web/tasks.ex:163
+#, elixir-autogen, elixir-format
+msgid "Endpoints in use:"
+msgstr "Используемые конечные точки:"
+
+#: lib/phoenix_kit_ai/web/tasks.ex:196
+#, elixir-autogen, elixir-format
+msgid "Fits"
+msgstr "Подходит"
+
 #: lib/phoenix_kit_ai/errors.ex:149
 #, elixir-autogen, elixir-format
 msgid "It is not known whether the endpoint's model can do what this task needs (%{needs}). Mark the model's capabilities on the endpoint first."
@@ -2473,25 +2489,86 @@ msgstr "Неизвестно, умеет ли модель конечной то
 msgid "JSON"
 msgstr "JSON"
 
+#: lib/phoenix_kit_ai/web/tasks.ex:206
+#, elixir-autogen, elixir-format
+msgid "Lacks: %{needs}"
+msgstr "Не умеет: %{needs}"
+
+#: lib/phoenix_kit_ai/web/tasks.ex:65
+#, elixir-autogen, elixir-format
+msgid "Model catalogues refreshed"
+msgstr "Каталоги моделей обновлены"
+
+#: lib/phoenix_kit_ai/web/tasks.ex:141
+#, elixir-autogen, elixir-format
+msgid "Module off"
+msgstr "Модуль выключен"
+
+#: lib/phoenix_kit_ai/web/tasks.ex:148
+#, elixir-autogen, elixir-format
+msgid "Needs:"
+msgstr "Нужно:"
+
+#: lib/phoenix_kit_ai/web/tasks.ex:125
+#, elixir-autogen, elixir-format
+msgid "No module declares an AI task."
+msgstr "Ни один модуль не объявил задачу AI."
+
 #: lib/phoenix_kit_ai/errors.ex:156
 #, elixir-autogen, elixir-format
 msgid "No provider of this model accepts all the request's parameters (%{params}). Remove the ones it does not support from the endpoint."
 msgstr "Ни один провайдер этой модели не принимает все параметры запроса (%{params}). Уберите из конечной точки те, что модель не поддерживает."
+
+#: lib/phoenix_kit_ai/web/tasks.ex:166
+#, elixir-autogen, elixir-format
+msgid "None chosen; the caller names an endpoint per call."
+msgstr "Не выбраны: конечную точку указывает каждый вызов."
+
+#: lib/phoenix_kit_ai/web/tasks.ex:216
+#, elixir-autogen, elixir-format
+msgid "Not verified: %{needs}"
+msgstr "Не проверено: %{needs}"
+
+#: lib/phoenix_kit_ai/web/tasks.ex:119
+#, elixir-autogen, elixir-format
+msgid "Refresh catalogues"
+msgstr "Обновить каталоги"
+
+#: lib/phoenix_kit_ai/web/tasks.ex:68
+#, elixir-autogen, elixir-format
+msgid "Some model catalogues could not be read"
+msgstr "Не удалось прочитать некоторые каталоги моделей"
+
+#: lib/phoenix_kit_ai.ex:1064
+#: lib/phoenix_kit_ai/web/tasks.ex:34
+#, elixir-autogen, elixir-format
+msgid "Tasks"
+msgstr "Задачи"
 
 #: lib/phoenix_kit_ai/errors.ex:143
 #, elixir-autogen, elixir-format
 msgid "The endpoint's model cannot do what this task needs: %{needs}"
 msgstr "Модель конечной точки не умеет того, что нужно задаче: %{needs}"
 
-#: lib/phoenix_kit_ai.ex:1067
+#: lib/phoenix_kit_ai.ex:1080
 #, elixir-autogen, elixir-format
 msgid "Translation"
 msgstr "Перевод"
+
+#: lib/phoenix_kit_ai/web/tasks.ex:35
+#, elixir-autogen, elixir-format
+msgid "What each AI task needs and whether its endpoints fit"
+msgstr "Что нужно каждой задаче AI и подходят ли её конечные точки"
 
 #: lib/phoenix_kit_ai/tasks.ex:194
 #, elixir-autogen, elixir-format
 msgid "images"
 msgstr "картинки"
+
+#: lib/phoenix_kit_ai/web/tasks.ex:150
+#, elixir-autogen, elixir-format
+msgid "text only"
+msgstr "только текст"
 
 #: lib/phoenix_kit_ai/tasks.ex:195
 #, elixir-autogen, elixir-format

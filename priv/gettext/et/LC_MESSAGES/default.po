@@ -1505,7 +1505,7 @@ msgstr "Uuenda oma AI lõpp-punkti seadistust"
 msgid "Updating…"
 msgstr "Uuendamine…"
 
-#: lib/phoenix_kit_ai.ex:1051
+#: lib/phoenix_kit_ai.ex:1063
 #: lib/phoenix_kit_ai/web/endpoints.ex:76
 #: lib/phoenix_kit_ai/web/prompts.ex:41
 #, elixir-autogen, elixir-format
@@ -1773,31 +1773,32 @@ msgid_plural "tokens"
 msgstr[0] "token"
 msgstr[1] "tokenit"
 
-#: lib/phoenix_kit_ai.ex:1047
+#: lib/phoenix_kit_ai.ex:1059
 #: lib/phoenix_kit_ai/web/endpoint_form.ex:398
 #: lib/phoenix_kit_ai/web/endpoints.ex:106
 #: lib/phoenix_kit_ai/web/playground.ex:52
 #: lib/phoenix_kit_ai/web/prompt_form.ex:36
 #: lib/phoenix_kit_ai/web/prompts.ex:62
+#: lib/phoenix_kit_ai/web/tasks.ex:31
 #, elixir-autogen, elixir-format
 msgid "AI"
 msgstr "AI"
 
-#: lib/phoenix_kit_ai.ex:1048
+#: lib/phoenix_kit_ai.ex:1060
 #: lib/phoenix_kit_ai/web/endpoint_form.ex:458
 #: lib/phoenix_kit_ai/web/endpoints.ex:80
 #, elixir-autogen, elixir-format
 msgid "Endpoints"
 msgstr "Lõpp-punktid"
 
-#: lib/phoenix_kit_ai.ex:1050
-#: lib/phoenix_kit_ai.ex:1076
+#: lib/phoenix_kit_ai.ex:1062
+#: lib/phoenix_kit_ai.ex:1089
 #: lib/phoenix_kit_ai/web/playground.ex:55
 #, elixir-autogen, elixir-format
 msgid "Playground"
 msgstr "Liivakast"
 
-#: lib/phoenix_kit_ai.ex:1049
+#: lib/phoenix_kit_ai.ex:1061
 #: lib/phoenix_kit_ai/web/prompt_form.ex:81
 #: lib/phoenix_kit_ai/web/prompts.ex:65
 #, elixir-autogen, elixir-format
@@ -2452,6 +2453,21 @@ msgstr "Teenusepakkuja ei teata, mida see mudel oskab. Märkige, mida see oskab 
 msgid "Tools"
 msgstr "Tööriistad"
 
+#: lib/phoenix_kit_ai/web/tasks.ex:107
+#, elixir-autogen, elixir-format
+msgid "Each task is declared by a module. A call with a task is refused before it reaches the provider when the model lacks something the task needs."
+msgstr "Iga ülesande kuulutab välja moodul. Ülesandega päring lükatakse tagasi enne pakkujani jõudmist, kui mudel ei oska midagi, mida ülesanne vajab."
+
+#: lib/phoenix_kit_ai/web/tasks.ex:163
+#, elixir-autogen, elixir-format
+msgid "Endpoints in use:"
+msgstr "Kasutusel olevad lõpp-punktid:"
+
+#: lib/phoenix_kit_ai/web/tasks.ex:196
+#, elixir-autogen, elixir-format
+msgid "Fits"
+msgstr "Sobib"
+
 #: lib/phoenix_kit_ai/errors.ex:149
 #, elixir-autogen, elixir-format
 msgid "It is not known whether the endpoint's model can do what this task needs (%{needs}). Mark the model's capabilities on the endpoint first."
@@ -2462,25 +2478,86 @@ msgstr "Pole teada, kas lõpp-punkti mudel oskab seda, mida ülesanne vajab (%{n
 msgid "JSON"
 msgstr "JSON"
 
+#: lib/phoenix_kit_ai/web/tasks.ex:206
+#, elixir-autogen, elixir-format
+msgid "Lacks: %{needs}"
+msgstr "Puudub: %{needs}"
+
+#: lib/phoenix_kit_ai/web/tasks.ex:65
+#, elixir-autogen, elixir-format
+msgid "Model catalogues refreshed"
+msgstr "Mudelite kataloogid värskendatud"
+
+#: lib/phoenix_kit_ai/web/tasks.ex:141
+#, elixir-autogen, elixir-format
+msgid "Module off"
+msgstr "Moodul väljas"
+
+#: lib/phoenix_kit_ai/web/tasks.ex:148
+#, elixir-autogen, elixir-format
+msgid "Needs:"
+msgstr "Vajab:"
+
+#: lib/phoenix_kit_ai/web/tasks.ex:125
+#, elixir-autogen, elixir-format
+msgid "No module declares an AI task."
+msgstr "Ükski moodul ei kuuluta välja AI ülesannet."
+
 #: lib/phoenix_kit_ai/errors.ex:156
 #, elixir-autogen, elixir-format
 msgid "No provider of this model accepts all the request's parameters (%{params}). Remove the ones it does not support from the endpoint."
 msgstr "Ükski selle mudeli pakkuja ei aktsepteeri kõiki päringu parameetreid (%{params}). Eemaldage lõpp-punktist need, mida mudel ei toeta."
+
+#: lib/phoenix_kit_ai/web/tasks.ex:166
+#, elixir-autogen, elixir-format
+msgid "None chosen; the caller names an endpoint per call."
+msgstr "Valimata: lõpp-punkti nimetab iga päring ise."
+
+#: lib/phoenix_kit_ai/web/tasks.ex:216
+#, elixir-autogen, elixir-format
+msgid "Not verified: %{needs}"
+msgstr "Kontrollimata: %{needs}"
+
+#: lib/phoenix_kit_ai/web/tasks.ex:119
+#, elixir-autogen, elixir-format
+msgid "Refresh catalogues"
+msgstr "Värskenda katalooge"
+
+#: lib/phoenix_kit_ai/web/tasks.ex:68
+#, elixir-autogen, elixir-format
+msgid "Some model catalogues could not be read"
+msgstr "Mõnda mudelite kataloogi ei õnnestunud lugeda"
+
+#: lib/phoenix_kit_ai.ex:1064
+#: lib/phoenix_kit_ai/web/tasks.ex:34
+#, elixir-autogen, elixir-format
+msgid "Tasks"
+msgstr "Ülesanded"
 
 #: lib/phoenix_kit_ai/errors.ex:143
 #, elixir-autogen, elixir-format
 msgid "The endpoint's model cannot do what this task needs: %{needs}"
 msgstr "Lõpp-punkti mudel ei oska seda, mida ülesanne vajab: %{needs}"
 
-#: lib/phoenix_kit_ai.ex:1067
+#: lib/phoenix_kit_ai.ex:1080
 #, elixir-autogen, elixir-format
 msgid "Translation"
 msgstr "Tõlkimine"
+
+#: lib/phoenix_kit_ai/web/tasks.ex:35
+#, elixir-autogen, elixir-format
+msgid "What each AI task needs and whether its endpoints fit"
+msgstr "Mida iga AI ülesanne vajab ja kas selle lõpp-punktid sobivad"
 
 #: lib/phoenix_kit_ai/tasks.ex:194
 #, elixir-autogen, elixir-format
 msgid "images"
 msgstr "pildid"
+
+#: lib/phoenix_kit_ai/web/tasks.ex:150
+#, elixir-autogen, elixir-format
+msgid "text only"
+msgstr "ainult tekst"
 
 #: lib/phoenix_kit_ai/tasks.ex:195
 #, elixir-autogen, elixir-format
