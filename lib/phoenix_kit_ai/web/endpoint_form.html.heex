@@ -474,7 +474,7 @@
                       id={"endpoint-declare-#{flag}"}
                       name={"endpoint[provider_settings][capabilities][#{flag}]"}
                       checked={Map.get(panel.declared, flag) == :yes}
-                      label={PhoenixKitAI.Web.EndpointForm.capability_label(flag)}
+                      label={PhoenixKitAI.Web.Components.CapabilityBadges.label(flag)}
                       class="checkbox-sm"
                     />
                   <% end %>
@@ -494,7 +494,7 @@
                       Enum.map_join(
                         panel.conflicts,
                         ", ",
-                        &PhoenixKitAI.Web.EndpointForm.capability_label/1
+                        &PhoenixKitAI.Web.Components.CapabilityBadges.label/1
                       )
                   )}
                 </span>

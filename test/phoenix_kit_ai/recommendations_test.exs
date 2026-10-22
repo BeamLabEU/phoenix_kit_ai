@@ -241,6 +241,15 @@ defmodule PhoenixKitAI.RecommendationsTest do
       refute Enum.any?(tl(rows), &(:free in &1.notes))
     end
 
+    test "a model with a zero input price and an unknown output price is not free" do
+      catalogue = [source([{"v/odd", caps(prompt_price: 0.0, completion_price: nil)}])]
+
+      for task <- ["test.sized", "test.photo"] do
+        assert %{rows: [row]} = Recommendations.cheapest(task, catalogue: catalogue)
+        refute :free in row.notes
+      end
+    end
+
     test "the place kept for the unpriced goes to Anthropic before an OpenRouter model without a price" do
       priced =
         for n <- 1..6, do: {"v/m#{n}", caps(prompt_price: n * 1.0e-7, completion_price: 0.0)}
@@ -510,6 +519,34 @@ defmodule PhoenixKitAI.RecommendationsTest do
 
       assert [%{calls: 2, provider: "openrouter"}, %{calls: 1, provider: "mistral"}] =
                Recommendations.worked("test.photo")
+    end
+
+    test "endpoints of one provider key under a named connection are one row" do
+      {:ok, plain} =
+        PhoenixKitAI.create_endpoint(%{
+          name: "P1",
+          provider: "openrouter",
+          model: "v/a",
+          api_key: "k"
+        })
+
+      {:ok, named} =
+        PhoenixKitAI.create_endpoint(%{
+          name: "P2",
+          provider: "openrouter",
+          model: "v/a",
+          api_key: "k"
+        })
+
+      TestRepo.update_all(
+        from(e in PhoenixKitAI.Endpoint, where: e.uuid == ^named.uuid),
+        set: [provider: "openrouter:work"]
+      )
+
+      request("test.photo", "v/a", endpoint_uuid: plain.uuid)
+      request("test.photo", "v/a", endpoint_uuid: named.uuid)
+
+      assert [%{calls: 2, provider: "openrouter"}] = Recommendations.worked("test.photo")
     end
 
     test "is empty for a task with no rows" do

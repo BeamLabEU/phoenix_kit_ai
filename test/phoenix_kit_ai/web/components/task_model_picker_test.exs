@@ -11,6 +11,7 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPickerTest do
   alias PhoenixKit.Users.Auth.Scope
   alias PhoenixKitAI.Capabilities
   alias PhoenixKitAI.Test.FakeAITasks
+  alias PhoenixKitAI.Web.Components.CapabilityBadges
   alias PhoenixKitAI.Web.Components.TaskModelPicker
 
   setup do
@@ -238,7 +239,7 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPickerTest do
     test "names the operator of the models that worked" do
       html = render_picker(%{})
       worked = doc(html) |> LazyHTML.query("[data-worked-model='google/gemini-flash']")
-      assert LazyHTML.text(worked) =~ "openrouter"
+      assert LazyHTML.text(worked) =~ "OpenRouter"
     end
 
     test "a rough estimate shows the input price per million tokens and says so" do
@@ -301,6 +302,19 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPickerTest do
 
         for text <- expected, do: assert(html =~ text, "#{locale}: #{text}")
       end
+    end
+  end
+
+  describe "capability badges component" do
+    test "renders the endpoint form's badges on its own" do
+      html =
+        render_component(&CapabilityBadges.badges/1, %{
+          capabilities: %Capabilities{vision: :yes, tools: :unknown, json_schema: :no}
+        })
+
+      assert present?(html, "[data-capability=vision][data-state=yes]")
+      assert present?(html, "[data-capability=tools][data-state=unknown]")
+      refute present?(html, "[data-capability=json_schema]")
     end
   end
 

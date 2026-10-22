@@ -176,11 +176,15 @@ defmodule PhoenixKitAI.Recommendations do
       left_join: e in Endpoint,
       on: e.uuid == r.endpoint_uuid,
       where: not is_nil(r.model),
-      group_by: [fragment("?->>'task'", r.metadata), r.model, e.provider],
+      group_by: [
+        fragment("?->>'task'", r.metadata),
+        r.model,
+        fragment("split_part(?, ':', 1)", e.provider)
+      ],
       select: %{
         task: fragment("?->>'task'", r.metadata),
         model: r.model,
-        provider: e.provider,
+        provider: fragment("split_part(?, ':', 1)", e.provider),
         calls: count(r.uuid),
         errors: filter(count(r.uuid), r.status != "success"),
         cost_rows: count(r.cost_cents),
@@ -311,7 +315,7 @@ defmodule PhoenixKitAI.Recommendations do
   # A model both of whose prices are zero (OpenRouter's `:free` variants):
   # rate-limited and on the operator's terms, so not a plain bargain.
   defp free?(%Capabilities{prompt_price: input, completion_price: output}),
-    do: input == 0.0 and output in [0.0, nil]
+    do: input == 0.0 and output == 0.0
 
   # The price of the estimated call needs both prices; a catalogue that
   # lists only the input price (or none) leaves the call unpriced.

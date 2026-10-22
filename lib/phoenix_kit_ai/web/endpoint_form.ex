@@ -21,6 +21,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
   alias PhoenixKitAI.Endpoint
   alias PhoenixKitAI.OpenRouterClient
   alias PhoenixKitAI.Web.AuthHelpers
+  alias PhoenixKitAI.Web.Components.CapabilityBadges
   alias PhoenixKitAI.Web.MessageShape
 
   # ===========================================
@@ -181,7 +182,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
               {@completion_price}/M out
             </span>
 
-            <.capability_badges capabilities={Map.get(@model, :capabilities)} />
+            <CapabilityBadges.badges capabilities={Map.get(@model, :capabilities)} />
           </div>
         </div>
       </button>
@@ -206,62 +207,6 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     </div>
     """
   end
-
-  attr(:capabilities, :any, default: nil)
-
-  # What the catalogue says the model can do: a badge per capability it has
-  # (a muted one with "?" where it does not know), one "unknown" badge when
-  # it knows nothing, and Anthropic's lifecycle when the model is leaving.
-  def capability_badges(assigns) do
-    ~H"""
-    <%= if match?(%Capabilities{}, @capabilities) do %>
-      <%= if Enum.all?(Capabilities.declarable(), &(Map.fetch!(@capabilities, &1) == :unknown)) do %>
-        <span
-          data-capability="unknown"
-          class="badge badge-ghost badge-xs h-auto"
-          title={gettext("Not reported by the provider")}
-        >
-          {gettext("Capabilities unknown")}
-        </span>
-      <% else %>
-        <%= for flag <- Capabilities.declarable(), Map.fetch!(@capabilities, flag) != :no do %>
-          <% known? = Map.fetch!(@capabilities, flag) == :yes %>
-          <span
-            data-capability={flag}
-            data-state={Map.fetch!(@capabilities, flag)}
-            class={[
-              "badge badge-xs h-auto",
-              if(known?, do: "badge-info badge-outline", else: "badge-ghost")
-            ]}
-            title={if(!known?, do: gettext("Not reported by the provider"))}
-          >
-            {capability_label(flag)}{if(!known?, do: "?")}
-          </span>
-        <% end %>
-      <% end %>
-
-      <span
-        :if={@capabilities.lifecycle == :deprecated}
-        data-lifecycle="deprecated"
-        class="badge badge-warning badge-xs h-auto"
-      >
-        {gettext("Retiring")}
-      </span>
-      <span
-        :if={@capabilities.lifecycle == :retired}
-        data-lifecycle="retired"
-        class="badge badge-error badge-xs h-auto"
-      >
-        {gettext("Retired")}
-      </span>
-    <% end %>
-    """
-  end
-
-  @doc false
-  def capability_label(:vision), do: gettext("Images")
-  def capability_label(:tools), do: gettext("Tools")
-  def capability_label(:json_schema), do: gettext("JSON schema")
 
   @doc false
   # What the "Current Model" panel shows about the current model's

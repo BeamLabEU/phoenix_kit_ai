@@ -38,8 +38,8 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPicker do
 
   alias Phoenix.LiveView.JS
   alias PhoenixKit.Users.Auth.Scope
-  alias PhoenixKitAI.{Capabilities, Recommendations, Request, Tasks}
-  alias PhoenixKitAI.Web.EndpointForm
+  alias PhoenixKitAI.{Capabilities, Endpoint, Recommendations, Request, Tasks}
+  alias PhoenixKitAI.Web.Components.CapabilityBadges
   alias PhoenixKitWeb.Components.Core.Icon
   alias PhoenixKitWeb.Components.Core.Select
 
@@ -78,7 +78,7 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPicker do
       />
       <div :if={@selected} class="flex flex-wrap items-center gap-1 text-sm">
         <.fitness_badge fitness={@selected.fitness} />
-        <EndpointForm.capability_badges capabilities={@selected.capabilities} />
+        <CapabilityBadges.badges capabilities={@selected.capabilities} />
       </div>
       <.recommendations id={@id <> "-recommendations"} recommendations={@recs} scope={@scope} />
     </div>
@@ -131,7 +131,7 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPicker do
                     <div class="font-medium">{row.name}</div>
                     <code class="text-xs text-base-content/60">{row.model}</code>
                     <div class="flex flex-wrap gap-1 mt-1">
-                      <EndpointForm.capability_badges capabilities={row.capabilities} />
+                      <CapabilityBadges.badges capabilities={row.capabilities} />
                       <span
                         :if={row.deprecated?}
                         data-lifecycle="deprecated"
@@ -205,7 +205,7 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPicker do
                       </span>
                     </div>
                   </td>
-                  <td>{row.provider || "—"}</td>
+                  <td>{provider_label(row.provider)}</td>
                   <td class="text-right">{row.calls}</td>
                   <td class="text-right">{worked_cost(row)}</td>
                   <td class="text-right">{percent(row.error_share)}</td>
@@ -340,6 +340,15 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPicker do
 
   defp provider_label(:openrouter), do: "OpenRouter"
   defp provider_label(:anthropic), do: "Anthropic"
+  defp provider_label(nil), do: "—"
+
+  defp provider_label(key) when is_binary(key) do
+    case List.keyfind(Endpoint.provider_options(), key, 1) do
+      {label, _key} -> label
+      nil -> key
+    end
+  end
+
   defp provider_label(other), do: to_string(other)
 
   defp note_label(:free), do: gettext("free — the operator's limits and terms apply")
