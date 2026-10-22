@@ -139,6 +139,18 @@ defmodule PhoenixKitAI.Errors do
   def message({:budget_exceeded, :user_calls}),
     do: gettext("You have made as many AI requests as allowed for the last 24 hours")
 
+  def message({:task_limit_exceeded, :task, unit, period}) do
+    gettext("This AI task has reached its %{name}",
+      name: PhoenixKitAI.GuardEvents.limit_name(unit, period)
+    )
+  end
+
+  def message({:task_limit_exceeded, :user, unit, period}) do
+    gettext("You have reached your %{name} in this AI task",
+      name: PhoenixKitAI.GuardEvents.limit_name(unit, period)
+    )
+  end
+
   def message({:model_unfit, missing}) when is_list(missing) do
     gettext("The endpoint's model cannot do what this task needs: %{needs}",
       needs: PhoenixKitAI.Tasks.need_labels(missing)

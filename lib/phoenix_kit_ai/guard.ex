@@ -33,13 +33,32 @@ defmodule PhoenixKitAI.Guard do
   cache (before the first catalogue read after a restart, or a model the
   catalogue lacks) the request goes as it did before: no flag, nothing left
   out.
+
+  ## Admission for a whole turn
+
+  A caller that makes several calls for one piece of work (an assistant's
+  turn) asks once, with `admit/4`: the task's limits are checked then, and
+  the answer is an admission token kept on this node for `ttl_s` seconds.
+  Its calls pass `guard_admission: token` and skip the limit check — so the
+  work that started under the limits runs to its end — but each is still
+  checked for fitness, and for `PhoenixKitAI.Budget`. A token is honoured
+  only for the task and user it was issued for, and only before it expires;
+  any other token is ignored and the call is checked as usual.
+
+  ## Who may change the guard
+
+  `ai.manage` (a sub-permission of `ai`) — or an Owner, always:
+  `may_manage?/1`. Every function that changes the guard's settings takes
+  the scope of the person doing it and checks it (`authorize_manage/1`).
   """
 
   require Logger
 
-  alias PhoenixKitAI.{Capabilities, Endpoint, Tasks, TaskSpec}
+  alias PhoenixKit.Users.Auth.Scope
+  alias PhoenixKitAI.{Capabilities, Endpoint, TaskLimits, Tasks, TaskSpec}
 
   @verified_only_setting "ai_guard_verified_models_only"
+  @manage "ai.manage"
 
   # Request options a `require_parameters` call may leave out, by the name
   # OpenRouter's `supported_parameters` uses. The ones that ARE the
@@ -282,6 +301,105 @@ defmodule PhoenixKitAI.Guard do
   @doc "The module setting behind `verified_only?/0`."
   @spec verified_only_setting() :: String.t()
   def verified_only_setting, do: @verified_only_setting
+
+  @doc """
+  Turns "only verified models" on or off. Needs `ai.manage`; written to the
+  Activity log.
+  """
+  @spec set_verified_only(term(), boolean()) :: {:ok, term()} | {:error, term()}
+  def set_verified_only(scope, on?) when is_boolean(on?) do
+    with :ok <- authorize_manage(scope),
+         {:ok, setting} = result <-
+           PhoenixKit.Settings.update_boolean_setting_with_module(
+             @verified_only_setting,
+             on?,
+             "ai"
+           ) do
+      PhoenixKit.Activity.log("ai", "guard.verified_only_changed",
+        actor_uuid: actor_uuid(scope),
+        resource_type: "setting",
+        resource_uuid: setting.uuid,
+        metadata: %{"enabled" => on?}
+      )
+
+      result
+    end
+  end
+
+  # ===========================================
+  # RIGHTS
+  # ===========================================
+
+  @doc "The permission that changes the guard."
+  @spec manage_permission() :: String.t()
+  def manage_permission, do: @manage
+
+  @doc "Whether `scope` may change the guard: an Owner, or a holder of `ai.manage`."
+  @spec may_manage?(term()) :: boolean()
+  def may_manage?(%Scope{} = scope), do: Scope.owner?(scope) or Scope.can?(scope, @manage)
+  def may_manage?(_scope), do: false
+
+  @doc false
+  @spec authorize_manage(term()) :: :ok | {:error, :forbidden}
+  def authorize_manage(scope), do: if(may_manage?(scope), do: :ok, else: {:error, :forbidden})
+
+  @doc false
+  @spec actor_uuid(term()) :: String.t() | nil
+  def actor_uuid(%{user: %{uuid: uuid}}) when is_binary(uuid), do: uuid
+  def actor_uuid(_scope), do: nil
+
+  # ===========================================
+  # ADMISSION
+  # ===========================================
+
+  @doc """
+  Admits `user_uuid` (nil for none) to `task` for `ttl_s` seconds: checks the
+  task's limits once and answers `{:ok, token}` for the calls of this piece
+  of work to pass as `guard_admission:` (see the moduledoc), or the refusal
+  (`{:error, {:task_limit_exceeded, scope, unit, period}}`), which is
+  signalled like a refused call. `turn_ref` is kept with the token.
+  """
+  @spec admit(String.t(), String.t() | nil, term(), pos_integer()) ::
+          {:ok, String.t()} | {:error, term()}
+  def admit(task, user_uuid, turn_ref, ttl_s)
+      when is_binary(task) and is_integer(ttl_s) and ttl_s > 0 do
+    with :ok <- TaskLimits.check(Tasks.for_call(task), user_uuid: user_uuid) do
+      token = 24 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false)
+      now = now_ms()
+      purge_admissions(now)
+
+      :ets.insert(
+        PhoenixKitAI.RequestCache.flags_table(),
+        {{:guard_admission, token}, {task, user_uuid, turn_ref, now + ttl_s * 1000}}
+      )
+
+      {:ok, token}
+    end
+  end
+
+  @doc """
+  Whether `token` is an admission this node issued for `task` and
+  `user_uuid` that has not expired.
+  """
+  @spec admitted?(term(), term(), term()) :: boolean()
+  def admitted?(token, task, user_uuid) when is_binary(token) and is_binary(task) do
+    case :ets.lookup(PhoenixKitAI.RequestCache.flags_table(), {:guard_admission, token}) do
+      [{_key, {^task, ^user_uuid, _turn_ref, expires_at}}] -> now_ms() < expires_at
+      _ -> false
+    end
+  rescue
+    ArgumentError -> false
+  end
+
+  def admitted?(_token, _task, _user_uuid), do: false
+
+  defp purge_admissions(now) do
+    :ets.select_delete(PhoenixKitAI.RequestCache.flags_table(), [
+      {{{:guard_admission, :_}, {:_, :_, :_, :"$1"}}, [{:<, :"$1", now}], [true]}
+    ])
+  end
+
+  defp now_ms, do: System.monotonic_time(:millisecond)
 
   @doc false
   # The task key a call names, when it names one as a string.

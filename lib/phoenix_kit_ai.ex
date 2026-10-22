@@ -123,8 +123,10 @@ defmodule PhoenixKitAI do
   alias PhoenixKitAI.{Budget, Endpoint, Prompt, Provider, RequestCache, StructuredOutput}
   alias PhoenixKitAI.Capabilities
   alias PhoenixKitAI.Guard
+  alias PhoenixKitAI.GuardEvents
   alias PhoenixKitAI.Images.{ImageModel, ImageModels, Operations}
   alias PhoenixKitAI.Request
+  alias PhoenixKitAI.TaskLimits
   alias PhoenixKitAI.Tasks
   alias PhoenixKitAI.TaskSpec
   alias PhoenixKitAI.TtsPricing
@@ -943,11 +945,46 @@ defmodule PhoenixKitAI do
       label: "AI",
       icon: "hero-sparkles",
       description: "AI endpoints, prompts, and usage tracking",
+      # `ai.manage`: changes to the AI task guard (limits, watchers, "only
+      # verified models", forgiving a limit). Core grants a new
+      # sub-permission to Admin once while Admin holds `ai`; an Owner holds
+      # every key.
+      sub_permissions: [
+        %{
+          key: "manage",
+          label: "Manage the AI task guard",
+          description:
+            "Change the limits of AI tasks, who is told about them, and which models may be used"
+        }
+      ],
       # Renders the label translated in the admin permissions matrix, the
       # same way the sidebar tabs below translate theirs.
       gettext_backend: PhoenixKitAI.Gettext,
       gettext_domain: "default"
     }
+  end
+
+  @doc """
+  The notification type of the module: `"ai_guard"`, what the watchers of
+  the AI task guard get when a task's limit is near or reached, a spending
+  cap refuses a call, or a task's model stops fitting it
+  (`PhoenixKitAI.GuardEvents`). A watcher can switch it off for themselves.
+  """
+  @impl PhoenixKit.Module
+  @spec notification_types() :: [map()]
+  def notification_types do
+    [
+      %{
+        key: GuardEvents.notice_type(),
+        label: gettext("AI task guard"),
+        description:
+          gettext(
+            "An AI task is near or at a limit, a spending cap refused a call, or a task's model no longer fits it"
+          ),
+        actions: [],
+        default: true
+      }
+    ]
   end
 
   @impl PhoenixKit.Module
@@ -1061,7 +1098,12 @@ defmodule PhoenixKitAI do
       dgettext_noop("default", "Prompts"),
       dgettext_noop("default", "Playground"),
       dgettext_noop("default", "Usage"),
-      dgettext_noop("default", "Tasks")
+      dgettext_noop("default", "Tasks"),
+      dgettext_noop("default", "Manage the AI task guard"),
+      dgettext_noop(
+        "default",
+        "Change the limits of AI tasks, who is told about them, and which models may be used"
+      )
     ]
   end
 
@@ -1122,7 +1164,8 @@ defmodule PhoenixKitAI do
     [
       {DynamicSupervisor, name: PhoenixKitAI.Realtime.Supervisor, strategy: :one_for_one},
       PhoenixKitAI.RequestCache,
-      PhoenixKitAI.Capabilities
+      PhoenixKitAI.Capabilities,
+      PhoenixKitAI.GuardWatch
     ]
   end
 
@@ -1431,6 +1474,7 @@ defmodule PhoenixKitAI do
     # `log: false`: the query log would print the api key.
     %Endpoint{}
     |> Endpoint.changeset(attrs)
+    |> guard_declaration(%Endpoint{}, opts)
     |> repo().insert(log: false)
     |> broadcast_endpoint_change(:endpoint_created)
     |> log_endpoint_activity("endpoint.created", opts)
@@ -1450,7 +1494,7 @@ defmodule PhoenixKitAI do
           {:ok, Endpoint.t()} | {:error, Ecto.Changeset.t()}
   def update_endpoint(%Endpoint{} = endpoint, attrs, opts \\ []) do
     was_enabled = endpoint.enabled
-    changeset = Endpoint.changeset(endpoint, attrs)
+    changeset = endpoint |> Endpoint.changeset(attrs) |> guard_declaration(endpoint, opts)
     # Skip the activity row when the update is a no-op (no field actually
     # changed). The toggle log keeps its own guard so an enable/disable
     # via a bare `%{enabled: x}` still attributes correctly.
@@ -1511,6 +1555,31 @@ defmodule PhoenixKitAI do
   end
 
   defp log_capabilities_declaration(result, _before, _opts), do: result
+
+  # While only verified models may be used (`Guard.verified_only?/0`), what
+  # an admin declares an endpoint's model can do decides which calls go
+  # through, so a new or changed declaration needs `ai.manage` (the `:scope`
+  # option; an Owner always). Keeping a declaration as it is, or removing
+  # one, needs nothing.
+  defp guard_declaration(changeset, before, opts) do
+    declared =
+      capabilities_declaration(%Endpoint{
+        provider_settings: Ecto.Changeset.get_field(changeset, :provider_settings)
+      })
+
+    if declared != nil and declared != capabilities_declaration(before) and
+         Guard.verified_only?() and not Guard.may_manage?(opts[:scope]) do
+      Ecto.Changeset.add_error(
+        changeset,
+        :provider_settings,
+        gettext(
+          "only a holder of ai.manage may declare capabilities while only verified models are allowed"
+        )
+      )
+    else
+      changeset
+    end
+  end
 
   defp capabilities_declaration(%Endpoint{provider_settings: %{"capabilities" => declaration}})
        when is_map(declaration) do
@@ -4239,16 +4308,18 @@ defmodule PhoenixKitAI do
   # Every provider-calling verb passes here, in this order: the endpoint
   # must be usable; [the task's block on the user — a later part of the
   # guard — goes here]; the model must fit what the call and its task need
-  # (`Guard.check/4`, `implied` being what the call itself shows); [the
-  # task's own limits — a later part — go here]; when caps are set, the
-  # last 24 hours of spend must leave room. The request cache comes after,
-  # then HTTP.
+  # (`Guard.check/4`, `implied` being what the call itself shows); the
+  # task's own limits (`TaskLimits.check/3`, skipped for a call that holds
+  # an admission of `Guard.admit/4` for its task and user); when caps are
+  # set, the last 24 hours of spend must leave room — a refusal there is
+  # also a guard event (`GuardEvents.budget_refused/4`). The request cache
+  # comes after, then HTTP.
   #
   # `spends?` is false only for a `process_image/4` dry run, the one verb
   # that honours `dry_run:` — reading the option here let every other verb
   # skip the cap and still call the provider. A dry run still has its
-  # fitness checked; it skips the spend caps (and will skip the task's
-  # limits and blocks).
+  # fitness checked; it skips the spend caps and the task's limits (and will
+  # skip its blocks).
   #
   # A refusal after the endpoint check is written as a usage row by
   # `refuse/4`; an unusable endpoint is not (that is a configuration error,
@@ -4267,10 +4338,27 @@ defmodule PhoenixKitAI do
   end
 
   defp admit(endpoint, opts, implied, spends?) do
-    with {:ok, admission} <-
-           Guard.check(endpoint, opts, Tasks.for_call(opts[:task]), implied),
-         :ok <- if(spends?, do: Budget.check(endpoint, opts), else: :ok) do
+    task = Tasks.for_call(opts[:task])
+
+    with {:ok, admission} <- Guard.check(endpoint, opts, task, implied),
+         :ok <- if(spends?, do: task_limits(task, opts), else: :ok),
+         :ok <- if(spends?, do: budget(endpoint, opts), else: :ok) do
       {:ok, admission}
+    end
+  end
+
+  defp task_limits(nil, _opts), do: :ok
+
+  defp task_limits(task, opts) do
+    if Guard.admitted?(opts[:guard_admission], task.key, opts[:user_uuid]),
+      do: :ok,
+      else: TaskLimits.check(task, opts)
+  end
+
+  defp budget(endpoint, opts) do
+    with {:error, {:budget_exceeded, scope}} = refusal <- Budget.check(endpoint, opts) do
+      GuardEvents.budget_refused(scope, endpoint, opts)
+      refusal
     end
   end
 

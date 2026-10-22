@@ -451,7 +451,7 @@
                   @current_provider
                 ) %>
               <input
-                :if={panel.open != [] or panel.conflicts != []}
+                :if={(panel.open != [] or panel.conflicts != []) and @may_declare}
                 type="hidden"
                 name="endpoint[provider_settings][capabilities][model]"
                 value={current_model_id}
@@ -468,7 +468,7 @@
                     "The provider does not report what this model can do. Tick what it can — the catalogue's answer, once it has one, replaces yours."
                   )}
                 </p>
-                <div class="flex flex-wrap gap-x-6 gap-y-2 mt-2">
+                <div :if={@may_declare} class="flex flex-wrap gap-x-6 gap-y-2 mt-2">
                   <%= for flag <- panel.open do %>
                     <.checkbox
                       id={"endpoint-declare-#{flag}"}
@@ -478,6 +478,23 @@
                       class="checkbox-sm"
                     />
                   <% end %>
+                </div>
+                <%!-- Nothing is submitted here, so a save keeps the stored
+                     declaration as it is. --%>
+                <div :if={!@may_declare} id="endpoint-declare-locked" class="mt-2">
+                  <div class="flex flex-wrap gap-1">
+                    <span
+                      :for={flag <- Enum.filter(panel.open, &(Map.get(panel.declared, &1) == :yes))}
+                      class="badge badge-outline badge-sm"
+                    >
+                      {PhoenixKitAI.Web.Components.CapabilityBadges.label(flag)}
+                    </span>
+                  </div>
+                  <p class="text-xs text-base-content/60 mt-1">
+                    {gettext(
+                      "Only verified models are allowed: declaring capabilities needs the “Manage the AI task guard” permission."
+                    )}
+                  </p>
                 </div>
               </div>
 
