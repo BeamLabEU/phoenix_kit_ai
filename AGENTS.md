@@ -249,6 +249,7 @@ lib/phoenix_kit_ai/
   openrouter_client.ex           generic across providers despite the name
   capabilities.ex                what a model can do (catalogue + declared), ETS cache process
   task_spec.ex tasks.ex          AI task declarations (`ai_tasks/0`), the registry, fitness for a task
+  recommendations.ex             cheapest fit models for a task + models that worked (journal, 30 days)
   guard.ex                       the call-time check: needs of a call, fitness, require_parameters
   migrations.ex model_capability.ex   the module's own migration chain; capability snapshot schema
   errors.ex                      error atom -> gettext string
@@ -567,6 +568,24 @@ Test database `phoenix_kit_ai_test`.
   `metadata.task`, and `:task` is not part of the cache key. A key no
   module declares is logged once and the call goes on. This module
   declares `ai.translation` and `ai.playground`.
+- Recommendations (`PhoenixKitAI.Recommendations`, live data only — no list
+  of "best models", no `recommended:` in declarations): `cheapest/2` takes
+  the catalogue the capability cache holds for the base URLs the endpoints
+  use, keeps models that are `:fit` for all the task's hard needs (an
+  unverified one is not) and answer in text, drops retired, marks
+  deprecated, and ranks by `typical_tokens × catalogue prices` (else the
+  journal's median tokens over 30 days, else the input price alone —
+  `estimate: :rough`). Anthropic lists no prices: unpriced, after the priced
+  rows, one place kept; never mapped to an OpenRouter model by name. The
+  cache therefore keeps each model's `name`, `prompt_price`,
+  `completion_price` and `text_output` (not in the DB snapshot: after a
+  restart they are empty until the first refresh). `worked/2` is one
+  aggregate over `phoenix_kit_ai_requests` by `metadata->>'task'`, without
+  `metadata.refused` rows. The UI is `Web.Components.TaskModelPicker`
+  (`picker/1` for a consumer's form field, `recommendations/1` for the
+  panel alone, as on AI → Tasks); its create link needs the `ai`
+  permission in the `scope` attr and opens the new-endpoint form with
+  `?name=&model=&integration_uuid=` prefilled — never saved by the link.
 - Every verb's result names its usage row: `"request_uuid"` in the chat and
   embedding responses, `:request_uuid` in the other verbs' maps; a cache
   hit names the row it wrote, not the first one.

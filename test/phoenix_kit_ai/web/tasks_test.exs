@@ -8,7 +8,9 @@ defmodule PhoenixKitAI.Web.TasksTest do
   use PhoenixKitAI.LiveCase
 
   alias PhoenixKit.ModuleRegistry
+  alias PhoenixKitAI.Request
   alias PhoenixKitAI.Test.FakeAITasks
+  alias PhoenixKitAI.Test.Repo, as: TestRepo
 
   setup do
     :ok = ModuleRegistry.register(FakeAITasks)
@@ -75,7 +77,7 @@ defmodule PhoenixKitAI.Web.TasksTest do
       now = DateTime.utc_now() |> DateTime.truncate(:second)
 
       for status <- ["success", "success", "error"] do
-        PhoenixKitAI.Test.Repo.insert!(%PhoenixKitAI.Request{
+        TestRepo.insert!(%Request{
           model: "vendor/worked",
           status: status,
           request_type: "chat",

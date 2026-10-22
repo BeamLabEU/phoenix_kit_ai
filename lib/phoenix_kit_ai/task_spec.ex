@@ -26,9 +26,10 @@ defmodule PhoenixKitAI.TaskSpec do
 
   `self_flag`, `private`, `sources`, `max_calls_per_hour`,
   `max_tokens_per_call`, `auto_block_threshold`, `block_group`, `watchers`,
-  `content`, `default_limits` and `typical_tokens` are accepted and kept for
-  the guard's later parts (limits, off-purpose marks, blocks,
-  recommendations); nothing reads them yet.
+  `content` and `default_limits` are accepted and kept for the guard's later
+  parts (limits, off-purpose marks, blocks); nothing reads them yet.
+  `typical_tokens` (`{input, output}` of a typical call) is read by
+  `PhoenixKitAI.Recommendations` to estimate the price of a call.
 
   `module` and `enabled` are filled in by `PhoenixKitAI.Tasks`: the module
   that declared the task, and whether that module is switched on.
