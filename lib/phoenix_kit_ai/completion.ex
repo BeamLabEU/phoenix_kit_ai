@@ -92,6 +92,12 @@ defmodule PhoenixKitAI.Completion do
   def chat_completion(endpoint, messages, opts \\ []) do
     url = build_url(endpoint, "/chat/completions")
     headers = OpenRouterClient.build_headers_from_endpoint(endpoint)
+
+    opts =
+      if PhoenixKitAI.Anthropic.endpoint?(endpoint),
+        do: PhoenixKitAI.Anthropic.sampling_opts(opts, endpoint.model),
+        else: opts
+
     body = build_chat_body(endpoint.model, messages, opts)
     start_time = System.monotonic_time(:millisecond)
 

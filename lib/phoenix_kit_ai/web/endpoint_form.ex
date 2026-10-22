@@ -1338,13 +1338,26 @@ defmodule PhoenixKitAI.Web.EndpointForm do
       # Always assigned in mount (defaults to :text), so no fallback needed.
       model_type: model_type,
       base_url: base_url,
-      fallback_provider: socket.assigns[:current_provider]
+      fallback_provider: socket.assigns[:current_provider],
+      extra_headers: provider_extra_headers(socket.assigns[:current_provider])
     ]
 
     start_async(socket, :model_fetch, fn ->
       {uuid, model_type, fetch_models_and_voices(uuid, model_type, base_url, fetch_opts)}
     end)
   end
+
+  # Headers the provider's API wants on every request besides the key, as the
+  # core registry declares them for its key check (Anthropic's
+  # `anthropic-version`, without which its `/models` answers 400).
+  defp provider_extra_headers(provider) when is_binary(provider) do
+    case PhoenixKit.Integrations.Providers.get(provider) do
+      %{validation: %{extra_headers: headers}} when is_list(headers) -> headers
+      _ -> []
+    end
+  end
+
+  defp provider_extra_headers(_provider), do: []
 
   defp fetch_models_and_voices(uuid, model_type, base_url, fetch_opts) do
     case connection_api_key(uuid) do

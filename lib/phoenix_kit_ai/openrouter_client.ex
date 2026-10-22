@@ -119,7 +119,7 @@ defmodule PhoenixKitAI.OpenRouterClient do
   """
   def fetch_models(api_key, opts \\ []) do
     url = "#{Keyword.get(opts, :base_url, @base_url)}/models"
-    headers = build_headers(api_key, opts)
+    headers = build_headers(api_key, opts) ++ Keyword.get(opts, :extra_headers, [])
     model_type = Keyword.get(opts, :model_type, :all)
 
     case http_get(url, headers) do
@@ -845,6 +845,7 @@ defmodule PhoenixKitAI.OpenRouterClient do
   defp normalize_models(models, model_type) do
     models
     |> Enum.filter(&model_matches_type?(&1, model_type))
+    |> Enum.map(&anthropic_fields/1)
     |> Enum.map(fn model ->
       top_provider = model["top_provider"] || %{}
 
@@ -860,6 +861,27 @@ defmodule PhoenixKitAI.OpenRouterClient do
         top_provider: top_provider
       }
     end)
+  end
+
+  # Anthropic's own `/models` entries name their fields differently and list
+  # no `supported_parameters` (`PhoenixKitAI.Anthropic.model_fields/1`).
+  defp anthropic_fields(model) do
+    if PhoenixKitAI.Anthropic.model?(model) do
+      fields = PhoenixKitAI.Anthropic.model_fields(model)
+
+      model
+      |> Map.merge(Map.take(fields, ["name", "context_length", "supported_parameters"]))
+      |> Map.put(
+        "top_provider",
+        Map.put(
+          model["top_provider"] || %{},
+          "max_completion_tokens",
+          fields["max_completion_tokens"]
+        )
+      )
+    else
+      model
+    end
   end
 
   # Filter models by type based on architecture.modality
@@ -893,7 +915,12 @@ defmodule PhoenixKitAI.OpenRouterClient do
   end
 
   defp model_matches_type?(model, :vision) do
-    get_modality(model) == "text+image->text"
+    case get_modality(model) do
+      "text+image->text" -> true
+      # Anthropic lists no modality; its entries say whether they take images.
+      "" -> get_in(model, ["capabilities", "image_input", "supported"]) == true
+      _ -> false
+    end
   end
 
   defp model_matches_type?(model, :image_gen) do
