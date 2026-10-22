@@ -23,11 +23,11 @@ defmodule PhoenixKitAI.Capabilities do
       OpenAI-compatible layer, which ignores `response_format`, so
       `json_schema` is `:no` and `json` is `:yes` (the schema is written into
       the prompt instead); `tools` is `:yes`;
-      `capabilities.thinking.types.{enabled,adaptive,disabled}` →
-      `thinking_enabled` / `thinking_adaptive` / `thinking_disabled` (which
-      `thinking: {type: …}` forms the model accepts; the documented
-      catalogue rows show only `enabled` and `adaptive`, so
-      `thinking_disabled` is expected to stay `:unknown`).
+      `capabilities.thinking.types.{enabled,adaptive,disabled,between_tools}` →
+      `thinking_enabled` / `thinking_adaptive` / `thinking_disabled` /
+      `thinking_between_tools` (which `thinking: {type: …}` forms the model
+      accepts). Prices come from `PhoenixKitAI.AnthropicPricing`, the
+      catalogue has none.
     * **Every other provider** — `:unknown`, unless declared.
 
   ## Declared capabilities
@@ -72,6 +72,7 @@ defmodule PhoenixKitAI.Capabilities do
 
   alias PhoenixKit.PubSub.Manager, as: PubSub
   alias PhoenixKitAI.AIModel
+  alias PhoenixKitAI.AnthropicPricing
   alias PhoenixKitAI.Endpoint
   alias PhoenixKitAI.ModelCapability
   alias PhoenixKitAI.OpenRouterClient
@@ -104,6 +105,7 @@ defmodule PhoenixKitAI.Capabilities do
             thinking_disabled: :unknown,
             thinking_enabled: :unknown,
             thinking_adaptive: :unknown,
+            thinking_between_tools: :unknown,
             name: nil,
             prompt_price: nil,
             completion_price: nil,
@@ -123,6 +125,7 @@ defmodule PhoenixKitAI.Capabilities do
           thinking_disabled: flag(),
           thinking_enabled: flag(),
           thinking_adaptive: flag(),
+          thinking_between_tools: flag(),
           name: String.t() | nil,
           prompt_price: float() | nil,
           completion_price: float() | nil,
@@ -391,8 +394,17 @@ defmodule PhoenixKitAI.Capabilities do
       text_output: true,
       thinking_disabled: thinking_type(row["capabilities"], "disabled"),
       thinking_enabled: thinking_type(row["capabilities"], "enabled"),
-      thinking_adaptive: thinking_type(row["capabilities"], "adaptive")
+      thinking_adaptive: thinking_type(row["capabilities"], "adaptive"),
+      thinking_between_tools: thinking_type(row["capabilities"], "between_tools")
     }
+    |> anthropic_prices(row["id"])
+  end
+
+  defp anthropic_prices(caps, model) do
+    case AnthropicPricing.per_token(model) do
+      {prompt, completion} -> %{caps | prompt_price: prompt, completion_price: completion}
+      nil -> caps
+    end
   end
 
   # Which `thinking: {type: …}` forms a model accepts, from

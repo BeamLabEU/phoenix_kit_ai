@@ -26,6 +26,7 @@ defmodule PhoenixKitAI.OpenRouterClient do
 
   alias PhoenixKit.Utils.Values
   alias PhoenixKitAI.AIModel
+  alias PhoenixKitAI.AnthropicPricing
   alias PhoenixKitAI.Capabilities
   alias PhoenixKitAI.Endpoint
   alias PhoenixKitAI.Web.MessageShape
@@ -969,8 +970,9 @@ defmodule PhoenixKitAI.OpenRouterClient do
     end
   end
 
-  # Anthropic lists no prices and no sampling parameters, so those stay
-  # empty as they did when the compatibility layer's `/models` was read.
+  # Anthropic lists no prices and no sampling parameters. The prices come
+  # from `AnthropicPricing`; a model it has no rate for shows no price
+  # rather than a free one.
   defp normalize_anthropic_models(rows, model_type) do
     rows
     |> Enum.filter(&(is_binary(&1["id"]) and model_matches_type?(&1, model_type)))
@@ -980,10 +982,17 @@ defmodule PhoenixKitAI.OpenRouterClient do
         name: row["display_name"] || row["id"],
         context_length: row["max_input_tokens"],
         max_completion_tokens: row["max_tokens"],
-        pricing: %{"prompt" => 0, "completion" => 0},
+        pricing: anthropic_pricing(row["id"]),
         capabilities: Capabilities.from_anthropic(row)
       }
     end)
+  end
+
+  defp anthropic_pricing(model) do
+    case AnthropicPricing.per_token(model) do
+      {prompt, completion} -> %{"prompt" => prompt, "completion" => completion}
+      nil -> %{"prompt" => nil, "completion" => nil}
+    end
   end
 
   # Filter models by type based on architecture.modality
