@@ -830,9 +830,9 @@ defmodule PhoenixKitAI.Completion do
   end
 
   # Anthropic's OpenAI-compatible layer: never `temperature` and `top_p`
-  # together (a 400 on its own; `temperature` is kept), and neither of them
-  # to a model from Claude Opus 4.7 on, which refuses each even when the
-  # caller set it (`anthropic_sampling?/1`); no penalties and no `seed`
+  # together (a 400 on its own; `temperature` is kept), and none of
+  # `temperature`, `top_p`, `top_k` to a model from Claude Opus 4.7 on,
+  # which refuses each even when the caller set it (`anthropic_sampling?/1`); no penalties and no `seed`
   # (ignored there); the OpenRouter-shaped `reasoning` object, which that
   # layer silently ignores, becomes its `thinking` field.
   defp provider_rules(body, endpoint) do
@@ -848,19 +848,20 @@ defmodule PhoenixKitAI.Completion do
 
   defp anthropic_sampling(body, model) do
     cond do
-      not anthropic_sampling?(model) -> Map.drop(body, ["temperature", "top_p"])
+      not anthropic_sampling?(model) -> Map.drop(body, ["temperature", "top_p", "top_k"])
       Map.has_key?(body, "temperature") -> Map.delete(body, "top_p")
       true -> body
     end
   end
 
-  # The first Claude that refuses `temperature` and `top_p` (a 400, "… is
+  # The first Claude that refuses `temperature`, `top_p` and `top_k` (a 400, "… is
   # deprecated for this model"); checked against live models in
   # BeamLabEU/phoenix_kit_ai#42.
   @anthropic_no_sampling_since {4, 7}
 
   @doc false
-  # Whether an Anthropic model takes `temperature` / `top_p` (one of them):
+  # Whether an Anthropic model takes sampling (`temperature` / `top_p`, one
+  # of them, and `top_k`):
   # a model older than Claude Opus 4.7. Its catalogue entry does not say, so
   # the model id decides; an id this cannot read is taken for a newer model.
   @spec anthropic_sampling?(String.t() | nil) :: boolean()

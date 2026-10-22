@@ -118,6 +118,19 @@ defmodule PhoenixKitAI.AnthropicRulesTest do
       assert body["max_tokens"] == 50
     end
 
+    test "a model that refuses sampling gets no top_k either; an earlier one does" do
+      stub_chat()
+      newer = anthropic_endpoint("claude-opus-4-7")
+      earlier = anthropic_endpoint("claude-sonnet-4-6")
+
+      assert {:ok, _} = PhoenixKitAI.ask(newer.uuid, "hi", top_k: 5)
+      assert_received {:body, body}
+      refute Map.has_key?(body, "top_k")
+
+      assert {:ok, _} = PhoenixKitAI.ask(earlier.uuid, "hi", top_k: 5)
+      assert_received {:body, %{"top_k" => 5}}
+    end
+
     test "an earlier model keeps the caller's temperature, never with top_p" do
       stub_chat()
       ep = anthropic_endpoint("claude-sonnet-4-6")
