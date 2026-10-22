@@ -33,6 +33,9 @@ defmodule PhoenixKitAI.DataCase do
   setup tags do
     pid = Sandbox.start_owner!(Test.Repo, shared: not tags[:async])
     on_exit(fn -> Sandbox.stop_owner(pid) end)
+
+    # The guard's per-node caches outlive the sandbox's rollback.
+    PhoenixKitAI.Guard.reset_caches()
     :ok
   end
 end

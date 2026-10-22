@@ -65,12 +65,24 @@ defmodule PhoenixKitAI.TaskLimits do
   change goes to the Activity log.
 
   The check fails open: a database error reads as nothing used.
+
+  ## The cache
+
+  A call reads a task's settings row and personal limits from a per-node
+  cache (the request cache's flags table), loaded on the first call of the
+  task: a task without limits costs no query. Every change through this
+  module drops the task's entry here and broadcasts
+  `{:task_limits_changed, task_key}` on `topic/0`, which
+  `PhoenixKitAI.GuardWatch` turns into the same drop on every node. The
+  usage and forgiving are always read from the database, and only when a
+  limit is in force.
   """
 
   import Ecto.Query
 
   require Logger
 
+  alias PhoenixKit.PubSub.Manager, as: PubSub
   alias PhoenixKit.Settings
   alias PhoenixKit.Users.Auth.User
   alias PhoenixKit.Utils.TimeZone
@@ -81,6 +93,7 @@ defmodule PhoenixKitAI.TaskLimits do
   @units [:money, :requests, :tokens]
   @periods [:day, :month]
   @default_warn_percent 80
+  @topic "phoenix_kit:ai:guard"
 
   @type scope :: :task | :user
   @type unit :: :money | :requests | :tokens
@@ -93,7 +106,8 @@ defmodule PhoenixKitAI.TaskLimits do
           period: period(),
           used: non_neg_integer(),
           limit: non_neg_integer(),
-          period_key: String.t()
+          period_key: String.t(),
+          ends_at: DateTime.t()
         }
 
   @doc "The scopes, units and periods, in the order they are checked."
@@ -147,15 +161,15 @@ defmodule PhoenixKitAI.TaskLimits do
   """
   @spec effective(TaskSpec.t(), String.t() | nil) :: %{task: limits(), user: limits()}
   def effective(%TaskSpec{} = spec, user_uuid),
-    do: effective(spec, settings(spec.key), user_uuid)
+    do: effective(spec, cached(spec.key), user_uuid)
 
-  defp effective(spec, setting, user_uuid) do
+  defp effective(spec, %{setting: setting, personal: personal}, user_uuid) do
     stored = stored_limits(setting)
     declared = normalize_scoped(spec.default_limits)
 
     user =
       if is_binary(user_uuid),
-        do: merge([personal(spec.key, user_uuid), stored.user, declared.user]),
+        do: merge([Map.get(personal, user_uuid, %{}), stored.user, declared.user]),
         else: %{}
 
     %{task: merge([stored.task, declared.task]), user: user}
@@ -218,12 +232,77 @@ defmodule PhoenixKitAI.TaskLimits do
 
   def money_counted?(_endpoint), do: false
 
-  defp personal(task_key, user_uuid) do
-    case repo().get_by(TaskUserLimit, task_key: task_key, user_uuid: user_uuid) do
-      %TaskUserLimit{limits: limits} -> normalize(limits)
-      nil -> %{}
+  # ── the per-node cache (see the moduledoc) ──
+
+  @doc "The PubSub topic of `{:task_limits_changed, task_key}`."
+  @spec topic() :: String.t()
+  def topic, do: @topic
+
+  @doc false
+  # Drops this node's cached limits of `task_key`: bumping the task's
+  # generation makes an entry loaded before the change unusable, even one
+  # written back after this.
+  @spec forget(String.t()) :: :ok
+  def forget(task_key) do
+    key = {__MODULE__, :generation, task_key}
+    :ets.update_counter(flags_table(), key, 1, {key, 0})
+    :ok
+  rescue
+    ArgumentError -> :ok
+  end
+
+  @doc false
+  # Forgets the whole cache (tests: the database is rolled back, the cache
+  # is not).
+  @spec reset_cache() :: :ok
+  def reset_cache do
+    :ets.match_delete(flags_table(), {{__MODULE__, :_, :_}, :_})
+    :ok
+  rescue
+    ArgumentError -> :ok
+  end
+
+  defp cached(task_key) do
+    table = flags_table()
+    generation = generation(table, task_key)
+
+    case :ets.lookup(table, {__MODULE__, :limits, task_key}) do
+      [{_key, {^generation, entry}}] ->
+        entry
+
+      _missing_or_stale ->
+        entry = load(task_key)
+        :ets.insert(table, {{__MODULE__, :limits, task_key}, {generation, entry}})
+        entry
+    end
+  rescue
+    ArgumentError -> load(task_key)
+  end
+
+  defp generation(table, task_key) do
+    case :ets.lookup(table, {__MODULE__, :generation, task_key}) do
+      [{_key, generation}] -> generation
+      [] -> 0
     end
   end
+
+  defp load(task_key) do
+    %{
+      setting: settings(task_key),
+      personal: Map.new(list_user_limits(task_key), &{&1.user_uuid, normalize(&1.limits)})
+    }
+  end
+
+  # After a change: this node at once, the others by broadcast.
+  defp changed({:ok, _} = result, task_key) do
+    forget(task_key)
+    PubSub.broadcast(@topic, {:task_limits_changed, task_key})
+    result
+  end
+
+  defp changed(result, _task_key), do: result
+
+  defp flags_table, do: PhoenixKitAI.RequestCache.flags_table()
 
   defp stored_limits(%TaskSetting{limits: limits}), do: normalize_scoped(limits)
   defp stored_limits(nil), do: %{task: %{}, user: %{}}
@@ -423,6 +502,7 @@ defmodule PhoenixKitAI.TaskLimits do
       user_uuid = if limits.user != %{}, do: user_uuid
       usage = usage(task_key, user_uuid, now, limits.task != %{})
       keys = period_keys(now)
+      windows = windows(now)
 
       for scope <- @scopes,
           used = usage[scope],
@@ -437,7 +517,8 @@ defmodule PhoenixKitAI.TaskLimits do
           period: period,
           used: used[unit][period],
           limit: limit,
-          period_key: keys[period]
+          period_key: keys[period],
+          ends_at: elem(windows[period], 1)
         }
       end
     end
@@ -457,12 +538,12 @@ defmodule PhoenixKitAI.TaskLimits do
 
   def check(%TaskSpec{} = spec, opts, now) do
     user_uuid = if is_binary(opts[:user_uuid]), do: opts[:user_uuid]
-    setting = settings(spec.key)
-    statuses = statuses(spec.key, effective(spec, setting, user_uuid), user_uuid, now)
+    entry = cached(spec.key)
+    statuses = statuses(spec.key, effective(spec, entry, user_uuid), user_uuid, now)
 
     case Enum.find(statuses, &(&1.used >= &1.limit)) do
       nil ->
-        percent = warn_percent(setting)
+        percent = warn_percent(entry.setting)
 
         statuses
         |> Enum.filter(&(&1.limit > 0 and &1.used * 100 >= &1.limit * percent))
@@ -515,6 +596,7 @@ defmodule PhoenixKitAI.TaskLimits do
         less_than_or_equal_to: 100
       )
       |> repo().insert_or_update()
+      |> changed(task_key)
       |> log("guard.limits_updated", scope, fn row ->
         %{"task" => task_key, "warn_percent" => row.warn_percent}
       end)
@@ -553,6 +635,7 @@ defmodule PhoenixKitAI.TaskLimits do
       name: :phoenix_kit_ai_task_user_limits_user_uuid_fkey
     )
     |> repo().insert_or_update()
+    |> changed(task_key)
     |> log("guard.user_limits_updated", scope, fn _row ->
       %{"task" => task_key, "user_uuid" => user_uuid}
     end)
@@ -576,6 +659,7 @@ defmodule PhoenixKitAI.TaskLimits do
     {:ok, _} =
       row
       |> repo().delete()
+      |> changed(row.task_key)
       |> log("guard.user_limits_deleted", scope, fn row ->
         %{"task" => row.task_key, "user_uuid" => row.user_uuid}
       end)

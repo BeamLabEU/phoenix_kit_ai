@@ -41,6 +41,9 @@ defmodule PhoenixKitAI.LiveCase do
     pid = Sandbox.start_owner!(TestRepo, shared: not tags[:async])
     on_exit(fn -> Sandbox.stop_owner(pid) end)
 
+    # The guard's per-node caches outlive the sandbox's rollback.
+    PhoenixKitAI.Guard.reset_caches()
+
     # Enable the AI module so LiveView mounts don't redirect away.
     # Core's `Settings.update_boolean_setting_with_module/3` writes to
     # the `phoenix_kit_settings` table we create in the test migration.

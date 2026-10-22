@@ -12,6 +12,7 @@ defmodule PhoenixKitAI.TaskLimitsTest do
 
   alias PhoenixKit.ModuleRegistry
   alias PhoenixKit.Notifications.Notification
+  alias PhoenixKit.PubSub.Manager, as: PubSub
   alias PhoenixKit.Test.Fixtures
   alias PhoenixKit.Users.Auth.Scope
   alias PhoenixKitAI.{GuardEvent, GuardEvents, Request, TaskLimits, Tasks}
@@ -118,6 +119,38 @@ defmodule PhoenixKitAI.TaskLimitsTest do
   defp events(kind) do
     TestRepo.all(from(e in GuardEvent, where: e.kind == ^kind, order_by: e.inserted_at))
   end
+
+  # The SQL the test repo runs inside `fun`.
+  defp queries(fun) do
+    test_pid = self()
+    handler = "limits-queries-#{System.unique_integer([:positive])}"
+
+    :telemetry.attach(
+      handler,
+      [:phoenix_kit_ai, :test, :repo, :query],
+      fn _event, _measurements, %{query: query}, _config -> send(test_pid, {:sql, query}) end,
+      nil
+    )
+
+    try do
+      fun.()
+    after
+      :telemetry.detach(handler)
+    end
+
+    collect_sql([])
+  end
+
+  defp collect_sql(acc) do
+    receive do
+      {:sql, query} -> collect_sql([query | acc])
+    after
+      0 -> Enum.reverse(acc)
+    end
+  end
+
+  defp event_inserts(sql),
+    do: Enum.filter(sql, &(&1 =~ ~s(INSERT INTO "phoenix_kit_ai_guard_events")))
 
   defp notifications_of(user_uuid) do
     TestRepo.all(from(n in Notification, where: n.recipient_uuid == ^user_uuid))
@@ -265,6 +298,98 @@ defmodule PhoenixKitAI.TaskLimitsTest do
     test "a dry run of process_image is not checked against the limits" do
       # The dry run is the one verb that skips the caps; the limits follow it.
       assert TaskLimits.check(nil, []) == :ok
+    end
+  end
+
+  describe "what a call costs the database" do
+    test "a task without limits makes no query once its settings are cached" do
+      user = Fixtures.user_fixture().uuid
+      assert :ok = TaskLimits.check(spec("test.unlimited"), user_uuid: user)
+
+      assert queries(fn ->
+               assert :ok = TaskLimits.check(spec("test.unlimited"), user_uuid: user)
+               assert :ok = TaskLimits.check(spec("test.unlimited"), [])
+             end) == []
+    end
+
+    test "a change through the context is seen at once", %{owner: owner} do
+      assert :ok = TaskLimits.check(spec("test.unlimited"), [])
+
+      {:ok, _} =
+        TaskLimits.update_settings(owner_scope(owner), "test.unlimited", %{
+          "limits" => %{"task" => %{"requests" => %{"day" => "0"}}}
+        })
+
+      assert {:error, {:task_limit_exceeded, :task, :requests, :day}} =
+               TaskLimits.check(spec("test.unlimited"), [])
+
+      user = Fixtures.user_fixture().uuid
+      assert :ok = TaskLimits.check(spec("test.limited"), user_uuid: user)
+
+      {:ok, _} =
+        TaskLimits.put_user_limits(owner_scope(owner), "test.limited", user, %{
+          "requests" => %{"day" => "0"}
+        })
+
+      assert {:error, {:task_limit_exceeded, :user, :requests, :day}} =
+               TaskLimits.check(spec("test.limited"), user_uuid: user)
+
+      {:ok, :deleted} = TaskLimits.delete_user_limits(owner_scope(owner), "test.limited", user)
+      assert :ok = TaskLimits.check(spec("test.limited"), user_uuid: user)
+    end
+
+    test "a change on another node reaches this one's cache through PubSub" do
+      watch = start_supervised!(PhoenixKitAI.GuardWatch)
+      assert :ok = TaskLimits.check(spec("test.unlimited"), [])
+
+      # Written by another node: the row is there, only its broadcast arrives here.
+      TestRepo.insert!(%PhoenixKitAI.TaskSetting{
+        task_key: "test.unlimited",
+        limits: %{"task" => %{"requests" => %{"day" => 0}}}
+      })
+
+      assert :ok = TaskLimits.check(spec("test.unlimited"), [])
+
+      PubSub.broadcast(
+        TaskLimits.topic(),
+        {:task_limits_changed, "test.unlimited"}
+      )
+
+      _ = :sys.get_state(watch)
+
+      assert {:error, {:task_limit_exceeded, :task, :requests, :day}} =
+               TaskLimits.check(spec("test.unlimited"), [])
+    end
+
+    test "past the warn percent, only the first crossing writes an event", %{
+      owner: owner,
+      endpoint: ep
+    } do
+      set_limits(owner, %{"task" => %{"requests" => %{"month" => "10"}}})
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      for _ <- 1..9, do: row(ep, now)
+
+      assert [_] =
+               event_inserts(queries(fn -> assert :ok = TaskLimits.check(spec(), [], now) end))
+
+      for _ <- 1..3 do
+        assert event_inserts(queries(fn -> assert :ok = TaskLimits.check(spec(), [], now) end)) ==
+                 []
+      end
+
+      assert [_] = events("limit_warning")
+    end
+
+    test "a limit reached again in its window writes no second event", %{
+      owner: owner,
+      endpoint: ep
+    } do
+      set_limits(owner, %{"task" => %{"requests" => %{"day" => "1"}}})
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      row(ep, now)
+
+      assert [_] = event_inserts(queries(fn -> TaskLimits.check(spec(), [], now) end))
+      assert event_inserts(queries(fn -> TaskLimits.check(spec(), [], now) end)) == []
     end
   end
 

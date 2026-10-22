@@ -16,6 +16,9 @@ defmodule PhoenixKitAI.GuardWatch do
 
   Each node runs its own; the event's dedupe key keeps the signal to one.
 
+  It also drops this node's cached task limits when a task's limits change
+  anywhere (`{:task_limits_changed, task_key}` on `TaskLimits.topic/0`).
+
   After every look it emits `[:phoenix_kit_ai, :guard_watch, :look]`
   (measurement `pairs`, metadata `trigger`: `:first_look`, `:capabilities`
   or `:endpoint`), so whoever needs to know that a change has been looked at
@@ -26,7 +29,8 @@ defmodule PhoenixKitAI.GuardWatch do
 
   require Logger
 
-  alias PhoenixKitAI.{Capabilities, GuardEvents, Tasks}
+  alias PhoenixKit.PubSub.Manager, as: PubSub
+  alias PhoenixKitAI.{Capabilities, GuardEvents, TaskLimits, Tasks}
   alias PhoenixKitAI.Web.MessageShape
 
   @endpoint_events [:endpoint_created, :endpoint_updated, :endpoint_deleted]
@@ -38,6 +42,7 @@ defmodule PhoenixKitAI.GuardWatch do
   def init(_opts) do
     Capabilities.subscribe()
     PhoenixKitAI.subscribe_endpoints()
+    PubSub.subscribe(TaskLimits.topic())
     {:ok, %{last: %{}}, {:continue, :first_look}}
   end
 
@@ -48,6 +53,12 @@ defmodule PhoenixKitAI.GuardWatch do
   @impl true
   def handle_info({:capabilities_refreshed, _base_urls}, state),
     do: {:noreply, %{state | last: look(state.last, :capabilities)}}
+
+  # A task's limits changed (on this node or another): drop this node's cache.
+  def handle_info({:task_limits_changed, task_key}, state) do
+    TaskLimits.forget(task_key)
+    {:noreply, state}
+  end
 
   def handle_info({event, _uuid}, state) when event in @endpoint_events,
     do: {:noreply, %{state | last: look(state.last, :endpoint)}}

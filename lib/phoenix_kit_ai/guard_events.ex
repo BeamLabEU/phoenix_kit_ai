@@ -16,7 +16,9 @@ defmodule PhoenixKitAI.GuardEvents do
   | a model that no longer fits a task | `model_unfit:<task>:<endpoint>:<local date>` |
 
   The period key is the local date (`2026-10-22`) or month (`2026-10`) of the
-  site time zone. A forgiving (`limit_forgiven`) has no key: every one is
+  site time zone. A key that was inserted (here or, seen as a conflict, on
+  another node) is also kept on this node until its window ends, so a limit
+  that stays past its threshold costs no further write. A forgiving (`limit_forgiven`) has no key: every one is
   kept.
 
   ## Who is told
@@ -182,10 +184,23 @@ defmodule PhoenixKitAI.GuardEvents do
 
   @doc """
   Inserts an event. `{:ok, event}` when it was written, `:duplicate` when its
-  `dedupe_key` was already taken.
+  `dedupe_key` was already taken — known on this node (kept until `:until`,
+  default the end of the local day) or found taken in the database.
   """
   @spec record(map()) :: {:ok, GuardEvent.t()} | :duplicate
   def record(attrs) when is_map(attrs) do
+    key = attrs[:dedupe_key]
+
+    if is_binary(key) and sent?(key) do
+      :duplicate
+    else
+      result = insert(attrs)
+      if is_binary(key), do: remember(key, attrs[:until])
+      result
+    end
+  end
+
+  defp insert(attrs) do
     row =
       attrs
       |> Map.take(GuardEvent.__schema__(:fields))
@@ -202,6 +217,43 @@ defmodule PhoenixKitAI.GuardEvents do
       {0, _} -> :duplicate
     end
   end
+
+  defp sent?(key) do
+    case :ets.lookup(flags_table(), {__MODULE__, :sent, key}) do
+      [{_key, until}] -> System.os_time(:second) < until
+      [] -> false
+    end
+  rescue
+    ArgumentError -> false
+  end
+
+  # Kept until the window of the key ends; the ones already past are dropped
+  # here, so the table holds the open windows only.
+  defp remember(key, until) do
+    now = System.os_time(:second)
+    until = DateTime.to_unix(until || elem(TaskLimits.windows().day, 1))
+
+    :ets.select_delete(flags_table(), [
+      {{{__MODULE__, :sent, :_}, :"$1"}, [{:<, :"$1", now}], [true]}
+    ])
+
+    :ets.insert(flags_table(), {{__MODULE__, :sent, key}, until})
+  rescue
+    ArgumentError -> false
+  end
+
+  @doc false
+  # Forgets the keys kept on this node (tests: the database is rolled back,
+  # the table is not).
+  @spec reset_sent() :: :ok
+  def reset_sent do
+    :ets.match_delete(flags_table(), {{__MODULE__, :sent, :_}, :_})
+    :ok
+  rescue
+    ArgumentError -> :ok
+  end
+
+  defp flags_table, do: PhoenixKitAI.RequestCache.flags_table()
 
   @doc "A limit of `spec` at its warn percent (see the moduledoc)."
   @spec limit_warning(TaskSpec.t(), String.t() | nil, TaskLimits.status()) :: :ok
@@ -250,7 +302,8 @@ defmodule PhoenixKitAI.GuardEvents do
         "used" => status.used,
         "limit" => status.limit
       },
-      dedupe_key: "#{kind}:#{spec.key}:#{user_uuid || "-"}:#{status.unit}:#{status.period_key}"
+      dedupe_key: "#{kind}:#{spec.key}:#{user_uuid || "-"}:#{status.unit}:#{status.period_key}",
+      until: status.ends_at
     })
   end
 
@@ -306,7 +359,8 @@ defmodule PhoenixKitAI.GuardEvents do
                user_uuid: if(scope in [:user, :user_calls], do: user_uuid),
                endpoint_uuid: endpoint.uuid,
                ref: %{"scope" => "budget:#{scope}"},
-               dedupe_key: "limit_reached:budget:#{scope}:#{id}:#{day}"
+               dedupe_key: "limit_reached:budget:#{scope}:#{id}:#{day}",
+               until: elem(TaskLimits.windows(now).day, 1)
              }) do
         log(event)
         tell_watchers(spec, user_uuid, &budget_text(&1, scope))
@@ -329,7 +383,8 @@ defmodule PhoenixKitAI.GuardEvents do
                task_key: spec.key,
                endpoint_uuid: endpoint.uuid,
                ref: %{"model" => endpoint.model, "missing" => Enum.map(missing, &to_string/1)},
-               dedupe_key: "model_unfit:#{spec.key}:#{endpoint.uuid}:#{day}"
+               dedupe_key: "model_unfit:#{spec.key}:#{endpoint.uuid}:#{day}",
+               until: elem(TaskLimits.windows(now).day, 1)
              }) do
         log(event)
         tell_watchers(spec, nil, &unfit_text(&1, spec, endpoint, missing))

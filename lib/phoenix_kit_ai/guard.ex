@@ -406,6 +406,16 @@ defmodule PhoenixKitAI.Guard do
   defp now_ms, do: System.monotonic_time(:millisecond)
 
   @doc false
+  # Forgets what this node keeps of the guard — cached limits, keys of the
+  # events already written. Tests call it: the database is rolled back, the
+  # node's tables are not.
+  @spec reset_caches() :: :ok
+  def reset_caches do
+    PhoenixKitAI.TaskLimits.reset_cache()
+    PhoenixKitAI.GuardEvents.reset_sent()
+  end
+
+  @doc false
   # The task key a call names, when it names one as a string.
   @spec task_key(keyword()) :: String.t() | nil
   def task_key(opts) do
