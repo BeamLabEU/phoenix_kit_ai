@@ -953,6 +953,11 @@ defmodule PhoenixKitAI.OpenRouterClient do
       when is_list(rows) and is_binary(last_id) ->
         {:ok, rows, last_id}
 
+      # More pages, but no cursor to ask for them: the list is cut short,
+      # and taking it as complete would drop the rest of the models.
+      {:ok, %{"has_more" => true}} ->
+        {:error, :invalid_response_format}
+
       {:ok, %{"data" => rows}} when is_list(rows) ->
         {:ok, rows, nil}
 

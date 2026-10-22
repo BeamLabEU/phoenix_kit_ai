@@ -57,7 +57,7 @@ defmodule PhoenixKitAI.CapabilitiesServerTest do
   defp start_cache(stub, opts \\ []) do
     opts =
       Keyword.merge(
-        [initial_refresh: :never, refresh_interval: :infinity, retry_interval: :infinity],
+        [initial_refresh: :never, refresh_interval: :infinity, retry_backoff: []],
         opts
       )
 
@@ -66,6 +66,19 @@ defmodule PhoenixKitAI.CapabilitiesServerTest do
     # The snapshot is loaded right after init; wait for it.
     _ = :sys.get_state(pid)
     pid
+  end
+
+  # Waits until no refresh is in flight and returns the process state.
+  defp await_idle(pid) do
+    case :sys.get_state(pid) do
+      %{task: %Task{pid: task_pid}} ->
+        ref = Process.monitor(task_pid)
+        assert_receive {:DOWN, ^ref, :process, _, _}, 2_000
+        await_idle(pid)
+
+      state ->
+        state
+    end
   end
 
   defp openrouter_endpoint(model, attrs \\ %{}) do
@@ -248,7 +261,7 @@ defmodule PhoenixKitAI.CapabilitiesServerTest do
         Plug.Conn.send_resp(conn, 503, "")
       end)
 
-      start_cache(stub, retry_interval: 50)
+      start_cache(stub, retry_backoff: [50])
 
       assert {:error, _reason} = Capabilities.refresh()
       assert_received {:models_requested, "openrouter.ai"}
@@ -290,12 +303,14 @@ defmodule PhoenixKitAI.CapabilitiesServerTest do
   end
 
   describe "single flight" do
-    # A stub that reports each request and holds it until released, so the
-    # test can pile callers onto one fetch in flight.
+    # A stub that counts and reports each request and holds it until
+    # released, so the test can pile callers onto one fetch in flight.
     defp blocking_stub(stub) do
       test_pid = self()
+      counter = :counters.new(1, [])
 
       Req.Test.stub(stub, fn conn ->
+        :counters.add(counter, 1, 1)
         send(test_pid, {:models_requested, self()})
 
         receive do
@@ -304,14 +319,16 @@ defmodule PhoenixKitAI.CapabilitiesServerTest do
           5_000 -> Plug.Conn.send_resp(conn, 504, "")
         end
       end)
+
+      counter
     end
 
     test "many concurrent misses make one fetch, and each miss answers unknown at once", %{
       stub: stub
     } do
       openrouter_endpoint("~google/gemini-flash-latest")
-      blocking_stub(stub)
-      start_cache(stub)
+      counter = blocking_stub(stub)
+      pid = start_cache(stub)
       Capabilities.subscribe()
 
       answers =
@@ -324,32 +341,223 @@ defmodule PhoenixKitAI.CapabilitiesServerTest do
       assert Enum.uniq(answers) == [:unknown]
 
       assert_receive {:models_requested, fetcher}, 1_000
-      refute_receive {:models_requested, _}, 200
-
+      # Every miss has been handled by now.
+      _ = :sys.get_state(pid)
       send(fetcher, :release)
       assert_receive {:capabilities_refreshed, [@openrouter]}, 1_000
 
+      assert :counters.get(counter, 1) == 1
+
       assert %Capabilities{vision: :yes} =
                Capabilities.lookup(@openrouter, "~google/gemini-flash-latest")
-
-      # A model the catalogue does not have does not start another fetch
-      # right after one finished.
-      assert Capabilities.lookup(@openrouter, "no/such-model") == :unknown
-      refute_receive {:models_requested, _}, 200
     end
 
     test "concurrent refresh calls share one fetch and all get its answer", %{stub: stub} do
       openrouter_endpoint("~google/gemini-flash-latest")
-      blocking_stub(stub)
+      counter = blocking_stub(stub)
       start_cache(stub)
 
       callers = for _ <- 1..5, do: Task.async(fn -> Capabilities.refresh() end)
 
       assert_receive {:models_requested, fetcher}, 1_000
-      refute_receive {:models_requested, _}, 200
       send(fetcher, :release)
 
       assert Enum.map(callers, &Task.await/1) == List.duplicate(:ok, 5)
+      assert :counters.get(counter, 1) == 1
+    end
+  end
+
+  describe "misses after a catalogue was read" do
+    defp counting_stub(stub, models \\ @openrouter_models) do
+      counter = :counters.new(1, [])
+
+      Req.Test.stub(stub, fn conn ->
+        :counters.add(counter, 1, 1)
+        Req.Test.json(conn, %{"data" => models})
+      end)
+
+      counter
+    end
+
+    test "a model the catalogue does not list asks for nothing more", %{stub: stub} do
+      openrouter_endpoint("~google/gemini-flash-latest")
+      counter = counting_stub(stub)
+      pid = start_cache(stub, miss_cooldown: 0)
+
+      assert :ok = Capabilities.refresh()
+
+      for _ <- 1..5, do: assert(Capabilities.lookup(@openrouter, "no/such-model") == :unknown)
+
+      assert %{task: nil} = :sys.get_state(pid)
+      assert :counters.get(counter, 1) == 1
+    end
+
+    test "a base URL no endpoint uses asks once, then nothing more", %{stub: stub} do
+      openrouter_endpoint("~google/gemini-flash-latest")
+      counter = counting_stub(stub)
+      pid = start_cache(stub, miss_cooldown: 0)
+      assert :ok = Capabilities.refresh()
+
+      other = "https://openrouter.ai/api/v2"
+      assert Capabilities.lookup(other, "m") == :unknown
+      # The refresh that miss started; refresh/0 joins it.
+      assert :ok = Capabilities.refresh()
+
+      for _ <- 1..5, do: Capabilities.lookup(other, "m")
+
+      assert %{task: nil} = :sys.get_state(pid)
+      assert :counters.get(counter, 1) == 2
+    end
+  end
+
+  describe "a failed catalogue" do
+    test "is retried alone, with back-off, and its unchanged retries broadcast nothing", %{
+      stub: stub
+    } do
+      openrouter_endpoint("~google/gemini-flash-latest")
+
+      {:ok, _} =
+        PhoenixKitAI.create_endpoint(%{
+          name: "Claude #{System.unique_integer([:positive])}",
+          provider: "anthropic",
+          model: "claude-opus-5-5",
+          api_key: "sk-ant-test-key"
+        })
+
+      test_pid = self()
+      counter = :counters.new(1, [])
+
+      Req.Test.stub(stub, fn conn ->
+        send(test_pid, {:requested, conn.host, System.monotonic_time(:millisecond)})
+
+        case conn.host do
+          "openrouter.ai" ->
+            :counters.add(counter, 1, 1)
+            Req.Test.json(conn, %{"data" => @openrouter_models})
+
+          _anthropic ->
+            Plug.Conn.send_resp(conn, 503, "")
+        end
+      end)
+
+      pid = start_cache(stub, retry_backoff: [40, 150])
+      Capabilities.subscribe()
+
+      assert {:error, {:catalogue_unavailable, [@anthropic]}} = Capabilities.refresh()
+      assert_received {:requested, "api.anthropic.com", t0}
+      assert_receive {:capabilities_refreshed, [@openrouter]}
+
+      assert_receive {:requested, "api.anthropic.com", t1}, 1_000
+      assert_receive {:requested, "api.anthropic.com", t2}, 1_000
+      assert t1 - t0 >= 40
+      assert t2 - t1 >= 150
+
+      # The back-off ran out (the next step would be the 6-hourly refresh):
+      # nothing more is scheduled, only Anthropic was asked again, and
+      # nothing changed, so nothing was broadcast.
+      assert %{task: nil, retry_timer: nil} = await_idle(pid)
+      assert :counters.get(counter, 1) == 1
+      refute_receive {:capabilities_refreshed, _}, 100
+    end
+
+    test "without an API key is not retried", %{stub: stub} do
+      {:ok, endpoint} =
+        PhoenixKitAI.create_endpoint(%{
+          name: "Claude #{System.unique_integer([:positive])}",
+          provider: "anthropic",
+          model: "claude-opus-5-5",
+          api_key: "sk-ant-test-key"
+        })
+
+      # No integration and an empty legacy column: no key to read with.
+      TestRepo.update_all(from(e in Endpoint, where: e.uuid == ^endpoint.uuid),
+        set: [api_key: ""]
+      )
+
+      test_pid = self()
+      Req.Test.stub(stub, &send(test_pid, {:requested, &1.host}))
+      pid = start_cache(stub, retry_backoff: [20])
+
+      assert {:error, {:catalogue_unavailable, [@anthropic]}} = Capabilities.refresh()
+      refute_received {:requested, _}
+      assert %{retry_timer: nil} = :sys.get_state(pid)
+    end
+
+    test "an empty catalogue is a failure and wipes nothing", %{stub: stub} do
+      openrouter_endpoint("~google/gemini-flash-latest")
+      counter = :counters.new(1, [])
+
+      Req.Test.stub(stub, fn conn ->
+        :counters.add(counter, 1, 1)
+        models = if :counters.get(counter, 1) == 1, do: @openrouter_models, else: []
+        Req.Test.json(conn, %{"data" => models})
+      end)
+
+      start_cache(stub)
+
+      assert :ok = Capabilities.refresh()
+      assert {:error, {:catalogue_unavailable, [@openrouter]}} = Capabilities.refresh()
+
+      assert %Capabilities{vision: :yes} =
+               Capabilities.lookup(@openrouter, "~google/gemini-flash-latest")
+
+      assert [%ModelCapability{model: "~google/gemini-flash-latest"}] = snapshot_rows()
+    end
+
+    test "a 401 tries the next key of the same base URL", %{stub: stub} do
+      openrouter_endpoint("~google/gemini-flash-latest", %{api_key: "sk-or-v1-revoked"})
+      openrouter_endpoint("~deepseek/deepseek-v4-flash-latest", %{api_key: "sk-or-v1-good"})
+      test_pid = self()
+
+      Req.Test.stub(stub, fn conn ->
+        [auth] = Plug.Conn.get_req_header(conn, "authorization")
+        send(test_pid, {:key_tried, auth})
+
+        if auth == "Bearer sk-or-v1-revoked",
+          do: Plug.Conn.send_resp(conn, 401, ""),
+          else: Req.Test.json(conn, %{"data" => @openrouter_models})
+      end)
+
+      start_cache(stub)
+
+      assert :ok = Capabilities.refresh()
+      assert_received {:key_tried, "Bearer sk-or-v1-revoked"}
+      assert_received {:key_tried, "Bearer sk-or-v1-good"}
+
+      assert %Capabilities{vision: :yes} =
+               Capabilities.lookup(@openrouter, "~google/gemini-flash-latest")
+    end
+  end
+
+  describe "without the task supervisor" do
+    test "a refresh fails, the process stays up and tries again later", %{stub: stub} do
+      openrouter_endpoint("~google/gemini-flash-latest")
+      Req.Test.stub(stub, &Req.Test.json(&1, %{"data" => @openrouter_models}))
+
+      pid =
+        start_cache(stub,
+          task_supervisor: PhoenixKitAI.NoSuchTaskSupervisor,
+          retry_backoff: [60_000]
+        )
+
+      assert {:error, :task_supervisor_down} = Capabilities.refresh()
+      assert %{task: nil, retry_timer: timer} = :sys.get_state(pid)
+      assert is_reference(timer)
+    end
+  end
+
+  describe "broadcasts" do
+    test "a refresh that changes nothing broadcasts nothing", %{stub: stub} do
+      openrouter_endpoint("~google/gemini-flash-latest")
+      Req.Test.stub(stub, &Req.Test.json(&1, %{"data" => @openrouter_models}))
+      start_cache(stub)
+      Capabilities.subscribe()
+
+      assert :ok = Capabilities.refresh()
+      assert_receive {:capabilities_refreshed, [@openrouter]}
+
+      assert :ok = Capabilities.refresh()
+      refute_receive {:capabilities_refreshed, _}, 100
     end
   end
 

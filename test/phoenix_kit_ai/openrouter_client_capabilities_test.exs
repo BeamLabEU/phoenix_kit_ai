@@ -188,6 +188,19 @@ defmodule PhoenixKitAI.OpenRouterClientCapabilitiesTest do
       refute Map.has_key?(without, "lifecycle")
     end
 
+    test "has_more without a last_id is a truncated list, not the last page", %{stub: stub} do
+      Req.Test.stub(
+        stub,
+        &Req.Test.json(&1, %{"data" => [claude("claude-a")], "has_more" => true})
+      )
+
+      assert {:error, :invalid_response_format} =
+               OpenRouterClient.fetch_models("sk-ant-test",
+                 base_url: "https://api.anthropic.com/v1",
+                 fallback_provider: "anthropic"
+               )
+    end
+
     test "a failed page fails the fetch", %{stub: stub} do
       Req.Test.stub(stub, &Plug.Conn.send_resp(&1, 401, ""))
 
