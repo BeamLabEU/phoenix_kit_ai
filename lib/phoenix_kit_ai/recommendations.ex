@@ -77,7 +77,7 @@ defmodule PhoenixKitAI.Recommendations do
 
     rows =
       opts
-      |> sources()
+      |> sources_for()
       |> Enum.flat_map(&candidates(&1, spec.needs, tokens))
       |> rank(limit)
 
@@ -183,17 +183,22 @@ defmodule PhoenixKitAI.Recommendations do
   # CATALOGUE
   # ===========================================
 
-  # One source per base URL the endpoints use that has a catalogue; the
-  # integration is the one of an endpoint there (enabled ones first), which
-  # the create button hands to the endpoint form.
-  defp sources(opts) do
+  defp sources_for(opts) do
     case Keyword.fetch(opts, :catalogue) do
       {:ok, sources} -> sources
-      :error -> cache_sources()
+      :error -> sources()
     end
   end
 
-  defp cache_sources do
+  @doc """
+  The catalogues the endpoints use, as the sources `cheapest/2` ranks: one
+  per base URL with a catalogue, `%{base_url, kind, integration_uuid,
+  models}`. Read once and passed as `:catalogue` when several tasks are
+  listed together. The integration is the one of an endpoint there (enabled
+  ones first), which the create button hands to the endpoint form.
+  """
+  @spec sources() :: [map()]
+  def sources do
     from(e in Endpoint, order_by: [desc: e.enabled, asc: e.uuid])
     |> repo().all()
     |> Enum.group_by(&Capabilities.resolved_base_url/1)
