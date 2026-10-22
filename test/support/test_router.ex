@@ -4,14 +4,14 @@ defmodule PhoenixKitAI.Test.Router do
   produced by `PhoenixKitAI.Routes` so `live/2` calls in tests work
   with exactly the same URLs the LiveViews push themselves to.
 
-  `PhoenixKit.Utils.Routes.path/1` defaults to prepending the default
-  locale (`"en"`) to every admin path, so our scope is
-  `/en/admin/ai/…`.
+  Both localized and prefixless routes come from the production route module,
+  so navigation works with either of core's language configurations.
   """
 
   use Phoenix.Router
 
   import Phoenix.LiveView.Router
+  import PhoenixKitAI.Test.RouteMacros
 
   pipeline :browser do
     plug(:accepts, ["html"])
@@ -21,24 +21,17 @@ defmodule PhoenixKitAI.Test.Router do
     plug(:protect_from_forgery)
   end
 
-  scope "/en/admin/ai", PhoenixKitAI.Web do
+  scope "/" do
     pipe_through(:browser)
 
     live_session :ai_test,
       layout: {PhoenixKitAI.Test.Layouts, :app},
       on_mount: {PhoenixKitAI.Test.Hooks, :assign_scope} do
-      live("/", Endpoints, :index, as: :ai_index)
-      live("/endpoints", Endpoints, :endpoints, as: :ai_endpoints)
-      live("/endpoints/new", EndpointForm, :new, as: :ai_endpoint_new)
-      live("/endpoints/:id/edit", EndpointForm, :edit, as: :ai_endpoint_edit)
+      ai_routes()
 
-      live("/prompts", Prompts, :index, as: :ai_prompts)
-      live("/prompts/new", PromptForm, :new, as: :ai_prompt_new)
-      live("/prompts/:id/edit", PromptForm, :edit, as: :ai_prompt_edit)
-
-      live("/playground", Playground, :index, as: :ai_playground)
-      live("/usage", Endpoints, :usage, as: :ai_usage)
-      live("/tasks", Tasks, :index, as: :ai_tasks)
+      scope "/:locale" do
+        ai_locale_routes()
+      end
     end
   end
 end

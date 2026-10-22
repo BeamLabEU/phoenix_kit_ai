@@ -361,7 +361,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     # nothing is saved. Otherwise, auto-selecting a single available
     # connection would mask "no integration set" with "an integration is
     # set" and confuse anyone scanning the form to verify wiring.
-    {attrs, connection} = prefill(params, socket.assigns.provider_connections)
+    {attrs, connection, source} = prefill(params, socket.assigns.provider_connections)
     active = connection && connection.uuid
     connected = !!active && Integrations.connected?(active)
 
@@ -370,6 +370,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     |> assign(:page_title, gettext("New endpoint"))
     |> assign(:page_subtitle, new_endpoint_subtitle())
     |> assign(:endpoint, nil)
+    |> assign(:model_source_endpoint, source)
     |> assign(:form, to_form(AI.change_endpoint(%Endpoint{}, attrs)))
     |> assign(:active_connection, active)
     |> assign(:selected_uuids, List.wrap(active))
@@ -410,23 +411,40 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     end
   end
 
-  # The form fields a recommendation's «Create an endpoint with this model»
-  # link carries: `name`, `model` and the `integration_uuid` of the same
-  # operator's key. An integration this install does not have is ignored.
+  # Resolve a recommendation's URL from a stored endpoint, never a query-string
+  # URL: a connected integration can start a credentialed model fetch at load.
   defp prefill(params, connections) do
+    source = prefill_source(params["source_endpoint_uuid"])
     connection = Enum.find(connections, &(&1.uuid == params["integration_uuid"]))
+
+    provider =
+      cond do
+        connection -> connection.data["provider"]
+        source && is_binary(source.provider) -> Endpoint.base_provider(source.provider)
+        true -> params["provider"]
+      end
+
+    provider = Enum.find(Endpoint.valid_providers(), &(&1 == provider))
 
     attrs =
       %{
         "name" => params["name"],
         "model" => params["model"],
+        "base_url" => source && source.base_url,
         "integration_uuid" => connection && connection.uuid,
-        "provider" => connection && connection.data["provider"]
+        "provider" => provider
       }
       |> Enum.filter(fn {_key, value} -> is_binary(value) and value != "" end)
       |> Map.new()
 
-    {attrs, connection}
+    {attrs, connection, source}
+  end
+
+  defp prefill_source(value) do
+    case Ecto.UUID.cast(value) do
+      {:ok, uuid} -> AI.get_endpoint(uuid)
+      :error -> nil
+    end
   end
 
   defp endpoints_crumb do
@@ -1729,18 +1747,17 @@ defmodule PhoenixKitAI.Web.EndpointForm do
 
   # Resolves the base URL the model fetcher should hit.
   #
-  # Reuses the saved `endpoint.base_url` ONLY when the form's currently
-  # selected provider matches the endpoint's saved provider. Otherwise
+  # Reuses the saved endpoint's (or recommendation source's) base URL only
+  # when the selected provider matches the endpoint's saved provider. Otherwise
   # the operator switched providers in edit mode and the saved URL is
   # for a different host — falling back to it would silently misroute
   # the model fetch (e.g. fetch from openrouter.ai while the active
   # integration is a Mistral key). Falls through to the schema default
   # for the form-side provider, then to OpenRouter's URL as a last
-  # resort. The new-endpoint flow has no saved endpoint, so it always
-  # takes the second branch.
+  # resort. A new form without a recommendation takes the second branch.
   defp current_models_base_url(socket) do
     current_provider = socket.assigns[:current_provider]
-    endpoint = socket.assigns[:endpoint]
+    endpoint = socket.assigns[:endpoint] || socket.assigns[:model_source_endpoint]
     endpoint_url = endpoint && endpoint.base_url
 
     cond do

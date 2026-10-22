@@ -16,7 +16,7 @@ defmodule PhoenixKitAI.Web.PromptsCoverageTest do
       {:ok, view, _html} = live(conn, "/en/admin/ai/prompts")
 
       render_hook(view, "sort", %{"by" => "name"})
-      assert_patch(view, "/en/admin/ai/prompts?sort=name&dir=asc")
+      assert_patch(view, PhoenixKitAI.Routes.ai_path() <> "/prompts?sort=name&dir=asc")
     end
 
     test "sort by usage_count uses :desc as default", %{conn: conn} do
@@ -24,7 +24,7 @@ defmodule PhoenixKitAI.Web.PromptsCoverageTest do
       {:ok, view, _html} = live(conn, "/en/admin/ai/prompts?sort=name&dir=asc")
 
       render_hook(view, "sort", %{"by" => "usage_count"})
-      assert_patch(view, "/en/admin/ai/prompts?sort=usage_count&dir=desc")
+      assert_patch(view, PhoenixKitAI.Routes.ai_path() <> "/prompts?sort=usage_count&dir=desc")
     end
 
     test "clicking same sort field flips direction", %{conn: conn} do
@@ -32,7 +32,7 @@ defmodule PhoenixKitAI.Web.PromptsCoverageTest do
       {:ok, view, _html} = live(conn, "/en/admin/ai/prompts?sort=name&dir=asc")
 
       render_hook(view, "sort", %{"by" => "name"})
-      assert_patch(view, "/en/admin/ai/prompts?sort=name&dir=desc")
+      assert_patch(view, PhoenixKitAI.Routes.ai_path() <> "/prompts?sort=name&dir=desc")
     end
 
     test "sort with bogus field falls back to :sort_order", %{conn: conn} do
@@ -40,7 +40,7 @@ defmodule PhoenixKitAI.Web.PromptsCoverageTest do
       {:ok, view, _html} = live(conn, "/en/admin/ai/prompts?sort=name&dir=asc")
 
       render_hook(view, "sort", %{"by" => "bogus_field_not_real"})
-      assert_patch(view, "/en/admin/ai/prompts?sort=sort_order&dir=asc")
+      assert_patch(view, PhoenixKitAI.Routes.ai_path() <> "/prompts?sort=sort_order&dir=asc")
     end
 
     test "goto_page with valid number patches URL", %{conn: conn} do
@@ -58,7 +58,7 @@ defmodule PhoenixKitAI.Web.PromptsCoverageTest do
 
       # The next patch the view makes is this one — the two above made none.
       render_hook(view, "sort", %{"by" => "name"})
-      assert_patch(view, "/en/admin/ai/prompts?sort=name&dir=desc")
+      assert_patch(view, PhoenixKitAI.Routes.ai_path() <> "/prompts?sort=name&dir=desc")
     end
   end
 

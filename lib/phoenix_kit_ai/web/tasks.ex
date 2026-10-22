@@ -338,6 +338,24 @@ defmodule PhoenixKitAI.Web.Tasks do
   # The limits of a submitted form: money in dollars (to micro-dollars),
   # requests and tokens whole numbers; a blank field is no limit.
   defp form_limits(params) when is_map(params) do
+    if Enum.all?(params, fn {scope, units} ->
+         scope not in ["task", "user"] or valid_units?(units)
+       end),
+       do: parse_form_limits(params),
+       else: {:error, :invalid_amount}
+  end
+
+  defp form_limits(_params), do: {:error, :invalid_amount}
+
+  defp valid_units?(units) when is_map(units) do
+    Enum.all?(units, fn {unit, periods} ->
+      unit not in ["money", "requests", "tokens"] or is_map(periods)
+    end)
+  end
+
+  defp valid_units?(_units), do: false
+
+  defp parse_form_limits(params) do
     cells =
       for {scope, units} <- params,
           scope in ["task", "user"],
@@ -347,7 +365,7 @@ defmodule PhoenixKitAI.Web.Tasks do
           is_map(periods),
           {period, value} <- periods,
           period in ["day", "month"],
-          value = String.trim(to_string(value)),
+          value = form_value(value),
           value != "",
           do: {scope, unit, period, amount(unit, value)}
 
@@ -363,9 +381,14 @@ defmodule PhoenixKitAI.Web.Tasks do
     end
   end
 
+  defp form_value(value) when is_binary(value), do: String.trim(value)
+  defp form_value(value) when is_integer(value), do: Integer.to_string(value)
+  defp form_value(nil), do: ""
+  defp form_value(_value), do: :invalid
+
   # Dollars, finite, from 0 to $1 000 000 000; a positive amount that would
   # round to 0 micro-dollars is refused (0 allows nothing).
-  defp amount("money", value) do
+  defp amount("money", value) when is_binary(value) do
     with {decimal, ""} <- Decimal.parse(value),
          false <- Decimal.nan?(decimal) or Decimal.inf?(decimal),
          false <- Decimal.negative?(decimal),
@@ -378,12 +401,14 @@ defmodule PhoenixKitAI.Web.Tasks do
     end
   end
 
-  defp amount(_unit, value) do
+  defp amount(_unit, value) when is_binary(value) do
     case Integer.parse(value) do
       {int, ""} when int >= 0 -> int
       _ -> :error
     end
   end
+
+  defp amount(_unit, _value), do: :error
 
   defp blank_to_nil(value) when value in [nil, ""], do: nil
   defp blank_to_nil(value), do: value
@@ -662,7 +687,7 @@ defmodule PhoenixKitAI.Web.Tasks do
 
       <p class="text-xs text-base-content/60">
         {gettext(
-          "Days and months follow the site time zone. An empty limit is none; 0 allows nothing. Calls running at the same time can each go past a limit by their own size."
+          "Days and months follow the site time zone. Empty limits inherit defaults when set; otherwise they are unlimited. 0 allows nothing. Calls running at the same time can each go past a limit by their own size."
         )}
       </p>
       <p :if={@view.money_uncounted != []} class="text-xs text-warning" data-money-uncounted>

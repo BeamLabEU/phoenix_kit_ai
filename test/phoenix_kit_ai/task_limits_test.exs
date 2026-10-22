@@ -152,6 +152,33 @@ defmodule PhoenixKitAI.TaskLimitsTest do
   defp event_inserts(sql),
     do: Enum.filter(sql, &(&1 =~ ~s(INSERT INTO "phoenix_kit_ai_guard_events")))
 
+  # Simulate another writer inserting after this call's SELECT returned no row.
+  defp insert_after_read(row, fun) do
+    handler = "limits-race-#{System.unique_integer([:positive])}"
+    table = row.__struct__.__schema__(:source)
+    caller = self()
+
+    :telemetry.attach(
+      handler,
+      [:phoenix_kit_ai, :test, :repo, :query],
+      fn
+        _event, _measurements, %{query: query}, _config ->
+          if self() == caller and String.starts_with?(query, "SELECT") and
+               String.contains?(query, ~s(FROM "#{table}")) do
+            :telemetry.detach(handler)
+            TestRepo.insert!(row)
+          end
+      end,
+      nil
+    )
+
+    try do
+      fun.()
+    after
+      :telemetry.detach(handler)
+    end
+  end
+
   defp activities(action) do
     TestRepo.all(
       from(a in "phoenix_kit_activities",
@@ -257,6 +284,32 @@ defmodule PhoenixKitAI.TaskLimitsTest do
   end
 
   describe "the call-time check" do
+    test "competing first saves return changeset errors instead of raising", %{owner: owner} do
+      scope = owner_scope(owner)
+
+      assert {:error, changeset} =
+               insert_after_read(
+                 %PhoenixKitAI.TaskSetting{task_key: "test.limited"},
+                 fn -> TaskLimits.update_settings(scope, "test.limited", %{}) end
+               )
+
+      assert {"has already been taken", _} = changeset.errors[:task_key]
+
+      user = Fixtures.user_fixture().uuid
+
+      assert {:error, changeset} =
+               insert_after_read(
+                 %PhoenixKitAI.TaskUserLimit{task_key: "test.limited", user_uuid: user},
+                 fn ->
+                   TaskLimits.put_user_limits(scope, "test.limited", user, %{
+                     "requests" => %{"day" => 2}
+                   })
+                 end
+               )
+
+      assert {"has already been taken", _} = changeset.errors[:task_key]
+    end
+
     test "a limit of 0 refuses the first call, before HTTP, with a refusal row",
          %{owner: owner, endpoint: ep} do
       stub_chat(self())
@@ -326,6 +379,11 @@ defmodule PhoenixKitAI.TaskLimitsTest do
 
       assert {:error, {:task_limit_exceeded, :task, :requests, :day}} =
                TaskLimits.check(spec(), user_uuid: "visitor-42")
+
+      assert %{task: %{requests: %{day: 1}}, user: nil} =
+               TaskLimits.usage("test.limited", "visitor-42")
+
+      assert [%{scope: :task} | _] = TaskLimits.statuses(spec(), "visitor-42")
     end
 
     test "a dry run of process_image is not checked against the limits" do
@@ -464,6 +522,40 @@ defmodule PhoenixKitAI.TaskLimitsTest do
   end
 
   describe "forgiving a limit" do
+    test "warning and reached signals are re-armed after forgiving", %{owner: owner, endpoint: ep} do
+      user = Fixtures.user_fixture().uuid
+      set_limits(owner, %{"user" => %{"requests" => %{"day" => "5"}}})
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      for _ <- 1..4, do: row(ep, DateTime.add(now, -120), user_uuid: user)
+      assert :ok = TaskLimits.check(spec(), [user_uuid: user], now)
+      row(ep, DateTime.add(now, -120), user_uuid: user)
+      assert {:error, _} = TaskLimits.check(spec(), [user_uuid: user], now)
+
+      assert {:ok, _} =
+               TaskLimits.forgive(
+                 owner_scope(owner),
+                 "test.limited",
+                 :user,
+                 :day,
+                 user,
+                 DateTime.add(now, -60)
+               )
+
+      for _ <- 1..4, do: row(ep, DateTime.add(now, -30), user_uuid: user)
+      assert :ok = TaskLimits.check(spec(), [user_uuid: user], now)
+      row(ep, DateTime.add(now, -30), user_uuid: user)
+      assert {:error, _} = TaskLimits.check(spec(), [user_uuid: user], now)
+      assert {:error, _} = TaskLimits.check(spec(), [user_uuid: user], now)
+
+      assert length(events("limit_warning")) == 2
+      assert length(events("limit_reached")) == 2
+      assert length(GuardEvents.reached_users("test.limited", now)) == 2
+      assert length(notifications_of(owner.uuid)) == 2
+      # One in-app notice is updated, rather than duplicated, for the user.
+      assert [_] = notifications_of(user)
+    end
+
     test "counting starts again from the moment of forgiving, to the end of the window",
          %{owner: owner, endpoint: ep} do
       user = Fixtures.user_fixture().uuid

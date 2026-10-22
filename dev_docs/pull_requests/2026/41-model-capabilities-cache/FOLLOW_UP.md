@@ -11,3 +11,11 @@ nitpicks.
 - **NITPICK:** `lookup/2` and the refresh pick "has a catalogue" by different
   rules (host only vs provider key and host).
 - **NITPICK:** every miss casts to the GenServer.
+
+## GPT recheck — 2026-10-22
+
+Legacy `provider:connection` names now retain catalogue detection at custom base URLs; covered for OpenRouter and Anthropic.
+
+See [GPT_REVIEW.md](GPT_REVIEW.md) for evidence, regression coverage and the
+remaining design tradeoffs. This section supersedes the corresponding earlier
+“Not changed” entries; Claude's review is preserved.

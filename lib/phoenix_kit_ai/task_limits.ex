@@ -15,8 +15,8 @@ defmodule PhoenixKitAI.TaskLimits do
   calendar day and month of the site time zone (Settings → `time_zone`,
   `PhoenixKit.Utils.TimeZone`), each from its local midnight to the next.
 
-  A limit is an amount per (unit, period). An empty one is no limit; `0`
-  allows nothing.
+  A limit is an amount per (unit, period). An empty cell inherits the next
+  layer's default; with no default there is no limit. `0` allows nothing.
 
   ## Which limit is in force
 
@@ -113,7 +113,8 @@ defmodule PhoenixKitAI.TaskLimits do
           used: non_neg_integer(),
           limit: non_neg_integer(),
           period_key: String.t(),
-          ends_at: DateTime.t()
+          ends_at: DateTime.t(),
+          forgiven_at: DateTime.t() | nil
         }
 
   @doc "The scopes, units and periods, in the order they are checked."
@@ -391,7 +392,7 @@ defmodule PhoenixKitAI.TaskLimits do
           user: %{unit() => %{period() => non_neg_integer()}} | nil
         }
   def usage(task_key, user_uuid, now \\ DateTime.utc_now()) when is_binary(task_key),
-    do: usage(task_key, user_uuid, now, true)
+    do: task_key |> usage(user_uuid(user_uuid), now, true) |> Map.delete(:forgiven)
 
   # The task's count is skipped when no task limit needs it.
   defp usage(task_key, user_uuid, now, task?) do
@@ -400,7 +401,8 @@ defmodule PhoenixKitAI.TaskLimits do
 
     %{
       task: if(task?, do: count(task_key, nil, windows, forgiven)),
-      user: if(is_binary(user_uuid), do: count(task_key, user_uuid, windows, forgiven))
+      user: if(is_binary(user_uuid), do: count(task_key, user_uuid, windows, forgiven)),
+      forgiven: forgiven
     }
   end
 
@@ -506,6 +508,7 @@ defmodule PhoenixKitAI.TaskLimits do
   """
   @spec statuses(TaskSpec.t(), String.t() | nil, DateTime.t()) :: [status()]
   def statuses(%TaskSpec{} = spec, user_uuid, now \\ DateTime.utc_now()) do
+    user_uuid = user_uuid(user_uuid)
     statuses(spec.key, effective(spec, user_uuid), user_uuid, now)
   end
 
@@ -532,7 +535,8 @@ defmodule PhoenixKitAI.TaskLimits do
           used: used[unit][period],
           limit: limit,
           period_key: keys[period],
-          ends_at: elem(windows[period], 1)
+          ends_at: elem(windows[period], 1),
+          forgiven_at: usage.forgiven[{scope, period}]
         }
       end
     end
@@ -621,6 +625,7 @@ defmodule PhoenixKitAI.TaskLimits do
         greater_than_or_equal_to: 1,
         less_than_or_equal_to: 100
       )
+      |> Ecto.Changeset.unique_constraint(:task_key)
       |> repo().insert_or_update()
       |> changed(task_key)
       |> log("guard.limits_updated", scope, fn row ->
@@ -665,6 +670,7 @@ defmodule PhoenixKitAI.TaskLimits do
 
     row
     |> Ecto.Changeset.change(%{limits: stringify(limits)})
+    |> Ecto.Changeset.unique_constraint([:task_key, :user_uuid])
     |> Ecto.Changeset.foreign_key_constraint(:user_uuid,
       name: :phoenix_kit_ai_task_user_limits_user_uuid_fkey
     )

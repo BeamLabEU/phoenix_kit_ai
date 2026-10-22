@@ -19,7 +19,8 @@ defmodule PhoenixKitAI.GuardEvents do
   site time zone. A key that was inserted (here or, seen as a conflict, on
   another node) is also kept on this node until its window ends, so a limit
   that stays past its threshold costs no further write. A forgiving (`limit_forgiven`) has no key: every one is
-  kept.
+  kept. After forgiving, the new count's start is part of the key, so its
+  warning and reached signals can fire again in the same window.
 
   ## Who is told
 
@@ -291,6 +292,12 @@ defmodule PhoenixKitAI.GuardEvents do
   end
 
   defp limit_event(kind, spec, user_uuid, status) do
+    reset =
+      case status[:forgiven_at] do
+        %DateTime{} = at -> ":" <> Integer.to_string(DateTime.to_unix(at))
+        _ -> ""
+      end
+
     record(%{
       kind: kind,
       task_key: spec.key,
@@ -302,7 +309,8 @@ defmodule PhoenixKitAI.GuardEvents do
         "used" => status.used,
         "limit" => status.limit
       },
-      dedupe_key: "#{kind}:#{spec.key}:#{user_uuid || "-"}:#{status.unit}:#{status.period_key}",
+      dedupe_key:
+        "#{kind}:#{spec.key}:#{user_uuid || "-"}:#{status.unit}#{reset}:#{status.period_key}",
       until: status.ends_at
     })
   end

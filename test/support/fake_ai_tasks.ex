@@ -65,6 +65,9 @@ defmodule PhoenixKitAI.Test.FakeAITasks do
       :raise -> raise "fake ai_tasks failure"
       :exit -> exit(:fake_timeout)
       :throw -> throw(:fake_throw)
+      {:raise, message} -> raise message
+      {:exit, reason} -> exit(reason)
+      {:throw, reason} -> throw(reason)
       _ -> :ok
     end
   end

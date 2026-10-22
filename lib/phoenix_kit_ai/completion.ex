@@ -150,7 +150,10 @@ defmodule PhoenixKitAI.Completion do
     message = extract_error_message(response_body) || ""
 
     if message =~ ~r/requested parameters/i do
-      Logger.warning("OpenRouter completion failed: 404 - #{message}")
+      Logger.warning(
+        "OpenRouter completion failed: 404 - no provider for the requested parameters"
+      )
+
       {:error, {:no_provider_for_params, []}}
     else
       generic_error_status(404, response_body)

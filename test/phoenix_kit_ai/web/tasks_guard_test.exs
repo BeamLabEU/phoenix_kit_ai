@@ -200,6 +200,32 @@ defmodule PhoenixKitAI.Web.TasksGuardTest do
       assert TestRepo.aggregate(TaskSetting, :count) == 0
     end
 
+    test "malformed limit values are refused without crashing or clearing saved limits", %{
+      conn: conn
+    } do
+      {user, _role} = admin(["ai", "ai.manage"])
+      view = open(conn, user)
+      render_hook(view, "save_limits", limits_params("3"))
+
+      for value <- [%{"value" => "1"}, ["1"], true] do
+        assert render_hook(view, "save_limits", limits_params(value)) =~
+                 "A limit must be a whole number"
+
+        assert Process.alive?(view.pid)
+      end
+
+      assert render_hook(view, "save_limits", %{"task" => "test.limited", "limits" => "bad"}) =~
+               "A limit must be a whole number"
+
+      for limits <- [%{"task" => "bad"}, %{"task" => %{"requests" => "bad"}}] do
+        assert render_hook(view, "save_limits", %{"task" => "test.limited", "limits" => limits}) =~
+                 "A limit must be a whole number"
+      end
+
+      assert %TaskSetting{limits: %{"task" => %{"requests" => %{"day" => 3}}}} =
+               TestRepo.get_by(TaskSetting, task_key: "test.limited")
+    end
+
     test "money that is not a finite amount, is negative, too large or rounds to nothing is a form error",
          %{conn: conn} do
       {user, _role} = admin(["ai", "ai.manage"])

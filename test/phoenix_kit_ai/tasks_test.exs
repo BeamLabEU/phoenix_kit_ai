@@ -148,6 +148,26 @@ defmodule PhoenixKitAI.TasksTest do
       end
     end
 
+    test "callback failures keep their payload out of the log" do
+      secret = "secret-provider-key-and-user-content"
+      spec = %TaskSpec{key: "test.callback", endpoints: {FakeAITasks, :photo_endpoints, []}}
+
+      for kind <- [:raise, :exit, :throw] do
+        :persistent_term.erase({Tasks, :registry})
+        Application.put_env(:phoenix_kit_ai, :fake_ai_tasks_fail, {kind, secret})
+
+        log =
+          capture_log(fn ->
+            assert Tasks.get("test.photo") == nil
+            assert Tasks.endpoints(spec) == []
+          end)
+
+        assert log =~ "ai_tasks/0 failed"
+        assert log =~ "endpoints callback failed"
+        refute log =~ secret
+      end
+    end
+
     test "a build with a failed callback is tried again, at most once per interval" do
       :ok = ModuleRegistry.unregister(FakeAITasks)
       Tasks.list()

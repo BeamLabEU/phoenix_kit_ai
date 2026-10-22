@@ -64,6 +64,7 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPickerTest do
             provider: :openrouter,
             base_url: "https://openrouter.ai/api/v1",
             integration_uuid: "0191-int",
+            source_endpoint_uuid: "0191-source",
             context_length: 1_000_000,
             price_per_call: 0.0014,
             price_known?: true,
@@ -291,11 +292,12 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPickerTest do
             {"ru",
              [
                "Подходят и дешевле всего",
-               "Уже работали в этой задаче",
+               "Модели, использованные в этой задаче",
                "цена не известна",
                "бесплатная — лимиты"
              ]},
-            {"et", ["Sobivad ja odavaimad", "Selles ülesandes juba töötanud", "hind pole teada"]}
+            {"et",
+             ["Sobivad ja odavaimad", "Selles ülesandes kasutatud mudelid", "hind pole teada"]}
           ] do
         Gettext.put_locale(PhoenixKitAI.Gettext, locale)
         html = render_picker(%{scope: scope(["ai"])})
@@ -346,6 +348,8 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPickerTest do
       assert URI.decode_query(query) == %{
                "model" => "google/gemini-flash",
                "integration_uuid" => "0191-int",
+               "source_endpoint_uuid" => "0191-source",
+               "provider" => "openrouter",
                "name" => "Gemini Flash"
              }
     end

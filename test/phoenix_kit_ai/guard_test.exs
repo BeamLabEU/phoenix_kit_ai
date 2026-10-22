@@ -423,6 +423,19 @@ defmodule PhoenixKitAI.GuardTest do
   end
 
   describe "task, attribution and the row uuid" do
+    test "a cached chat row names the model actually sent, ignoring the unsupported override" do
+      ep = endpoint()
+      stub()
+      opts = [model: "not-the-chat-model", cache: true, task: "test.plain"]
+
+      assert {:ok, %{"request_uuid" => fresh}} = PhoenixKitAI.ask(ep.uuid, "q", opts)
+      assert {:ok, %{"request_uuid" => cached}} = PhoenixKitAI.ask(ep.uuid, "q", opts)
+      assert fresh != cached
+      assert PhoenixKitAI.get_request(fresh).model == ep.model
+      assert %{model: model, metadata: %{"cached" => true}} = PhoenixKitAI.get_request(cached)
+      assert model == ep.model
+    end
+
     test "on a chat success, an error, a cache hit and an unparsed JSON answer" do
       stub()
       ep = endpoint()
@@ -461,17 +474,17 @@ defmodule PhoenixKitAI.GuardTest do
     test "a hit whose row cannot be written names no row, never the first call's" do
       stub()
       ep = endpoint()
-      # Chat sends the endpoint's model, but a hit's row records model: — one
-      # longer than the column takes makes that insert fail.
-      long = String.duplicate("m", 150)
+      # Prompt attribution does not change the cached answer. A name longer
+      # than the journal's column takes makes only this hit's insert fail.
+      long = String.duplicate("p", 2_000)
 
       assert {:ok, %{"request_uuid" => first}} =
-               PhoenixKitAI.ask(ep.uuid, "q", cache: true, model: long)
+               PhoenixKitAI.ask(ep.uuid, "q", cache: true)
 
       assert is_binary(first)
 
       capture_log(fn ->
-        assert {:ok, hit} = PhoenixKitAI.ask(ep.uuid, "q", cache: true, model: long)
+        assert {:ok, hit} = PhoenixKitAI.ask(ep.uuid, "q", cache: true, prompt_name: long)
         assert Map.has_key?(hit, "request_uuid")
         assert hit["request_uuid"] == nil
       end)

@@ -35,3 +35,11 @@ five nitpicks.
 - **NITPICK:** all personal limits of a task are one cache entry, copied per
   lookup.
 - **NITPICK:** AGENTS.md says "nanodollars" for what is 1/1,000,000 of a dollar.
+
+## GPT recheck — 2026-10-22
+
+Re-armed warning/reached signals after forgiveness; mapped uniqueness conflicts; rejected malformed limit shapes without losing saved caps; normalized visitor ids in usage/status reads; raised the core floor to 2.63; corrected blank-limit inheritance wording.
+
+See [GPT_REVIEW.md](GPT_REVIEW.md) for evidence, regression coverage and the
+remaining design tradeoffs. This section supersedes the corresponding earlier
+“Not changed” entries; Claude's review is preserved.

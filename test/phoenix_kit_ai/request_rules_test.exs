@@ -108,6 +108,24 @@ defmodule PhoenixKitAI.RequestRulesTest do
     :ok
   end
 
+  test "a parameter-routing refusal does not log the provider's echoed content" do
+    secret = "private-prompt-and-key"
+
+    log =
+      ExUnit.CaptureLog.capture_log(fn ->
+        assert {:error, {:no_provider_for_params, []}} =
+                 Completion.handle_error_status(
+                   404,
+                   Jason.encode!(%{
+                     "error" => %{"message" => "No endpoints for requested parameters: #{secret}"}
+                   })
+                 )
+      end)
+
+    assert log =~ "requested parameters"
+    refute log =~ secret
+  end
+
   defp answer(content \\ "ok") do
     %{
       "model" => "m",

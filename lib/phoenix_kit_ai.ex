@@ -2875,7 +2875,7 @@ defmodule PhoenixKitAI do
   # fetch, and the zero-cost row a hit writes. Logging stays in the run_*
   # functions and the verbs' error branches.
   defp with_cache(verb, endpoint, opts, material, row, fun) do
-    model = opts[:model] || endpoint.model
+    model = sent_model(endpoint, opts, verb)
 
     key = fn ->
       material =
@@ -4313,6 +4313,10 @@ defmodule PhoenixKitAI do
     :edit_image,
     :process_image
   ]
+
+  defp sent_model(endpoint, opts, verb) do
+    if verb in @model_override_verbs, do: opts[:model] || endpoint.model, else: endpoint.model
+  end
 
   # Every provider-calling verb passes here, in this order: the endpoint
   # must be usable; [the task's block on the user — a later part of the

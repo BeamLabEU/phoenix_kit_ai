@@ -11,3 +11,11 @@ opened is fixed under PR #45.
   design change (aggregate or rate-limit refusal rows).
 - **NITPICK:** the 404 → `{:no_provider_for_params, []}` rule is shared with
   callers that never send `require_parameters`; it cannot fire there.
+
+## GPT recheck — 2026-10-22
+
+Removed callback/provider payloads from new failure logs, corrected cached-row model identity, and aligned the test router with both production route callbacks.
+
+See [GPT_REVIEW.md](GPT_REVIEW.md) for evidence, regression coverage and the
+remaining design tradeoffs. This section supersedes the corresponding earlier
+“Not changed” entries; Claude's review is preserved.

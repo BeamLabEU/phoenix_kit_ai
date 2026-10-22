@@ -84,6 +84,17 @@ defmodule PhoenixKitAI.RecommendationsTest do
   end
 
   describe "cheapest/2 with the task's declared typical tokens" do
+    test "a zero row limit returns no models, including unpriced models" do
+      catalogue = [
+        source([
+          {"v/paid", caps(prompt_price: 1.0e-6, completion_price: 1.0e-6)},
+          {"v/unpriced", caps()}
+        ])
+      ]
+
+      assert %{rows: []} = Recommendations.cheapest("test.sized", catalogue: catalogue, limit: 0)
+    end
+
     test "ranks the fit models by the price of one call and leaves out the unfit" do
       # test.sized needs vision and declares {10_000, 1_000}.
       catalogue = [
@@ -290,11 +301,20 @@ defmodule PhoenixKitAI.RecommendationsTest do
     test "carries the integration the create button reuses" do
       catalogue = [
         source([{"v/m", caps(prompt_price: 1.0e-7, completion_price: 0.0)}],
-          integration_uuid: "0191-integration"
+          integration_uuid: "0191-integration",
+          endpoint_uuid: "0191-source"
         )
       ]
 
-      assert %{rows: [%{integration_uuid: "0191-integration", base_url: @openrouter}]} =
+      assert %{
+               rows: [
+                 %{
+                   integration_uuid: "0191-integration",
+                   base_url: @openrouter,
+                   source_endpoint_uuid: "0191-source"
+                 }
+               ]
+             } =
                Recommendations.cheapest("test.sized", catalogue: catalogue)
     end
   end

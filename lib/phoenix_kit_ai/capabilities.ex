@@ -257,6 +257,7 @@ defmodule PhoenixKitAI.Capabilities do
   """
   @spec catalogue_kind(String.t() | nil, String.t() | nil) :: :openrouter | :anthropic | nil
   def catalogue_kind(provider, base_url) do
+    provider = if is_binary(provider), do: Endpoint.base_provider(provider), else: provider
     host = host(base_url)
 
     cond do

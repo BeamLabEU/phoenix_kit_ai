@@ -168,7 +168,7 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPicker do
         </section>
 
         <section id={@id <> "-worked"} class="flex flex-col gap-2">
-          <h4 class="font-semibold">{gettext("Already worked in this task")}</h4>
+          <h4 class="font-semibold">{gettext("Models used in this task")}</h4>
           <p :if={@recommendations.worked == []} data-worked-empty class="text-base-content/60">
             {gettext("No calls in the last 30 days.")}
           </p>
@@ -277,7 +277,13 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPicker do
 
   defp create_path(row) do
     query =
-      [name: row.name, model: row.model, integration_uuid: row.integration_uuid]
+      [
+        name: row.name,
+        model: row.model,
+        integration_uuid: row.integration_uuid,
+        source_endpoint_uuid: row[:source_endpoint_uuid],
+        provider: to_string(row.provider)
+      ]
       |> Enum.filter(fn {_key, value} -> is_binary(value) and value != "" end)
       |> URI.encode_query()
 

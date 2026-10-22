@@ -85,7 +85,7 @@ defmodule PhoenixKitAI.Recommendations do
   @doc """
   The cheapest fit models, `limit` (5) rows at most, each
   `%{model, name, provider, base_url, integration_uuid, context_length,
-  capabilities, price_per_call, price_known?, input_price_per_million,
+  capabilities, source_endpoint_uuid, price_per_call, price_known?, input_price_per_million,
   deprecated?, notes}`. `price_per_call` is dollars, `nil` without a price
   or an estimate of the call; `input_price_per_million` is dollars.
 
@@ -244,8 +244,8 @@ defmodule PhoenixKitAI.Recommendations do
 
   @doc """
   The catalogues the endpoints use, as the sources `cheapest/2` ranks: one
-  per base URL with a catalogue, `%{base_url, kind, integration_uuid,
-  models}`. Read once and passed as `:catalogue` when several tasks are
+  per base URL with a catalogue, `%{base_url, kind, endpoint_uuid,
+  integration_uuid, models}`. Read once and passed as `:catalogue` when several tasks are
   listed together. The integration is the one of an endpoint there (enabled
   ones first), which the create button hands to the endpoint form.
   """
@@ -268,6 +268,7 @@ defmodule PhoenixKitAI.Recommendations do
               %{
                 base_url: base_url,
                 kind: kind,
+                endpoint_uuid: first.uuid,
                 integration_uuid: Enum.find_value(endpoints, & &1.integration_uuid),
                 models: Capabilities.catalogue(base_url)
               }
@@ -291,6 +292,7 @@ defmodule PhoenixKitAI.Recommendations do
       provider: source.kind,
       base_url: source.base_url,
       integration_uuid: source.integration_uuid,
+      source_endpoint_uuid: source[:endpoint_uuid],
       context_length: caps.context_length,
       capabilities: caps,
       price_per_call: price_per_call(caps, tokens),
@@ -333,6 +335,8 @@ defmodule PhoenixKitAI.Recommendations do
   # Priced rows by price (a tie by model id), with no more than one free model;
   # then the unpriced ones, Anthropic first, with one place kept for them. The
   # sort key is dropped.
+  defp rank(_candidates, _tokens, limit) when is_integer(limit) and limit <= 0, do: []
+
   defp rank(candidates, _tokens, limit) do
     {priced, unpriced} = Enum.split_with(candidates, &(&1.sort_price != nil))
     priced = priced |> Enum.sort_by(&{&1.sort_price, &1.model}) |> one_free()

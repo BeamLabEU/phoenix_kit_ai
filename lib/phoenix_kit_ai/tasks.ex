@@ -33,6 +33,7 @@ defmodule PhoenixKitAI.Tasks do
   require Logger
 
   alias PhoenixKitAI.{Capabilities, Endpoint, TaskSpec}
+  alias PhoenixKitAI.Web.MessageShape
 
   @registry_key {__MODULE__, :registry}
   # How long a build in which a module's `ai_tasks/0` failed is kept before
@@ -172,15 +173,13 @@ defmodule PhoenixKitAI.Tasks do
   rescue
     error ->
       Logger.warning(
-        "[PhoenixKitAI] #{inspect(module)}.ai_tasks/0 failed: #{Exception.message(error)}"
+        "[PhoenixKitAI] #{inspect(module)}.ai_tasks/0 failed: #{inspect(error.__struct__)}"
       )
 
       :error
   catch
-    kind, reason ->
-      Logger.warning(
-        "[PhoenixKitAI] #{inspect(module)}.ai_tasks/0 failed: #{kind} #{inspect(reason, limit: 5)}"
-      )
+    kind, _reason ->
+      Logger.warning("[PhoenixKitAI] #{inspect(module)}.ai_tasks/0 failed: #{kind}")
 
       :error
   end
@@ -199,7 +198,7 @@ defmodule PhoenixKitAI.Tasks do
       other ->
         Logger.warning(
           "[PhoenixKitAI] #{inspect(module)}.ai_tasks/0 returned an entry that is not a " <>
-            "%PhoenixKitAI.TaskSpec{} with a key: #{inspect(other, limit: 3)}"
+            "%PhoenixKitAI.TaskSpec{} with a key: #{MessageShape.describe(other)}"
         )
 
         []
@@ -358,13 +357,11 @@ defmodule PhoenixKitAI.Tasks do
     |> Enum.uniq_by(& &1.uuid)
   rescue
     error ->
-      Logger.warning("[PhoenixKitAI] endpoints callback failed: #{Exception.message(error)}")
+      Logger.warning("[PhoenixKitAI] endpoints callback failed: #{inspect(error.__struct__)}")
       []
   catch
-    kind, reason ->
-      Logger.warning(
-        "[PhoenixKitAI] endpoints callback failed: #{kind} #{inspect(reason, limit: 5)}"
-      )
+    kind, _reason ->
+      Logger.warning("[PhoenixKitAI] endpoints callback failed: #{kind}")
 
       []
   end

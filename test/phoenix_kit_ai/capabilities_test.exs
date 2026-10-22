@@ -248,6 +248,14 @@ defmodule PhoenixKitAI.CapabilitiesTest do
   end
 
   describe "catalogue_kind/2" do
+    test "legacy provider connection names keep their catalogue behind a proxy" do
+      assert Capabilities.catalogue_kind("openrouter:work", "https://gateway.example.com/v1") ==
+               :openrouter
+
+      assert Capabilities.catalogue_kind("anthropic:work", "https://gateway.example.com/v1") ==
+               :anthropic
+    end
+
     test "by the provider key or by the host of the base URL" do
       assert Capabilities.catalogue_kind("openrouter", nil) == :openrouter
       assert Capabilities.catalogue_kind(nil, "https://openrouter.ai/api/v1") == :openrouter
