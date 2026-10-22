@@ -94,6 +94,14 @@ defmodule PhoenixKitAI.Capabilities do
   @topic "phoenix_kit:ai:capabilities"
   @declarable [:vision, :file_input, :image_output, :tools, :json_schema]
   @anthropic_base_url "https://api.anthropic.com/v1"
+  # The providers whose model list says what a model can do: the catalogue
+  # kind, the provider key and the API host, tried in this order.
+  @catalogues [
+    {:anthropic, "anthropic", "api.anthropic.com"},
+    {:openrouter, "openrouter", "openrouter.ai"},
+    {:deepseek, "deepseek", "api.deepseek.com"},
+    {:mistral, "mistral", "api.mistral.ai"}
+  ]
 
   @refresh_interval :timer.hours(6)
   # A failed catalogue is tried again after these delays, then not before
@@ -278,13 +286,9 @@ defmodule PhoenixKitAI.Capabilities do
   def catalogue_kind(provider, base_url) do
     host = host(base_url)
 
-    cond do
-      provider == "anthropic" or host == "api.anthropic.com" -> :anthropic
-      provider == "openrouter" or host == "openrouter.ai" -> :openrouter
-      provider == "deepseek" or host == "api.deepseek.com" -> :deepseek
-      provider == "mistral" or host == "api.mistral.ai" -> :mistral
-      true -> nil
-    end
+    Enum.find_value(@catalogues, fn {kind, key, catalogue_host} ->
+      if provider == key or host == catalogue_host, do: kind
+    end)
   end
 
   @doc """

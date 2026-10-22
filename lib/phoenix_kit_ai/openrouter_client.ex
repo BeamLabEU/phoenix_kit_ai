@@ -24,6 +24,7 @@ defmodule PhoenixKitAI.OpenRouterClient do
       {:ok, models} = PhoenixKitAI.OpenRouterClient.fetch_models("sk-or-v1-...")
   """
 
+  alias PhoenixKit.Integrations.Providers
   alias PhoenixKit.Utils.Values
   alias PhoenixKitAI.AIModel
   alias PhoenixKitAI.Capabilities
@@ -922,7 +923,7 @@ defmodule PhoenixKitAI.OpenRouterClient do
 
   defp anthropic_headers do
     registry =
-      case PhoenixKit.Integrations.Providers.get("anthropic") do
+      case Providers.get("anthropic") do
         %{validation: %{extra_headers: headers}} when is_list(headers) -> headers
         _ -> []
       end
