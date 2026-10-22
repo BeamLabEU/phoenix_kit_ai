@@ -987,6 +987,15 @@ defmodule PhoenixKitAI do
     ]
   end
 
+  @doc """
+  The module's scheduled job: the daily pruning of the guard's events older
+  than 180 days (`PhoenixKitAI.GuardEventsPruneWorker`, core `default`
+  queue).
+  """
+  @impl PhoenixKit.Module
+  @spec oban_crons() :: [{String.t(), module()}]
+  def oban_crons, do: [{"17 3 * * *", PhoenixKitAI.GuardEventsPruneWorker}]
+
   @impl PhoenixKit.Module
   @spec admin_tabs() :: [PhoenixKit.Dashboard.Tab.t()]
   def admin_tabs do
