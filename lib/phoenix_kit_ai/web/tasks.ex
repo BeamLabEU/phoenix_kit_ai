@@ -18,7 +18,8 @@ defmodule PhoenixKitAI.Web.Tasks do
   require Logger
 
   alias PhoenixKit.Settings
-  alias PhoenixKitAI.{Capabilities, Tasks, TaskSpec}
+  alias PhoenixKitAI.{Capabilities, Recommendations, Tasks, TaskSpec}
+  alias PhoenixKitAI.Web.Components.TaskModelPicker
   alias PhoenixKitAI.Web.MessageShape
 
   @impl true
@@ -83,11 +84,16 @@ defmodule PhoenixKitAI.Web.Tasks do
   end
 
   defp load_tasks(socket) do
+    # The catalogues and the journal are read once for all the tasks.
+    specs = Tasks.list()
+    recommendations = Recommendations.for_tasks(specs)
+
     tasks =
-      for spec <- Tasks.list() do
+      for spec <- specs do
         %{
           spec: spec,
           dom_id: dom_id(spec.key),
+          recommendations: Map.fetch!(recommendations, spec.key),
           endpoints:
             spec
             |> Tasks.endpoints()
@@ -187,6 +193,12 @@ defmodule PhoenixKitAI.Web.Tasks do
                 <.fitness_badge fitness={row.fitness} />
               </div>
             </div>
+
+            <TaskModelPicker.recommendations
+              id={task.dom_id <> "-recommendations"}
+              recommendations={task.recommendations}
+              scope={assigns[:phoenix_kit_current_scope]}
+            />
           </div>
         </div>
       </div>

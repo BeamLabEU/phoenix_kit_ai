@@ -8,7 +8,9 @@ defmodule PhoenixKitAI.Web.TasksTest do
   use PhoenixKitAI.LiveCase
 
   alias PhoenixKit.ModuleRegistry
+  alias PhoenixKitAI.Request
   alias PhoenixKitAI.Test.FakeAITasks
+  alias PhoenixKitAI.Test.Repo, as: TestRepo
 
   setup do
     :ok = ModuleRegistry.register(FakeAITasks)
@@ -68,6 +70,115 @@ defmodule PhoenixKitAI.Web.TasksTest do
     # This module's own tasks are listed too.
     assert has_element?(view, "[data-task-key='ai.translation']")
     assert has_element?(view, "[data-task-key='ai.playground']")
+  end
+
+  describe "the recommendations block" do
+    test "is on every task's card, collapsed, and reads the journal", %{conn: conn} do
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      for status <- ["success", "success", "error"] do
+        TestRepo.insert!(%Request{
+          model: "vendor/worked",
+          status: status,
+          request_type: "chat",
+          latency_ms: 700,
+          cost_cents: 2_000,
+          metadata: %{"task" => "test.photo"},
+          inserted_at: now,
+          updated_at: now
+        })
+      end
+
+      {:ok, view, _html} = live(conn, "/en/admin/ai/tasks")
+
+      for key <- ["test.photo", "test.plain", "ai.translation"] do
+        assert has_element?(view, "[data-task-key='#{key}'] details[id$='-recommendations']")
+      end
+
+      photo = "[data-task-key='test.photo']"
+      assert has_element?(view, "#{photo} [data-worked-model='vendor/worked']", "3")
+      assert has_element?(view, "#{photo} [data-worked-model='vendor/worked']", "33%")
+      assert has_element?(view, "#{photo} [data-recommended-empty]")
+      assert has_element?(view, "[data-task-key='test.plain'] [data-worked-empty]")
+    end
+
+    test "lists the fit models of the catalogue, with the create link only for a scope holding ai",
+         %{conn: conn} do
+      stub = Module.concat(__MODULE__, "Stub#{System.unique_integer([:positive])}")
+      Application.put_env(:phoenix_kit_ai, :req_options, plug: {Req.Test, stub}, retry: false)
+      on_exit(fn -> Application.delete_env(:phoenix_kit_ai, :req_options) end)
+
+      fixture_endpoint(name: "Catalogue EP", model: "google/gemini-flash")
+
+      Req.Test.stub(stub, fn conn ->
+        Req.Test.json(conn, %{
+          "data" => [
+            %{
+              "id" => "google/gemini-flash",
+              "name" => "Gemini Flash",
+              "pricing" => %{"prompt" => "0.0000001", "completion" => "0.0000004"},
+              "architecture" => %{
+                "input_modalities" => ["text", "image"],
+                "output_modalities" => ["text"]
+              },
+              "supported_parameters" => ["tools", "structured_outputs"]
+            },
+            %{
+              "id" => "deepseek/flash",
+              "name" => "DeepSeek Flash",
+              "pricing" => %{"prompt" => "0.00000001", "completion" => "0.00000004"},
+              "architecture" => %{
+                "input_modalities" => ["text"],
+                "output_modalities" => ["text"]
+              },
+              "supported_parameters" => ["tools", "structured_outputs"]
+            }
+          ]
+        })
+      end)
+
+      pid =
+        start_supervised!(
+          {PhoenixKitAI.Capabilities,
+           [initial_refresh: :never, refresh_interval: :infinity, retry_backoff: []]}
+        )
+
+      Req.Test.allow(stub, self(), pid)
+      assert :ok = PhoenixKitAI.Capabilities.refresh()
+
+      scope = fn permissions ->
+        %PhoenixKit.Users.Auth.Scope{
+          user: %{uuid: Ecto.UUID.generate(), email: "t@example.com"},
+          authenticated?: true,
+          cached_roles: ["Admin"],
+          cached_permissions: MapSet.new(permissions)
+        }
+      end
+
+      photo = "[data-task-key='test.photo']"
+
+      with_ai = put_test_scope(conn, scope.(["ai"]))
+      {:ok, view, _html} = live(with_ai, "/en/admin/ai/tasks")
+
+      # The vision task takes the model that sees images, not the cheaper one that does not.
+      assert has_element?(view, "#{photo} [data-recommended-model='google/gemini-flash']")
+      refute has_element?(view, "#{photo} [data-recommended-model='deepseek/flash']")
+
+      assert has_element?(
+               view,
+               "[data-task-key='test.plain'] [data-recommended-model='deepseek/flash']"
+             )
+
+      assert has_element?(
+               view,
+               "#{photo} [data-recommended-model='google/gemini-flash'] a[data-create-endpoint]"
+             )
+
+      without = put_test_scope(conn, scope.(["staff"]))
+      {:ok, view, _html} = live(without, "/en/admin/ai/tasks")
+      assert has_element?(view, "#{photo} [data-recommended-model='google/gemini-flash']")
+      refute has_element?(view, "[data-create-endpoint]")
+    end
   end
 
   test "keys that differ only in punctuation get distinct card ids", %{conn: conn} do
