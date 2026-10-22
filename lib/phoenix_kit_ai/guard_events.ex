@@ -14,12 +14,16 @@ defmodule PhoenixKitAI.GuardEvents do
   | a limit reached | `limit_reached:<task>:<user or ->:<unit>:<period key>` |
   | a `PhoenixKitAI.Budget` refusal | `limit_reached:budget:<scope>:<user, endpoint or ->:<local date>` |
   | a model that no longer fits a task | `model_unfit:<task>:<endpoint>:<local date>` |
+  | an off-purpose flag | `off_purpose:<task>:<user or ->:<turn_ref or request_uuid>` |
+  | the watchers told of a person's flags | `off_purpose_signal:<task>:<user or ->:<local date>` |
+  | an anomaly rule broken | `anomaly:<task>:<user or ->:<rule>:<local date>` |
 
   The period key is the local date (`2026-10-22`) or month (`2026-10`) of the
   site time zone. A key that was inserted (here or, seen as a conflict, on
   another node) is also kept on this node until its window ends, so a limit
-  that stays past its threshold costs no further write. A forgiving (`limit_forgiven`) has no key: every one is
-  kept.
+  that stays past its threshold costs no further write. A forgiving
+  (`limit_forgiven`), a block (`blocked`) and a lift (`unblocked`) have no
+  key: every one is kept.
 
   ## Who is told
 
@@ -36,7 +40,9 @@ defmodule PhoenixKitAI.GuardEvents do
   the event as its resource (`resource_uuid`; never `target_uuid`, which
   would notify the user a second time). A text names the task, the user by
   e-mail and the limit with its numbers — never a reason or anything of a
-  call's content.
+  call's content. The reason of an off-purpose flag stays in its event row
+  (`flags/2` shows it to those allowed); a block's reason and a lift's note
+  stay in the block row.
 
   A signal never fails the call that caused it: a failure is logged as its
   class only.
@@ -52,7 +58,8 @@ defmodule PhoenixKitAI.GuardEvents do
   alias PhoenixKit.Users.{Auth, Roles}
   alias PhoenixKit.Users.Auth.User
   alias PhoenixKit.Utils.{RecipientLocale, Routes}
-  alias PhoenixKitAI.{Budget, Endpoint, Guard, GuardEvent, TaskLimits, Tasks, TaskSpec}
+  alias PhoenixKitAI.{Budget, Endpoint, Guard, GuardBlock, GuardBlocks, GuardEvent, TaskLimits}
+  alias PhoenixKitAI.{Request, Tasks, TaskSpec}
 
   @notice_type "ai_guard"
   @icon "hero-shield-exclamation"
@@ -217,6 +224,12 @@ defmodule PhoenixKitAI.GuardEvents do
       {0, _} -> :duplicate
     end
   end
+
+  @doc false
+  # Whether `key` was written and is still kept on this node: a caller may
+  # skip work that could only end in a duplicate.
+  @spec already_sent?(String.t()) :: boolean()
+  def already_sent?(key) when is_binary(key), do: sent?(key)
 
   defp sent?(key) do
     case :ets.lookup(flags_table(), {__MODULE__, :sent, key}) do
@@ -392,6 +405,181 @@ defmodule PhoenixKitAI.GuardEvents do
     end)
   end
 
+  @doc """
+  An off-purpose flag of `spec` for `user_uuid` (nil for none): one event
+  per turn or call (`ref`: `"turn_ref"` or `"request_uuid"`; the request
+  uuid is linked when its row exists), and on the person's first flag in the
+  task that day, an `off_purpose_signal` and the watchers told — without the
+  reason. `{:ok, event}`, or `:duplicate` when the turn or call was flagged.
+  """
+  @spec off_purpose(TaskSpec.t(), String.t() | nil, String.t() | nil, map(), DateTime.t()) ::
+          {:ok, GuardEvent.t()} | :duplicate
+  def off_purpose(%TaskSpec{} = spec, user_uuid, reason, ref, now \\ DateTime.utc_now()) do
+    id = ref["turn_ref"] || ref["request_uuid"]
+
+    result =
+      record(%{
+        kind: "off_purpose",
+        task_key: spec.key,
+        user_uuid: user_uuid,
+        request_uuid: linked_request(ref["request_uuid"]),
+        ref: ref,
+        reason: reason,
+        dedupe_key: "off_purpose:#{spec.key}:#{user_uuid || "-"}:#{id}"
+      })
+
+    with {:ok, event} <- result, do: off_purpose_signal(spec, user_uuid, event, now)
+    result
+  end
+
+  defp linked_request(uuid) when is_binary(uuid) do
+    if repo().exists?(from(r in Request, where: r.uuid == ^uuid)), do: uuid
+  end
+
+  defp linked_request(_uuid), do: nil
+
+  defp off_purpose_signal(spec, user_uuid, event, now) do
+    safely(fn ->
+      with {:ok, signal} <-
+             record(%{
+               kind: "off_purpose_signal",
+               task_key: spec.key,
+               user_uuid: user_uuid,
+               ref: %{"event_uuid" => event.uuid},
+               dedupe_key:
+                 "off_purpose_signal:#{spec.key}:#{user_uuid || "-"}:#{TaskLimits.period_keys(now).day}",
+               until: elem(TaskLimits.windows(now).day, 1)
+             }) do
+        log(signal)
+        tell_watchers(spec, user_uuid, &off_purpose_text(&1, spec))
+      end
+    end)
+  end
+
+  @doc """
+  An anomaly rule of `spec` broken by the call of `request` (`rule`:
+  `"source"`, `"calls_per_hour"` or `"tokens_per_call"`, with the value
+  seen and the task's limit): an event and the watchers told, once a day per
+  task, person and rule.
+  """
+  @spec anomaly(TaskSpec.t(), Request.t(), String.t(), term(), term(), DateTime.t()) :: :ok
+  def anomaly(
+        %TaskSpec{} = spec,
+        %Request{} = request,
+        rule,
+        value,
+        limit,
+        now \\ DateTime.utc_now()
+      ) do
+    safely(fn ->
+      with {:ok, event} <-
+             record(%{
+               kind: "anomaly",
+               task_key: spec.key,
+               user_uuid: request.user_uuid,
+               request_uuid: request.uuid,
+               ref: %{"rule" => rule, "value" => value, "limit" => limit},
+               dedupe_key: anomaly_key(spec, request.user_uuid, rule, now),
+               until: elem(TaskLimits.windows(now).day, 1)
+             }) do
+        log(event)
+        tell_watchers(spec, request.user_uuid, &anomaly_text(&1, spec, rule, limit))
+      end
+    end)
+  end
+
+  @doc false
+  @spec anomaly_key(TaskSpec.t(), String.t() | nil, String.t(), DateTime.t()) :: String.t()
+  def anomaly_key(%TaskSpec{key: key}, user_uuid, rule, now \\ DateTime.utc_now()),
+    do: "anomaly:#{key}:#{user_uuid || "-"}:#{rule}:#{TaskLimits.period_keys(now).day}"
+
+  @doc """
+  A block set or lifted (`kind`: `"blocked"` or `"unblocked"`) by
+  `actor_uuid`: the event, the Activity entry, the watchers (but the actor)
+  told and the person told in the app — none of them with the reason or the
+  note.
+  """
+  @spec block_event(String.t(), GuardBlock.t(), String.t() | nil) :: :ok
+  def block_event(kind, %GuardBlock{} = block, actor_uuid) when kind in ~w(blocked unblocked) do
+    safely(fn ->
+      spec = block.origin_task_key && Tasks.get(block.origin_task_key)
+      task = block_task_label(block, spec)
+
+      with {:ok, event} <-
+             record(%{
+               kind: kind,
+               task_key: block.origin_task_key || block.block_group,
+               user_uuid: block.user_uuid,
+               actor_uuid: actor_uuid,
+               ref: %{"group" => block.block_group, "block_uuid" => block.uuid}
+             }) do
+        log(event, actor_uuid)
+
+        Notifications.upsert_inapp(block.user_uuid, "ai:guard:block:#{block.block_group}", %{
+          text: block_text_for_user(kind, task),
+          icon: @icon
+        })
+
+        # Whoever set or lifted it knows already.
+        tell_watchers(spec, block.user_uuid, &block_text(&1, kind, task), actor_uuid)
+      end
+    end)
+  end
+
+  defp block_task_label(_block, %TaskSpec{} = spec), do: TaskSpec.label(spec)
+
+  defp block_task_label(block, nil) do
+    case GuardBlocks.tasks_of(block.block_group) do
+      [] -> block.block_group
+      specs -> Enum.map_join(specs, ", ", &TaskSpec.label/1)
+    end
+  end
+
+  @doc """
+  The off-purpose flags of a task in the last `days` (default 30), for the
+  Tasks page as `viewer` (a scope) may see them: the count per person (most
+  first) and the latest `limit` flags (default 20). A flag's reason and its
+  journal row are left out (`hidden: true`) of a private task's flags unless
+  the viewer may manage the guard (`PhoenixKitAI.Guard.reasons_visible?/2`).
+  """
+  @spec flags(TaskSpec.t(), term(), keyword()) :: %{
+          counts: [{String.t() | nil, pos_integer()}],
+          flags: [map()]
+        }
+  def flags(%TaskSpec{} = spec, viewer, opts \\ []) do
+    since = DateTime.add(DateTime.utc_now(), -Keyword.get(opts, :days, 30), :day)
+    visible? = Guard.reasons_visible?(viewer, spec.private)
+
+    base =
+      from(e in GuardEvent,
+        where: e.task_key == ^spec.key and e.kind == "off_purpose" and e.inserted_at >= ^since
+      )
+
+    counts =
+      from(e in base,
+        group_by: e.user_uuid,
+        select: {e.user_uuid, count(e.uuid)},
+        order_by: [desc: count(e.uuid)]
+      )
+      |> repo().all()
+
+    flags =
+      from(e in base, order_by: [desc: e.inserted_at], limit: ^Keyword.get(opts, :limit, 20))
+      |> repo().all()
+      |> Enum.map(fn event ->
+        %{
+          uuid: event.uuid,
+          user_uuid: event.user_uuid,
+          inserted_at: event.inserted_at,
+          reason: if(visible?, do: event.reason),
+          request_uuid: if(visible?, do: event.request_uuid),
+          hidden: not visible?
+        }
+      end)
+
+    %{counts: counts, flags: flags}
+  end
+
   @doc "The limit events of the current windows of a task (for the Tasks page)."
   @spec reached_users(String.t(), DateTime.t()) :: [GuardEvent.t()]
   def reached_users(task_key, now \\ DateTime.utc_now()) do
@@ -428,8 +616,8 @@ defmodule PhoenixKitAI.GuardEvents do
   # TELLING
   # ===========================================
 
-  defp tell_watchers(spec, user_uuid, text_fun) do
-    case watchers(spec, user_uuid) do
+  defp tell_watchers(spec, user_uuid, text_fun, actor_uuid \\ nil) do
+    case List.delete(watchers(spec, user_uuid), actor_uuid) do
       [] ->
         :ok
 
@@ -568,6 +756,64 @@ defmodule PhoenixKitAI.GuardEvents do
       needs: Tasks.need_labels(missing)
     )
   end
+
+  defp off_purpose_text(nil, spec) do
+    gettext(
+      "The AI task %{task} was asked for something outside its purpose. The flags are on the AI tasks page.",
+      task: TaskSpec.label(spec)
+    )
+  end
+
+  defp off_purpose_text(email, spec) do
+    gettext(
+      "%{email} asked the AI task %{task} for something outside its purpose. The flags are on the AI tasks page.",
+      email: email,
+      task: TaskSpec.label(spec)
+    )
+  end
+
+  defp anomaly_text(nil, spec, rule, limit) do
+    gettext("Unusual use of the AI task %{task}: %{rule}.",
+      task: TaskSpec.label(spec),
+      rule: rule_text(rule, limit)
+    )
+  end
+
+  defp anomaly_text(email, spec, rule, limit) do
+    gettext("Unusual use of the AI task %{task} by %{email}: %{rule}.",
+      task: TaskSpec.label(spec),
+      email: email,
+      rule: rule_text(rule, limit)
+    )
+  end
+
+  @doc "An anomaly rule in words."
+  @spec rule_text(String.t(), term()) :: String.t()
+  def rule_text("source", _limit), do: gettext("a call from a place the task does not expect")
+
+  def rule_text("calls_per_hour", limit),
+    do: gettext("more than %{limit} calls in an hour", limit: limit)
+
+  def rule_text("tokens_per_call", limit),
+    do: gettext("a call of more than %{limit} tokens", limit: limit)
+
+  def rule_text(rule, _limit), do: to_string(rule)
+
+  defp block_text(email, "blocked", task),
+    do: gettext("%{email} is blocked from the AI task %{task}.", email: email, task: task)
+
+  defp block_text(email, "unblocked", task),
+    do:
+      gettext("%{email} is no longer blocked from the AI task %{task}.", email: email, task: task)
+
+  defp block_text_for_user("blocked", task) do
+    gettext("You are blocked from the AI task %{task} until an administrator lifts the block.",
+      task: task
+    )
+  end
+
+  defp block_text_for_user("unblocked", task),
+    do: gettext("You are no longer blocked from the AI task %{task}.", task: task)
 
   # A signal is never worth a call: a failure is logged as its class only.
   defp safely(fun) do

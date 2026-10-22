@@ -12,7 +12,10 @@ defmodule PhoenixKitAI.Web.Tasks do
   The guard is set here too: each task's limits (`PhoenixKitAI.TaskLimits`:
   the task's own, the default for each user, personal exceptions), what was
   used today and this month, forgiving a reached limit, who is told
-  (`ai_guard_watchers`) and "only verified models". Changing any of it
+  (`ai_guard_watchers`) and "only verified models"; the recent off-purpose
+  flags of each task (the reasons of a private task's only for `ai.manage`),
+  blocking a person from a flag or their row, and the active blocks with
+  lifting (`PhoenixKitAI.GuardBlocks`). Changing any of it
   needs `ai.manage`: without it the page shows the values and no controls,
   and every event that changes something checks the permission again
   (`PhoenixKitAI.Web.Access`) before the context function checks it once
@@ -31,7 +34,8 @@ defmodule PhoenixKitAI.Web.Tasks do
   alias PhoenixKit.Settings
   alias PhoenixKit.Users.Auth
   alias PhoenixKit.Users.Auth.User
-  alias PhoenixKitAI.{Capabilities, Guard, GuardEvents, Recommendations, TaskLimits, Tasks}
+  alias PhoenixKitAI.{Capabilities, Guard, GuardBlocks, GuardEvents, Recommendations}
+  alias PhoenixKitAI.{TaskLimits, Tasks}
   alias PhoenixKitAI.TaskSpec
   alias PhoenixKitAI.Web.Access
   alias PhoenixKitAI.Web.Components.TaskModelPicker
@@ -50,6 +54,8 @@ defmodule PhoenixKitAI.Web.Tasks do
       |> assign(:verified_only, false)
       |> assign(:watchers, [])
       |> assign(:user_editor, nil)
+      |> assign(:block_editor, nil)
+      |> assign(:lift_editor, nil)
       |> assign(:current_path, PhoenixKitAI.Routes.ai_path() <> "/tasks")
       |> assign(:page_section, gettext("AI"))
       |> assign(:page_section_path, PhoenixKitAI.Routes.ai_path())
@@ -86,7 +92,8 @@ defmodule PhoenixKitAI.Web.Tasks do
   def handle_event(event, params, socket) when event in ~w(save_limits forgive
            limit_user_search limit_user_pick limit_user_cancel save_user_limits
            delete_user_limits watcher_search watcher_pick remove_watcher
-           toggle_verified_only) do
+           toggle_verified_only block_open block_cancel block_user lift_open
+           lift_cancel lift_block) do
     if Access.may_manage?(socket) do
       manage(event, params, socket)
     else
@@ -201,6 +208,49 @@ defmodule PhoenixKitAI.Web.Tasks do
     end
   end
 
+  defp manage("block_open", %{"task" => key, "user" => user_uuid} = params, socket) do
+    editor = %{task_key: key, user_uuid: user_uuid, event_uuid: blank_to_nil(params["event"])}
+    {:noreply, socket |> assign(:block_editor, editor) |> assign(:lift_editor, nil)}
+  end
+
+  defp manage("block_cancel", _params, socket),
+    do: {:noreply, assign(socket, :block_editor, nil)}
+
+  defp manage("block_user", %{"task" => key, "user" => user_uuid} = params, socket) do
+    origin = %{event_uuid: blank_to_nil(params["event"])}
+
+    case Guard.block(Access.session_scope(socket), key, user_uuid, params["reason"], origin) do
+      {:ok, _block} ->
+        {:noreply,
+         socket
+         |> assign(:block_editor, nil)
+         |> load_tasks()
+         |> put_flash(:info, gettext("Blocked"))}
+
+      error ->
+        {:noreply, refused(socket, error)}
+    end
+  end
+
+  defp manage("lift_open", %{"block" => block_uuid}, socket),
+    do: {:noreply, socket |> assign(:lift_editor, block_uuid) |> assign(:block_editor, nil)}
+
+  defp manage("lift_cancel", _params, socket), do: {:noreply, assign(socket, :lift_editor, nil)}
+
+  defp manage("lift_block", %{"block" => block_uuid} = params, socket) do
+    case Guard.unblock(Access.session_scope(socket), block_uuid, params["note"]) do
+      {:ok, _block} ->
+        {:noreply,
+         socket
+         |> assign(:lift_editor, nil)
+         |> load_tasks()
+         |> put_flash(:info, gettext("Block lifted"))}
+
+      error ->
+        {:noreply, refused(socket, error)}
+    end
+  end
+
   defp manage(_event, _params, socket), do: {:noreply, socket}
 
   defp save_watchers(socket, uuids) do
@@ -218,6 +268,18 @@ defmodule PhoenixKitAI.Web.Tasks do
 
   defp refused(socket, {:error, reason}) when reason in [:unknown_user, :invalid_user],
     do: put_flash(socket, :error, gettext("That person was not found"))
+
+  defp refused(socket, {:error, :owner_only}),
+    do: put_flash(socket, :error, gettext("Only an Owner blocks an Owner or lifts their block"))
+
+  defp refused(socket, {:error, :own_block}),
+    do: put_flash(socket, :error, gettext("Nobody but an Owner lifts their own block"))
+
+  defp refused(socket, {:error, :already_blocked}),
+    do: put_flash(socket, :error, gettext("That person is blocked from this task already"))
+
+  defp refused(socket, {:error, reason}) when reason in [:not_blocked, :not_found],
+    do: put_flash(socket, :error, gettext("That block was lifted already"))
 
   defp refused(socket, {:error, :too_long}),
     do: put_flash(socket, :error, gettext("Too many watchers"))
@@ -255,6 +317,8 @@ defmodule PhoenixKitAI.Web.Tasks do
     # The catalogues and the journal are read once for all the tasks.
     specs = Tasks.list()
     recommendations = Recommendations.for_tasks(specs)
+    # Only a viewer who may manage the guard now is shown a private reason.
+    viewer = if socket.assigns.can_manage, do: Access.session_scope(socket)
 
     tasks =
       for spec <- specs do
@@ -265,12 +329,81 @@ defmodule PhoenixKitAI.Web.Tasks do
           dom_id: dom_id(spec.key),
           recommendations: Map.fetch!(recommendations, spec.key),
           endpoints: Enum.map(endpoints, &%{endpoint: &1, fitness: Tasks.fitness(spec, &1)}),
-          limits: limits_view(spec, endpoints)
+          limits: limits_view(spec, endpoints),
+          guard: guard_view(spec, viewer)
         }
       end
 
     assign(socket, :tasks, tasks)
   end
+
+  # The task's recent flags and its group's active blocks, as `viewer` may
+  # see them (nil: a viewer who may not manage the guard).
+  defp guard_view(spec, viewer) do
+    %{counts: counts, flags: flags} = GuardEvents.flags(spec, viewer)
+    group = GuardBlocks.group(spec)
+    blocks = GuardBlocks.list_active(group)
+
+    emails =
+      (Enum.map(counts, &elem(&1, 0)) ++
+         Enum.flat_map(blocks, &[&1.user_uuid, &1.blocked_by_uuid]))
+      |> Enum.reject(&is_nil/1)
+      |> emails()
+
+    blocked = MapSet.new(blocks, & &1.user_uuid)
+    blockable = blockable(viewer, Enum.map(counts, &elem(&1, 0)), blocked)
+
+    %{
+      group: group,
+      counts:
+        Enum.map(counts, fn {user_uuid, count} ->
+          %{
+            user_uuid: user_uuid,
+            email: email(emails, user_uuid),
+            count: count,
+            blockable: user_uuid in blockable
+          }
+        end),
+      flags:
+        Enum.map(flags, fn flag ->
+          flag
+          |> Map.put(:email, email(emails, flag.user_uuid))
+          |> Map.put(:blockable, flag.user_uuid in blockable)
+        end),
+      blocks:
+        Enum.map(blocks, fn block ->
+          visible? = Guard.reasons_visible?(viewer, block.private)
+
+          %{
+            uuid: block.uuid,
+            user_uuid: block.user_uuid,
+            email: email(emails, block.user_uuid),
+            blocked_by: block.blocked_by_uuid && email(emails, block.blocked_by_uuid),
+            blocked_at: block.blocked_at,
+            origin_task_key: block.origin_task_key,
+            reason: if(visible?, do: block.reason),
+            hidden: not visible?,
+            liftable: viewer != nil and GuardBlocks.may_lift?(viewer, block)
+          }
+        end)
+    }
+  end
+
+  # The people `viewer` may block now: not blocked already, and an Owner
+  # only for an Owner.
+  defp blockable(nil, _user_uuids, _blocked), do: MapSet.new()
+
+  defp blockable(viewer, user_uuids, blocked) do
+    for user_uuid <- user_uuids,
+        is_binary(user_uuid),
+        not MapSet.member?(blocked, user_uuid),
+        GuardBlocks.may_block?(viewer, user_uuid),
+        into: MapSet.new(),
+        do: user_uuid
+  end
+
+  defp email(_emails, nil), do: gettext("No user")
+  defp email(emails, user_uuid), do: emails[user_uuid] || user_uuid
 
   defp limits_view(spec, endpoints) do
     layers = TaskLimits.layers(spec)
@@ -492,6 +625,13 @@ defmodule PhoenixKitAI.Web.Tasks do
               user_editor={@user_editor}
             />
 
+            <.flags_and_blocks
+              task={task}
+              can_manage={@can_manage}
+              block_editor={@block_editor}
+              lift_editor={@lift_editor}
+            />
+
             <TaskModelPicker.recommendations
               id={task.dom_id <> "-recommendations"}
               recommendations={task.recommendations}
@@ -545,7 +685,7 @@ defmodule PhoenixKitAI.Web.Tasks do
           <span class="text-sm font-medium">{gettext("Who is told")}</span>
           <span class="text-xs text-base-content/70">
             {gettext(
-              "Limits near or reached, spending caps and models that stop fitting are sent to these people (and to the people a task names). Nobody chosen: every Owner."
+              "Limits near or reached, spending caps, models that stop fitting, off-purpose flags, unusual use and blocks are sent to these people (and to the people a task names), never with a reason. Nobody chosen: every Owner."
             )}
           </span>
           <div class="flex flex-wrap gap-1">
@@ -796,6 +936,249 @@ defmodule PhoenixKitAI.Web.Tasks do
       </div>
     </div>
     """
+  end
+
+  attr(:task, :map, required: true)
+  attr(:can_manage, :boolean, required: true)
+  attr(:block_editor, :any, required: true)
+  attr(:lift_editor, :any, required: true)
+
+  defp flags_and_blocks(assigns) do
+    guard = assigns.task.guard
+    key = assigns.task.spec.key
+
+    assigns =
+      assigns
+      |> assign(:guard, guard)
+      |> assign(:key, key)
+      |> assign(:id, assigns.task.dom_id <> "-guard")
+      |> assign(
+        :blocking,
+        assigns.can_manage && assigns.block_editor && assigns.block_editor.task_key == key &&
+          assigns.block_editor
+      )
+      |> assign(
+        :lifting,
+        assigns.can_manage && Enum.find(guard.blocks, &(&1.uuid == assigns.lift_editor))
+      )
+
+    ~H"""
+    <div id={@id} class="flex min-w-0 flex-col gap-2 text-sm" data-guard-flags>
+      <span class="text-base-content/70">{gettext("Off-purpose flags, last 30 days:")}</span>
+      <span :if={@guard.counts == []} class="text-base-content/60" data-no-flags>
+        {gettext("None")}
+      </span>
+
+      <div :if={@guard.counts != []} class="overflow-x-auto">
+        <table id={@id <> "-people"} class="table table-sm">
+          <thead>
+            <tr>
+              <th>{gettext("Person")}</th>
+              <th>{gettext("Flags")}</th>
+              <th :if={@can_manage}></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={row <- @guard.counts}>
+              <td class="break-all">{row.email}</td>
+              <td data-flag-count={row.user_uuid}>{row.count}</td>
+              <td :if={@can_manage} class="text-right">
+                <button
+                  :if={row.blockable}
+                  type="button"
+                  class="btn btn-xs btn-outline btn-error"
+                  phx-click="block_open"
+                  phx-value-task={@key}
+                  phx-value-user={row.user_uuid}
+                  data-block-user={row.user_uuid}
+                >
+                  {gettext("Block")}
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div :if={@guard.flags != []} class="overflow-x-auto">
+        <table id={@id <> "-latest"} class="table table-sm">
+          <thead>
+            <tr>
+              <th>{gettext("When")}</th>
+              <th>{gettext("Person")}</th>
+              <th>{gettext("Reason")}</th>
+              <th :if={@can_manage}></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              :for={flag <- @guard.flags}
+              data-flag={flag.uuid}
+              data-flag-hidden={flag.hidden}
+            >
+              <td class="whitespace-nowrap"><.time_ago datetime={flag.inserted_at} /></td>
+              <td class="break-all">{flag.email}</td>
+              <td class="min-w-48">
+                <%= if flag.hidden do %>
+                  <span class="text-base-content/60">
+                    {gettext("Hidden: the task is private")}
+                  </span>
+                <% else %>
+                  <span>{flag.reason || "—"}</span>
+                  <code
+                    :if={flag.request_uuid}
+                    class="block text-xs text-base-content/60 break-all"
+                    title={gettext("Journal row")}
+                    data-flag-request
+                  >
+                    {flag.request_uuid}
+                  </code>
+                <% end %>
+              </td>
+              <td :if={@can_manage} class="text-right">
+                <button
+                  :if={flag.blockable}
+                  type="button"
+                  class="btn btn-xs btn-outline btn-error"
+                  phx-click="block_open"
+                  phx-value-task={@key}
+                  phx-value-user={flag.user_uuid}
+                  phx-value-event={flag.uuid}
+                  data-block-flag={flag.uuid}
+                >
+                  {gettext("Block")}
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <.form
+        :if={@blocking}
+        for={%{}}
+        id={@id <> "-block-form"}
+        phx-submit="block_user"
+        class="flex flex-col gap-2 rounded-box border border-base-300 p-2"
+        data-block-form
+      >
+        <input type="hidden" name="task" value={@key} />
+        <input type="hidden" name="user" value={@blocking.user_uuid} />
+        <input type="hidden" name="event" value={@blocking.event_uuid} />
+        <span class="font-medium break-all" data-block-person>{blocking_email(@guard, @blocking)}</span>
+        <.input
+          id={@id <> "-block-reason"}
+          name="reason"
+          value=""
+          label={gettext("Why (seen by those who manage the guard)")}
+          maxlength="500"
+          class="input-sm"
+        />
+        <p class="text-xs text-base-content/70">
+          {gettext(
+            "The person cannot use the tasks of the group %{group} until the block is lifted.",
+            group: @guard.group
+          )}
+        </p>
+        <div class="flex gap-2">
+          <button id={@id <> "-block-save"} type="submit" class="btn btn-sm btn-error">
+            {gettext("Block")}
+          </button>
+          <button type="button" class="btn btn-sm btn-ghost" phx-click="block_cancel">
+            {gettext("Cancel")}
+          </button>
+        </div>
+      </.form>
+
+      <span class="text-base-content/70">{gettext("Blocked now:")}</span>
+      <span :if={@guard.blocks == []} class="text-base-content/60" data-no-blocks>
+        {gettext("Nobody")}
+      </span>
+
+      <div :if={@guard.blocks != []} class="overflow-x-auto">
+        <table id={@id <> "-blocks"} class="table table-sm">
+          <thead>
+            <tr>
+              <th>{gettext("Person")}</th>
+              <th>{gettext("Since")}</th>
+              <th>{gettext("By")}</th>
+              <th>{gettext("Reason")}</th>
+              <th :if={@can_manage}></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={block <- @guard.blocks} data-active-block={block.user_uuid}>
+              <td class="break-all">{block.email}</td>
+              <td class="whitespace-nowrap"><.time_ago datetime={block.blocked_at} /></td>
+              <td class="break-all">{block.blocked_by || "—"}</td>
+              <td class="min-w-48">
+                <%= if block.hidden do %>
+                  <span class="text-base-content/60">
+                    {gettext("Hidden: the task is private")}
+                  </span>
+                <% else %>
+                  {block.reason || "—"}
+                <% end %>
+                <code
+                  :if={block.origin_task_key && block.origin_task_key != @key}
+                  class="block text-xs text-base-content/60"
+                >
+                  {block.origin_task_key}
+                </code>
+              </td>
+              <td :if={@can_manage} class="text-right">
+                <button
+                  :if={block.liftable}
+                  type="button"
+                  class="btn btn-xs btn-outline"
+                  phx-click="lift_open"
+                  phx-value-block={block.uuid}
+                  data-lift={block.uuid}
+                >
+                  {gettext("Lift")}
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <.form
+        :if={@lifting}
+        for={%{}}
+        id={@id <> "-lift-form"}
+        phx-submit="lift_block"
+        class="flex flex-col gap-2 rounded-box border border-base-300 p-2"
+        data-lift-form
+      >
+        <input type="hidden" name="block" value={@lifting.uuid} />
+        <span class="font-medium break-all">{@lifting.email}</span>
+        <.input
+          id={@id <> "-lift-note"}
+          name="note"
+          value=""
+          label={gettext("Note")}
+          maxlength="500"
+          class="input-sm"
+        />
+        <div class="flex gap-2">
+          <button id={@id <> "-lift-save"} type="submit" class="btn btn-sm btn-primary">
+            {gettext("Lift")}
+          </button>
+          <button type="button" class="btn btn-sm btn-ghost" phx-click="lift_cancel">
+            {gettext("Cancel")}
+          </button>
+        </div>
+      </.form>
+    </div>
+    """
+  end
+
+  defp blocking_email(guard, %{user_uuid: user_uuid}) do
+    case Enum.find(guard.counts, &(&1.user_uuid == user_uuid)) do
+      %{email: email} -> email
+      nil -> user_uuid
+    end
   end
 
   attr(:can_manage, :boolean, required: true)

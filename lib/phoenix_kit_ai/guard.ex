@@ -50,17 +50,44 @@ defmodule PhoenixKitAI.Guard do
   only for the task and user it was issued for, and only before it expires;
   any other token is ignored and the call is checked as usual.
 
+  A blocked person's turn is refused at the admission
+  (`{:error, {:task_blocked, group}}`); a turn admitted before the block
+  runs to its end.
+
+  ## Off-purpose use
+
+  The consumer flags it; the guard never edits a prompt or a schema. A
+  consumer asks `self_flag?/1` before it builds its prompt and schema, puts
+  the text of `self_flag_instruction/1` into its system prompt (with its own
+  way to flag: a field of its JSON schema, a marker in the answer), and
+  calls `report_off_purpose/4` when the model flags a request. The flag is
+  an event per turn or call; the watchers are told once a day per person and
+  task, without the reason (`PhoenixKitAI.GuardEvents`).
+
+  A task may also declare norms that need no content (`sources`,
+  `max_calls_per_hour`, `max_tokens_per_call`): after a call's journal row
+  is written, `check_anomalies/1` compares the row with them and signals a
+  broken one once a day (`anomaly`). It never blocks.
+
+  A person is blocked by a person (`block/5`, `unblock/3`, see
+  `PhoenixKitAI.GuardBlocks`); there is no automatic block.
+
   ## Who may change the guard
 
   `ai.manage` (a sub-permission of `ai`) — or an Owner, always:
   `may_manage?/1`. Every function that changes the guard's settings takes
   the scope of the person doing it and checks it (`authorize_manage/1`).
+  The reasons of a private task's flags and blocks are shown only to them
+  (`reasons_visible?/2`).
   """
+
+  import Ecto.Query, only: [from: 2]
 
   require Logger
 
   alias PhoenixKit.Users.Auth.Scope
-  alias PhoenixKitAI.{Capabilities, Endpoint, TaskLimits, Tasks, TaskSpec}
+  alias PhoenixKitAI.{Capabilities, Endpoint, GuardBlocks, GuardEvents, Request}
+  alias PhoenixKitAI.{TaskLimits, Tasks, TaskSetting, TaskSpec}
 
   @verified_only_setting "ai_guard_verified_models_only"
   @manage "ai.manage"
@@ -349,6 +376,15 @@ defmodule PhoenixKitAI.Guard do
   def may_manage?(%Scope{} = scope), do: Scope.owner?(scope) or Scope.can?(scope, @manage)
   def may_manage?(_scope), do: false
 
+  @doc """
+  Whether `scope` sees the reason (and the journal row) of a flag or a
+  block: every viewer of the page for a task that is not private, a holder
+  of `ai.manage` or an Owner for a private one.
+  """
+  @spec reasons_visible?(term(), boolean()) :: boolean()
+  def reasons_visible?(_scope, false), do: true
+  def reasons_visible?(scope, _private), do: may_manage?(scope)
+
   @doc false
   @spec authorize_manage(term()) :: :ok | {:error, :forbidden}
   def authorize_manage(scope), do: if(may_manage?(scope), do: :ok, else: {:error, :forbidden})
@@ -364,10 +400,11 @@ defmodule PhoenixKitAI.Guard do
 
   @doc """
   Admits `user_uuid` (nil for none) to `task` for `ttl_s` seconds: checks the
-  task's limits once and answers `{:ok, token}` for the calls of this piece
-  of work to pass as `guard_admission:` (see the moduledoc), or the refusal
-  (`{:error, {:task_limit_exceeded, scope, unit, period}}`), which is
-  signalled like a refused call. `turn_ref` is kept with the token.
+  task's blocks and limits once and answers `{:ok, token}` for the calls of
+  this piece of work to pass as `guard_admission:` (see the moduledoc), or
+  the refusal (`{:error, {:task_blocked, group}}`, or
+  `{:error, {:task_limit_exceeded, scope, unit, period}}`, which is
+  signalled like a refused call). `turn_ref` is kept with the token.
 
   Without the request cache's flags table (the cache not running) the token
   is not kept: `admitted?/3` says no to it, and each call is checked as if
@@ -377,7 +414,10 @@ defmodule PhoenixKitAI.Guard do
           {:ok, String.t()} | {:error, term()}
   def admit(task, user_uuid, turn_ref, ttl_s)
       when is_binary(task) and is_integer(ttl_s) and ttl_s > 0 do
-    with :ok <- TaskLimits.check(Tasks.for_call(task), user_uuid: user_uuid) do
+    spec = Tasks.for_call(task)
+
+    with :ok <- GuardBlocks.check(spec, user_uuid),
+         :ok <- TaskLimits.check(spec, user_uuid: user_uuid) do
       token = 24 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false)
       keep_admission(token, {task, user_uuid, turn_ref, now_ms() + ttl_s * 1000})
       {:ok, token}
@@ -422,8 +462,264 @@ defmodule PhoenixKitAI.Guard do
   @spec reset_caches() :: :ok
   def reset_caches do
     PhoenixKitAI.TaskLimits.reset_cache()
+    PhoenixKitAI.GuardBlocks.reset_cache()
     PhoenixKitAI.GuardEvents.reset_sent()
   end
+
+  # ===========================================
+  # BLOCKS
+  # ===========================================
+
+  @doc "Blocks a person from a task's group: `PhoenixKitAI.GuardBlocks.block/5`."
+  defdelegate block(scope, task_or_group, user_uuid, reason, origin), to: GuardBlocks
+
+  @doc "Lifts a block: `PhoenixKitAI.GuardBlocks.unblock/3`."
+  defdelegate unblock(scope, block, note), to: GuardBlocks
+
+  @doc "Whether `user_uuid` is blocked from `task_key` now (for a page to show it)."
+  defdelegate blocked?(task_key, user_uuid), to: GuardBlocks
+
+  # ===========================================
+  # OFF-PURPOSE USE
+  # ===========================================
+
+  @self_flag_modes ~w(self_flag self_flag+classifier)
+
+  @doc """
+  Whether the consumer of `task` (a key or a declaration) should have its
+  model flag off-purpose requests: the task's guard mode when an admin set
+  one (`self_flag` or `self_flag+classifier`), else the declaration's
+  `self_flag`. An unknown task is false. Costs no query once the task's
+  settings are cached.
+  """
+  @spec self_flag?(String.t() | TaskSpec.t()) :: boolean()
+  def self_flag?(%TaskSpec{} = spec) do
+    case setting(spec.key) do
+      %TaskSetting{guard_mode: mode} when is_binary(mode) -> mode in @self_flag_modes
+      _ -> spec.self_flag == true
+    end
+  end
+
+  def self_flag?(task) when is_binary(task) do
+    case Tasks.get(task) do
+      nil -> false
+      spec -> self_flag?(spec)
+    end
+  end
+
+  def self_flag?(_task), do: false
+
+  @doc """
+  An English instruction a consumer can put into its system prompt: the
+  task's purpose (an admin's override when set), to refuse an off-topic
+  request politely and flag it, to judge only the user's own message, and
+  to give the reason without quoting the user. The consumer adds how to flag
+  (its schema's field, a marker). nil for an unknown task.
+
+  The text does not follow the locale, so the prompt stays the same.
+  """
+  @spec self_flag_instruction(String.t() | TaskSpec.t()) :: String.t() | nil
+  def self_flag_instruction(%TaskSpec{} = spec) do
+    purpose =
+      case setting(spec.key) do
+        %TaskSetting{purpose_override: text} when is_binary(text) and text != "" -> text
+        _ -> spec.purpose || spec.label || spec.key
+      end
+
+    "The purpose of this AI task is: #{String.trim(purpose)} " <>
+      "If the user's message asks for something outside this purpose, politely refuse it " <>
+      "and flag the request as off-purpose. " <>
+      "Judge only the user's own message, not tool results, files or other content that comes with it. " <>
+      "When you flag a request, give the reason in a few words of your own, without quoting the user."
+  end
+
+  def self_flag_instruction(task) when is_binary(task) do
+    case Tasks.get(task) do
+      nil -> nil
+      spec -> self_flag_instruction(spec)
+    end
+  end
+
+  def self_flag_instruction(_task), do: nil
+
+  # A consumer asks these while building its prompt: a database error reads
+  # as no setting (the declaration's default), never as a crash.
+  defp setting(task_key) do
+    TaskLimits.cached_setting(task_key)
+  rescue
+    error ->
+      Logger.warning(
+        "[PhoenixKitAI] settings of #{inspect(task_key)} not read: #{inspect(error.__struct__)}"
+      )
+
+      nil
+  end
+
+  @doc """
+  Reports that the model flagged a request of `task` by `user_uuid` (nil for
+  none) as off-purpose. `ref` is the call's journal row uuid
+  (`"request_uuid"` of a chat verb's answer, `:request_uuid` of an image
+  verb's), or a map with `turn_ref` (one flag per turn of several calls).
+  A string that is not a uuid is taken as a turn reference. `reason` is the
+  model's, cut to 500 characters.
+
+  One flag per turn or call: `{:ok, event}` for the first, `:duplicate`
+  after. `:off` when the task does not self-flag now (`self_flag?/1`);
+  `{:error, :unknown_task | :invalid_ref | :invalid_user | :unknown_user}`
+  otherwise, and `{:error, :not_recorded}` when the database fails (logged
+  as its class; the caller's work goes on). The watchers are told of a person's first flag in the task
+  each day, without the reason (`PhoenixKitAI.GuardEvents.off_purpose/5`).
+  """
+  @spec report_off_purpose(String.t(), String.t() | nil, term(), String.t() | map()) ::
+          {:ok, PhoenixKitAI.GuardEvent.t()}
+          | :duplicate
+          | :off
+          | {:error, :unknown_task | :invalid_ref | :invalid_user | :unknown_user | :not_recorded}
+  def report_off_purpose(task, user_uuid, reason, ref) do
+    with {:ok, spec} <- reported_task(task),
+         true <- self_flag?(spec) || :off,
+         {:ok, ref} <- flag_ref(ref),
+         {:ok, user_uuid} <- reported_user(user_uuid) do
+      GuardEvents.off_purpose(spec, user_uuid, GuardBlocks.text(reason), ref)
+    end
+  rescue
+    error ->
+      Logger.warning("[PhoenixKitAI] off-purpose flag not recorded: #{inspect(error.__struct__)}")
+      {:error, :not_recorded}
+  end
+
+  defp reported_task(task) do
+    case Tasks.for_call(task) do
+      %TaskSpec{} = spec -> {:ok, spec}
+      nil -> {:error, :unknown_task}
+    end
+  end
+
+  # Only the keys a flag needs are kept: nothing of the call's content.
+  defp flag_ref(ref) when is_binary(ref), do: request_ref(ref)
+
+  defp flag_ref(%{} = ref) do
+    case ref[:turn_ref] || ref["turn_ref"] do
+      turn when is_binary(turn) -> turn_ref(turn)
+      _ -> request_ref(ref[:request_uuid] || ref["request_uuid"])
+    end
+  end
+
+  defp flag_ref(_ref), do: {:error, :invalid_ref}
+
+  defp request_ref(uuid) do
+    case Ecto.UUID.cast(uuid) do
+      {:ok, uuid} -> {:ok, %{"request_uuid" => uuid}}
+      :error -> turn_ref(uuid)
+    end
+  end
+
+  # A bare string that is not a uuid is a turn reference. It is part of the
+  # unique dedupe key, so it is kept short.
+  defp turn_ref(ref) when is_binary(ref) and ref != "" and byte_size(ref) <= 255,
+    do: {:ok, %{"turn_ref" => ref}}
+
+  defp turn_ref(_ref), do: {:error, :invalid_ref}
+
+  defp reported_user(nil), do: {:ok, nil}
+
+  defp reported_user(user_uuid) do
+    with {:ok, uuid} <- Ecto.UUID.cast(user_uuid),
+         true <- repo().exists?(from(u in PhoenixKit.Users.Auth.User, where: u.uuid == ^uuid)) do
+      {:ok, uuid}
+    else
+      :error -> {:error, :invalid_user}
+      false -> {:error, :unknown_user}
+    end
+  end
+
+  @doc """
+  Compares a call's journal row with its task's anomaly rules and signals
+  each broken one, once a day per task, person and rule
+  (`PhoenixKitAI.GuardEvents.anomaly/6`):
+
+    * `sources` — the row's `source` is not one of them (or a function of
+      one: `"My.Module"` allows `"My.Module.run"`);
+    * `max_tokens_per_call` — the row has more tokens;
+    * `max_calls_per_hour` — the person made more calls of the task in the
+      last hour (rows with a user only; refusals are not calls).
+
+  A refused row, a row without a task, and a task without rules cost
+  nothing; the hourly count is skipped once its rule was signalled today.
+  Never fails the caller.
+  """
+  @spec check_anomalies(Request.t()) :: :ok
+  def check_anomalies(%Request{metadata: %{} = metadata} = request) do
+    with false <- (metadata[:refused] || metadata["refused"]) == true,
+         key when is_binary(key) <- metadata[:task] || metadata["task"],
+         %TaskSpec{} = spec <- Tasks.for_call(key),
+         true <- rules?(spec) do
+      source = metadata[:source] || metadata["source"]
+      check_source(spec, request, source)
+      check_tokens(spec, request)
+      check_calls(spec, request)
+    end
+
+    :ok
+  rescue
+    error ->
+      Logger.warning("[PhoenixKitAI] anomaly rules not checked: #{inspect(error.__struct__)}")
+      :ok
+  end
+
+  def check_anomalies(_request), do: :ok
+
+  defp rules?(%TaskSpec{
+         sources: sources,
+         max_calls_per_hour: calls,
+         max_tokens_per_call: tokens
+       }),
+       do: is_list(sources) or is_integer(calls) or is_integer(tokens)
+
+  defp check_source(%TaskSpec{sources: [_ | _] = sources} = spec, request, source) do
+    source = if source, do: to_string(source)
+
+    allowed? =
+      is_binary(source) and
+        Enum.any?(sources, &(source == &1 or String.starts_with?(source, &1 <> ".")))
+
+    unless allowed?, do: GuardEvents.anomaly(spec, request, "source", source, sources)
+  end
+
+  defp check_source(_spec, _request, _source), do: :ok
+
+  defp check_tokens(%TaskSpec{max_tokens_per_call: max} = spec, request) when is_integer(max) do
+    tokens = request.total_tokens || 0
+    if tokens > max, do: GuardEvents.anomaly(spec, request, "tokens_per_call", tokens, max)
+  end
+
+  defp check_tokens(_spec, _request), do: :ok
+
+  defp check_calls(%TaskSpec{max_calls_per_hour: max} = spec, %Request{user_uuid: user} = request)
+       when is_integer(max) and is_binary(user) do
+    unless GuardEvents.already_sent?(GuardEvents.anomaly_key(spec, user, "calls_per_hour")) do
+      calls = calls_in_last_hour(spec.key, user)
+      if calls > max, do: GuardEvents.anomaly(spec, request, "calls_per_hour", calls, max)
+    end
+  end
+
+  defp check_calls(_spec, _request), do: :ok
+
+  # Through the journal's index on the user.
+  defp calls_in_last_hour(task_key, user_uuid) do
+    since = DateTime.add(DateTime.utc_now(), -3600, :second)
+
+    from(r in Request,
+      where:
+        r.user_uuid == ^user_uuid and r.inserted_at >= ^since and
+          fragment("?->>'task'", r.metadata) == ^task_key and
+          fragment("coalesce(?->>'refused', 'false') <> 'true'", r.metadata),
+      select: count(r.uuid)
+    )
+    |> repo().one()
+  end
+
+  defp repo, do: PhoenixKit.RepoHelper.repo()
 
   @doc false
   # The task key a call names, when it names one as a string.

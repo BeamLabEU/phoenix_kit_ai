@@ -275,6 +275,13 @@ defmodule PhoenixKitAI.TaskLimits do
     ArgumentError -> :ok
   end
 
+  @doc false
+  # The task's settings row from this node's cache (nil when none): what
+  # the guard reads per call besides the limits (the guard mode, the
+  # purpose override).
+  @spec cached_setting(String.t()) :: TaskSetting.t() | nil
+  def cached_setting(task_key) when is_binary(task_key), do: cached(task_key).setting
+
   defp cached(task_key) do
     table = flags_table()
     generation = generation(table, task_key)

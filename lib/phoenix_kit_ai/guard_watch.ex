@@ -17,8 +17,9 @@ defmodule PhoenixKitAI.GuardWatch do
   Each node runs its own; the event's dedupe key keeps the signal to one.
 
   It also drops this node's cached task limits when a task's limits change
-  anywhere (`{:task_limits_changed, task_key}` on `TaskLimits.topic/0`), and
-  the whole cache when it starts.
+  anywhere (`{:task_limits_changed, task_key}` on `TaskLimits.topic/0`), its
+  copy of the active blocks when a block is set or lifted anywhere
+  (`{:guard_blocks_changed, group}`, same topic), and both whole when it starts.
 
   After every look it emits `[:phoenix_kit_ai, :guard_watch, :look]`
   (measurement `pairs`, metadata `trigger`: `:first_look`, `:capabilities`
@@ -31,7 +32,7 @@ defmodule PhoenixKitAI.GuardWatch do
   require Logger
 
   alias PhoenixKit.PubSub.Manager, as: PubSub
-  alias PhoenixKitAI.{Capabilities, GuardEvents, TaskLimits, Tasks}
+  alias PhoenixKitAI.{Capabilities, GuardBlocks, GuardEvents, TaskLimits, Tasks}
   alias PhoenixKitAI.Web.MessageShape
 
   @endpoint_events [:endpoint_created, :endpoint_updated, :endpoint_deleted]
@@ -44,6 +45,7 @@ defmodule PhoenixKitAI.GuardWatch do
     # A broadcast sent while this process was down is lost: start the
     # node's limits cache afresh.
     TaskLimits.reset_cache()
+    GuardBlocks.reset_cache()
     Capabilities.subscribe()
     PhoenixKitAI.subscribe_endpoints()
     PubSub.subscribe(TaskLimits.topic())
@@ -61,6 +63,12 @@ defmodule PhoenixKitAI.GuardWatch do
   # A task's limits changed (on this node or another): drop this node's cache.
   def handle_info({:task_limits_changed, task_key}, state) do
     TaskLimits.forget(task_key)
+    {:noreply, state}
+  end
+
+  # A block was set or lifted (on this node or another): drop this node's copy.
+  def handle_info({:guard_blocks_changed, _group}, state) do
+    GuardBlocks.forget()
     {:noreply, state}
   end
 
