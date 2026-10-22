@@ -31,6 +31,12 @@ defmodule PhoenixKitAI.Test.FakeAITasks do
         needs: [:vision, :json_schema],
         endpoints: {__MODULE__, :photo_endpoints, []}
       },
+      %TaskSpec{
+        key: "test.sized",
+        label: "Sized photo task",
+        needs: [:vision],
+        typical_tokens: {10_000, 1_000}
+      },
       %TaskSpec{key: "test.tools", label: "Tool user", needs: [:tools]},
       %TaskSpec{key: "test.plain", label: "Plain text", needs: []},
       # Two keys a naive DOM id would make the same.

@@ -14,7 +14,7 @@ defmodule PhoenixKitAI.Capabilities do
       the union over OpenRouter's upstream providers; the list itself is
       kept as `supported_parameters` (the call-time guard leaves out what it
       lacks when it asks OpenRouter to require every parameter). Neither it
-      nor the `thinking_*` flags are in the snapshot: after a restart they
+      nor the model names, prices, output kind or `thinking_*` flags are in the snapshot: after a restart they
       are unknown until the first refresh.
     * **Anthropic** (native `GET /v1/models`, read by
       `OpenRouterClient.fetch_models/2`): `capabilities.image_input` →
@@ -103,7 +103,11 @@ defmodule PhoenixKitAI.Capabilities do
             supported_parameters: nil,
             thinking_disabled: :unknown,
             thinking_enabled: :unknown,
-            thinking_adaptive: :unknown
+            thinking_adaptive: :unknown,
+            name: nil,
+            prompt_price: nil,
+            completion_price: nil,
+            text_output: nil
 
   @type flag :: :yes | :no | :unknown
   @type t :: %__MODULE__{
@@ -118,7 +122,11 @@ defmodule PhoenixKitAI.Capabilities do
           supported_parameters: [String.t()] | nil,
           thinking_disabled: flag(),
           thinking_enabled: flag(),
-          thinking_adaptive: flag()
+          thinking_adaptive: flag(),
+          name: String.t() | nil,
+          prompt_price: float() | nil,
+          completion_price: float() | nil,
+          text_output: boolean() | nil
         }
 
   # ===========================================
@@ -164,6 +172,20 @@ defmodule PhoenixKitAI.Capabilities do
   end
 
   def lookup(_base_url, _model), do: :unknown
+
+  @doc """
+  Every model the cache holds for `base_url` (the whole catalogue, not just
+  the endpoints' models), as `{model_id, capabilities}`. `[]` when there is
+  none or the cache is not running. Reads ETS only.
+  """
+  @spec catalogue(String.t() | nil) :: [{String.t(), t()}]
+  def catalogue(base_url) when is_binary(base_url) do
+    :ets.select(@table, [{{{normalize_base_url(base_url), :"$1"}, :"$2"}, [], [{{:"$1", :"$2"}}]}])
+  rescue
+    ArgumentError -> []
+  end
+
+  def catalogue(_base_url), do: []
 
   @doc """
   What the endpoint's model can do: the catalogue, with the endpoint's
@@ -283,12 +305,51 @@ defmodule PhoenixKitAI.Capabilities do
   @doc "Reads an OpenRouter `/models` row (or an `AIModel` built from one)."
   @spec from_openrouter(AIModel.t() | map()) :: t()
   def from_openrouter(%AIModel{} = model) do
-    openrouter(model.architecture, model.supported_parameters, model.context_length)
+    model.architecture
+    |> openrouter(model.supported_parameters, model.context_length)
+    |> with_listing(model.name, model.pricing, model.architecture)
   end
 
   def from_openrouter(model) when is_map(model) do
-    openrouter(model["architecture"], model["supported_parameters"], model["context_length"])
+    model["architecture"]
+    |> openrouter(model["supported_parameters"], model["context_length"])
+    |> with_listing(model["name"], model["pricing"], model["architecture"])
   end
+
+  # What the recommendations list shows and ranks by: the model's name, its
+  # dollars-per-token prices (nil where the catalogue gives none or a
+  # negative "varies" marker) and whether it answers in text.
+  defp with_listing(caps, name, pricing, architecture) do
+    pricing = if is_map(pricing), do: pricing, else: %{}
+
+    %{
+      caps
+      | name: if(is_binary(name) and name != "", do: name),
+        prompt_price: price(pricing["prompt"]),
+        completion_price: price(pricing["completion"]),
+        text_output: text_output(architecture)
+    }
+  end
+
+  defp price(value) when is_number(value) and value >= 0, do: value * 1.0
+
+  defp price(value) when is_binary(value) do
+    case Float.parse(value) do
+      {float, ""} when float >= 0 -> float
+      _ -> nil
+    end
+  end
+
+  defp price(_value), do: nil
+
+  defp text_output(%{"output_modalities" => outputs}) when is_list(outputs),
+    do: "text" in outputs
+
+  defp text_output(%{"modality" => modality}) when is_binary(modality) and modality != "" do
+    modality |> String.split("->") |> List.last() |> String.contains?("text")
+  end
+
+  defp text_output(_architecture), do: nil
 
   defp openrouter(architecture, params, context_length) do
     %__MODULE__{
@@ -325,6 +386,9 @@ defmodule PhoenixKitAI.Capabilities do
       json: :yes,
       context_length: positive_integer(row["max_input_tokens"]),
       lifecycle: lifecycle(row["lifecycle"]),
+      name:
+        if(is_binary(row["display_name"]) and row["display_name"] != "", do: row["display_name"]),
+      text_output: true,
       thinking_disabled: thinking_type(row["capabilities"], "disabled"),
       thinking_enabled: thinking_type(row["capabilities"], "enabled"),
       thinking_adaptive: thinking_type(row["capabilities"], "adaptive")

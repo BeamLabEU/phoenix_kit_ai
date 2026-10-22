@@ -12,6 +12,60 @@ defmodule PhoenixKitAI.CapabilitiesTest do
   alias PhoenixKitAI.Capabilities
   alias PhoenixKitAI.Endpoint
 
+  describe "the listing fields" do
+    test "an OpenRouter row gives the name, the prices in dollars per token and the output kind" do
+      assert %Capabilities{
+               name: "Gemini Flash",
+               prompt_price: 1.0e-7,
+               completion_price: 4.0e-7,
+               text_output: true
+             } =
+               Capabilities.from_openrouter(%{
+                 "name" => "Gemini Flash",
+                 "pricing" => %{"prompt" => "0.0000001", "completion" => "0.0000004"},
+                 "architecture" => %{"output_modalities" => ["text"]}
+               })
+
+      assert %Capabilities{text_output: false} =
+               Capabilities.from_openrouter(%{
+                 "architecture" => %{"output_modalities" => ["embeddings"]}
+               })
+
+      assert %Capabilities{text_output: false} =
+               Capabilities.from_openrouter(%{"architecture" => %{"modality" => "text->image"}})
+
+      assert %Capabilities{text_output: nil} = Capabilities.from_openrouter(%{"id" => "x"})
+    end
+
+    test "a price the catalogue does not give, or gives as a negative marker, is nil" do
+      assert %Capabilities{prompt_price: nil, completion_price: nil} =
+               Capabilities.from_openrouter(%{"pricing" => %{"prompt" => "-1"}})
+
+      assert %Capabilities{prompt_price: nil} = Capabilities.from_openrouter(%{"id" => "x"})
+
+      assert %Capabilities{prompt_price: 0.0} =
+               Capabilities.from_openrouter(%{"pricing" => %{"prompt" => "0"}})
+    end
+
+    test "an Anthropic row has a name and text output, and no price" do
+      assert %Capabilities{
+               name: "Claude Sonnet",
+               text_output: true,
+               prompt_price: nil,
+               completion_price: nil
+             } =
+               Capabilities.from_anthropic(%{
+                 "id" => "claude-sonnet",
+                 "display_name" => "Claude Sonnet"
+               })
+    end
+
+    test "catalogue/1 is empty without the cache process" do
+      assert Capabilities.catalogue("https://openrouter.ai/api/v1") == []
+      assert Capabilities.catalogue(nil) == []
+    end
+  end
+
   describe "from_openrouter/1" do
     test "image among the input modalities is vision; a text-only input is not" do
       assert %Capabilities{vision: :yes} =
