@@ -77,12 +77,12 @@ defmodule PhoenixKitAI.OpenRouterClientCapabilitiesTest do
     end
 
     test "a provider without a catalogue gets unknown capabilities", %{stub: stub} do
-      Req.Test.stub(stub, &Req.Test.json(&1, %{"data" => [%{"id" => "mistral-large-latest"}]}))
+      Req.Test.stub(stub, &Req.Test.json(&1, %{"data" => [%{"id" => "grok-4"}]}))
 
       {:ok, [model]} =
-        OpenRouterClient.fetch_models("mistral-key",
-          base_url: "https://api.mistral.ai/v1",
-          fallback_provider: "mistral",
+        OpenRouterClient.fetch_models("xai-key",
+          base_url: "https://api.x.ai/v1",
+          fallback_provider: "xai",
           model_type: :text
         )
 

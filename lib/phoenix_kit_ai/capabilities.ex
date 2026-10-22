@@ -32,7 +32,16 @@ defmodule PhoenixKitAI.Capabilities do
       `thinking: {type: …}` forms the model accepts; the documented
       catalogue rows show only `enabled` and `adaptive`, so
       `thinking_disabled` is expected to stay `:unknown`).
-    * **Every other provider** — `:unknown`, unless declared.
+    * **DeepSeek** (`GET /models`): `image` among `input_modalities` →
+      `vision`, `file` among them → `file_input` (absent says nothing),
+      `image` among `output_modalities` → `image_output`; `context_window`
+      → `context_length`.
+    * **Mistral** (`GET /v1/models`): `capabilities.vision` → `vision`,
+      `capabilities.function_calling` → `tools`, `max_context_length` →
+      `context_length`; `completion_chat: false` marks a model that does not
+      answer in text. Documents and images out are not listed: `:unknown`.
+    * **Every other provider** (OpenAI, xAI, Z.ai, …) — `:unknown`, unless
+      declared.
 
   ## Declared capabilities
 
@@ -259,17 +268,21 @@ defmodule PhoenixKitAI.Capabilities do
   # ===========================================
 
   @doc """
-  Which catalogue a provider has: `:openrouter`, `:anthropic`, or `nil` for
-  none. Decided by the provider key or by the host of the base URL — not by
-  the Integrations registry, which may not know the provider.
+  Which catalogue a provider has: `:openrouter`, `:anthropic`, `:deepseek`,
+  `:mistral`, or `nil` for none. Decided by the provider key or by the host
+  of the base URL — not by the Integrations registry, which may not know the
+  provider.
   """
-  @spec catalogue_kind(String.t() | nil, String.t() | nil) :: :openrouter | :anthropic | nil
+  @spec catalogue_kind(String.t() | nil, String.t() | nil) ::
+          :openrouter | :anthropic | :deepseek | :mistral | nil
   def catalogue_kind(provider, base_url) do
     host = host(base_url)
 
     cond do
       provider == "anthropic" or host == "api.anthropic.com" -> :anthropic
       provider == "openrouter" or host == "openrouter.ai" -> :openrouter
+      provider == "deepseek" or host == "api.deepseek.com" -> :deepseek
+      provider == "mistral" or host == "api.mistral.ai" -> :mistral
       true -> nil
     end
   end
@@ -422,6 +435,43 @@ defmodule PhoenixKitAI.Capabilities do
       thinking_adaptive: thinking_type(row["capabilities"], "adaptive")
     }
   end
+
+  @doc "Reads a DeepSeek `/models` row."
+  @spec from_deepseek(map()) :: t()
+  def from_deepseek(row) when is_map(row) do
+    inputs = row["input_modalities"]
+    outputs = row["output_modalities"]
+
+    %__MODULE__{
+      vision: modality_flag(inputs, "image"),
+      # DeepSeek names `file` only where a model takes it: its absence says
+      # nothing.
+      file_input: if(is_list(inputs) and "file" in inputs, do: :yes, else: :unknown),
+      image_output: modality_flag(outputs, "image"),
+      context_length: positive_integer(row["context_window"]),
+      text_output: if(is_list(outputs), do: "text" in outputs)
+    }
+  end
+
+  @doc "Reads a Mistral `/v1/models` row."
+  @spec from_mistral(map()) :: t()
+  def from_mistral(row) when is_map(row) do
+    capabilities = if is_map(row["capabilities"]), do: row["capabilities"], else: %{}
+
+    %__MODULE__{
+      vision: boolean_flag(capabilities["vision"]),
+      tools: boolean_flag(capabilities["function_calling"]),
+      context_length: positive_integer(row["max_context_length"]),
+      text_output:
+        if(is_boolean(capabilities["completion_chat"]), do: capabilities["completion_chat"])
+    }
+  end
+
+  defp modality_flag(list, kind) when is_list(list), do: yes_no(kind in list)
+  defp modality_flag(_list, _kind), do: :unknown
+
+  defp boolean_flag(value) when is_boolean(value), do: yes_no(value)
+  defp boolean_flag(_value), do: :unknown
 
   # Which `thinking: {type: …}` forms a model accepts, from
   # `capabilities.thinking.types.<type>.supported`; a catalogue that does not

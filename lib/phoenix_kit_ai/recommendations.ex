@@ -22,10 +22,11 @@ defmodule PhoenixKitAI.Recommendations do
 
   A model fits when `PhoenixKitAI.Tasks.assess/2` says `:fit` — a model
   that is only unverified does not — and it answers in text. Retired
-  models are left out; deprecated ones are marked. Anthropic's `/models`
-  lists no prices, so its models are unpriced (they are never mapped to an
-  OpenRouter model by name); they come after the priced ones, with one place
-  kept for them among the rows.
+  models are left out; deprecated ones are marked. The `/models` of
+  Anthropic, DeepSeek and Mistral list no prices, so their models are
+  unpriced (they are never mapped to an OpenRouter model by name), and no
+  provider but OpenRouter reports what a call cost; they come after the
+  priced ones, with one place kept for them among the rows.
 
   ## Journal
 
@@ -306,7 +307,7 @@ defmodule PhoenixKitAI.Recommendations do
     [
       alias?(id) && :alias,
       free?(caps) && :free,
-      kind == :anthropic && :cost_not_reported,
+      kind != :openrouter && :cost_not_reported,
       kind == :anthropic && caps.json_schema == :no && :json_schema_openrouter_only
     ]
     |> Enum.filter(& &1)

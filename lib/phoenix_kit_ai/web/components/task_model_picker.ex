@@ -340,6 +340,8 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPicker do
 
   defp provider_label(:openrouter), do: "OpenRouter"
   defp provider_label(:anthropic), do: "Anthropic"
+  defp provider_label(:deepseek), do: "DeepSeek"
+  defp provider_label(:mistral), do: "Mistral"
   defp provider_label(nil), do: "—"
 
   defp provider_label(key) when is_binary(key) do

@@ -189,22 +189,22 @@ defmodule PhoenixKitAI.CapabilitiesServerTest do
     } do
       {:ok, plain} =
         PhoenixKitAI.create_endpoint(%{
-          name: "Mistral #{System.unique_integer([:positive])}",
-          provider: "mistral",
-          base_url: "https://api.mistral.ai/v1",
-          model: "pixtral-large-latest",
-          api_key: "mistral-test-key"
+          name: "xAI #{System.unique_integer([:positive])}",
+          provider: "xai",
+          base_url: "https://api.x.ai/v1",
+          model: "grok-4",
+          api_key: "xai-test-key"
         })
 
       {:ok, declared} =
         PhoenixKitAI.create_endpoint(%{
-          name: "Mistral declared #{System.unique_integer([:positive])}",
-          provider: "mistral",
-          base_url: "https://api.mistral.ai/v1",
-          model: "pixtral-large-latest",
-          api_key: "mistral-test-key",
+          name: "xAI declared #{System.unique_integer([:positive])}",
+          provider: "xai",
+          base_url: "https://api.x.ai/v1",
+          model: "grok-4",
+          api_key: "xai-test-key",
           provider_settings: %{
-            "capabilities" => %{"model" => "pixtral-large-latest", "vision" => "yes"}
+            "capabilities" => %{"model" => "grok-4", "vision" => "yes"}
           }
         })
 

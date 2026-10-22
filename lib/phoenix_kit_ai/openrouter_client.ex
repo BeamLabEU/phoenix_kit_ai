@@ -863,24 +863,30 @@ defmodule PhoenixKitAI.OpenRouterClient do
     |> Enum.filter(&model_matches_type?(&1, model_type))
     |> Enum.map(fn model ->
       top_provider = model["top_provider"] || %{}
+      capabilities = catalogue_capabilities(kind, model)
 
       %AIModel{
         id: model["id"],
         name: model["name"] || extract_model_name(model["id"]),
         description: model["description"],
-        context_length: model["context_length"],
-        max_completion_tokens: top_provider["max_completion_tokens"],
+        context_length: model["context_length"] || capabilities.context_length,
+        max_completion_tokens:
+          top_provider["max_completion_tokens"] || model["max_output_tokens"],
         supported_parameters: model["supported_parameters"] || [],
         pricing: normalize_pricing(model),
         architecture: model["architecture"] || %{},
         top_provider: top_provider,
-        # Only OpenRouter's rows describe capabilities; any other
-        # OpenAI-compatible `/models` is read as saying nothing.
-        capabilities:
-          if(kind == :openrouter, do: Capabilities.from_openrouter(model), else: %Capabilities{})
+        capabilities: capabilities
       }
     end)
   end
+
+  # OpenRouter's, DeepSeek's and Mistral's rows describe what a model can
+  # do; any other OpenAI-compatible `/models` is read as saying nothing.
+  defp catalogue_capabilities(:openrouter, model), do: Capabilities.from_openrouter(model)
+  defp catalogue_capabilities(:deepseek, model), do: Capabilities.from_deepseek(model)
+  defp catalogue_capabilities(:mistral, model), do: Capabilities.from_mistral(model)
+  defp catalogue_capabilities(_kind, _model), do: %Capabilities{}
 
   # Anthropic's native `/v1/models`: Bearer works there as on the
   # compatibility layer, plus the version header. Pages of up to 1000 are
