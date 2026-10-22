@@ -250,7 +250,8 @@ lib/phoenix_kit_ai/
   capabilities.ex                what a model can do (catalogue + declared), ETS cache process
   task_spec.ex tasks.ex          AI task declarations (`ai_tasks/0`), the registry, fitness for a task
   recommendations.ex             models for a task grouped by capability (verified / possible / experimental) + models that worked (journal, 30 days)
-  guard.ex                       the call-time check: needs of a call, fitness, require_parameters; ai.manage; admit/4
+  guard.ex                       the call-time check: needs of a call, fitness, require_parameters; ai.manage; admit/4; off-purpose reports, self_flag?, anomaly rules
+  guard_blocks.ex guard_block.ex   blocks of a person in a task's block group: rights, the per-node cache; the V3 schema
   task_limits.ex                 task limits: calendar windows, limits in force, counting from the journal, forgiving
   guard_events.ex guard_watch.ex   guard events, dedupe, watchers, notifications; the model_unfit watch process
   migrations.ex model_capability.ex   the module's own migration chain; capability snapshot schema
@@ -302,6 +303,7 @@ Notes on the less obvious modules:
 | `phoenix_kit_ai_task_settings` | `PhoenixKitAI.TaskSetting` | a task's limits, warn percent (module chain V2) |
 | `phoenix_kit_ai_task_user_limits` | `PhoenixKitAI.TaskUserLimit` | a user's personal limits in a task (module chain V2) |
 | `phoenix_kit_ai_guard_events` | `PhoenixKitAI.GuardEvent` | what the guard noticed; `dedupe_key` unique where set (module chain V2) |
+| `phoenix_kit_ai_guard_blocks` | `PhoenixKitAI.GuardBlock` | a person blocked from a block group until lifted; one active per group and person (module chain V3) |
 
 ### PubSub topics
 
@@ -318,7 +320,9 @@ it by uuid. The capabilities topic carries
 `{:capabilities_refreshed, base_urls}` after a catalogue refresh that changed
 the cache, with the base URLs that changed. The guard topic carries
 `{:task_limits_changed, task_key}` after a change of a task's limits, so
-every node drops its cached limits of the task.
+every node drops its cached limits of the task, and
+`{:guard_blocks_changed, block_group}` after a block or a lift, so every
+node drops its copy of the active blocks.
 
 ### Settings & permissions
 
@@ -356,7 +360,9 @@ key; `translate_fields/6`'s `glossary:` option overrides both (`nil` = none).
 Permissions: the module permission `"ai"` from `permission_metadata/0`,
 checked with `Scope.has_module_access?/2`, and one sub-permission,
 `"ai.manage"`: changing the task guard (limits, personal limits, forgiving,
-watchers, "only verified models", declaring capabilities while that is on).
+watchers, "only verified models", declaring capabilities while that is on,
+blocking and lifting), and seeing the reasons of a private task's flags and
+blocks.
 An Owner always may (`Guard.may_manage?/1`); core grants a new
 sub-permission to Admin once while Admin holds `ai`. Every context function
 that changes the guard takes the actor's scope and checks it; the Tasks
@@ -522,8 +528,12 @@ is a new version; unique `dedupe_key WHERE dedupe_key IS NOT NULL`; user
 `((metadata->>'task'), inserted_at)` with no status condition (core's
 schema repair reports extra columns of its tables, not extra indexes), and
 `file_input` / `image_output` flags on the snapshot (`unknown` until a
-later version fills them). Down to 1 drops what V2 added; down to 0 also
-the snapshot, which the next refresh rebuilds.
+later version fills them). V3 creates `phoenix_kit_ai_guard_blocks`
+(user `CASCADE`; origin event, blocker and lifter `SET NULL`; reason and
+lift note ≤ 500; one active block per group and person — unique
+`(block_group, user_uuid) WHERE lifted_at IS NULL`). Down to 2 drops it;
+down to 1 drops what V2 added; down to 0 also the snapshot, which the next
+refresh rebuilds.
 
 **Before V2 on a host with a large journal, measure it**
 (`SELECT count(*), pg_size_pretty(pg_total_relation_size('phoenix_kit_ai_requests'))`)
@@ -611,13 +621,15 @@ Test database `phoenix_kit_ai_test`.
 ## Feature notes
 
 - Every provider-calling verb goes through one gate and one wrapper:
-  `authorize/5` (endpoint usable; the model fits what the call and its
+  `authorize/5` (endpoint usable; the user is not blocked from the task,
+  `PhoenixKitAI.GuardBlocks`; the model fits what the call and its
   task need, `PhoenixKitAI.Guard`; the task's limits have room,
   `PhoenixKitAI.TaskLimits`; spend caps have room) and `with_cache/6`
   (key, lookup, zero-cost hit row). A new verb joins both or it is not a
   verb — `dev_docs/guides/spend-caps-and-caching.md` holds the semantics
   of caps, cache, structured output and telemetry. A refusal past the
-  endpoint check (`{:model_unfit, missing}`, `{:model_unverified, unclear}`,
+  endpoint check (`{:task_blocked, group}`, `{:model_unfit, missing}`,
+  `{:model_unverified, unclear}`,
   `{:task_limit_exceeded, scope, unit, period}`, `{:budget_exceeded,
   scope}`) writes an error row through `refuse/4`,
   marked `metadata.refused: true`; `dispatch_usage_sinks/1` skips those.
@@ -675,6 +687,36 @@ Test database `phoenix_kit_ai_test`.
   module schedules through `oban_crons/0` (written into the host's crontab
   by `mix phoenix_kit.install` / `update`); it runs in core's `default`
   queue, so the host lists no queue for it.
+- Off-purpose use (`PhoenixKitAI.Guard`): the consumer flags, the guard
+  never edits a prompt or a schema. `self_flag?/1` (the task's guard mode,
+  else the declaration's `self_flag`) before building the prompt;
+  `self_flag_instruction/1` is English text with the purpose (an admin's
+  override when set), "refuse politely and flag", "judge only the user's
+  own message" and "no quote in the reason"; `report_off_purpose/4` writes
+  one `off_purpose` event per turn (`%{turn_ref: …}`) or call (the row's
+  request uuid), reason ≤ 500, a no-op (`:off`) while the task does not
+  self-flag, and tells the watchers once a day per person and task
+  (`off_purpose_signal`, no reason). Anomaly rules of a declaration
+  (`sources`, `max_calls_per_hour` per person, `max_tokens_per_call`) are
+  checked after each journal row (`check_anomalies/1`, not for refusals;
+  a task without rules costs nothing; the hourly count is skipped once its
+  rule was signalled that day) and signalled once a day per rule
+  (`anomaly`); they never block.
+- Blocks (`PhoenixKitAI.GuardBlocks`): set by a person — no automatic
+  block. A block lands on the task's `block_group` (else its key);
+  `ai.playground` and an assistant's chat share `free_text`. Checked in
+  `authorize/5` first after the endpoint (not for a dry run, not for a call
+  with an admission of `Guard.admit/4`, which checks it), refusing with
+  `{:error, {:task_blocked, group}}` and a refusal row — the group, never
+  the reason. Set: `ai.manage` or an Owner; only an Owner blocks an Owner.
+  Lift: an Owner (their own too, with a record), else `ai.manage`, or
+  `agent.manage` for a `free_text` block (checked by string), never one's
+  own and never an Owner's. `blocked` / `unblocked` events, watchers (but
+  the actor) and the person told, Activity by the event — no reason or
+  note. Active blocks are cached per node like the limits (one query a
+  minute; dropped on block and lift, here and through the guard topic).
+  A private group (any of its tasks `private`) shows its reasons only to
+  `ai.manage` and Owners (`Guard.reasons_visible?/2`, `GuardEvents.flags/3`).
 - Recommendations (`PhoenixKitAI.Recommendations`, live data only — no list
   of "best models", no `recommended:` in declarations): `ranked/2` takes
   the catalogue the capability cache holds for the base URLs the endpoints

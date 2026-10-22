@@ -233,6 +233,38 @@ else every Owner, plus the task's own) get a notification of type
 `"ai_guard"`, once per window; a `Budget` refusal is told once a day, and a
 task whose endpoint's model stops fitting once a day per endpoint.
 
+### Off-purpose use and blocks
+
+The consumer has its model flag requests that are not what the task is
+for; the guard never edits a prompt or a schema. It gives the instruction
+text and takes the report:
+
+```elixir
+if PhoenixKitAI.Guard.self_flag?("my_module.photo_count") do
+  # Into the system prompt, plus the consumer's own way to flag
+  # (a field of its JSON schema, a marker in the answer):
+  PhoenixKitAI.Guard.self_flag_instruction("my_module.photo_count")
+end
+
+# When the model flagged a call (once per call, or per turn with a turn_ref):
+PhoenixKitAI.Guard.report_off_purpose("my_module.photo_count", user_uuid, reason, request_uuid)
+PhoenixKitAI.Guard.report_off_purpose("my_module.chat", user_uuid, reason, %{turn_ref: turn_ref})
+```
+
+The watchers are told of a person's first flag in a task each day, never
+with the reason. A declaration may also set norms that need no content
+(`sources:`, `max_calls_per_hour:`, `max_tokens_per_call:`); a broken one
+is signalled once a day and blocks nothing.
+
+A person with `ai.manage` (or an Owner) blocks someone from a task on
+«AI → Tasks», from a flag or the person's row; the block lands on the
+task's `block_group` (the Playground and free-text tasks share
+`free_text`), and the person's calls are refused with
+`{:error, {:task_blocked, group}}` until it is lifted. Only an Owner blocks
+an Owner or lifts their block, and nobody but an Owner lifts their own. A
+`private: true` task shows the reasons of its flags and blocks only to
+`ai.manage` and Owners.
+
 ### Host apps in the translation pipeline
 
 ```elixir
@@ -734,6 +766,8 @@ create:
 - **`phoenix_kit_ai_guard_events`** — what the task guard noticed (limits,
   models that stopped fitting), deduplicated per window; kept 180 days (a
   daily job the module schedules in core's `default` queue)
+- **`phoenix_kit_ai_guard_blocks`** — people blocked from a group of AI
+  tasks, with who set and lifted each block; one active per group and person
 
 It also adds one index to core's `phoenix_kit_ai_requests`:
 `((metadata->>'task'), inserted_at)`. It is built inside the migration's
@@ -750,7 +784,7 @@ large journal, measure it first and update in a quiet window.
 | Prompt form | `/admin/ai/prompts/new`, `.../edit` | Create/edit with variable extraction |
 | Playground | `/admin/ai/playground` | Interactive testing with live variables |
 | Usage | `/admin/ai/usage` | Dashboard stats and request history |
-| Tasks | `/admin/ai/tasks` | Declared AI tasks, their needs, endpoints and fitness; limits, use, watchers (changes need `ai.manage`) |
+| Tasks | `/admin/ai/tasks` | Declared AI tasks, their needs, endpoints and fitness; limits, use, watchers; off-purpose flags and blocks (changes need `ai.manage`) |
 
 ## Supported providers
 
