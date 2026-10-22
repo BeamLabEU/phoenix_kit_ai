@@ -216,6 +216,9 @@ defmodule PhoenixKitAI.Web.Tasks do
   defp refused(socket, {:error, :invalid_amount}),
     do: put_flash(socket, :error, gettext("A limit must be a whole number, or dollars for money"))
 
+  defp refused(socket, {:error, reason}) when reason in [:unknown_user, :invalid_user],
+    do: put_flash(socket, :error, gettext("That person was not found"))
+
   defp refused(socket, {:error, :too_long}),
     do: put_flash(socket, :error, gettext("Too many watchers"))
 

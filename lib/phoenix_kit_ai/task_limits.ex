@@ -72,6 +72,7 @@ defmodule PhoenixKitAI.TaskLimits do
   require Logger
 
   alias PhoenixKit.Settings
+  alias PhoenixKit.Users.Auth.User
   alias PhoenixKit.Utils.TimeZone
   alias PhoenixKitAI.{Endpoint, Guard, GuardEvent, GuardEvents, Request}
   alias PhoenixKitAI.{Tasks, TaskSetting, TaskSpec, TaskUserLimit}
@@ -527,7 +528,8 @@ defmodule PhoenixKitAI.TaskLimits do
   """
   @spec put_user_limits(term(), String.t(), String.t(), map()) ::
           {:ok, TaskUserLimit.t() | :deleted}
-          | {:error, :forbidden | :unknown_task | :invalid_user | Ecto.Changeset.t()}
+          | {:error,
+             :forbidden | :unknown_task | :invalid_user | :unknown_user | Ecto.Changeset.t()}
   def put_user_limits(scope, task_key, user_uuid, limits)
       when is_binary(task_key) and is_map(limits) do
     with :ok <- Guard.authorize_manage(scope),
@@ -547,6 +549,9 @@ defmodule PhoenixKitAI.TaskLimits do
 
     row
     |> Ecto.Changeset.change(%{limits: stringify(limits)})
+    |> Ecto.Changeset.foreign_key_constraint(:user_uuid,
+      name: :phoenix_kit_ai_task_user_limits_user_uuid_fkey
+    )
     |> repo().insert_or_update()
     |> log("guard.user_limits_updated", scope, fn _row ->
       %{"task" => task_key, "user_uuid" => user_uuid}
@@ -555,7 +560,7 @@ defmodule PhoenixKitAI.TaskLimits do
 
   @doc "Removes a user's personal limits in a task. Needs `ai.manage`; written to the Activity log."
   @spec delete_user_limits(term(), String.t(), String.t()) ::
-          {:ok, :deleted} | {:error, :forbidden | :invalid_user}
+          {:ok, :deleted} | {:error, :forbidden | :invalid_user | :unknown_user}
   def delete_user_limits(scope, task_key, user_uuid) when is_binary(task_key) do
     with :ok <- Guard.authorize_manage(scope),
          {:ok, user_uuid} <- user(user_uuid) do
@@ -611,10 +616,15 @@ defmodule PhoenixKitAI.TaskLimits do
 
   defp declared(task_key), do: if(Tasks.get(task_key), do: :ok, else: {:error, :unknown_task})
 
+  # A uuid of a user that exists; a uuid of nobody is `:unknown_user`, not a
+  # foreign-key error later.
   defp user(user_uuid) do
-    case Ecto.UUID.cast(user_uuid) do
-      {:ok, uuid} -> {:ok, uuid}
+    with {:ok, uuid} <- Ecto.UUID.cast(user_uuid),
+         true <- repo().exists?(from(u in User, where: u.uuid == ^uuid)) do
+      {:ok, uuid}
+    else
       :error -> {:error, :invalid_user}
+      false -> {:error, :unknown_user}
     end
   end
 

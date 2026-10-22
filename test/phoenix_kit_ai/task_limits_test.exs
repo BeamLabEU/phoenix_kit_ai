@@ -418,10 +418,41 @@ defmodule PhoenixKitAI.TaskLimitsTest do
       assert GuardEvents.watchers(spec("test.unlimited"), nil) == [watcher]
     end
 
+    test "a user who does not exist is refused, not a database error", %{owner: owner} do
+      ghost = Ecto.UUID.generate()
+      scope = owner_scope(owner)
+
+      assert {:error, :unknown_user} =
+               TaskLimits.put_user_limits(scope, "test.limited", ghost, %{
+                 "requests" => %{"day" => 1}
+               })
+
+      assert {:error, :unknown_user} =
+               TaskLimits.forgive(scope, "test.limited", :user, :day, ghost)
+
+      assert TestRepo.aggregate(PhoenixKitAI.TaskUserLimit, :count) == 0
+      assert events("limit_forgiven") == []
+    end
+
+    test "watchers who do not exist are left out, with a warning", %{owner: owner} do
+      watcher = Fixtures.user_fixture().uuid
+      ghost = Ecto.UUID.generate()
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, [^watcher]} =
+                   GuardEvents.set_watchers(owner_scope(owner), [ghost, watcher])
+        end)
+
+      assert log =~ "1 watcher"
+      refute log =~ ghost
+      assert GuardEvents.configured_watchers() == [watcher]
+    end
+
     test "the watchers list must be user uuids and fit the setting", %{owner: owner} do
       assert {:error, :invalid_uuid} = GuardEvents.set_watchers(owner_scope(owner), ["nope"])
 
-      many = for _ <- 1..30, do: Ecto.UUID.generate()
+      many = for _ <- 1..30, do: Fixtures.user_fixture().uuid
       assert {:error, :too_long} = GuardEvents.set_watchers(owner_scope(owner), many)
     end
 

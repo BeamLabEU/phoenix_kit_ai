@@ -48,6 +48,7 @@ defmodule PhoenixKitAI.GuardEvents do
 
   alias PhoenixKit.{Activity, Notifications, Settings}
   alias PhoenixKit.Users.{Auth, Roles}
+  alias PhoenixKit.Users.Auth.User
   alias PhoenixKit.Utils.{RecipientLocale, Routes}
   alias PhoenixKitAI.{Budget, Endpoint, Guard, GuardEvent, TaskLimits, Tasks, TaskSpec}
 
@@ -120,13 +121,16 @@ defmodule PhoenixKitAI.GuardEvents do
 
   @doc """
   Sets the watchers (`ai_guard_watchers`); an empty list means every Owner.
-  Needs `ai.manage`; written to the Activity log with who changed it.
+  A uuid of nobody is left out, with a warning, and the rest are saved; the
+  answer lists who was saved. Needs `ai.manage`; written to the Activity log
+  with who changed it.
   """
   @spec set_watchers(term(), [String.t()]) ::
           {:ok, [String.t()]} | {:error, :forbidden | :invalid_uuid | :too_long | term()}
   def set_watchers(scope, uuids) when is_list(uuids) do
     with :ok <- Guard.authorize_manage(scope),
          {:ok, uuids} <- cast_uuids(uuids),
+         uuids = existing_users(uuids),
          json = Jason.encode!(uuids),
          :ok <- if(String.length(json) <= @watchers_max, do: :ok, else: {:error, :too_long}),
          {:ok, setting} <- Settings.update_setting_with_module(@watchers_key, json, "ai") do
@@ -147,6 +151,27 @@ defmodule PhoenixKitAI.GuardEvents do
     if Enum.all?(cast, &match?({:ok, _}, &1)),
       do: {:ok, cast |> Enum.map(&elem(&1, 1)) |> Enum.uniq()},
       else: {:error, :invalid_uuid}
+  end
+
+  defp existing_users([]), do: []
+
+  defp existing_users(uuids) do
+    found =
+      from(u in User, where: u.uuid in ^uuids, select: u.uuid)
+      |> repo().all()
+      |> MapSet.new()
+
+    case Enum.count(uuids, &(not MapSet.member?(found, &1))) do
+      0 ->
+        :ok
+
+      missing ->
+        Logger.warning(
+          "[PhoenixKitAI] #{missing} watcher(s) left out of ai_guard_watchers: no such user"
+        )
+    end
+
+    Enum.filter(uuids, &MapSet.member?(found, &1))
   end
 
   defp valid_uuid?(value), do: is_binary(value) and match?({:ok, _}, Ecto.UUID.cast(value))

@@ -168,6 +168,28 @@ defmodule PhoenixKitAI.Web.TasksGuardTest do
       assert_activity_logged("guard.limits_updated", actor_uuid: user.uuid)
     end
 
+    test "a person who does not exist is a form error, not a crash", %{conn: conn} do
+      {user, _role} = admin(["ai", "ai.manage"])
+      view = open(conn, user)
+      ghost = Ecto.UUID.generate()
+
+      for {event, params} <- [
+            {"save_user_limits",
+             %{
+               "task" => "test.limited",
+               "user" => ghost,
+               "limits" => %{"requests" => %{"day" => "1"}}
+             }},
+            {"forgive",
+             %{"task" => "test.limited", "scope" => "user", "period" => "day", "user" => ghost}}
+          ] do
+        assert render_hook(view, event, params) =~ "That person was not found", event
+        assert Process.alive?(view.pid)
+      end
+
+      assert TestRepo.aggregate(TaskUserLimit, :count) == 0
+    end
+
     test "an amount that is not a number is refused", %{conn: conn} do
       {user, _role} = admin(["ai", "ai.manage"])
       view = open(conn, user)
