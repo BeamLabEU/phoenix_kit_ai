@@ -148,6 +148,19 @@ defmodule PhoenixKitAI.GuardRightsTest do
                )
     end
 
+    test "without the flags table admit/4 does not fail, and its token is not honoured" do
+      user = Fixtures.user_fixture().uuid
+      :ok = GenServer.stop(PhoenixKitAI.RequestCache)
+
+      try do
+        assert {:ok, token} = Guard.admit("test.limited", user, "turn", 300)
+        refute Guard.admitted?(token, "test.limited", user)
+      after
+        # Back for the rest of the suite, not linked to this test.
+        {:ok, _} = GenServer.start(PhoenixKitAI.RequestCache, [], name: PhoenixKitAI.RequestCache)
+      end
+    end
+
     test "an admitted call is still checked for fitness" do
       ep = endpoint_fixture()
       user = Fixtures.user_fixture().uuid

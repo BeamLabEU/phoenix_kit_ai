@@ -358,6 +358,10 @@ defmodule PhoenixKitAI.Guard do
   of work to pass as `guard_admission:` (see the moduledoc), or the refusal
   (`{:error, {:task_limit_exceeded, scope, unit, period}}`), which is
   signalled like a refused call. `turn_ref` is kept with the token.
+
+  Without the request cache's flags table (the cache not running) the token
+  is not kept: `admitted?/3` says no to it, and each call is checked as if
+  it had none.
   """
   @spec admit(String.t(), String.t() | nil, term(), pos_integer()) ::
           {:ok, String.t()} | {:error, term()}
@@ -365,16 +369,16 @@ defmodule PhoenixKitAI.Guard do
       when is_binary(task) and is_integer(ttl_s) and ttl_s > 0 do
     with :ok <- TaskLimits.check(Tasks.for_call(task), user_uuid: user_uuid) do
       token = 24 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false)
-      now = now_ms()
-      purge_admissions(now)
-
-      :ets.insert(
-        PhoenixKitAI.RequestCache.flags_table(),
-        {{:guard_admission, token}, {task, user_uuid, turn_ref, now + ttl_s * 1000}}
-      )
-
+      keep_admission(token, {task, user_uuid, turn_ref, now_ms() + ttl_s * 1000})
       {:ok, token}
     end
+  end
+
+  defp keep_admission(token, entry) do
+    purge_admissions(now_ms())
+    :ets.insert(PhoenixKitAI.RequestCache.flags_table(), {{:guard_admission, token}, entry})
+  rescue
+    ArgumentError -> false
   end
 
   @doc """
