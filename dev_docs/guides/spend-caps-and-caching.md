@@ -40,6 +40,10 @@ Semantics, in order of how often they surprise:
   half-quiet. `process_image/4` dry runs (`dry_run: true`) skip the check
   — they spend nothing and never reach a provider. No other verb honours
   `dry_run:`, so on those it lifts nothing.
+- **A refusal is a row.** The refused call is written as a zero-token
+  `status: "error"` row with `metadata.refused: true` (and the call's
+  `task`), so the journal shows who was turned away; it counts toward no
+  cap and no usage sink (`handle_ai_usage/1`) receives it.
 - **No reservation.** The check reads the table; concurrent callers can
   overshoot by their in-flight calls. Atomic reservation is a TODO.
 - **Fails open.** A database error reads as zero spend and no cap, so a
