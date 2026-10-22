@@ -305,7 +305,8 @@ Notes on the less obvious modules:
 
 Every message is `{event, uuid}`; a subscriber that needs the record reads
 it by uuid. The capabilities topic carries
-`{:capabilities_refreshed, base_urls}` after each catalogue refresh.
+`{:capabilities_refreshed, base_urls}` after a catalogue refresh that changed
+the cache, with the base URLs that changed.
 
 ### Settings & permissions
 
