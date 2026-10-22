@@ -195,6 +195,73 @@ defmodule PhoenixKitAI.RecommendationsTest do
     end
   end
 
+  describe "cheapest/2 ranking details" do
+    test "with a known call size, a model without an output price is unpriced and not first" do
+      catalogue = [
+        source([
+          {"v/half", caps(prompt_price: 1.0e-7, completion_price: nil)},
+          {"v/full", caps(prompt_price: 5.0e-7, completion_price: 2.0e-6)}
+        ])
+      ]
+
+      assert %{rows: [first, second]} =
+               Recommendations.cheapest("test.sized", catalogue: catalogue)
+
+      assert first.model == "v/full"
+      assert second.model == "v/half"
+      assert second.price_per_call == nil
+    end
+
+    test "without a call size the input price decides, as before" do
+      catalogue = [
+        source([
+          {"v/half", caps(prompt_price: 1.0e-7, completion_price: nil)},
+          {"v/full", caps(prompt_price: 5.0e-7, completion_price: 2.0e-6)}
+        ])
+      ]
+
+      assert %{estimate: :rough, rows: [%{model: "v/half"}, %{model: "v/full"}]} =
+               Recommendations.cheapest("test.photo", catalogue: catalogue)
+    end
+
+    test "at most one free model, marked, ahead of the paid ones" do
+      catalogue = [
+        source([
+          {"v/a:free", caps(prompt_price: 0.0, completion_price: 0.0)},
+          {"v/b:free", caps(prompt_price: 0.0, completion_price: 0.0)},
+          {"v/p1", caps(prompt_price: 1.0e-7, completion_price: 1.0e-7)},
+          {"v/p2", caps(prompt_price: 2.0e-7, completion_price: 2.0e-7)},
+          {"v/p3", caps(prompt_price: 3.0e-7, completion_price: 3.0e-7)}
+        ])
+      ]
+
+      assert %{rows: rows} = Recommendations.cheapest("test.sized", catalogue: catalogue)
+      assert Enum.map(rows, & &1.model) == ["v/a:free", "v/p1", "v/p2", "v/p3"]
+      assert :free in hd(rows).notes
+      refute Enum.any?(tl(rows), &(:free in &1.notes))
+    end
+
+    test "the place kept for the unpriced goes to Anthropic before an OpenRouter model without a price" do
+      priced =
+        for n <- 1..6, do: {"v/m#{n}", caps(prompt_price: n * 1.0e-7, completion_price: 0.0)}
+
+      catalogue = [
+        source(priced ++ [{"z/no-price", caps(prompt_price: nil)}]),
+        source([{"claude-a", caps()}], base_url: @anthropic, kind: :anthropic)
+      ]
+
+      assert %{rows: rows} = Recommendations.cheapest("test.sized", catalogue: catalogue)
+      assert List.last(rows).model == "claude-a"
+    end
+
+    test "a row carries the model's capabilities for the badges" do
+      catalogue = [source([{"v/m", caps(prompt_price: 1.0e-7, completion_price: 0.0)}])]
+
+      assert %{rows: [%{capabilities: %Capabilities{vision: :yes}}]} =
+               Recommendations.cheapest("test.sized", catalogue: catalogue)
+    end
+  end
+
   describe "cheapest/2 notes" do
     test "an alias is noted: a tilde prefix or a -latest suffix" do
       catalogue = [
@@ -404,8 +471,78 @@ defmodule PhoenixKitAI.RecommendationsTest do
       assert :alias in notes
     end
 
+    test "cache hits are not calls: they do not count and do not pull the averages down" do
+      request("test.photo", "v/a", cost_cents: 40_000, latency_ms: 800)
+
+      for _ <- 1..4 do
+        request("test.photo", "v/a",
+          cost_cents: 0,
+          latency_ms: 0,
+          metadata: %{"cached" => true}
+        )
+      end
+
+      assert [%{calls: 1, error_share: +0.0} = row] = Recommendations.worked("test.photo")
+      assert_in_delta row.avg_cost, 40_000.0, 0.001
+      assert_in_delta row.avg_latency_ms, 800.0, 0.001
+    end
+
+    test "a model through two operators is two rows, each with its operator" do
+      {:ok, or_ep} =
+        PhoenixKitAI.create_endpoint(%{
+          name: "OR",
+          provider: "openrouter",
+          model: "v/a",
+          api_key: "k"
+        })
+
+      {:ok, mi_ep} =
+        PhoenixKitAI.create_endpoint(%{
+          name: "MI",
+          provider: "mistral",
+          model: "v/a",
+          api_key: "k"
+        })
+
+      request("test.photo", "v/a", endpoint_uuid: or_ep.uuid)
+      request("test.photo", "v/a", endpoint_uuid: or_ep.uuid)
+      request("test.photo", "v/a", endpoint_uuid: mi_ep.uuid)
+
+      assert [%{calls: 2, provider: "openrouter"}, %{calls: 1, provider: "mistral"}] =
+               Recommendations.worked("test.photo")
+    end
+
     test "is empty for a task with no rows" do
       assert [] = Recommendations.worked("test.photo")
+    end
+  end
+
+  describe "for_tasks/2" do
+    test "gives each task what for_task gives, from two journal queries in all" do
+      request("test.sized", "v/a")
+      request("test.photo", "v/b", input_tokens: 2_000, output_tokens: 200)
+      catalogue = [source([{"v/m", caps(prompt_price: 1.0e-7, completion_price: 1.0e-7)}])]
+      keys = ["test.sized", "test.photo", "test.plain"]
+
+      queries = :counters.new(1, [])
+      handler = "recs-queries-#{System.unique_integer([:positive])}"
+
+      :telemetry.attach(
+        handler,
+        [:phoenix_kit_ai, :test, :repo, :query],
+        fn _, _, _, _ -> :counters.add(queries, 1, 1) end,
+        nil
+      )
+
+      result = Recommendations.for_tasks(keys, catalogue: catalogue)
+      :telemetry.detach(handler)
+
+      assert :counters.get(queries, 1) == 2
+      assert Map.keys(result) |> Enum.sort() == Enum.sort(keys)
+
+      for key <- keys do
+        assert result[key] == Recommendations.for_task(key, catalogue: catalogue)
+      end
     end
   end
 

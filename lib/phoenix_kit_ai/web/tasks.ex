@@ -84,15 +84,16 @@ defmodule PhoenixKitAI.Web.Tasks do
   end
 
   defp load_tasks(socket) do
-    # The catalogues are read once for all the tasks.
-    sources = Recommendations.sources()
+    # The catalogues and the journal are read once for all the tasks.
+    specs = Tasks.list()
+    recommendations = Recommendations.for_tasks(specs)
 
     tasks =
-      for spec <- Tasks.list() do
+      for spec <- specs do
         %{
           spec: spec,
           dom_id: dom_id(spec.key),
-          recommendations: Recommendations.for_task(spec, catalogue: sources),
+          recommendations: Map.fetch!(recommendations, spec.key),
           endpoints:
             spec
             |> Tasks.endpoints()
