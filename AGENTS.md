@@ -30,9 +30,11 @@ host supplies endpoint and router (`config/` exists only for tests).
 
 ## What this module does NOT do
 
-- **No DB migrations of its own.** Tables are created by core's versioned
-  chain. Adding a column is a core migration first, then schema + changeset
-  edits here.
+- **No migrations for core's tables.** `phoenix_kit_ai_endpoints`,
+  `_prompts` and `_requests` are created by core's versioned chain; adding a
+  column to one is a core migration first, then schema + changeset edits
+  here. The module's own chain (`PhoenixKitAI.Migrations`) holds only new
+  tables core does not know — see "Database & migrations".
 - **No per-completion Activity logging.** `PhoenixKit.Activity.log/3` runs on
   endpoint/prompt CRUD and enable/disable toggles, on both the success and
   failure branches, via the `log_failed_*_mutation/3` pipe-step helpers with
@@ -245,6 +247,8 @@ lib/phoenix_kit_ai/
   providers/                     adapters: openrouter (unified /images), xai, openai (multipart), openai_compatible (chat parts), http (shared Req door)
   images.ex images/              generic image layer: operations → prompt, option fitting, describe/compare, model-capability cache
   openrouter_client.ex           generic across providers despite the name
+  capabilities.ex                what a model can do (catalogue + declared), ETS cache process
+  migrations.ex model_capability.ex   the module's own migration chain; capability snapshot schema
   errors.ex                      error atom -> gettext string
   ai_model.ex routes.ex          model struct; admin sub-routes
   gettext.ex                     PhoenixKitAI.Gettext backend
@@ -288,6 +292,7 @@ Notes on the less obvious modules:
 | `phoenix_kit_ai_endpoints` | `PhoenixKitAI.Endpoint` | provider credentials, model, generation params, `provider_settings` |
 | `phoenix_kit_ai_prompts` | `PhoenixKitAI.Prompt` | `{{Variable}}` templates |
 | `phoenix_kit_ai_requests` | `PhoenixKitAI.Request` | per-request usage log |
+| `phoenix_kit_ai_model_capabilities` | `PhoenixKitAI.ModelCapability` | capability snapshot of the endpoints' models (module chain) |
 
 ### PubSub topics
 
@@ -296,9 +301,12 @@ Notes on the less obvious modules:
 | `phoenix_kit:ai:endpoints` | `subscribe_endpoints/0` |
 | `phoenix_kit:ai:prompts` | `subscribe_prompts/0` |
 | `phoenix_kit:ai:requests` | `subscribe_requests/0` |
+| `phoenix_kit:ai:capabilities` | `Capabilities.subscribe/0` |
 
 Every message is `{event, uuid}`; a subscriber that needs the record reads
-it by uuid.
+it by uuid. The capabilities topic carries
+`{:capabilities_refreshed, base_urls}` after a catalogue refresh that changed
+the cache, with the base URLs that changed.
 
 ### Settings & permissions
 
@@ -379,6 +387,16 @@ provided the API exposes `<base_url>/chat/completions` and `/models`.
   LiveView process: validation is a supervised task, the `/models` fetch is
   `start_async(:model_fetch)`, and a result for a connection or model type
   the operator has left is dropped.
+- The chat model list keeps every model whose only output is text
+  (`output_modalities == ["text"]`, or the right side of `modality`), so
+  models that also take images are in it. Each card carries the model's
+  `PhoenixKitAI.Capabilities` as badges (images, tools, JSON schema; an
+  Anthropic model's lifecycle); where the catalogue says nothing, the
+  Current Model panel offers checkboxes that declare capabilities in
+  `provider_settings["capabilities"]` for that model id only (the changeset
+  drops a declaration naming another model; each change is an
+  `endpoint.capabilities_declared` activity). An Anthropic endpoint's list
+  comes from the native `/v1/models` (all pages, all lifecycle stages).
 - The `base_url` guard resolves a name only when the URL is being changed,
   for two seconds at most, never for the provider's registry default and
   never from `change_endpoint/2` (a form's per-keystroke changeset); a name
@@ -441,10 +459,19 @@ provided the API exposes `<base_url>/chat/completions` and `/models`.
 
 ## Database & migrations
 
-None. Tables `phoenix_kit_ai_endpoints`, `phoenix_kit_ai_prompts` and
-`phoenix_kit_ai_requests` ship in core's versioned chain; `migration_module/0`
-is unset and this module owns no DDL. A schema change is a core migration
-first, then the schema and changeset edits here.
+Tables `phoenix_kit_ai_endpoints`, `phoenix_kit_ai_prompts` and
+`phoenix_kit_ai_requests` ship in core's versioned chain; a schema change to
+one of them is a core migration first, then the schema and changeset edits
+here. The module does not adopt them.
+
+`migration_module/0` returns `PhoenixKitAI.Migrations`, the module's own
+chain for tables core does not create (`mix phoenix_kit.update` runs it after
+core's). Version marker: `COMMENT ON TABLE phoenix_kit_ai_model_capabilities
+IS 'ai_schema:<N>'`. Every statement guards itself, so the chain re-runs
+cleanly; additive only. V1 creates `phoenix_kit_ai_model_capabilities`
+(unique `(base_url, model)`, flags `yes`/`no`/`unknown`), the snapshot
+`PhoenixKitAI.Capabilities` loads at start. Down to 0 drops it; the next
+refresh rebuilds it.
 
 Primary keys are UUIDv7 (`@primary_key {:uuid, UUIDv7, autogenerate: true}`),
 and every table-backed schema must `use PhoenixKit.SchemaPrefix` so its queries
@@ -470,7 +497,8 @@ Test database `phoenix_kit_ai_test`.
   report "0 failures" with most of the suite skipped. `:integration` is
   excluded only under the explicit `PK_AI_SKIP_DB=1` opt-out.
 - The schema is built by `PhoenixKit.Migration.ensure_current(TestRepo, log: false)`
-  — core's own chain, the same call a host makes. It re-applies newly shipped
+  — core's own chain, the same call a host makes — and then by this module's
+  chain through `Ecto.Migrator` and `PhoenixKitAI.Test.SchemaMigration`. It re-applies newly shipped
   migrations on every boot; the older `Ecto.Migrator.run(TestRepo, [{0, PhoenixKit.Migration}], …)`
   pattern silently stopped re-applying once `0` was recorded in
   `schema_migrations`, so never reintroduce it.

@@ -17,6 +17,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
   alias PhoenixKit.Utils.Routes
   alias PhoenixKitAI, as: AI
   alias PhoenixKitAI.AIModel
+  alias PhoenixKitAI.Capabilities
   alias PhoenixKitAI.Endpoint
   alias PhoenixKitAI.OpenRouterClient
   alias PhoenixKitAI.Web.AuthHelpers
@@ -130,7 +131,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
       |> assign(:completion_price, format_price(pricing["completion"]))
 
     ~H"""
-    <div class="relative">
+    <div class="relative" data-model-card={@model.id}>
       <button
         type="button"
         phx-click="select_model"
@@ -179,6 +180,8 @@ defmodule PhoenixKitAI.Web.EndpointForm do
             <span :if={@completion_price} class="badge badge-warning badge-outline badge-xs h-auto">
               {@completion_price}/M out
             </span>
+
+            <.capability_badges capabilities={Map.get(@model, :capabilities)} />
           </div>
         </div>
       </button>
@@ -202,6 +205,121 @@ defmodule PhoenixKitAI.Web.EndpointForm do
       </button>
     </div>
     """
+  end
+
+  attr(:capabilities, :any, default: nil)
+
+  # What the catalogue says the model can do: a badge per capability it has
+  # (a muted one with "?" where it does not know), one "unknown" badge when
+  # it knows nothing, and Anthropic's lifecycle when the model is leaving.
+  defp capability_badges(assigns) do
+    ~H"""
+    <%= if match?(%Capabilities{}, @capabilities) do %>
+      <%= if Enum.all?(Capabilities.declarable(), &(Map.fetch!(@capabilities, &1) == :unknown)) do %>
+        <span
+          data-capability="unknown"
+          class="badge badge-ghost badge-xs h-auto"
+          title={gettext("Not reported by the provider")}
+        >
+          {gettext("Capabilities unknown")}
+        </span>
+      <% else %>
+        <%= for flag <- Capabilities.declarable(), Map.fetch!(@capabilities, flag) != :no do %>
+          <% known? = Map.fetch!(@capabilities, flag) == :yes %>
+          <span
+            data-capability={flag}
+            data-state={Map.fetch!(@capabilities, flag)}
+            class={[
+              "badge badge-xs h-auto",
+              if(known?, do: "badge-info badge-outline", else: "badge-ghost")
+            ]}
+            title={if(!known?, do: gettext("Not reported by the provider"))}
+          >
+            {capability_label(flag)}{if(!known?, do: "?")}
+          </span>
+        <% end %>
+      <% end %>
+
+      <span
+        :if={@capabilities.lifecycle == :deprecated}
+        data-lifecycle="deprecated"
+        class="badge badge-warning badge-xs h-auto"
+      >
+        {gettext("Retiring")}
+      </span>
+      <span
+        :if={@capabilities.lifecycle == :retired}
+        data-lifecycle="retired"
+        class="badge badge-error badge-xs h-auto"
+      >
+        {gettext("Retired")}
+      </span>
+    <% end %>
+    """
+  end
+
+  @doc false
+  def capability_label(:vision), do: gettext("Images")
+  def capability_label(:tools), do: gettext("Tools")
+  def capability_label(:json_schema), do: gettext("JSON schema")
+
+  @doc false
+  # What the "Current Model" panel shows about the current model's
+  # capabilities: which ones the admin may declare (those the catalogue does
+  # not know), what is declared — from the form while it carries a
+  # declaration for this model, else from the endpoint — and which
+  # declarations the catalogue contradicts.
+  def capability_panel(model_id, selected_model, form, endpoint, provider)
+      when is_binary(model_id) and model_id != "" do
+    catalogue =
+      case selected_model do
+        %AIModel{capabilities: %Capabilities{} = caps} ->
+          caps
+
+        _ ->
+          %{base_url: form[:base_url].value, provider: provider}
+          |> Capabilities.resolved_base_url()
+          |> Capabilities.lookup(model_id)
+      end
+
+    stored =
+      Capabilities.declared(%{
+        model: model_id,
+        provider_settings: (endpoint && endpoint.provider_settings) || %{}
+      })
+
+    # A box the form submitted unticked overrides a stored `:yes`.
+    declared =
+      stored
+      |> Map.merge(form_declaration(form, model_id))
+      |> Map.reject(fn {_flag, value} -> value == :unknown end)
+
+    open =
+      Enum.filter(Capabilities.declarable(), fn flag ->
+        catalogue == :unknown or Map.fetch!(catalogue, flag) == :unknown
+      end)
+
+    %{open: open, declared: declared, conflicts: Capabilities.conflicts(catalogue, declared)}
+  end
+
+  def capability_panel(_model_id, _selected_model, _form, _endpoint, _provider),
+    do: %{open: [], declared: %{}, conflicts: []}
+
+  # The checkboxes as the form last submitted them, when they were for this
+  # model (the hidden `model` input says which): ticked `:yes`, unticked
+  # `:unknown`.
+  defp form_declaration(form, model_id) do
+    case get_in(form.params || %{}, ["provider_settings", "capabilities"]) do
+      %{"model" => ^model_id} = submitted ->
+        for flag <- Capabilities.declarable(),
+            value = submitted[Atom.to_string(flag)],
+            value != nil,
+            into: %{},
+            do: {flag, if(value == "true", do: :yes, else: :unknown)}
+
+      _ ->
+        %{}
+    end
   end
 
   defp resolve_current_value(assigns, field, field_str) do
@@ -751,6 +869,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
         "aspect_ratio" => get_in(params, ["provider_settings", "aspect_ratio"]) || "",
         "resolution" => get_in(params, ["provider_settings", "resolution"]) || ""
       })
+      |> put_declared_capabilities(params)
 
     params = Map.put(params, "provider_settings", provider_settings)
 
@@ -778,6 +897,30 @@ defmodule PhoenixKitAI.Web.EndpointForm do
       |> parse_string_list("stop")
 
     save_endpoint(socket, params)
+  end
+
+  # The declaration checkboxes submit "true"/"false" per capability plus the
+  # model they were shown for. Ticked ones are stored as "yes"; none ticked
+  # removes the declaration. Not rendered (the catalogue knows the model) —
+  # nothing submitted, the stored declaration is left to the changeset, which
+  # drops it if the model changed.
+  defp put_declared_capabilities(settings, params) do
+    case get_in(params, ["provider_settings", "capabilities"]) do
+      %{"model" => model} = submitted when is_binary(model) and model != "" ->
+        flags =
+          for flag <- Capabilities.declarable(),
+              key = Atom.to_string(flag),
+              submitted[key] == "true",
+              into: %{},
+              do: {key, "yes"}
+
+        if flags == %{},
+          do: Map.delete(settings, "capabilities"),
+          else: Map.put(settings, "capabilities", Map.put(flags, "model", model))
+
+      _ ->
+        settings
+    end
   end
 
   defp maybe_handle_provider_change(params, socket) do

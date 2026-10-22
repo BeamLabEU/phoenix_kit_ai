@@ -436,6 +436,69 @@
                   </span>
                 </label>
               <% end %>
+
+              <%!-- Declared capabilities. Offered only for what the
+                   provider's catalogue does not say about this model; a
+                   declaration the catalogue contradicts is shown, and the
+                   catalogue's answer is the one used. The hidden input ties
+                   the checkboxes to the model they were shown for. --%>
+              <% panel =
+                PhoenixKitAI.Web.EndpointForm.capability_panel(
+                  has_model && current_model_id,
+                  @selected_model,
+                  @form,
+                  @endpoint,
+                  @current_provider
+                ) %>
+              <input
+                :if={panel.open != [] or panel.conflicts != []}
+                type="hidden"
+                name="endpoint[provider_settings][capabilities][model]"
+                value={current_model_id}
+              />
+
+              <div
+                :if={panel.open != []}
+                id="endpoint-declared-capabilities"
+                class="rounded-lg border border-base-300 p-3 mt-3"
+              >
+                <div class="text-sm font-medium">{gettext("Declared capabilities")}</div>
+                <p class="text-xs text-base-content/60 mt-1">
+                  {gettext(
+                    "The provider does not report what this model can do. Tick what it can — the catalogue's answer, once it has one, replaces yours."
+                  )}
+                </p>
+                <div class="flex flex-wrap gap-x-6 gap-y-2 mt-2">
+                  <%= for flag <- panel.open do %>
+                    <.checkbox
+                      id={"endpoint-declare-#{flag}"}
+                      name={"endpoint[provider_settings][capabilities][#{flag}]"}
+                      checked={Map.get(panel.declared, flag) == :yes}
+                      label={PhoenixKitAI.Web.EndpointForm.capability_label(flag)}
+                      class="checkbox-sm"
+                    />
+                  <% end %>
+                </div>
+              </div>
+
+              <div
+                :if={panel.conflicts != []}
+                id="endpoint-capability-conflict"
+                class="alert alert-warning py-2 mt-3"
+              >
+                <.icon name="hero-exclamation-triangle" class="w-4 h-4" />
+                <span class="text-sm">
+                  {gettext(
+                    "Declared, but the catalogue says this model cannot: %{capabilities}. The catalogue's answer is used.",
+                    capabilities:
+                      Enum.map_join(
+                        panel.conflicts,
+                        ", ",
+                        &PhoenixKitAI.Web.EndpointForm.capability_label/1
+                      )
+                  )}
+                </span>
+              </div>
             </div>
 
             <%!-- Model browse area. When a model is hoisted above as
