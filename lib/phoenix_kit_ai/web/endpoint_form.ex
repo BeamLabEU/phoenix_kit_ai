@@ -212,7 +212,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
   # What the catalogue says the model can do: a badge per capability it has
   # (a muted one with "?" where it does not know), one "unknown" badge when
   # it knows nothing, and Anthropic's lifecycle when the model is leaving.
-  defp capability_badges(assigns) do
+  def capability_badges(assigns) do
     ~H"""
     <%= if match?(%Capabilities{}, @capabilities) do %>
       <%= if Enum.all?(Capabilities.declarable(), &(Map.fetch!(@capabilities, &1) == :unknown)) do %>
@@ -414,6 +414,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     # set" and confuse anyone scanning the form to verify wiring.
     {attrs, connection} = prefill(params, socket.assigns.provider_connections)
     active = connection && connection.uuid
+    connected = !!active && Integrations.connected?(active)
 
     socket
     |> assign(:page_crumbs, [endpoints_crumb()])
@@ -423,9 +424,9 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     |> assign(:form, to_form(AI.change_endpoint(%Endpoint{}, attrs)))
     |> assign(:active_connection, active)
     |> assign(:selected_uuids, List.wrap(active))
-    |> assign(:integration_connected, !!active && Integrations.connected?(active))
+    |> assign(:integration_connected, connected)
     |> assign(:current_provider, attrs["provider"] || socket.assigns.current_provider)
-    |> maybe_fetch_models_on_load(!!active && Integrations.connected?(active))
+    |> maybe_fetch_models_on_load(connected)
   end
 
   defp load_endpoint(socket, id, _params) do

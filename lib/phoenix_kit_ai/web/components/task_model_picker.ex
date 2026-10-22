@@ -22,11 +22,12 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPicker do
   integration filled in; the person saves it. The link is shown only to a
   scope holding the `ai` permission (`scope`).
 
-  A function component: it reads the endpoints and the recommendations when
-  it renders. A form that re-renders often can compute
-  `PhoenixKitAI.Recommendations.for_task/2` once and pass it as
-  `recommendations`. The element ids derive from the field's id, so give
-  each picker on a page its own field.
+  A function component: it reads the endpoints and, unless `recommendations`
+  is passed, the recommendations (3–4 queries) every time it renders. **In a
+  form with `phx-change`, pass `recommendations`** — compute
+  `PhoenixKitAI.Recommendations.for_task/2` once (in `mount` or when the
+  catalogues change) — or each keystroke pays for them. The element ids
+  derive from the field's id, so give each picker on a page its own field.
 
   `recommendations/1` is the panel alone, for pages that list a task without
   a field (the AI → Tasks page).
@@ -35,8 +36,10 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPicker do
   use Phoenix.Component
   use Gettext, backend: PhoenixKitAI.Gettext
 
+  alias Phoenix.LiveView.JS
   alias PhoenixKit.Users.Auth.Scope
-  alias PhoenixKitAI.{Recommendations, Request, Tasks}
+  alias PhoenixKitAI.{Capabilities, Recommendations, Request, Tasks}
+  alias PhoenixKitAI.Web.EndpointForm
   alias PhoenixKitWeb.Components.Core.Icon
   alias PhoenixKitWeb.Components.Core.Select
 
@@ -49,7 +52,11 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPicker do
   attr(:prompt, :string, default: nil)
 
   def picker(assigns) do
-    options = Tasks.endpoint_options(assigns.task)
+    options =
+      assigns.task
+      |> Tasks.endpoint_options()
+      |> Enum.map(&Map.put(&1, :capabilities, Capabilities.for_endpoint(&1.endpoint)))
+
     id = assigns.id || assigns.field.id
 
     assigns =
@@ -69,8 +76,9 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPicker do
         prompt={@prompt}
         options={@select_options}
       />
-      <div :if={@selected} class="text-sm">
+      <div :if={@selected} class="flex flex-wrap items-center gap-1 text-sm">
         <.fitness_badge fitness={@selected.fitness} />
+        <EndpointForm.capability_badges capabilities={@selected.capabilities} />
       </div>
       <.recommendations id={@id <> "-recommendations"} recommendations={@recs} scope={@scope} />
     </div>
@@ -85,7 +93,12 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPicker do
     assigns = assign(assigns, :can_create?, can_create?(assigns.scope))
 
     ~H"""
-    <details id={@id} class="collapse collapse-arrow bg-base-200">
+    <%!-- `open` is the browser's state; without this a re-render closes the panel. --%>
+    <details
+      id={@id}
+      class="collapse collapse-arrow bg-base-200"
+      phx-mounted={JS.ignore_attributes(["open"])}
+    >
       <summary class="collapse-title text-sm font-medium">
         {gettext("Recommended models")}
       </summary>
@@ -118,6 +131,7 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPicker do
                     <div class="font-medium">{row.name}</div>
                     <code class="text-xs text-base-content/60">{row.model}</code>
                     <div class="flex flex-wrap gap-1 mt-1">
+                      <EndpointForm.capability_badges capabilities={row.capabilities} />
                       <span
                         :if={row.deprecated?}
                         data-lifecycle="deprecated"
@@ -163,6 +177,7 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPicker do
               <thead>
                 <tr>
                   <th>{gettext("Model")}</th>
+                  <th>{gettext("Provider")}</th>
                   <th class="text-right">{gettext("Calls")}</th>
                   <th class="text-right">{gettext("Average cost")}</th>
                   <th class="text-right">{gettext("Errors")}</th>
@@ -190,6 +205,7 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPicker do
                       </span>
                     </div>
                   </td>
+                  <td>{row.provider || "—"}</td>
                   <td class="text-right">{row.calls}</td>
                   <td class="text-right">{worked_cost(row)}</td>
                   <td class="text-right">{percent(row.error_share)}</td>
@@ -235,8 +251,17 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPicker do
   end
 
   # `<option>` text is plain text, so the badge is a mark in the label.
-  defp option(%{endpoint: endpoint, fitness: fitness}),
-    do: {"#{endpoint.name} — #{endpoint.model}  #{mark(fitness)}", endpoint.uuid}
+  defp option(%{endpoint: endpoint, fitness: fitness, capabilities: caps}),
+    do: {"#{endpoint.name} — #{endpoint.model}  #{mark(fitness)}#{can_do(caps)}", endpoint.uuid}
+
+  defp can_do(%Capabilities{} = caps) do
+    case Enum.filter(Capabilities.declarable(), &(Map.fetch!(caps, &1) == :yes)) do
+      [] -> ""
+      flags -> " · " <> Tasks.need_labels(flags)
+    end
+  end
+
+  defp can_do(_caps), do: ""
 
   defp mark(:fit), do: "✓"
 
@@ -317,6 +342,7 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPicker do
   defp provider_label(:anthropic), do: "Anthropic"
   defp provider_label(other), do: to_string(other)
 
+  defp note_label(:free), do: gettext("free — the operator's limits and terms apply")
   defp note_label(:alias), do: gettext("alias model, may change")
   defp note_label(:cost_not_reported), do: gettext("cost is not counted")
 

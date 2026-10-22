@@ -9,6 +9,7 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPickerTest do
 
   alias PhoenixKit.ModuleRegistry
   alias PhoenixKit.Users.Auth.Scope
+  alias PhoenixKitAI.Capabilities
   alias PhoenixKitAI.Test.FakeAITasks
   alias PhoenixKitAI.Web.Components.TaskModelPicker
 
@@ -67,7 +68,8 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPickerTest do
             price_known?: true,
             input_price_per_million: 0.1,
             deprecated?: false,
-            notes: [:alias]
+            capabilities: %Capabilities{vision: :yes, tools: :yes, json_schema: :unknown},
+            notes: [:alias, :free]
           },
           %{
             model: "claude-sonnet",
@@ -80,12 +82,14 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPickerTest do
             price_known?: false,
             input_price_per_million: nil,
             deprecated?: true,
+            capabilities: %Capabilities{vision: :yes, tools: :yes, json_schema: :no},
             notes: [:cost_not_reported, :json_schema_openrouter_only]
           }
         ],
         worked: [
           %{
             model: "google/gemini-flash",
+            provider: "openrouter",
             calls: 12,
             avg_cost: 1_500.0,
             error_share: 0.25,
@@ -95,6 +99,7 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPickerTest do
           },
           %{
             model: "claude-sonnet",
+            provider: nil,
             calls: 3,
             avg_cost: nil,
             error_share: 0.0,
@@ -145,6 +150,17 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPickerTest do
     test "the field name is the consumer's" do
       html = render_picker(%{field: field(nil, "endpoint_uuid", :photo_settings)})
       assert present?(html, "select[name='photo_settings[endpoint_uuid]']")
+    end
+
+    test "the options and the chosen endpoint say what the model can do" do
+      ep =
+        declared_endpoint("Seer", %{"vision" => "yes", "tools" => "yes", "json_schema" => "yes"})
+
+      html = render_picker(%{field: field(ep.uuid)})
+
+      option = doc(html) |> LazyHTML.query("option[value='#{ep.uuid}']") |> LazyHTML.text()
+      assert option =~ "images" and option =~ "tools"
+      assert present?(html, "[data-task-model-picker] [data-capability=vision][data-state=yes]")
     end
 
     test "badges the chosen endpoint under the selector" do
@@ -201,6 +217,30 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPickerTest do
       assert text =~ "840"
     end
 
+    test "stays open when the page re-renders" do
+      html = render_picker(%{})
+      assert present?(html, "details[id$='-recommendations'][phx-mounted]")
+    end
+
+    test "shows the capability badges of each recommended model and a free one's caveat" do
+      html = render_picker(%{})
+      row = "[data-recommended-model='google/gemini-flash']"
+
+      assert present?(html, "#{row} [data-capability=vision][data-state=yes]")
+      assert present?(html, "#{row} [data-capability=tools]")
+      assert present?(html, "#{row} [data-capability=json_schema][data-state=unknown]")
+      assert present?(html, "#{row} [data-note=free]")
+
+      claude = "[data-recommended-model='claude-sonnet']"
+      refute present?(html, "#{claude} [data-capability=json_schema]")
+    end
+
+    test "names the operator of the models that worked" do
+      html = render_picker(%{})
+      worked = doc(html) |> LazyHTML.query("[data-worked-model='google/gemini-flash']")
+      assert LazyHTML.text(worked) =~ "openrouter"
+    end
+
     test "a rough estimate shows the input price per million tokens and says so" do
       rough =
         recs(%{
@@ -248,7 +288,12 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPickerTest do
 
       for {locale, expected} <- [
             {"ru",
-             ["Подходят и дешевле всего", "Уже работали в этой задаче", "цена не известна"]},
+             [
+               "Подходят и дешевле всего",
+               "Уже работали в этой задаче",
+               "цена не известна",
+               "бесплатная — лимиты"
+             ]},
             {"et", ["Sobivad ja odavaimad", "Selles ülesandes juba töötanud", "hind pole teada"]}
           ] do
         Gettext.put_locale(PhoenixKitAI.Gettext, locale)
