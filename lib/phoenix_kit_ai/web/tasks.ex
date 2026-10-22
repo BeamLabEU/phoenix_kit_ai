@@ -399,7 +399,7 @@ defmodule PhoenixKitAI.Web.Tasks do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="flex flex-col w-full px-4 py-6 gap-4">
+    <div class="flex min-w-0 flex-col w-full px-4 py-6 gap-4">
       <div class="flex items-center justify-between gap-2">
         <p class="text-sm text-base-content/70">
           {gettext(
@@ -430,14 +430,14 @@ defmodule PhoenixKitAI.Web.Tasks do
         </div>
       <% end %>
 
-      <div id="ai-tasks" class="grid gap-4">
+      <div id="ai-tasks" class="grid min-w-0 gap-4">
         <div
           :for={task <- @tasks}
           id={task.dom_id}
           data-task-key={task.spec.key}
-          class={["card bg-base-200", !task.spec.enabled && "opacity-60"]}
+          class={["card min-w-0 bg-base-200", !task.spec.enabled && "opacity-60"]}
         >
-          <div class="card-body gap-3">
+          <div class="card-body min-w-0 gap-3">
             <div class="flex flex-wrap items-center gap-2">
               <h2 class="card-title text-base">{TaskSpec.label(task.spec)}</h2>
               <code class="text-xs text-base-content/60">{task.spec.key}</code>
@@ -510,8 +510,8 @@ defmodule PhoenixKitAI.Web.Tasks do
 
   defp guard_settings(assigns) do
     ~H"""
-    <div id="ai-guard-settings" class="card bg-base-200">
-      <div class="card-body gap-3">
+    <div id="ai-guard-settings" class="card min-w-0 bg-base-200">
+      <div class="card-body min-w-0 gap-3">
         <h2 class="card-title text-base">{gettext("Task guard")}</h2>
         <p :if={!@can_manage} id="ai-guard-read-only" class="text-sm text-base-content/70">
           {gettext("Changing the guard needs the “Manage the AI task guard” permission.")}
@@ -598,10 +598,10 @@ defmodule PhoenixKitAI.Web.Tasks do
       )
 
     ~H"""
-    <div id={@id} class="flex flex-col gap-2 text-sm" data-limits>
+    <div id={@id} class="flex min-w-0 flex-col gap-2 text-sm" data-limits>
       <span class="text-base-content/70">{gettext("Limits and use:")}</span>
 
-      <.form for={%{}} id={@id <> "-form"} phx-submit="save_limits">
+      <.form for={%{}} id={@id <> "-form"} phx-submit="save_limits" class="min-w-0">
         <input type="hidden" name="task" value={@key} />
         <div class="overflow-x-auto">
           <table class="table table-sm">

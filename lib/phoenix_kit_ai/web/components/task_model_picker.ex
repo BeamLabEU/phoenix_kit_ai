@@ -96,7 +96,7 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPicker do
     <%!-- `open` is the browser's state; without this a re-render closes the panel. --%>
     <details
       id={@id}
-      class="collapse collapse-arrow bg-base-200"
+      class="collapse collapse-arrow min-w-0 bg-base-200"
       phx-mounted={JS.ignore_attributes(["open"])}
     >
       <summary class="collapse-title text-sm font-medium">
