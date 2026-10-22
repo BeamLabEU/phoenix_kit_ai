@@ -21,10 +21,19 @@ defmodule PhoenixKitAI.TasksTest do
     :ok = ModuleRegistry.register(FakeAITasks)
 
     on_exit(fn ->
+      # A build with a failed callback is kept for a minute; never let one
+      # reach the next test.
+      :persistent_term.erase({Tasks, :registry})
       ModuleRegistry.unregister(FakeAITasks)
       ModuleRegistry.unregister(FakeAITasksDuplicate)
 
-      for key <- [:fake_ai_tasks_pid, :fake_ai_tasks_enabled, :fake_ai_tasks_endpoints],
+      for key <- [
+            :fake_ai_tasks_pid,
+            :fake_ai_tasks_enabled,
+            :fake_ai_tasks_endpoints,
+            :fake_ai_tasks_fail,
+            :task_registry_retry_ms
+          ],
           do: Application.delete_env(:phoenix_kit_ai, key)
     end)
 
@@ -126,6 +135,40 @@ defmodule PhoenixKitAI.TasksTest do
       assert log =~ "not a %PhoenixKitAI.TaskSpec{}"
     end
 
+    test "a callback that exits or throws drops its tasks, with a warning, and does not crash" do
+      for failure <- [:exit, :throw, :raise] do
+        # A module set the registry has not been built for, so it is built now.
+        :ok = ModuleRegistry.unregister(FakeAITasks)
+        Tasks.list()
+        :ok = ModuleRegistry.register(FakeAITasks)
+        Application.put_env(:phoenix_kit_ai, :fake_ai_tasks_fail, failure)
+
+        log = capture_log(fn -> assert Tasks.get("test.photo") == nil end)
+        assert log =~ "ai_tasks/0 failed", "#{failure}"
+      end
+    end
+
+    test "a build with a failed callback is tried again, at most once per interval" do
+      :ok = ModuleRegistry.unregister(FakeAITasks)
+      Tasks.list()
+      :ok = ModuleRegistry.register(FakeAITasks)
+      Application.put_env(:phoenix_kit_ai, :fake_ai_tasks_fail, :exit)
+      capture_log(fn -> assert Tasks.get("test.photo") == nil end)
+
+      # Fixed, but within the interval (default one minute): not rebuilt yet.
+      Application.delete_env(:phoenix_kit_ai, :fake_ai_tasks_fail)
+      flush_ai_tasks_calls()
+      assert Tasks.get("test.photo") == nil
+      refute_received :ai_tasks_called
+
+      # The interval over: rebuilt, and kept from then on.
+      Application.put_env(:phoenix_kit_ai, :task_registry_retry_ms, 0)
+      assert %TaskSpec{} = Tasks.get("test.photo")
+      flush_ai_tasks_calls()
+      assert %TaskSpec{} = Tasks.get("test.photo")
+      refute_received :ai_tasks_called
+    end
+
     test "an unknown key in a call is reported once per key" do
       key = "unknown.task-#{System.unique_integer([:positive])}"
 
@@ -206,6 +249,15 @@ defmodule PhoenixKitAI.TasksTest do
       assert uuid == b.uuid
 
       assert Tasks.endpoints(Tasks.get("test.tools")) == []
+    end
+
+    test "a callback that exits or throws gives no endpoints, without crashing" do
+      spec = Tasks.get("test.photo")
+
+      for failure <- [:exit, :throw, :raise] do
+        Application.put_env(:phoenix_kit_ai, :fake_ai_tasks_fail, failure)
+        capture_log(fn -> assert Tasks.endpoints(spec) == [] end)
+      end
     end
   end
 

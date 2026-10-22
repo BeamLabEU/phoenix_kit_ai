@@ -7,6 +7,8 @@ defmodule PhoenixKitAI.Test.FakeAITasks do
   `ai_tasks/0` reports each call to the pid in the `:fake_ai_tasks_pid`
   app env, so a test can see when the registry is rebuilt; `enabled?/0`
   answers the `:fake_ai_tasks_enabled` app env (default true).
+  `:fake_ai_tasks_fail` (`:raise`, `:exit` or `:throw`) makes `ai_tasks/0`
+  and the `endpoints` callback fail that way.
   """
 
   alias PhoenixKitAI.TaskSpec
@@ -18,6 +20,8 @@ defmodule PhoenixKitAI.Test.FakeAITasks do
       pid when is_pid(pid) -> send(pid, :ai_tasks_called)
       _ -> :ok
     end
+
+    maybe_fail()
 
     [
       %TaskSpec{
@@ -42,5 +46,17 @@ defmodule PhoenixKitAI.Test.FakeAITasks do
     ]
   end
 
-  def photo_endpoints, do: Application.get_env(:phoenix_kit_ai, :fake_ai_tasks_endpoints, [])
+  def photo_endpoints do
+    maybe_fail()
+    Application.get_env(:phoenix_kit_ai, :fake_ai_tasks_endpoints, [])
+  end
+
+  defp maybe_fail do
+    case Application.get_env(:phoenix_kit_ai, :fake_ai_tasks_fail) do
+      :raise -> raise "fake ai_tasks failure"
+      :exit -> exit(:fake_timeout)
+      :throw -> throw(:fake_throw)
+      _ -> :ok
+    end
+  end
 end

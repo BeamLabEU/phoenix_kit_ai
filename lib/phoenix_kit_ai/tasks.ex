@@ -35,6 +35,9 @@ defmodule PhoenixKitAI.Tasks do
   alias PhoenixKitAI.{Capabilities, Endpoint, TaskSpec}
 
   @registry_key {__MODULE__, :registry}
+  # How long a build in which a module's `ai_tasks/0` failed is kept before
+  # the next access builds again (`:task_registry_retry_ms` app env).
+  @retry_ms :timer.minutes(1)
 
   @type fitness ::
           :fit | {:unfit, [TaskSpec.need()]} | {:unknown, [TaskSpec.need()]}
@@ -83,19 +86,44 @@ defmodule PhoenixKitAI.Tasks do
 
   def for_call(_key), do: nil
 
+  # A build where a module's `ai_tasks/0` failed is kept only for the retry
+  # interval; the next access after that builds again (and puts again, so
+  # at most once per interval while the callback keeps failing).
   defp registry do
     modules = discoverable_modules()
 
     case :persistent_term.get(@registry_key, nil) do
-      {^modules, specs} ->
+      {^modules, specs, nil} ->
         specs
 
+      {^modules, specs, failed_at} ->
+        if now() - failed_at < retry_ms(), do: specs, else: rebuild(modules)
+
       _ ->
-        specs = build(modules)
-        :persistent_term.put(@registry_key, {modules, specs})
-        specs
+        rebuild(modules)
     end
   end
+
+  defp rebuild(modules) do
+    {specs, failed} = build(modules)
+
+    failed_at =
+      if failed != [] do
+        Logger.warning(
+          "[PhoenixKitAI] AI tasks of #{Enum.map_join(failed, ", ", &inspect/1)} are missing " <>
+            "until their ai_tasks/0 answers; tried again in #{div(retry_ms(), 1000)} s at the earliest"
+        )
+
+        now()
+      end
+
+    :persistent_term.put(@registry_key, {modules, specs, failed_at})
+    specs
+  end
+
+  defp retry_ms, do: Application.get_env(:phoenix_kit_ai, :task_registry_retry_ms, @retry_ms)
+
+  defp now, do: System.monotonic_time(:millisecond)
 
   # This module's own tasks are always in, whether or not the host's module
   # registry lists it.
@@ -106,9 +134,22 @@ defmodule PhoenixKitAI.Tasks do
   end
 
   defp build(modules) do
-    modules
-    |> Enum.flat_map(&declared_by/1)
-    |> Enum.reduce(%{}, fn %TaskSpec{key: key} = spec, acc ->
+    declared = Enum.map(modules, &{&1, declared_by(&1)})
+    failed = for {module, :error} <- declared, do: module
+
+    specs =
+      declared
+      |> Enum.flat_map(fn
+        {_module, {:ok, specs}} -> specs
+        {_module, :error} -> []
+      end)
+      |> unique_keys()
+
+    {specs, failed}
+  end
+
+  defp unique_keys(specs) do
+    Enum.reduce(specs, %{}, fn %TaskSpec{key: key} = spec, acc ->
       if Map.has_key?(acc, key) do
         Logger.warning(
           "[PhoenixKitAI] AI task #{inspect(key)} declared again by #{inspect(spec.module)}; " <>
@@ -124,28 +165,9 @@ defmodule PhoenixKitAI.Tasks do
 
   defp declared_by(module) do
     if Code.ensure_loaded?(module) and function_exported?(module, :ai_tasks, 0) do
-      module.ai_tasks()
-      |> List.wrap()
-      |> Enum.flat_map(fn
-        %TaskSpec{key: key} = spec when is_binary(key) and key != "" ->
-          [
-            %{
-              spec
-              | module: module,
-                needs: Enum.filter(List.wrap(spec.needs), &(&1 in TaskSpec.needs()))
-            }
-          ]
-
-        other ->
-          Logger.warning(
-            "[PhoenixKitAI] #{inspect(module)}.ai_tasks/0 returned an entry that is not a " <>
-              "%PhoenixKitAI.TaskSpec{} with a key: #{inspect(other, limit: 3)}"
-          )
-
-          []
-      end)
+      {:ok, module.ai_tasks() |> List.wrap() |> Enum.flat_map(&valid_spec(&1, module))}
     else
-      []
+      {:ok, []}
     end
   rescue
     error ->
@@ -153,7 +175,35 @@ defmodule PhoenixKitAI.Tasks do
         "[PhoenixKitAI] #{inspect(module)}.ai_tasks/0 failed: #{Exception.message(error)}"
       )
 
-      []
+      :error
+  catch
+    kind, reason ->
+      Logger.warning(
+        "[PhoenixKitAI] #{inspect(module)}.ai_tasks/0 failed: #{kind} #{inspect(reason, limit: 5)}"
+      )
+
+      :error
+  end
+
+  defp valid_spec(entry, module) do
+    case entry do
+      %TaskSpec{key: key} = spec when is_binary(key) and key != "" ->
+        [
+          %{
+            spec
+            | module: module,
+              needs: Enum.filter(List.wrap(spec.needs), &(&1 in TaskSpec.needs()))
+          }
+        ]
+
+      other ->
+        Logger.warning(
+          "[PhoenixKitAI] #{inspect(module)}.ai_tasks/0 returned an entry that is not a " <>
+            "%PhoenixKitAI.TaskSpec{} with a key: #{inspect(other, limit: 3)}"
+        )
+
+        []
+    end
   end
 
   defp with_enabled(%TaskSpec{module: module} = spec),
@@ -307,6 +357,13 @@ defmodule PhoenixKitAI.Tasks do
   rescue
     error ->
       Logger.warning("[PhoenixKitAI] endpoints callback failed: #{Exception.message(error)}")
+      []
+  catch
+    kind, reason ->
+      Logger.warning(
+        "[PhoenixKitAI] endpoints callback failed: #{kind} #{inspect(reason, limit: 5)}"
+      )
+
       []
   end
 
