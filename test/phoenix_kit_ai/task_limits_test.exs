@@ -317,6 +317,17 @@ defmodule PhoenixKitAI.TaskLimitsTest do
                PhoenixKitAI.ask(ep.uuid, "same", opts)
     end
 
+    test "an id that is no PhoenixKit user does not switch the task's limits off",
+         %{owner: owner, endpoint: ep} do
+      # `user_uuid:` may carry a visitor's own id; the journal can only hold
+      # a user's uuid, so such a call is held to the task's limits alone.
+      set_limits(owner, %{"task" => %{"requests" => %{"day" => "1"}}})
+      row(ep, DateTime.utc_now() |> DateTime.truncate(:second))
+
+      assert {:error, {:task_limit_exceeded, :task, :requests, :day}} =
+               TaskLimits.check(spec(), user_uuid: "visitor-42")
+    end
+
     test "a dry run of process_image is not checked against the limits" do
       # The dry run is the one verb that skips the caps; the limits follow it.
       assert TaskLimits.check(nil, []) == :ok

@@ -208,8 +208,9 @@ Repo-local aliases:
   the row is written without it (`user_uuid` nil, the submitted id kept in
   `metadata["unresolved_refs"]`, a warning logged) and counts toward the
   endpoint and global caps but never the per-user one. The same applies to
-  an `endpoint_uuid` or `prompt_uuid` that names no row. Cap the endpoint or
-  the site for visitors.
+  an `endpoint_uuid` or `prompt_uuid` that names no row. Task limits read a
+  `user_uuid:` that is not a uuid as no user: the task's own limits apply,
+  the per-user ones do not. Cap the endpoint or the site for visitors.
 - Spend caps read the usage table; concurrent callers overshoot by their
   in-flight calls, and a database error fails open. Treat a cap as a brake
   on a runaway day, not as a hard invoice ceiling.

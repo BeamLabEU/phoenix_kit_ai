@@ -474,6 +474,15 @@ defmodule PhoenixKitAI.TranslateWorker do
   defp classify_ai_detail({:api_error, status}) when is_integer(status), do: "api_error_#{status}"
   defp classify_ai_detail({:connection_error, _reason}), do: "connection_error"
   defp classify_ai_detail({:exit, _reason}), do: "exit"
+
+  # The refusals made before any HTTP (`PhoenixKitAI.Guard`, `TaskLimits`,
+  # `Budget`): the tag only, never the scope, the unit or the missing needs.
+  defp classify_ai_detail({:task_limit_exceeded, _scope, _unit, _period}),
+    do: "task_limit_exceeded"
+
+  defp classify_ai_detail({:budget_exceeded, _scope}), do: "budget_exceeded"
+  defp classify_ai_detail({:model_unfit, _missing}), do: "model_unfit"
+  defp classify_ai_detail({:model_unverified, _unclear}), do: "model_unverified"
   defp classify_ai_detail(detail) when is_atom(detail), do: Atom.to_string(detail)
   defp classify_ai_detail(_detail), do: "unclassified"
 

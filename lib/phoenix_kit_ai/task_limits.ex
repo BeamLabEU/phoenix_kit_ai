@@ -551,7 +551,7 @@ defmodule PhoenixKitAI.TaskLimits do
   def check(nil, _opts, _now), do: :ok
 
   def check(%TaskSpec{} = spec, opts, now) do
-    user_uuid = if is_binary(opts[:user_uuid]), do: opts[:user_uuid]
+    user_uuid = user_uuid(opts[:user_uuid])
     entry = cached(spec.key)
     statuses = statuses(spec.key, effective(spec, entry, user_uuid), user_uuid, now)
 
@@ -577,6 +577,18 @@ defmodule PhoenixKitAI.TaskLimits do
 
       :ok
   end
+
+  # A caller may pass a visitor's own id as `user_uuid:`; the journal's
+  # column is a uuid, so such a call is held to the task's limits alone
+  # instead of the count raising and the whole check failing open.
+  defp user_uuid(value) when is_binary(value) do
+    case Ecto.UUID.cast(value) do
+      {:ok, uuid} -> uuid
+      :error -> nil
+    end
+  end
+
+  defp user_uuid(_value), do: nil
 
   defp user_for(%{scope: :user}, user_uuid), do: user_uuid
   defp user_for(_status, _user_uuid), do: nil
