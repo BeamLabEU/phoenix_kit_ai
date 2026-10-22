@@ -4,8 +4,9 @@ defmodule PhoenixKitAI.Test.Router do
   produced by `PhoenixKitAI.Routes` so `live/2` calls in tests work
   with exactly the same URLs the LiveViews push themselves to.
 
-  `PhoenixKit.Utils.Routes.path/1` defaults to prepending the default
-  locale (`"en"`) to every admin path, so our scope is
+  `PhoenixKit.Utils.Routes.path/1` prepends the default locale (`"en"`)
+  to admin paths only on a multilingual site. `PhoenixKitAI.LiveCase`
+  switches multi-language on (prefix kept), so our scope is
   `/en/admin/ai/…`.
   """
 

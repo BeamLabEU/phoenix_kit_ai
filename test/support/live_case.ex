@@ -46,6 +46,18 @@ defmodule PhoenixKitAI.LiveCase do
     # the `phoenix_kit_settings` table we create in the test migration.
     PhoenixKitAI.enable_system()
 
+    # Locale segments only exist on a multilingual site; with the switch off
+    # (core 2.62+, the default) `Routes.path/2` emits none, while the test
+    # router serves `/en/admin/ai`. Switch multi-language on, prefix kept.
+    {:ok, _} =
+      PhoenixKit.Settings.update_boolean_setting_with_module(
+        "languages_enabled",
+        true,
+        "languages"
+      )
+
+    {:ok, _} = PhoenixKit.Settings.update_boolean_setting("default_language_no_prefix", false)
+
     conn =
       Phoenix.ConnTest.build_conn()
       |> Plug.Test.init_test_session(%{})

@@ -184,9 +184,9 @@ end
   DynamicSupervisor.start_link(name: PhoenixKitAI.Realtime.Supervisor, strategy: :one_for_one)
 
 # Force PhoenixKit's URL prefix cache so `Routes.ai_path/0` produces
-# paths that the test router matches. Admin paths always get the
-# default locale ("en") prefix, so the test router scopes under
-# `/en/admin/ai`.
+# paths that the test router matches. Admin paths get the default
+# locale ("en") prefix only on a multilingual site, so `LiveCase` switches
+# multi-language on and the test router scopes under `/en/admin/ai`.
 :persistent_term.put({PhoenixKit.Config, :url_prefix}, "/")
 
 # Start the test Endpoint so Phoenix.LiveViewTest can drive LiveViews
