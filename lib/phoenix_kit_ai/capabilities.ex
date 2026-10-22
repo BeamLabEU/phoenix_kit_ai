@@ -1,14 +1,16 @@
 defmodule PhoenixKitAI.Capabilities do
   @moduledoc """
-  What a model can do — images in, tools, a strict JSON schema, any JSON —
-  as the provider's catalogue says, or as an admin declared it on the
-  endpoint where the catalogue says nothing.
+  What a model can do — images in, documents in, images out, tools, a
+  strict JSON schema, any JSON — as the provider's catalogue says, or as an
+  admin declared it on the endpoint where the catalogue says nothing.
 
   ## Where the answers come from
 
     * **OpenRouter** (`GET /models`): `image` among
       `architecture.input_modalities` (or on the left side of the older
-      `modality` string) → `vision`; `tools` in `supported_parameters` →
+      `modality` string) → `vision`; `file` among them → `file_input`;
+      `image` among `architecture.output_modalities` (or on the right side
+      of `modality`) → `image_output`; `tools` in `supported_parameters` →
       `tools`; `structured_outputs` → `json_schema`; `response_format`
       without `structured_outputs` → `json` only. `supported_parameters` is
       the union over OpenRouter's upstream providers; the list itself is
@@ -18,7 +20,9 @@ defmodule PhoenixKitAI.Capabilities do
       are unknown until the first refresh.
     * **Anthropic** (native `GET /v1/models`, read by
       `OpenRouterClient.fetch_models/2`): `capabilities.image_input` →
-      `vision` (`capabilities: null` leaves it `:unknown`), `max_input_tokens`
+      `vision` and `capabilities.pdf_input` → `file_input`
+      (`capabilities: null` leaves them `:unknown`); no Claude generates
+      images, so `image_output` is `:no`; `max_input_tokens`
       → `context_length`, `lifecycle`. Chat goes through Anthropic's
       OpenAI-compatible layer, which ignores `response_format`, so
       `json_schema` is `:no` and `json` is `:yes` (the schema is written into
@@ -79,7 +83,7 @@ defmodule PhoenixKitAI.Capabilities do
 
   @table __MODULE__
   @topic "phoenix_kit:ai:capabilities"
-  @declarable [:vision, :tools, :json_schema]
+  @declarable [:vision, :file_input, :image_output, :tools, :json_schema]
   @anthropic_base_url "https://api.anthropic.com/v1"
 
   @refresh_interval :timer.hours(6)
@@ -93,6 +97,8 @@ defmodule PhoenixKitAI.Capabilities do
   @call_timeout :timer.seconds(60)
 
   defstruct vision: :unknown,
+            file_input: :unknown,
+            image_output: :unknown,
             tools: :unknown,
             json_schema: :unknown,
             json: :unknown,
@@ -112,6 +118,8 @@ defmodule PhoenixKitAI.Capabilities do
   @type flag :: :yes | :no | :unknown
   @type t :: %__MODULE__{
           vision: flag(),
+          file_input: flag(),
+          image_output: flag(),
           tools: flag(),
           json_schema: flag(),
           json: flag(),
@@ -146,7 +154,7 @@ defmodule PhoenixKitAI.Capabilities do
   def subscribe, do: PubSub.subscribe(@topic)
 
   @doc "The capabilities an admin can declare on an endpoint."
-  @spec declarable() :: [:vision | :tools | :json_schema]
+  @spec declarable() :: [:vision | :file_input | :image_output | :tools | :json_schema]
   def declarable, do: @declarable
 
   @doc """
@@ -353,7 +361,9 @@ defmodule PhoenixKitAI.Capabilities do
 
   defp openrouter(architecture, params, context_length) do
     %__MODULE__{
-      vision: openrouter_vision(architecture),
+      vision: input_flag(architecture, "image"),
+      file_input: input_flag(architecture, "file"),
+      image_output: output_flag(architecture, "image"),
       tools: param_flag(params, ["tools"]),
       json_schema: param_flag(params, ["structured_outputs"]),
       json: param_flag(params, ["structured_outputs", "response_format"]),
@@ -362,14 +372,30 @@ defmodule PhoenixKitAI.Capabilities do
     }
   end
 
-  defp openrouter_vision(%{"input_modalities" => inputs}) when is_list(inputs),
-    do: yes_no("image" in inputs)
+  # One kind of input (`image`, `file`) from `input_modalities`, else from
+  # the left side of the older `modality` string.
+  defp input_flag(%{"input_modalities" => inputs}, kind) when is_list(inputs),
+    do: yes_no(kind in inputs)
 
-  defp openrouter_vision(%{"modality" => modality}) when is_binary(modality) and modality != "" do
-    modality |> String.split("->") |> hd() |> String.contains?("image") |> yes_no()
+  defp input_flag(%{"modality" => modality}, kind) when is_binary(modality) and modality != "" do
+    modality |> String.split("->") |> hd() |> String.split("+") |> Enum.member?(kind) |> yes_no()
   end
 
-  defp openrouter_vision(_architecture), do: :unknown
+  defp input_flag(_architecture, _kind), do: :unknown
+
+  defp output_flag(%{"output_modalities" => outputs}, kind) when is_list(outputs),
+    do: yes_no(kind in outputs)
+
+  defp output_flag(%{"modality" => modality}, kind) when is_binary(modality) and modality != "" do
+    modality
+    |> String.split("->")
+    |> List.last()
+    |> String.split("+")
+    |> Enum.member?(kind)
+    |> yes_no()
+  end
+
+  defp output_flag(_architecture, _kind), do: :unknown
 
   defp param_flag(params, wanted) when is_list(params),
     do: yes_no(Enum.any?(wanted, &(&1 in params)))
@@ -380,7 +406,9 @@ defmodule PhoenixKitAI.Capabilities do
   @spec from_anthropic(map()) :: t()
   def from_anthropic(row) when is_map(row) do
     %__MODULE__{
-      vision: anthropic_vision(row["capabilities"]),
+      vision: anthropic_supported(row["capabilities"], "image_input"),
+      file_input: anthropic_supported(row["capabilities"], "pdf_input"),
+      image_output: :no,
       tools: :yes,
       json_schema: :no,
       json: :yes,
@@ -409,11 +437,14 @@ defmodule PhoenixKitAI.Capabilities do
 
   defp thinking_type(_capabilities, _type), do: :unknown
 
-  defp anthropic_vision(%{"image_input" => %{"supported" => supported}})
-       when is_boolean(supported),
-       do: yes_no(supported)
+  defp anthropic_supported(%{} = capabilities, key) do
+    case capabilities[key] do
+      %{"supported" => supported} when is_boolean(supported) -> yes_no(supported)
+      _ -> :unknown
+    end
+  end
 
-  defp anthropic_vision(_capabilities), do: :unknown
+  defp anthropic_supported(_capabilities, _key), do: :unknown
 
   defp yes_no(true), do: :yes
   defp yes_no(false), do: :no
@@ -851,6 +882,8 @@ defmodule PhoenixKitAI.Capabilities do
         {:replace,
          [
            :vision,
+           :file_input,
+           :image_output,
            :tools,
            :json_schema,
            :json,
@@ -879,6 +912,8 @@ defmodule PhoenixKitAI.Capabilities do
       base_url: base_url,
       model: model,
       vision: Atom.to_string(caps.vision),
+      file_input: Atom.to_string(caps.file_input),
+      image_output: Atom.to_string(caps.image_output),
       tools: Atom.to_string(caps.tools),
       json_schema: Atom.to_string(caps.json_schema),
       json: Atom.to_string(caps.json),
@@ -896,6 +931,8 @@ defmodule PhoenixKitAI.Capabilities do
         {{row.base_url, row.model},
          %__MODULE__{
            vision: parse_flag(row.vision),
+           file_input: parse_flag(row.file_input),
+           image_output: parse_flag(row.image_output),
            tools: parse_flag(row.tools),
            json_schema: parse_flag(row.json_schema),
            json: parse_flag(row.json),

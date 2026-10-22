@@ -2420,7 +2420,7 @@ msgstr "Стандартное"
 msgid "The request could not be completed"
 msgstr "Не удалось выполнить запрос"
 
-#: lib/phoenix_kit_ai/web/components/capability_badges.ex:29
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:30
 #, elixir-autogen, elixir-format
 msgid "Capabilities unknown"
 msgstr "Возможности неизвестны"
@@ -2435,29 +2435,23 @@ msgstr "Объявленные возможности"
 msgid "Declared, but the catalogue says this model cannot: %{capabilities}. The catalogue's answer is used."
 msgstr "Объявлено, но по каталогу эта модель этого не умеет: %{capabilities}. Действует ответ каталога."
 
-#: lib/phoenix_kit_ai/web/components/capability_badges.ex:67
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:68
 #, elixir-autogen, elixir-format
 msgid "Images"
 msgstr "Картинки"
 
-#: lib/phoenix_kit_ai/tasks.ex:248
-#: lib/phoenix_kit_ai/web/components/capability_badges.ex:69
+#: lib/phoenix_kit_ai/tasks.ex:250
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:72
 #, elixir-autogen, elixir-format
 msgid "JSON schema"
 msgstr "JSON-схема"
 
-#: lib/phoenix_kit_ai/web/components/capability_badges.ex:27
-#: lib/phoenix_kit_ai/web/components/capability_badges.ex:41
-#, elixir-autogen, elixir-format
-msgid "Not reported by the provider"
-msgstr "Провайдер не сообщает"
-
-#: lib/phoenix_kit_ai/web/components/capability_badges.ex:60
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:61
 #, elixir-autogen, elixir-format
 msgid "Retired"
 msgstr "Снята"
 
-#: lib/phoenix_kit_ai/web/components/capability_badges.ex:53
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:54
 #: lib/phoenix_kit_ai/web/components/task_model_picker.ex:140
 #, elixir-autogen, elixir-format
 msgid "Retiring"
@@ -2468,7 +2462,7 @@ msgstr "Уходит"
 msgid "The provider does not report what this model can do. Tick what it can — the catalogue's answer, once it has one, replaces yours."
 msgstr "Провайдер не сообщает, что умеет эта модель. Отметьте, что она умеет, — ответ каталога, когда он появится, заменит ваш."
 
-#: lib/phoenix_kit_ai/web/components/capability_badges.ex:68
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:71
 #, elixir-autogen, elixir-format
 msgid "Tools"
 msgstr "Инструменты"
@@ -2494,7 +2488,7 @@ msgstr "Подходит"
 msgid "It is not known whether the endpoint's model can do what this task needs (%{needs}). Mark the model's capabilities on the endpoint first."
 msgstr "Неизвестно, умеет ли модель конечной точки то, что нужно задаче (%{needs}). Сначала отметьте возможности модели на конечной точке."
 
-#: lib/phoenix_kit_ai/tasks.ex:249
+#: lib/phoenix_kit_ai/tasks.ex:251
 #, elixir-autogen, elixir-format
 msgid "JSON"
 msgstr "JSON"
@@ -2582,7 +2576,7 @@ msgstr "картинки"
 msgid "text only"
 msgstr "только текст"
 
-#: lib/phoenix_kit_ai/tasks.ex:247
+#: lib/phoenix_kit_ai/tasks.ex:249
 #, elixir-autogen, elixir-format
 msgid "tools"
 msgstr "инструменты"
@@ -3067,3 +3061,28 @@ msgstr "Такой человек не найден"
 #, elixir-autogen, elixir-format
 msgid "Money is not counted for chat calls on %{endpoints}: the provider does not report what a call cost. Requests and tokens still apply."
 msgstr "На %{endpoints} деньги за чат-вызовы не считаются: провайдер не сообщает стоимость вызова. Лимиты запросов и токенов действуют."
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:69
+#, elixir-autogen, elixir-format
+msgid "Documents"
+msgstr "Документы"
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:70
+#, elixir-autogen, elixir-format
+msgid "Image generation"
+msgstr "Генерация изображений"
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:74
+#, elixir-autogen, elixir-format
+msgid "Not verified — mark it on the endpoint"
+msgstr "Не проверено — отметьте на конечной точке"
+
+#: lib/phoenix_kit_ai/tasks.ex:247
+#, elixir-autogen, elixir-format
+msgid "documents"
+msgstr "документы"
+
+#: lib/phoenix_kit_ai/tasks.ex:248
+#, elixir-autogen, elixir-format
+msgid "image generation"
+msgstr "генерация изображений"

@@ -6,8 +6,8 @@ defmodule PhoenixKitAI.ModelCapability do
 
   Written and read only by `PhoenixKitAI.Capabilities`, which loads the rows
   into its cache at start so a restart without network does not turn every
-  model into `:unknown`. The flags are `"yes"`, `"no"` or `"unknown"`;
-  `file_input` and `image_output` (schema V2) are not filled in yet.
+  model into `:unknown`. The flags are `"yes"`, `"no"` or `"unknown"`
+  (`file_input` and `image_output` came with schema V2).
   """
 
   use Ecto.Schema

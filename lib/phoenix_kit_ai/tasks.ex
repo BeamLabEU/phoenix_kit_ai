@@ -241,9 +241,11 @@ defmodule PhoenixKitAI.Tasks do
     :ok
   end
 
-  @doc "A requirement in words: images, tools, JSON schema, JSON."
+  @doc "A requirement in words: images, documents, image generation, tools, JSON schema, JSON."
   @spec need_label(TaskSpec.need()) :: String.t()
   def need_label(:vision), do: gettext("images")
+  def need_label(:file_input), do: gettext("documents")
+  def need_label(:image_output), do: gettext("image generation")
   def need_label(:tools), do: gettext("tools")
   def need_label(:json_schema), do: gettext("JSON schema")
   def need_label(:json), do: gettext("JSON")

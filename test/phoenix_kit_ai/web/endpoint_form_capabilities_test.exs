@@ -183,6 +183,33 @@ defmodule PhoenixKitAI.Web.EndpointFormCapabilitiesTest do
       )
     end
 
+    test "documents and image generation are declared like the other capabilities", %{
+      conn: conn
+    } do
+      endpoint = mistral_endpoint()
+      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/#{endpoint.uuid}/edit")
+
+      assert has_element?(view, "#endpoint-declare-file_input")
+      assert has_element?(view, "#endpoint-declare-image_output")
+
+      view
+      |> form("form[phx-submit=\"save\"]",
+        endpoint: %{
+          name: endpoint.name,
+          provider_settings: %{
+            "capabilities" => %{"file_input" => "true", "image_output" => "true"}
+          }
+        }
+      )
+      |> render_submit()
+
+      assert PhoenixKitAI.get_endpoint!(endpoint.uuid).provider_settings["capabilities"] == %{
+               "model" => "pixtral-large-latest",
+               "file_input" => "yes",
+               "image_output" => "yes"
+             }
+    end
+
     test "a stored declaration shows ticked; unticking everything removes it", %{conn: conn} do
       endpoint =
         mistral_endpoint(%{
