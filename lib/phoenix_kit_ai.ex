@@ -2926,6 +2926,11 @@ defmodule PhoenixKitAI do
     where(query, [r], r.user_uuid == ^uuid)
   end
 
+  # `"refused"` is not a stored status: the rows the guard refused (status
+  # `"error"`, `metadata.refused`).
+  defp maybe_filter_by(query, :status, "refused"),
+    do: where(query, [r], fragment("(?->>'refused') = 'true'", r.metadata))
+
   defp maybe_filter_by(query, :status, status), do: where(query, [r], r.status == ^status)
   defp maybe_filter_by(query, :model, model), do: where(query, [r], r.model == ^model)
 
@@ -2991,7 +2996,7 @@ defmodule PhoenixKitAI do
     %{
       endpoints: repo().all(endpoints_query),
       models: repo().all(models_query),
-      statuses: Request.valid_statuses(),
+      statuses: Request.valid_statuses() ++ ["refused"],
       sources: repo().all(sources_query)
     }
   end

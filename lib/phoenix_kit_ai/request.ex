@@ -197,6 +197,17 @@ defmodule PhoenixKitAI.Request do
   def valid_statuses, do: @valid_statuses
 
   @doc """
+  Whether the row is a call the guard refused before any HTTP
+  (`metadata.refused`). Its status is `"error"`; the Usage tab marks it and
+  filters on it as `"refused"`.
+  """
+  @spec refused?(t()) :: boolean()
+  def refused?(%__MODULE__{metadata: %{} = metadata}),
+    do: Map.get(metadata, "refused", Map.get(metadata, :refused)) == true
+
+  def refused?(_request), do: false
+
+  @doc """
   Returns the list of valid request types.
   """
   @spec valid_request_types() :: [String.t()]
@@ -213,6 +224,7 @@ defmodule PhoenixKitAI.Request do
   def status_label("success"), do: gettext("Success")
   def status_label("error"), do: gettext("Error")
   def status_label("timeout"), do: gettext("Timeout")
+  def status_label("refused"), do: gettext("Refused")
   def status_label(_), do: gettext("Unknown")
 
   @doc """
