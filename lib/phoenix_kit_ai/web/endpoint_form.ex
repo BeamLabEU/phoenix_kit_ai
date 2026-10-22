@@ -923,13 +923,37 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     editing? = socket.assigns[:endpoint] != nil
 
     pinned_provider = if editing?, do: socket.assigns[:current_provider]
+    options = provider_options_for(connections, pinned_provider)
 
-    assign(
-      socket,
-      :provider_options,
-      provider_options_for(connections, pinned_provider)
-    )
+    socket
+    |> assign(:provider_options, options)
+    |> follow_offered_provider(options, editing?)
   end
+
+  # A new endpoint starts on the mount default ("openrouter"). When that is
+  # not among the providers offered (only those with a connection are), the
+  # select shows the first one it offers while the form, the integration
+  # picker and the model fetch still mean the default: the picker then shows
+  # no connection, and with a single provider offered the select cannot be
+  # changed to correct it. Start on the first offered provider instead.
+  defp follow_offered_provider(socket, [{_label, first} | _] = options, false) do
+    current = socket.assigns[:current_provider]
+
+    if Enum.any?(options, fn {_label, key} -> key == current end) do
+      socket
+    else
+      form =
+        socket.assigns.form.source
+        |> Ecto.Changeset.put_change(:provider, first)
+        |> to_form()
+
+      socket
+      |> assign(:current_provider, first)
+      |> assign(:form, form)
+    end
+  end
+
+  defp follow_offered_provider(socket, _options, _editing?), do: socket
 
   # Loads connections for every AI provider in one shot. The picker
   # filters client-side via its `provider` attr (matches `data["provider"]`),
