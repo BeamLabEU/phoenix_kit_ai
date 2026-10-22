@@ -243,6 +243,24 @@ defmodule PhoenixKitAI.GuardBlocksTest do
       assert {:ok, _} = Guard.block(owner, "ai.playground", user, nil, nil)
     end
 
+    test "a reason of long graphemes is cut to 500 code points, whole graphemes only", %{
+      owner_scope: owner
+    } do
+      # One family emoji is one grapheme of 7 code points; the database counts
+      # code points.
+      family = "👨‍👩‍👧‍👦"
+      user = Fixtures.user_fixture().uuid
+
+      assert {:ok, block} =
+               Guard.block(owner, "test.flagged", user, String.duplicate(family, 600), nil)
+
+      assert length(String.codepoints(block.reason)) <= 500
+      assert block.reason == String.duplicate(family, 71)
+
+      assert {:ok, lifted} = Guard.unblock(owner, block, String.duplicate(family, 600))
+      assert lifted.lift_note == String.duplicate(family, 71)
+    end
+
     test "the reason and the note are cut to 500 characters", %{owner_scope: owner} do
       user = Fixtures.user_fixture().uuid
       {:ok, block} = Guard.block(owner, "test.flagged", user, String.duplicate("é", 600), nil)
@@ -250,6 +268,31 @@ defmodule PhoenixKitAI.GuardBlocksTest do
 
       {:ok, lifted} = Guard.unblock(owner, block, String.duplicate("n", 501))
       assert String.length(lifted.lift_note) == 500
+    end
+  end
+
+  describe "active/2 and active/3" do
+    test "active/2 carries no reason or note; active/3 only for whom may see it", %{
+      owner_scope: owner
+    } do
+      user = Fixtures.user_fixture().uuid
+      {:ok, _} = Guard.block(owner, "agent.chat", user, "PRIVATE-BLOCK", nil)
+      {:ok, _} = Guard.block(owner, "test.flagged", user, "OPEN-BLOCK", nil)
+
+      assert %GuardBlock{reason: nil, lift_note: nil, block_group: "free_text"} =
+               GuardBlocks.active("ai.playground", user)
+
+      assert %GuardBlock{reason: nil} = GuardBlocks.active("test.flagged", user)
+      assert GuardBlocks.active("test.quiet", user) == nil
+
+      ai_only = scope_with(["ai"])
+      assert %GuardBlock{reason: nil} = GuardBlocks.active("agent.chat", user, ai_only)
+      assert %GuardBlock{reason: "OPEN-BLOCK"} = GuardBlocks.active("test.flagged", user, ai_only)
+
+      for viewer <- [owner, admin_scope()] do
+        assert %GuardBlock{reason: "PRIVATE-BLOCK"} =
+                 GuardBlocks.active("agent.chat", user, viewer)
+      end
     end
   end
 

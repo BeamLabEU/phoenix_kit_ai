@@ -719,7 +719,11 @@ Test database `phoenix_kit_ai_test`.
   note. Active blocks are cached per node like the limits (one query a
   minute; dropped on block and lift, here and through the guard topic).
   A private group (any of its tasks `private`) shows its reasons only to
-  `ai.manage` and Owners (`Guard.reasons_visible?/2`, `GuardEvents.flags/3`).
+  `ai.manage` and Owners (`Guard.reasons_visible?/2`, `GuardEvents.flags/3`;
+  `GuardBlocks.active/2` gives the state without the reason or note,
+  `active/3` with them for a viewer allowed to see them). Reasons and notes
+  are cut to 500 code points (what the CHECK counts), never inside a
+  grapheme.
 - Recommendations (`PhoenixKitAI.Recommendations`, live data only — no list
   of "best models", no `recommended:` in declarations): `ranked/2` takes
   the catalogue the capability cache holds for the base URLs the endpoints

@@ -183,6 +183,17 @@ defmodule PhoenixKitAI.GuardOffPurposeTest do
       end
     end
 
+    test "a reason of long graphemes is written, cut to 500 code points" do
+      family = "👨‍👩‍👧‍👦"
+      user = Fixtures.user_fixture().uuid
+
+      assert {:ok, event} =
+               Guard.report_off_purpose("test.flagged", user, String.duplicate(family, 600), "e")
+
+      assert event.reason == String.duplicate(family, 71)
+      assert [_] = events("off_purpose")
+    end
+
     test "the reason is cut to 500 characters" do
       user = Fixtures.user_fixture().uuid
 

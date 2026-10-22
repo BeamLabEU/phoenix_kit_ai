@@ -586,6 +586,10 @@ defmodule PhoenixKitAI.Guard do
     error ->
       Logger.warning("[PhoenixKitAI] off-purpose flag not recorded: #{inspect(error.__struct__)}")
       {:error, :not_recorded}
+  catch
+    :exit, _reason ->
+      Logger.warning("[PhoenixKitAI] off-purpose flag not recorded: exit")
+      {:error, :not_recorded}
   end
 
   defp reported_task(task) do

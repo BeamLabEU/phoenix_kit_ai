@@ -113,16 +113,45 @@ defmodule PhoenixKitAI.GuardBlocks do
     match?({:error, {:task_blocked, _}}, check(Tasks.get(task_key), user_uuid))
   end
 
-  @doc "The active block of `user_uuid` in `task_key`'s group, or nil."
+  @doc """
+  The active block of `user_uuid` in `task_key`'s group, or nil — without
+  its reason and note, for a page or notice that shows the state. With the
+  reason: `active/3`.
+  """
   @spec active(String.t(), term()) :: GuardBlock.t() | nil
-  def active(task_key, user_uuid) when is_binary(user_uuid) do
+  def active(task_key, user_uuid) do
+    case active_block(task_key, user_uuid) do
+      nil -> nil
+      block -> %{block | reason: nil, lift_note: nil}
+    end
+  end
+
+  @doc """
+  The active block as `viewer` (a scope) may see it: its reason only when
+  `PhoenixKitAI.Guard.reasons_visible?/2` allows it (any viewer of a
+  block that is not private; `ai.manage` or an Owner for a private one).
+  """
+  @spec active(String.t(), term(), term()) :: GuardBlock.t() | nil
+  def active(task_key, user_uuid, viewer) do
+    case active_block(task_key, user_uuid) do
+      nil ->
+        nil
+
+      block ->
+        if Guard.reasons_visible?(viewer, block.private),
+          do: block,
+          else: %{block | reason: nil, lift_note: nil}
+    end
+  end
+
+  defp active_block(task_key, user_uuid) when is_binary(user_uuid) do
     case Tasks.get(task_key) do
       nil -> nil
       spec -> Map.get(cached(), {group(spec), user_uuid})
     end
   end
 
-  def active(_task_key, _user_uuid), do: nil
+  defp active_block(_task_key, _user_uuid), do: nil
 
   @doc "The active blocks of a group, newest first (from the database)."
   @spec list_active(String.t()) :: [GuardBlock.t()]
@@ -240,6 +269,7 @@ defmodule PhoenixKitAI.GuardBlocks do
       name: :phoenix_kit_ai_guard_blocks_active_index,
       message: "already blocked"
     )
+    |> Ecto.Changeset.check_constraint(:reason, name: :phoenix_kit_ai_guard_blocks_text_check)
     |> repo().insert()
     |> case do
       {:ok, block} ->
@@ -322,16 +352,37 @@ defmodule PhoenixKitAI.GuardBlocks do
   end
 
   @doc false
-  # A reason or note as kept: trimmed, at most 500 characters, blank as nil.
+  # A reason or note as kept: trimmed, blank as nil, at most 500 code points
+  # — what the database's `char_length` counts; a grapheme (an emoji of
+  # several code points) is never split. A text whose first grapheme alone
+  # is longer is cut by code points.
   @spec text(term()) :: String.t() | nil
   def text(value) when is_binary(value) do
     case String.trim(value) do
       "" -> nil
-      text -> String.slice(text, 0, @text_max)
+      text -> cut(text)
     end
   end
 
   def text(_value), do: nil
+
+  defp cut(text) do
+    {kept, _count} =
+      text
+      |> String.graphemes()
+      |> Enum.reduce_while({[], 0}, fn grapheme, {kept, count} ->
+        count = count + length(String.codepoints(grapheme))
+
+        if count > @text_max,
+          do: {:halt, {kept, count}},
+          else: {:cont, {[grapheme | kept], count}}
+      end)
+
+    case kept do
+      [] -> text |> String.codepoints() |> Enum.take(@text_max) |> Enum.join()
+      kept -> kept |> Enum.reverse() |> Enum.join()
+    end
+  end
 
   defp now, do: DateTime.utc_now() |> DateTime.truncate(:second)
 
