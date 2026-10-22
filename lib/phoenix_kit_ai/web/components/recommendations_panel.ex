@@ -12,6 +12,8 @@ defmodule PhoenixKitAI.Web.Components.RecommendationsPanel do
   without the page that shows it handling an event: the regrouping reads
   the catalogues from the capability cache (`Recommendations.refilter/2`),
   not the journal. The person's filters outlive the page's re-renders.
+  The recommendations it is given are kept in its state, so they hold no
+  catalogue (`for_task/2` never puts one in).
   Rendered through `PhoenixKitAI.Web.Components.TaskModelPicker.recommendations/1`.
   """
 
@@ -234,11 +236,11 @@ defmodule PhoenixKitAI.Web.Components.RecommendationsPanel do
                   :if={Map.get(row, :unverified, []) != []}
                   data-unverified
                   class="badge badge-ghost badge-xs h-auto"
-                  title={CapabilityBadges.unverified_hint()}
+                  title={CapabilityBadges.catalogue_hint()}
                 >
                   ? {gettext("Not verified: %{needs}", needs: Tasks.need_labels(row.unverified))}
                 </span>
-                <CapabilityBadges.badges capabilities={row.capabilities} />
+                <CapabilityBadges.badges capabilities={row.capabilities} context={:catalogue} />
                 <span
                   :if={row.deprecated?}
                   data-lifecycle="deprecated"

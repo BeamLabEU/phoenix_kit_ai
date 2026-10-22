@@ -15,6 +15,13 @@ defmodule PhoenixKitAI.Web.Components.CapabilityBadges do
 
   attr(:capabilities, :any, default: nil)
 
+  attr(:context, :atom,
+    default: :endpoint,
+    values: [:endpoint, :catalogue],
+    doc:
+      "`:catalogue` for a model no endpoint has yet (recommendations): the hint on a \"?\" then only says it is not verified"
+  )
+
   # What the catalogue says the model can do: a badge per capability it has
   # (a grey one with "?" where nobody verified it), one "unknown" badge when
   # nothing is known, and Anthropic's lifecycle when the model is leaving.
@@ -25,7 +32,7 @@ defmodule PhoenixKitAI.Web.Components.CapabilityBadges do
         <span
           data-capability="unknown"
           class="badge badge-ghost badge-xs h-auto"
-          title={unverified_hint()}
+          title={hint(@context)}
         >
           {gettext("Capabilities unknown")}
         </span>
@@ -39,7 +46,7 @@ defmodule PhoenixKitAI.Web.Components.CapabilityBadges do
               "badge badge-xs h-auto",
               if(known?, do: "badge-info badge-outline", else: "badge-ghost")
             ]}
-            title={if(!known?, do: unverified_hint())}
+            title={if(!known?, do: hint(@context))}
           >
             {label(flag)}{if(!known?, do: "?")}
           </span>
@@ -73,4 +80,10 @@ defmodule PhoenixKitAI.Web.Components.CapabilityBadges do
 
   @doc "The hint on a capability nobody verified: where to mark it."
   def unverified_hint, do: gettext("Not verified — mark it on the endpoint")
+
+  @doc "The hint on a capability nobody verified, for a model no endpoint has yet."
+  def catalogue_hint, do: gettext("Not verified")
+
+  defp hint(:catalogue), do: catalogue_hint()
+  defp hint(_context), do: unverified_hint()
 end

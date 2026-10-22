@@ -533,6 +533,11 @@ defmodule PhoenixKitAI.Web.Tasks do
                 "A call is refused when nobody knows whether the model can do what its task needs. Declaring capabilities on an endpoint then needs this permission too."
               )}
             </span>
+            <span id="ai-guard-verified-only-hint" class="text-xs text-base-content/70">
+              {gettext(
+                "Without a catalogue (OpenAI, xAI, Z.ai) the capabilities have to be marked on the endpoint, or the calls are refused."
+              )}
+            </span>
           </span>
         </label>
 

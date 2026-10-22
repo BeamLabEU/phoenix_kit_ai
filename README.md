@@ -193,7 +193,10 @@ no to images, documents, image generation, tools or a JSON schema is
 refused with
 `{:error, {:model_unfit, missing}}`, written as an error row marked
 `refused: true` that no usage sink receives; an unknown capability passes
-unless `ai_guard_verified_models_only` is on. Each usage row carries
+unless `ai_guard_verified_models_only` is on. With it on, providers whose
+model list says nothing about capabilities (OpenAI, xAI, Z.ai) need them
+marked on the endpoint — image generation included — or their calls are
+refused. Each usage row carries
 `metadata.task`, and each result the uuid of its row (`"request_uuid"` /
 `:request_uuid`). «AI → Tasks» lists the declared tasks with their
 endpoints and fitness.

@@ -771,8 +771,8 @@ msgstr "Missing prompt variables: %{vars}"
 msgid "Missing variables:"
 msgstr "Missing variables:"
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:115
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:220
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:117
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:222
 #: lib/phoenix_kit_ai/web/endpoints.ex:61
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:218
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:607
@@ -1046,8 +1046,8 @@ msgstr "Prompt not found"
 msgid "Prompt updated successfully"
 msgstr "Prompt updated successfully"
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:116
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:221
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:118
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:223
 #: lib/phoenix_kit_ai/web/endpoint_form.html.heex:62
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:216
 #, elixir-autogen, elixir-format
@@ -1091,7 +1091,7 @@ msgstr "Request timeout"
 
 #: lib/phoenix_kit_ai/web/endpoints.ex:62
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:221
-#: lib/phoenix_kit_ai/web/tasks.ex:822
+#: lib/phoenix_kit_ai/web/tasks.ex:827
 #, elixir-autogen, elixir-format
 msgid "Requests"
 msgstr "Requests"
@@ -1388,7 +1388,7 @@ msgstr "Token Limit"
 #: lib/phoenix_kit_ai/web/endpoints.ex:63
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:224
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:615
-#: lib/phoenix_kit_ai/web/tasks.ex:823
+#: lib/phoenix_kit_ai/web/tasks.ex:828
 #, elixir-autogen, elixir-format
 msgid "Tokens"
 msgstr "Tokens"
@@ -1848,8 +1848,8 @@ msgid "Please add at least one image"
 msgstr "Please add at least one image"
 
 #: lib/phoenix_kit_ai/web/playground.html.heex:279
-#: lib/phoenix_kit_ai/web/tasks.ex:558
-#: lib/phoenix_kit_ai/web/tasks.ex:742
+#: lib/phoenix_kit_ai/web/tasks.ex:563
+#: lib/phoenix_kit_ai/web/tasks.ex:747
 #, elixir-autogen, elixir-format
 msgid "Remove"
 msgstr "Remove"
@@ -2409,7 +2409,7 @@ msgstr "Standard"
 msgid "The request could not be completed"
 msgstr "The request could not be completed"
 
-#: lib/phoenix_kit_ai/web/components/capability_badges.ex:30
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:37
 #, elixir-autogen, elixir-format
 msgid "Capabilities unknown"
 msgstr "Capabilities unknown"
@@ -2424,24 +2424,24 @@ msgstr "Declared capabilities"
 msgid "Declared, but the catalogue says this model cannot: %{capabilities}. The catalogue's answer is used."
 msgstr "Declared, but the catalogue says this model cannot: %{capabilities}. The catalogue's answer is used."
 
-#: lib/phoenix_kit_ai/web/components/capability_badges.ex:68
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:75
 #, elixir-autogen, elixir-format
 msgid "Images"
 msgstr "Images"
 
 #: lib/phoenix_kit_ai/tasks.ex:250
-#: lib/phoenix_kit_ai/web/components/capability_badges.ex:72
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:79
 #, elixir-autogen, elixir-format
 msgid "JSON schema"
 msgstr "JSON schema"
 
-#: lib/phoenix_kit_ai/web/components/capability_badges.ex:61
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:68
 #, elixir-autogen, elixir-format
 msgid "Retired"
 msgstr "Retired"
 
-#: lib/phoenix_kit_ai/web/components/capability_badges.ex:54
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:247
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:61
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:249
 #, elixir-autogen, elixir-format
 msgid "Retiring"
 msgstr "Retiring"
@@ -2451,7 +2451,7 @@ msgstr "Retiring"
 msgid "The provider does not report what this model can do. Tick what it can — the catalogue's answer, once it has one, replaces yours."
 msgstr "The provider does not report what this model can do. Tick what it can — the catalogue's answer, once it has one, replaces yours."
 
-#: lib/phoenix_kit_ai/web/components/capability_badges.ex:71
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:78
 #, elixir-autogen, elixir-format
 msgid "Tools"
 msgstr "Tools"
@@ -2467,7 +2467,7 @@ msgid "Endpoints in use:"
 msgstr "Endpoints in use:"
 
 #: lib/phoenix_kit_ai/web/components/task_model_picker.ex:108
-#: lib/phoenix_kit_ai/web/tasks.ex:860
+#: lib/phoenix_kit_ai/web/tasks.ex:865
 #, elixir-autogen, elixir-format
 msgid "Fits"
 msgstr "Fits"
@@ -2483,7 +2483,7 @@ msgid "JSON"
 msgstr "JSON"
 
 #: lib/phoenix_kit_ai/web/components/task_model_picker.ex:118
-#: lib/phoenix_kit_ai/web/tasks.ex:870
+#: lib/phoenix_kit_ai/web/tasks.ex:875
 #, elixir-autogen, elixir-format
 msgid "Lacks: %{needs}"
 msgstr "Lacks: %{needs}"
@@ -2518,9 +2518,9 @@ msgstr "No provider of this model accepts all the request's parameters (%{params
 msgid "None chosen; the caller names an endpoint per call."
 msgstr "None chosen; the caller names an endpoint per call."
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:239
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:241
 #: lib/phoenix_kit_ai/web/components/task_model_picker.ex:128
-#: lib/phoenix_kit_ai/web/tasks.ex:880
+#: lib/phoenix_kit_ai/web/tasks.ex:885
 #, elixir-autogen, elixir-format
 msgid "Not verified: %{needs}"
 msgstr "Not verified: %{needs}"
@@ -2598,87 +2598,87 @@ msgstr "Let an administrator try endpoints and prompts by hand."
 msgid "Translate the text fields of a record from one language into another, keeping the field structure."
 msgstr "Translate the text fields of a record from one language into another, keeping the field structure."
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:107
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:109
 #, elixir-autogen, elixir-format
 msgid "Already worked in this task"
 msgstr "Already worked in this task"
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:118
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:120
 #, elixir-autogen, elixir-format
 msgid "Average cost"
 msgstr "Average cost"
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:120
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:122
 #, elixir-autogen, elixir-format
 msgid "Average latency"
 msgstr "Average latency"
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:117
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:119
 #, elixir-autogen, elixir-format
 msgid "Calls"
 msgstr "Calls"
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:223
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:225
 #, elixir-autogen, elixir-format
 msgid "Context"
 msgstr "Context"
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:264
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:266
 #, elixir-autogen, elixir-format
 msgid "Create endpoint with this model"
 msgstr "Create endpoint with this model"
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:119
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:121
 #, elixir-autogen, elixir-format
 msgid "Errors"
 msgstr "Errors"
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:310
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:312
 #, elixir-autogen, elixir-format
 msgid "Input, per 1M tokens"
 msgstr "Input, per 1M tokens"
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:362
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:364
 #, elixir-autogen, elixir-format
 msgid "JSON schema only through OpenRouter"
 msgstr "JSON schema only through OpenRouter"
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:109
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:111
 #, elixir-autogen, elixir-format
 msgid "No calls in the last 30 days."
 msgstr "No calls in the last 30 days."
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:159
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:161
 #, elixir-autogen, elixir-format
 msgid "No model of the connected catalogues is known to fit this task."
 msgstr "No model of the connected catalogues is known to fit this task."
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:290
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:292
 #, elixir-autogen, elixir-format
 msgid "Price of a call of about %{input} input and %{output} output tokens, as the task declares."
 msgstr "Price of a call of about %{input} input and %{output} output tokens, as the task declares."
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:298
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:300
 #, elixir-autogen, elixir-format
 msgid "Price of a call of about %{input} input and %{output} output tokens, the median of this task's calls in the last 30 days."
 msgstr "Price of a call of about %{input} input and %{output} output tokens, the median of this task's calls in the last 30 days."
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:84
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:86
 #, elixir-autogen, elixir-format
 msgid "Recommended models"
 msgstr "Recommended models"
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:306
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:308
 #, elixir-autogen, elixir-format
 msgid "The size of a call is not known yet, so the models are ranked by the input price alone (rough)."
 msgstr "The size of a call is not known yet, so the models are ranked by the input price alone (rough)."
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:358
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:360
 #, elixir-autogen, elixir-format
 msgid "alias model, may change"
 msgstr "alias model, may change"
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:359
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:361
 #, elixir-autogen, elixir-format
 msgid "cost is not counted"
 msgstr "cost is not counted"
@@ -2693,17 +2693,17 @@ msgstr "no %{needs}"
 msgid "not verified"
 msgstr "not verified"
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:319
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:321
 #, elixir-autogen, elixir-format
 msgid "price not known"
 msgstr "price not known"
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:311
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:313
 #, elixir-autogen, elixir-format
 msgid "≈ Price per call"
 msgstr "≈ Price per call"
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:357
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:359
 #, elixir-autogen, elixir-format
 msgid "free — the operator's limits and terms apply"
 msgstr "free — the operator's limits and terms apply"
@@ -2733,7 +2733,7 @@ msgstr "A user"
 msgid "AI task guard"
 msgstr "AI task guard"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:572
+#: lib/phoenix_kit_ai/web/tasks.ex:577
 #, elixir-autogen, elixir-format
 msgid "Add a person…"
 msgstr "Add a person…"
@@ -2748,7 +2748,7 @@ msgstr "An AI spending cap (%{cap}) refused a call. Calls are refused until spen
 msgid "An AI task is near or at a limit, a spending cap refused a call, or a task's model no longer fits it"
 msgstr "An AI task is near or at a limit, a spending cap refused a call, or a task's model no longer fits it"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:787
+#: lib/phoenix_kit_ai/web/tasks.ex:792
 #, elixir-autogen, elixir-format
 msgid "Cancel"
 msgstr "Cancel"
@@ -2763,28 +2763,28 @@ msgstr "Change the limits of AI tasks, who is told about them, and which models 
 msgid "Changing the guard needs the “Manage the AI task guard” permission."
 msgstr "Changing the guard needs the “Manage the AI task guard” permission."
 
-#: lib/phoenix_kit_ai/web/tasks.ex:664
+#: lib/phoenix_kit_ai/web/tasks.ex:669
 #, elixir-autogen, elixir-format
 msgid "Days and months follow the site time zone. An empty limit is none; 0 allows nothing. Calls running at the same time can each go past a limit by their own size."
 msgstr "Days and months follow the site time zone. An empty limit is none; 0 allows nothing. Calls running at the same time can each go past a limit by their own size."
 
-#: lib/phoenix_kit_ai/web/tasks.ex:615
+#: lib/phoenix_kit_ai/web/tasks.ex:620
 #, elixir-autogen, elixir-format
 msgid "Each user, a day"
 msgstr "Each user, a day"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:616
+#: lib/phoenix_kit_ai/web/tasks.ex:621
 #, elixir-autogen, elixir-format
 msgid "Each user, a month"
 msgstr "Each user, a month"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:548
+#: lib/phoenix_kit_ai/web/tasks.ex:553
 #, elixir-autogen, elixir-format
 msgid "Every Owner"
 msgstr "Every Owner"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:693
-#: lib/phoenix_kit_ai/web/tasks.ex:718
+#: lib/phoenix_kit_ai/web/tasks.ex:698
+#: lib/phoenix_kit_ai/web/tasks.ex:723
 #, elixir-autogen, elixir-format
 msgid "Forgive"
 msgstr "Forgive"
@@ -2794,12 +2794,12 @@ msgstr "Forgive"
 msgid "Limit forgiven"
 msgstr "Limit forgiven"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:602
+#: lib/phoenix_kit_ai/web/tasks.ex:607
 #, elixir-autogen, elixir-format
 msgid "Limits and use:"
 msgstr "Limits and use:"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:542
+#: lib/phoenix_kit_ai/web/tasks.ex:547
 #, elixir-autogen, elixir-format
 msgid "Limits near or reached, spending caps and models that stop fitting are sent to these people (and to the people a task names). Nobody chosen: every Owner."
 msgstr "Limits near or reached, spending caps and models that stop fitting are sent to these people (and to the people a task names). Nobody chosen: every Owner."
@@ -2814,18 +2814,18 @@ msgstr "Limits saved"
 msgid "Manage the AI task guard"
 msgstr "Manage the AI task guard"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:821
+#: lib/phoenix_kit_ai/web/tasks.ex:826
 #, elixir-autogen, elixir-format
 msgid "Money"
 msgstr "Money"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:575
-#: lib/phoenix_kit_ai/web/tasks.ex:757
+#: lib/phoenix_kit_ai/web/tasks.ex:580
+#: lib/phoenix_kit_ai/web/tasks.ex:762
 #, elixir-autogen, elixir-format
 msgid "No matches"
 msgstr "No matches"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:725
+#: lib/phoenix_kit_ai/web/tasks.ex:730
 #, elixir-autogen, elixir-format
 msgid "None"
 msgstr "None"
@@ -2840,7 +2840,7 @@ msgstr "Only verified models"
 msgid "Only verified models are allowed: declaring capabilities needs the “Manage the AI task guard” permission."
 msgstr "Only verified models are allowed: declaring capabilities needs the “Manage the AI task guard” permission."
 
-#: lib/phoenix_kit_ai/web/tasks.ex:699
+#: lib/phoenix_kit_ai/web/tasks.ex:704
 #, elixir-autogen, elixir-format
 msgid "People at a limit now:"
 msgstr "People at a limit now:"
@@ -2855,33 +2855,33 @@ msgstr "Personal limits removed"
 msgid "Personal limits saved"
 msgstr "Personal limits saved"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:724
+#: lib/phoenix_kit_ai/web/tasks.ex:729
 #, elixir-autogen, elixir-format
 msgid "Personal limits:"
 msgstr "Personal limits:"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:681
+#: lib/phoenix_kit_ai/web/tasks.ex:686
 #, elixir-autogen, elixir-format
 msgid "Reached: %{limit}"
 msgstr "Reached: %{limit}"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:784
+#: lib/phoenix_kit_ai/web/tasks.ex:789
 #, elixir-autogen, elixir-format
 msgid "Save"
 msgstr "Save"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:653
+#: lib/phoenix_kit_ai/web/tasks.ex:658
 #, elixir-autogen, elixir-format
 msgid "Save limits"
 msgstr "Save limits"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:574
-#: lib/phoenix_kit_ai/web/tasks.ex:756
+#: lib/phoenix_kit_ai/web/tasks.ex:579
+#: lib/phoenix_kit_ai/web/tasks.ex:761
 #, elixir-autogen, elixir-format
 msgid "Searching…"
 msgstr "Searching…"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:754
+#: lib/phoenix_kit_ai/web/tasks.ex:759
 #, elixir-autogen, elixir-format
 msgid "Set personal limits for…"
 msgstr "Set personal limits for…"
@@ -2891,12 +2891,12 @@ msgstr "Set personal limits for…"
 msgid "Task guard"
 msgstr "Task guard"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:613
+#: lib/phoenix_kit_ai/web/tasks.ex:618
 #, elixir-autogen, elixir-format
 msgid "Task, a day"
 msgstr "Task, a day"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:614
+#: lib/phoenix_kit_ai/web/tasks.ex:619
 #, elixir-autogen, elixir-format
 msgid "Task, a month"
 msgstr "Task, a month"
@@ -2931,22 +2931,22 @@ msgstr "This AI task has reached its %{name}"
 msgid "Too many watchers"
 msgstr "Too many watchers"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:612
+#: lib/phoenix_kit_ai/web/tasks.ex:617
 #, elixir-autogen, elixir-format
 msgid "Used this month"
 msgstr "Used this month"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:611
+#: lib/phoenix_kit_ai/web/tasks.ex:616
 #, elixir-autogen, elixir-format
 msgid "Used today"
 msgstr "Used today"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:657
+#: lib/phoenix_kit_ai/web/tasks.ex:662
 #, elixir-autogen, elixir-format
 msgid "Warn at %{percent}%"
 msgstr "Warn at %{percent}%"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:645
+#: lib/phoenix_kit_ai/web/tasks.ex:650
 #, elixir-autogen, elixir-format
 msgid "Warn at, %"
 msgstr "Warn at, %"
@@ -2956,7 +2956,7 @@ msgstr "Warn at, %"
 msgid "Watchers saved"
 msgstr "Watchers saved"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:540
+#: lib/phoenix_kit_ai/web/tasks.ex:545
 #, elixir-autogen, elixir-format
 msgid "Who is told"
 msgstr "Who is told"
@@ -3042,22 +3042,22 @@ msgstr "the whole site"
 msgid "That person was not found"
 msgstr "That person was not found"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:669
+#: lib/phoenix_kit_ai/web/tasks.ex:674
 #, elixir-autogen, elixir-format
 msgid "Money is not counted for chat calls on %{endpoints}: the provider does not report what a call cost. Requests and tokens still apply."
 msgstr "Money is not counted for chat calls on %{endpoints}: the provider does not report what a call cost. Requests and tokens still apply."
 
-#: lib/phoenix_kit_ai/web/components/capability_badges.ex:69
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:76
 #, elixir-autogen, elixir-format
 msgid "Documents"
 msgstr "Documents"
 
-#: lib/phoenix_kit_ai/web/components/capability_badges.ex:70
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:77
 #, elixir-autogen, elixir-format
 msgid "Image generation"
 msgstr "Image generation"
 
-#: lib/phoenix_kit_ai/web/components/capability_badges.ex:75
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:82
 #, elixir-autogen, elixir-format
 msgid "Not verified — mark it on the endpoint"
 msgstr "Not verified — mark it on the endpoint"
@@ -3072,27 +3072,37 @@ msgstr "documents"
 msgid "image generation"
 msgstr "image generation"
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:168
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:170
 #, elixir-autogen, elixir-format
 msgid "Can do everything needed (verified)"
 msgstr "Can do everything needed (verified)"
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:190
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:192
 #, elixir-autogen, elixir-format
 msgid "Experimental (%{count})"
 msgstr "Experimental (%{count})"
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:178
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:180
 #, elixir-autogen, elixir-format
 msgid "May be able to (not verified)"
 msgstr "May be able to (not verified)"
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:88
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:90
 #, elixir-autogen, elixir-format
 msgid "Must handle:"
 msgstr "Must handle:"
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:194
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:196
 #, elixir-autogen, elixir-format
 msgid "Previews, betas, free variants, aliases and models without a price: they can change or disappear."
 msgstr "Previews, betas, free variants, aliases and models without a price: they can change or disappear."
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:85
+#, elixir-autogen, elixir-format
+msgid "Not verified"
+msgstr "Not verified"
+
+#: lib/phoenix_kit_ai/web/tasks.ex:537
+#, elixir-autogen, elixir-format
+msgid "Without a catalogue (OpenAI, xAI, Z.ai) the capabilities have to be marked on the endpoint, or the calls are refused."
+msgstr "Without a catalogue (OpenAI, xAI, Z.ai) the capabilities have to be marked on the endpoint, or the calls are refused."

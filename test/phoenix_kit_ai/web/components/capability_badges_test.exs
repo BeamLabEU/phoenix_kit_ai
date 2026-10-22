@@ -44,6 +44,28 @@ defmodule PhoenixKitAI.Web.Components.CapabilityBadgesTest do
     assert LazyHTML.attribute(unknown, "title") == ["Not verified — mark it on the endpoint"]
   end
 
+  test "for a catalogue model, which has no endpoint yet, the hint only says not verified" do
+    html =
+      render_component(&CapabilityBadges.badges/1, %{
+        capabilities: %Capabilities{vision: :yes, file_input: :unknown},
+        context: :catalogue
+      })
+
+    assert [unknown] = query(html, "[data-capability=file_input][data-state=unknown]")
+    assert LazyHTML.attribute(unknown, "title") == ["Not verified"]
+
+    assert [all] =
+             query(
+               render_component(&CapabilityBadges.badges/1, %{
+                 capabilities: %Capabilities{},
+                 context: :catalogue
+               }),
+               "[data-capability=unknown]"
+             )
+
+    assert LazyHTML.attribute(all, "title") == ["Not verified"]
+  end
+
   test "the labels speak the module's other locales" do
     for {locale, expected} <- [
           {"ru",

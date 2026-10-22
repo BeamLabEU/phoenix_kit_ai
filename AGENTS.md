@@ -434,7 +434,11 @@ provided the API exposes `<base_url>/chat/completions` and `/models`.
   has none). DeepSeek's `/models` (input/output modalities, context window)
   and Mistral's `/v1/models` (`capabilities.vision`, `function_calling`,
   context length) are catalogues too; OpenAI, xAI and Z.ai list no
-  capabilities (`:unknown` unless declared).
+  capabilities (`:unknown` unless declared). With "only verified models"
+  on, an `:unknown` need refuses the call — image generation included
+  (`generate_image` / `edit_image` / `process_image` need `:image_output`),
+  so on OpenAI / xAI / Z.ai endpoints mark "Image generation" (and the
+  other capabilities their tasks need) on the endpoint first.
 - The `base_url` guard resolves a name only when the URL is being changed,
   for two seconds at most, never for the provider's registry default and
   never from `change_endpoint/2` (a form's per-keystroke changeset); a name

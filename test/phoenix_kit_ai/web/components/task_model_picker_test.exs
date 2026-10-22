@@ -56,7 +56,6 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPickerTest do
     Map.merge(
       %{
         spec: %PhoenixKitAI.TaskSpec{key: "test.photo", needs: [:vision, :json_schema]},
-        catalogue: [],
         filters: [:vision],
         estimate: :declared,
         tokens: {10_000, 1_000},
@@ -231,6 +230,11 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPickerTest do
     test "shows the capability badges of each recommended model and a free one's caveat" do
       html = render_picker(%{})
       row = "[data-recommended-model='google/gemini-flash']"
+
+      # No endpoint has the model yet: nothing to mark, so the hint only says so.
+      assert doc(html)
+             |> LazyHTML.query("#{row} [data-capability=json_schema][data-state=unknown]")
+             |> LazyHTML.attribute("title") == ["Not verified"]
 
       assert present?(html, "#{row} [data-capability=vision][data-state=yes]")
       assert present?(html, "#{row} [data-capability=tools]")

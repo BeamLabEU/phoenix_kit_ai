@@ -69,8 +69,8 @@ defmodule PhoenixKitAI.Recommendations do
   @doc """
   Everything for a task (a key or a `%TaskSpec{}`): the groups of
   `ranked/2` with its `filters`, `estimate` and `tokens`, and `worked`
-  (`worked/2`). It also keeps `spec` and the injected `catalogue` (nil
-  unless the `:catalogue` option was given) for `refilter/2`.
+  (`worked/2`). It also keeps `spec` for `refilter/2` — but not the
+  catalogue: a panel keeps the result in its state.
   """
   @spec for_task(String.t() | TaskSpec.t(), keyword()) :: map()
   def for_task(task, opts \\ []) do
@@ -98,7 +98,6 @@ defmodule PhoenixKitAI.Recommendations do
       recs =
         %{
           spec: spec,
-          catalogue: Keyword.get(opts, :catalogue),
           estimate: estimate,
           tokens: tokens,
           worked: Map.get(worked, spec.key, [])
@@ -130,13 +129,16 @@ defmodule PhoenixKitAI.Recommendations do
 
   @doc """
   The recommendations of `for_task/2` regrouped for other `filters`, from
-  the catalogues as the cache holds them now (or the injected one); the
-  journal part and the estimate are kept, nothing is asked of the journal.
+  the catalogues as the cache holds them now (or `:catalogue`, as in
+  `cheapest/2`); the journal part and the estimate are kept, nothing is
+  asked of the journal.
   """
-  @spec refilter(map(), [atom()]) :: map()
-  def refilter(%{spec: spec, tokens: tokens} = recs, filters) do
-    sources = recs[:catalogue] || sources()
-    Map.merge(recs, groups(spec, sources, tokens, filters(spec, filters: filters), []))
+  @spec refilter(map(), [atom()], keyword()) :: map()
+  def refilter(%{spec: spec, tokens: tokens} = recs, filters, opts \\ []) do
+    Map.merge(
+      recs,
+      groups(spec, sources_for(opts), tokens, filters(spec, filters: filters), opts)
+    )
   end
 
   @doc """

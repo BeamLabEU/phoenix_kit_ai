@@ -230,15 +230,19 @@ defmodule PhoenixKitAI.RecommendationsGroupsTest do
 
       recs = Recommendations.for_task("test.sized", catalogue: catalogue)
       assert %{filters: [:vision], verified: [%{model: "v/sees"}]} = recs
+      # The catalogue is not kept in the result (a panel's state holds it).
+      refute Map.has_key?(recs, :catalogue)
 
       assert %{filters: [:file_input], verified: [%{model: "v/reads"}]} =
-               refiltered = Recommendations.refilter(recs, [:file_input])
+               refiltered = Recommendations.refilter(recs, [:file_input], catalogue: catalogue)
 
       # The journal part and the estimate are kept.
       assert refiltered.worked == recs.worked
       assert refiltered.estimate == recs.estimate
 
-      assert %{filters: [], verified: both} = Recommendations.refilter(recs, [])
+      assert %{filters: [], verified: both} =
+               Recommendations.refilter(recs, [], catalogue: catalogue)
+
       assert Enum.sort(ids(both)) == ["v/reads", "v/sees"]
     end
 
