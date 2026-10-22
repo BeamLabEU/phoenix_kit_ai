@@ -349,6 +349,27 @@ defmodule PhoenixKitAI.GuardTest do
       assert_received {:post, _, %{"model" => "vendor/vision"}}
     end
 
+    test "chat ignores model: (it sends the endpoint's model), so the endpoint's model is checked" do
+      stub()
+      vision = endpoint("vendor/vision")
+      text = endpoint("vendor/text-only")
+      start_catalogue()
+      part = %{"type" => "image_url", "image_url" => %{"url" => @image_url}}
+
+      # A vision model named in model: does not let an image reach a text model.
+      assert {:error, {:model_unfit, [:vision]}} =
+               PhoenixKitAI.complete(text.uuid, image_message(part), model: "vendor/vision")
+
+      refute_received {:post, _, _}
+      assert [%{model: "vendor/text-only", metadata: %{"refused" => true}}] = rows(text)
+
+      # A text model named in model: does not refuse a call that goes to a vision model.
+      assert {:ok, _} =
+               PhoenixKitAI.complete(vision.uuid, image_message(part), model: "vendor/text-only")
+
+      assert_received {:post, _, %{"model" => "vendor/vision"}}
+    end
+
     test ":json is soft: a model without JSON gets the call and the row a warning" do
       stub(text_answer(~s({"a": 1})))
       ep = endpoint("vendor/text-only")

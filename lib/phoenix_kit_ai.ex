@@ -4167,6 +4167,16 @@ defmodule PhoenixKitAI do
 
   # Private helpers for completion API
 
+  # The verbs that send a call's `model:` instead of the endpoint's model.
+  @model_override_verbs [
+    :describe_image,
+    :extract_text,
+    :compare_images,
+    :generate_image,
+    :edit_image,
+    :process_image
+  ]
+
   # Every provider-calling verb passes here, in this order: the endpoint
   # must be usable; [the task's block on the user — a later part of the
   # guard — goes here]; the model must fit what the call and its task need
@@ -4186,6 +4196,10 @@ defmodule PhoenixKitAI do
   # not a call that was turned away).
   defp authorize(endpoint, opts, verb, implied, spends? \\ true) do
     with {:ok, endpoint} <- validate_endpoint(endpoint) do
+      # The model checked (and named on a refusal row) is the one the verb
+      # sends: chat, embeddings and speech always send the endpoint's.
+      opts = if verb in @model_override_verbs, do: opts, else: Keyword.delete(opts, :model)
+
       case admit(endpoint, opts, implied, spends?) do
         {:ok, _admission} = admitted -> admitted
         {:error, reason} -> refuse(endpoint, opts, verb, reason)
