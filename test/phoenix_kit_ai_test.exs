@@ -192,11 +192,12 @@ defmodule PhoenixKitAITest do
   end
 
   describe "children/0" do
-    test "starts the realtime session DynamicSupervisor and the request cache" do
+    test "starts the realtime session DynamicSupervisor, the request cache and the capability cache" do
       assert [
                {DynamicSupervisor,
                 name: PhoenixKitAI.Realtime.Supervisor, strategy: :one_for_one},
-               PhoenixKitAI.RequestCache
+               PhoenixKitAI.RequestCache,
+               PhoenixKitAI.Capabilities
              ] = PhoenixKitAI.children()
     end
   end

@@ -16,6 +16,8 @@ defmodule PhoenixKitAI.AIModel do
   - `pricing` - Pricing info map with `"prompt"` and `"completion"` keys
   - `architecture` - Architecture info map with `"modality"` key
   - `top_provider` - Top provider metadata map
+  - `capabilities` - `PhoenixKitAI.Capabilities` read from the catalogue row
+    (all `:unknown` for a provider without a catalogue)
   """
 
   @enforce_keys [:id]
@@ -25,6 +27,7 @@ defmodule PhoenixKitAI.AIModel do
     :description,
     :context_length,
     :max_completion_tokens,
+    :capabilities,
     supported_parameters: [],
     pricing: %{},
     architecture: %{},
@@ -40,6 +43,7 @@ defmodule PhoenixKitAI.AIModel do
           supported_parameters: [String.t()],
           pricing: map(),
           architecture: map(),
-          top_provider: map()
+          top_provider: map(),
+          capabilities: PhoenixKitAI.Capabilities.t() | nil
         }
 end

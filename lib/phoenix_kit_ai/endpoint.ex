@@ -32,6 +32,9 @@ defmodule PhoenixKitAI.Endpoint do
     - For OpenRouter: `http_referer`, `x_title` headers
     - For TTS: `voice` — default voice / voice id used by `PhoenixKitAI.speak/3`
       when the caller passes no explicit voice
+    - `capabilities` — what an admin declared the model can do where its
+      provider's catalogue says nothing: `%{"model" => id, "vision" => "yes",
+      ...}`, valid for that model only (see `PhoenixKitAI.Capabilities`)
 
   ### Model Configuration
   - `model`: AI model identifier (e.g., "anthropic/claude-3-haiku")
@@ -240,7 +243,27 @@ defmodule PhoenixKitAI.Endpoint do
     |> maybe_set_default_base_url()
     |> validate_base_url(Keyword.get(opts, :resolve_base_url, true))
     |> maybe_clear_legacy_api_key()
+    |> drop_stale_capabilities()
     |> unique_constraint(:name)
+  end
+
+  # Capabilities declared in `provider_settings["capabilities"]` describe
+  # the model they name (`"model" => id`) and nothing else. The endpoint
+  # form merges the submitted settings into the stored ones, so after a
+  # model change the old declaration would otherwise ride along and be
+  # read as the new model's; it is dropped here, whatever built the params.
+  defp drop_stale_capabilities(changeset) do
+    case get_field(changeset, :provider_settings) do
+      %{"capabilities" => declaration} = settings ->
+        if is_map(declaration) and declaration["model"] == get_field(changeset, :model) do
+          changeset
+        else
+          put_change(changeset, :provider_settings, Map.delete(settings, "capabilities"))
+        end
+
+      _ ->
+        changeset
+    end
   end
 
   # When an endpoint is being linked to an Integrations row (via

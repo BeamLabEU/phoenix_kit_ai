@@ -121,6 +121,7 @@ defmodule PhoenixKitAI do
   alias PhoenixKit.Utils.Reorder
   alias PhoenixKit.Utils.UUID, as: UUIDUtils
   alias PhoenixKitAI.{Budget, Endpoint, Prompt, Provider, RequestCache, StructuredOutput}
+  alias PhoenixKitAI.Capabilities
   alias PhoenixKitAI.Images.{ImageModel, ImageModels, Operations}
   alias PhoenixKitAI.Request
   alias PhoenixKitAI.TtsPricing
@@ -1070,9 +1071,19 @@ defmodule PhoenixKitAI do
   def children do
     [
       {DynamicSupervisor, name: PhoenixKitAI.Realtime.Supervisor, strategy: :one_for_one},
-      PhoenixKitAI.RequestCache
+      PhoenixKitAI.RequestCache,
+      PhoenixKitAI.Capabilities
     ]
   end
+
+  @doc """
+  The module's own migration chain (`PhoenixKitAI.Migrations`), run by
+  `mix phoenix_kit.update` after core's. It holds only tables core does not
+  create; the endpoint, prompt and request tables stay in core's chain.
+  """
+  @impl PhoenixKit.Module
+  @spec migration_module() :: module()
+  def migration_module, do: PhoenixKitAI.Migrations
 
   @impl PhoenixKit.Module
   @spec required_integrations() :: [String.t()]
@@ -1373,6 +1384,8 @@ defmodule PhoenixKitAI do
     |> repo().insert(log: false)
     |> broadcast_endpoint_change(:endpoint_created)
     |> log_endpoint_activity("endpoint.created", opts)
+    |> log_capabilities_declaration(%Endpoint{}, opts)
+    |> refresh_capabilities(true)
     |> log_failed_endpoint_mutation("endpoint.created", opts)
   end
 
@@ -1399,6 +1412,8 @@ defmodule PhoenixKitAI do
     |> broadcast_endpoint_change(:endpoint_updated)
     |> maybe_log_endpoint_update(has_changes, opts)
     |> maybe_log_endpoint_toggle(was_enabled, opts)
+    |> log_capabilities_declaration(endpoint, opts)
+    |> refresh_capabilities(catalogue_inputs_changed?(changeset))
     |> log_failed_endpoint_mutation("endpoint.updated", opts)
   end
 
@@ -1407,6 +1422,52 @@ defmodule PhoenixKitAI do
   end
 
   defp maybe_log_endpoint_update(result, _has_changes, _opts), do: result
+
+  # A saved endpoint whose model or provider is new to the capability cache
+  # has its catalogue read right away, not at the next 6-hourly refresh, so
+  # its snapshot row exists before a restart could need it.
+  defp refresh_capabilities({:ok, _} = result, true) do
+    Capabilities.refresh_after_change()
+    result
+  end
+
+  defp refresh_capabilities(result, _changed?), do: result
+
+  defp catalogue_inputs_changed?(changeset) do
+    Enum.any?(
+      [:model, :provider, :base_url, :integration_uuid],
+      &Map.has_key?(changeset.changes, &1)
+    )
+  end
+
+  # Declaring capabilities on an endpoint (`provider_settings["capabilities"]`)
+  # is logged on its own, with the flags, whenever the stored declaration
+  # changes — set, changed, or removed (a model change removes it).
+  defp log_capabilities_declaration({:ok, endpoint} = result, before, opts) do
+    old = capabilities_declaration(before)
+    new = capabilities_declaration(endpoint)
+
+    if old != new do
+      metadata =
+        case new do
+          nil -> %{"name" => endpoint.name, "model" => endpoint.model, "cleared" => true}
+          declaration -> Map.put(declaration, "name", endpoint.name)
+        end
+
+      log_activity("endpoint.capabilities_declared", "endpoint", endpoint.uuid, opts, metadata)
+    end
+
+    result
+  end
+
+  defp log_capabilities_declaration(result, _before, _opts), do: result
+
+  defp capabilities_declaration(%Endpoint{provider_settings: %{"capabilities" => declaration}})
+       when is_map(declaration) do
+    Map.take(declaration, ["model" | Enum.map(Capabilities.declarable(), &Atom.to_string/1)])
+  end
+
+  defp capabilities_declaration(_endpoint), do: nil
 
   @doc """
   Deletes an AI endpoint.
