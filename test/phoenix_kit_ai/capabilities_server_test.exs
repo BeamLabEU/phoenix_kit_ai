@@ -528,8 +528,20 @@ defmodule PhoenixKitAI.CapabilitiesServerTest do
     end
 
     test "a 401 tries the next key of the same base URL", %{stub: stub} do
-      openrouter_endpoint("~google/gemini-flash-latest", %{api_key: "sk-or-v1-revoked"})
-      openrouter_endpoint("~deepseek/deepseek-v4-flash-latest", %{api_key: "sk-or-v1-good"})
+      a = openrouter_endpoint("~google/gemini-flash-latest")
+      b = openrouter_endpoint("~deepseek/deepseek-v4-flash-latest")
+
+      # Keys are tried in uuid order. Two endpoints created in the same
+      # millisecond can sort either way, so the revoked key goes to whichever
+      # sorts first and the good key is the one tried after it.
+      [first, second] = Enum.sort([a.uuid, b.uuid])
+
+      set_key = fn uuid, key ->
+        TestRepo.update_all(from(e in Endpoint, where: e.uuid == ^uuid), set: [api_key: key])
+      end
+
+      set_key.(first, "sk-or-v1-revoked")
+      set_key.(second, "sk-or-v1-good")
       test_pid = self()
 
       Req.Test.stub(stub, fn conn ->
