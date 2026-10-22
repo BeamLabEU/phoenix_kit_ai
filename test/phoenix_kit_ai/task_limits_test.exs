@@ -152,6 +152,16 @@ defmodule PhoenixKitAI.TaskLimitsTest do
   defp event_inserts(sql),
     do: Enum.filter(sql, &(&1 =~ ~s(INSERT INTO "phoenix_kit_ai_guard_events")))
 
+  defp activities(action) do
+    TestRepo.all(
+      from(a in "phoenix_kit_activities",
+        where: a.action == ^action,
+        order_by: [asc: a.inserted_at, asc: a.uuid],
+        select: a.metadata
+      )
+    )
+  end
+
   defp notifications_of(user_uuid) do
     TestRepo.all(from(n in Notification, where: n.recipient_uuid == ^user_uuid))
   end
@@ -188,6 +198,18 @@ defmodule PhoenixKitAI.TaskLimitsTest do
       usage = TaskLimits.usage("test.limited", nil, now)
       assert usage.task.money == %{day: 11, month: 11}
       assert usage.task.tokens == %{day: 5, month: 5}
+    end
+  end
+
+  describe "a day with a clock change" do
+    test "the local day of a DST switch is 25 hours long" do
+      {:ok, _} = PhoenixKit.Settings.update_setting("time_zone", "Europe/Tallinn")
+      # Clocks go back from 04:00 EEST to 03:00 EET on 2026-10-25.
+      %{day: {from, to}} = TaskLimits.windows(~U[2026-10-25 12:00:00Z])
+
+      assert from == ~U[2026-10-24 21:00:00Z]
+      assert to == ~U[2026-10-25 22:00:00Z]
+      assert DateTime.diff(to, from, :hour) == 25
     end
   end
 
@@ -579,6 +601,38 @@ defmodule PhoenixKitAI.TaskLimitsTest do
 
       many = for _ <- 1..30, do: Fixtures.user_fixture().uuid
       assert {:error, :too_long} = GuardEvents.set_watchers(owner_scope(owner), many)
+    end
+
+    test "a change of limits keeps what they were and what they are in the Activity log",
+         %{owner: owner} do
+      user = Fixtures.user_fixture().uuid
+      set_limits(owner, %{"task" => %{"requests" => %{"day" => "3"}}}, %{"warn_percent" => "70"})
+      set_limits(owner, %{"task" => %{"requests" => %{"day" => "5"}}}, %{"warn_percent" => "90"})
+
+      assert [_, second] = activities("guard.limits_updated")
+
+      assert %{
+               "limits_before" => %{"task" => %{"requests" => %{"day" => 3}}},
+               "limits" => %{"task" => %{"requests" => %{"day" => 5}}},
+               "warn_percent_before" => 70,
+               "warn_percent" => 90
+             } = second
+
+      for amount <- ["1", "2"] do
+        {:ok, _} =
+          TaskLimits.put_user_limits(owner_scope(owner), "test.limited", user, %{
+            "requests" => %{"day" => amount}
+          })
+      end
+
+      assert [
+               _,
+               %{
+                 "limits_before" => %{"requests" => %{"day" => 1}},
+                 "limits" => %{"requests" => %{"day" => 2}}
+               }
+             ] =
+               activities("guard.user_limits_updated")
     end
 
     test "editing the watchers is written to the Activity log", %{owner: owner} do

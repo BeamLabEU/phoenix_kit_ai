@@ -667,7 +667,7 @@ defmodule PhoenixKitAI.Web.Tasks do
       </p>
       <p :if={@view.money_uncounted != []} class="text-xs text-warning" data-money-uncounted>
         {gettext(
-          "Money is not counted on %{endpoints}: the provider does not report what a call cost. Requests and tokens still apply.",
+          "Money is not counted for chat calls on %{endpoints}: the provider does not report what a call cost. Requests and tokens still apply.",
           endpoints: Enum.join(@view.money_uncounted, ", ")
         )}
       </p>

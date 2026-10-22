@@ -266,6 +266,7 @@ defmodule PhoenixKitAI.Web.TasksGuardTest do
       assert has_element?(view, "#{@card} tr[data-unit=tokens] [data-used=day]", "42")
       assert has_element?(view, "#{@card} tr[data-unit=requests] [data-used=month]", "1")
       assert has_element?(view, "#{@card} [data-money-uncounted]", "Mistral EP")
+      assert has_element?(view, "#{@card} [data-money-uncounted]", "chat calls")
 
       view |> element("#{@card} [data-forgive='task-day']") |> render_click()
 

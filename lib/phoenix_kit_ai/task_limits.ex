@@ -223,8 +223,10 @@ defmodule PhoenixKitAI.TaskLimits do
   end
 
   @doc """
-  Whether money counts on `endpoint`: only a provider that reports a call's
-  cost writes one (today OpenRouter).
+  Whether a chat call's money counts on `endpoint`: only a provider that
+  reports a call's cost writes one (today OpenRouter). Speech is priced by
+  `PhoenixKitAI.TtsPricing` on other providers too; an endpoint does not say
+  which kind it is, so this answers for chat.
   """
   @spec money_counted?(Endpoint.t()) :: boolean()
   def money_counted?(%Endpoint{provider: provider}) when is_binary(provider),
@@ -598,7 +600,13 @@ defmodule PhoenixKitAI.TaskLimits do
       |> repo().insert_or_update()
       |> changed(task_key)
       |> log("guard.limits_updated", scope, fn row ->
-        %{"task" => task_key, "warn_percent" => row.warn_percent}
+        %{
+          "task" => task_key,
+          "limits" => row.limits,
+          "limits_before" => setting.limits || %{},
+          "warn_percent" => row.warn_percent,
+          "warn_percent_before" => setting.warn_percent
+        }
       end)
     end
   end
@@ -629,6 +637,8 @@ defmodule PhoenixKitAI.TaskLimits do
       repo().get_by(TaskUserLimit, task_key: task_key, user_uuid: user_uuid) ||
         %TaskUserLimit{task_key: task_key, user_uuid: user_uuid}
 
+    before = row.limits || %{}
+
     row
     |> Ecto.Changeset.change(%{limits: stringify(limits)})
     |> Ecto.Changeset.foreign_key_constraint(:user_uuid,
@@ -636,8 +646,13 @@ defmodule PhoenixKitAI.TaskLimits do
     )
     |> repo().insert_or_update()
     |> changed(task_key)
-    |> log("guard.user_limits_updated", scope, fn _row ->
-      %{"task" => task_key, "user_uuid" => user_uuid}
+    |> log("guard.user_limits_updated", scope, fn row ->
+      %{
+        "task" => task_key,
+        "user_uuid" => user_uuid,
+        "limits" => row.limits,
+        "limits_before" => before
+      }
     end)
   end
 
@@ -661,7 +676,7 @@ defmodule PhoenixKitAI.TaskLimits do
       |> repo().delete()
       |> changed(row.task_key)
       |> log("guard.user_limits_deleted", scope, fn row ->
-        %{"task" => row.task_key, "user_uuid" => row.user_uuid}
+        %{"task" => row.task_key, "user_uuid" => row.user_uuid, "limits_before" => row.limits}
       end)
 
     {:ok, :deleted}

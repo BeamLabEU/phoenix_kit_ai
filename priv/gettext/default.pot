@@ -1511,7 +1511,7 @@ msgstr ""
 msgid "Updating…"
 msgstr ""
 
-#: lib/phoenix_kit_ai.ex:1100
+#: lib/phoenix_kit_ai.ex:1109
 #: lib/phoenix_kit_ai/web/endpoints.ex:76
 #: lib/phoenix_kit_ai/web/prompts.ex:41
 #, elixir-autogen, elixir-format
@@ -1779,7 +1779,7 @@ msgid_plural "tokens"
 msgstr[0] ""
 msgstr[1] ""
 
-#: lib/phoenix_kit_ai.ex:1096
+#: lib/phoenix_kit_ai.ex:1105
 #: lib/phoenix_kit_ai/web/endpoint_form.ex:347
 #: lib/phoenix_kit_ai/web/endpoints.ex:106
 #: lib/phoenix_kit_ai/web/playground.ex:52
@@ -1790,21 +1790,21 @@ msgstr[1] ""
 msgid "AI"
 msgstr ""
 
-#: lib/phoenix_kit_ai.ex:1097
+#: lib/phoenix_kit_ai.ex:1106
 #: lib/phoenix_kit_ai/web/endpoint_form.ex:433
 #: lib/phoenix_kit_ai/web/endpoints.ex:80
 #, elixir-autogen, elixir-format
 msgid "Endpoints"
 msgstr ""
 
-#: lib/phoenix_kit_ai.ex:1099
-#: lib/phoenix_kit_ai.ex:1134
+#: lib/phoenix_kit_ai.ex:1108
+#: lib/phoenix_kit_ai.ex:1143
 #: lib/phoenix_kit_ai/web/playground.ex:55
 #, elixir-autogen, elixir-format
 msgid "Playground"
 msgstr ""
 
-#: lib/phoenix_kit_ai.ex:1098
+#: lib/phoenix_kit_ai.ex:1107
 #: lib/phoenix_kit_ai/web/prompt_form.ex:81
 #: lib/phoenix_kit_ai/web/prompts.ex:65
 #, elixir-autogen, elixir-format
@@ -2540,7 +2540,7 @@ msgstr ""
 msgid "Some model catalogues could not be read"
 msgstr ""
 
-#: lib/phoenix_kit_ai.ex:1101
+#: lib/phoenix_kit_ai.ex:1110
 #: lib/phoenix_kit_ai/web/tasks.ex:57
 #, elixir-autogen, elixir-format
 msgid "Tasks"
@@ -2551,7 +2551,7 @@ msgstr ""
 msgid "The endpoint's model cannot do what this task needs: %{needs}"
 msgstr ""
 
-#: lib/phoenix_kit_ai.ex:1122
+#: lib/phoenix_kit_ai.ex:1131
 #, elixir-autogen, elixir-format
 msgid "Translation"
 msgstr ""
@@ -2593,12 +2593,12 @@ msgstr ""
 msgid "Refused before reaching the provider"
 msgstr ""
 
-#: lib/phoenix_kit_ai.ex:1137
+#: lib/phoenix_kit_ai.ex:1146
 #, elixir-autogen, elixir-format
 msgid "Let an administrator try endpoints and prompts by hand."
 msgstr ""
 
-#: lib/phoenix_kit_ai.ex:1125
+#: lib/phoenix_kit_ai.ex:1134
 #, elixir-autogen, elixir-format
 msgid "Translate the text fields of a record from one language into another, keeping the field structure."
 msgstr ""
@@ -2718,7 +2718,7 @@ msgstr ""
 msgid "free — the operator's limits and terms apply"
 msgstr ""
 
-#: lib/phoenix_kit_ai/guard_events.ex:490
+#: lib/phoenix_kit_ai/guard_events.ex:545
 #, elixir-autogen, elixir-format
 msgid "%{email} has reached the %{name} (%{limit}) in the AI task %{task}."
 msgstr ""
@@ -2733,7 +2733,7 @@ msgstr ""
 msgid "A limit must be a whole number, or dollars for money"
 msgstr ""
 
-#: lib/phoenix_kit_ai/guard_events.ex:404
+#: lib/phoenix_kit_ai/guard_events.ex:459
 #, elixir-autogen, elixir-format
 msgid "A user"
 msgstr ""
@@ -2748,7 +2748,7 @@ msgstr ""
 msgid "Add a person…"
 msgstr ""
 
-#: lib/phoenix_kit_ai/guard_events.ex:497
+#: lib/phoenix_kit_ai/guard_events.ex:552
 #, elixir-autogen, elixir-format
 msgid "An AI spending cap (%{cap}) refused a call. Calls are refused until spending is below it."
 msgstr ""
@@ -2763,7 +2763,7 @@ msgstr ""
 msgid "Cancel"
 msgstr ""
 
-#: lib/phoenix_kit_ai.ex:1103
+#: lib/phoenix_kit_ai.ex:1112
 #, elixir-autogen, elixir-format
 msgid "Change the limits of AI tasks, who is told about them, and which models may be used"
 msgstr ""
@@ -2819,7 +2819,7 @@ msgstr ""
 msgid "Limits saved"
 msgstr ""
 
-#: lib/phoenix_kit_ai.ex:1102
+#: lib/phoenix_kit_ai.ex:1111
 #, elixir-autogen, elixir-format
 msgid "Manage the AI task guard"
 msgstr ""
@@ -2827,11 +2827,6 @@ msgstr ""
 #: lib/phoenix_kit_ai/web/tasks.ex:821
 #, elixir-autogen, elixir-format
 msgid "Money"
-msgstr ""
-
-#: lib/phoenix_kit_ai/web/tasks.ex:669
-#, elixir-autogen, elixir-format
-msgid "Money is not counted on %{endpoints}: the provider does not report what a call cost. Requests and tokens still apply."
 msgstr ""
 
 #: lib/phoenix_kit_ai/web/tasks.ex:575
@@ -2916,17 +2911,17 @@ msgstr ""
 msgid "Task, a month"
 msgstr ""
 
-#: lib/phoenix_kit_ai/guard_events.ex:483
+#: lib/phoenix_kit_ai/guard_events.ex:538
 #, elixir-autogen, elixir-format
 msgid "The AI task %{task} has reached its %{name} (%{limit})."
 msgstr ""
 
-#: lib/phoenix_kit_ai/guard_events.ex:476
+#: lib/phoenix_kit_ai/guard_events.ex:531
 #, elixir-autogen, elixir-format
 msgid "The AI task %{task} has used %{used} of its %{name} (%{limit})."
 msgstr ""
 
-#: lib/phoenix_kit_ai/guard_events.ex:510
+#: lib/phoenix_kit_ai/guard_events.ex:565
 #, elixir-autogen, elixir-format
 msgid "The AI task %{task} uses the endpoint %{endpoint}, whose model now lacks: %{needs}."
 msgstr ""
@@ -2976,7 +2971,7 @@ msgstr ""
 msgid "Who is told"
 msgstr ""
 
-#: lib/phoenix_kit_ai/guard_events.ex:469
+#: lib/phoenix_kit_ai/guard_events.ex:524
 #, elixir-autogen, elixir-format
 msgid "You have reached your %{name} (%{limit}) in the AI task %{task}."
 msgstr ""
@@ -2986,7 +2981,7 @@ msgstr ""
 msgid "You have reached your %{name} in this AI task"
 msgstr ""
 
-#: lib/phoenix_kit_ai/guard_events.ex:462
+#: lib/phoenix_kit_ai/guard_events.ex:517
 #, elixir-autogen, elixir-format
 msgid "You have used %{used} of your %{name} (%{limit}) in the AI task %{task}."
 msgstr ""
@@ -2997,57 +2992,57 @@ msgstr ""
 msgid "You may not change the AI task guard"
 msgstr ""
 
-#: lib/phoenix_kit_ai/guard_events.ex:427
+#: lib/phoenix_kit_ai/guard_events.ex:482
 #, elixir-autogen, elixir-format
 msgid "daily request limit"
 msgstr ""
 
-#: lib/phoenix_kit_ai/guard_events.ex:425
+#: lib/phoenix_kit_ai/guard_events.ex:480
 #, elixir-autogen, elixir-format
 msgid "daily spending limit"
 msgstr ""
 
-#: lib/phoenix_kit_ai/guard_events.ex:429
+#: lib/phoenix_kit_ai/guard_events.ex:484
 #, elixir-autogen, elixir-format
 msgid "daily token limit"
 msgstr ""
 
-#: lib/phoenix_kit_ai/guard_events.ex:428
+#: lib/phoenix_kit_ai/guard_events.ex:483
 #, elixir-autogen, elixir-format
 msgid "monthly request limit"
 msgstr ""
 
-#: lib/phoenix_kit_ai/guard_events.ex:426
+#: lib/phoenix_kit_ai/guard_events.ex:481
 #, elixir-autogen, elixir-format
 msgid "monthly spending limit"
 msgstr ""
 
-#: lib/phoenix_kit_ai/guard_events.ex:430
+#: lib/phoenix_kit_ai/guard_events.ex:485
 #, elixir-autogen, elixir-format
 msgid "monthly token limit"
 msgstr ""
 
-#: lib/phoenix_kit_ai/guard_events.ex:504
+#: lib/phoenix_kit_ai/guard_events.ex:559
 #, elixir-autogen, elixir-format
 msgid "one endpoint"
 msgstr ""
 
-#: lib/phoenix_kit_ai/guard_events.ex:506
+#: lib/phoenix_kit_ai/guard_events.ex:561
 #, elixir-autogen, elixir-format
 msgid "one user's calls"
 msgstr ""
 
-#: lib/phoenix_kit_ai/guard_events.ex:505
+#: lib/phoenix_kit_ai/guard_events.ex:560
 #, elixir-autogen, elixir-format
 msgid "one user's spending"
 msgstr ""
 
-#: lib/phoenix_kit_ai.ex:1575
+#: lib/phoenix_kit_ai.ex:1584
 #, elixir-autogen, elixir-format
 msgid "only a holder of ai.manage may declare capabilities while only verified models are allowed"
 msgstr ""
 
-#: lib/phoenix_kit_ai/guard_events.ex:503
+#: lib/phoenix_kit_ai/guard_events.ex:558
 #, elixir-autogen, elixir-format
 msgid "the whole site"
 msgstr ""
@@ -3055,4 +3050,9 @@ msgstr ""
 #: lib/phoenix_kit_ai/web/tasks.ex:220
 #, elixir-autogen, elixir-format
 msgid "That person was not found"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/tasks.ex:669
+#, elixir-autogen, elixir-format
+msgid "Money is not counted for chat calls on %{endpoints}: the provider does not report what a call cost. Requests and tokens still apply."
 msgstr ""
