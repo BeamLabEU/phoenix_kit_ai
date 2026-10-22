@@ -640,14 +640,21 @@ test/
 
 ## Database tables
 
-All tables use UUIDv7 primary keys and timestamptz columns. Migrations
-are managed by the parent PhoenixKit project — this repo has no
-migrations of its own.
+All tables use UUIDv7 primary keys and timestamptz columns. The three
+tables below are created by the parent PhoenixKit project's migrations:
 
 - **`phoenix_kit_ai_endpoints`** — endpoint configurations
 - **`phoenix_kit_ai_prompts`** — prompt templates
 - **`phoenix_kit_ai_requests`** — request logs (FK to endpoints, prompts,
   users)
+
+The module's own chain (`PhoenixKitAI.Migrations`, run by
+`mix phoenix_kit.update` after core's) holds only tables core does not
+create:
+
+- **`phoenix_kit_ai_model_capabilities`** — the snapshot of what each
+  endpoint's model can do (images, tools, JSON schema), read from the
+  provider's catalogue
 
 ## Admin pages
 
