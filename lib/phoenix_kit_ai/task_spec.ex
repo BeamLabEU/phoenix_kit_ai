@@ -24,12 +24,20 @@ defmodule PhoenixKitAI.TaskSpec do
   `{module, function, args}` returning the endpoints the task uses now (uuids
   or `%PhoenixKitAI.Endpoint{}`s, a single one, `{:ok, uuid}` or `nil`).
 
+  `default_limits` are the task's limits when an admin has set none
+  (`%{task: %{unit => %{period => amount}}, user: …}`, units `:money` in
+  micro-dollars, `:requests`, `:tokens`, periods `:day`, `:month` — see
+  `PhoenixKitAI.TaskLimits`). `watchers` is an `{module, function, args}`
+  called with the user uuid (or nil) appended, returning the uuids of more
+  people to tell about the task's limits (`PhoenixKitAI.GuardEvents`); the
+  user is never told as a watcher.
+
   `self_flag`, `private`, `sources`, `max_calls_per_hour`,
-  `max_tokens_per_call`, `auto_block_threshold`, `block_group`, `watchers`,
-  `content` and `default_limits` are accepted and kept for the guard's later
-  parts (limits, off-purpose marks, blocks); nothing reads them yet.
-  `typical_tokens` (`{input, output}` of a typical call) is read by
-  `PhoenixKitAI.Recommendations` to estimate the price of a call.
+  `max_tokens_per_call`, `auto_block_threshold`, `block_group` and
+  `content` are accepted and kept for the guard's later parts (off-purpose
+  marks, blocks); nothing reads them yet. `typical_tokens` (`{input,
+  output}` of a typical call) is read by `PhoenixKitAI.Recommendations` to
+  estimate the price of a call.
 
   `module` and `enabled` are filled in by `PhoenixKitAI.Tasks`: the module
   that declared the task, and whether that module is switched on.

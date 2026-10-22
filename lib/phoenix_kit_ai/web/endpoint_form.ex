@@ -19,7 +19,9 @@ defmodule PhoenixKitAI.Web.EndpointForm do
   alias PhoenixKitAI.AIModel
   alias PhoenixKitAI.Capabilities
   alias PhoenixKitAI.Endpoint
+  alias PhoenixKitAI.Guard
   alias PhoenixKitAI.OpenRouterClient
+  alias PhoenixKitAI.Web.Access
   alias PhoenixKitAI.Web.AuthHelpers
   alias PhoenixKitAI.Web.Components.CapabilityBadges
   alias PhoenixKitAI.Web.MessageShape
@@ -310,7 +312,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
   # ===========================================
 
   @impl true
-  def mount(_params, _session, socket) do
+  def mount(_params, session, socket) do
     # No DB queries in mount/3 — they run twice. The `enabled?` check,
     # integration listing, and endpoint load all happen in
     # `handle_params/3`.
@@ -318,6 +320,8 @@ defmodule PhoenixKitAI.Web.EndpointForm do
 
     socket =
       socket
+      |> Access.assign_session(session)
+      |> assign(:may_declare, true)
       |> assign(:project_title, nil)
       |> assign(:current_path, Routes.path("/admin/ai"))
       |> assign(:provider_connections, [])
@@ -509,6 +513,9 @@ defmodule PhoenixKitAI.Web.EndpointForm do
         |> load_endpoint(params["id"], params)
         |> refresh_provider_options(connections)
         |> assign(:loaded_id, params["id"])
+        # While only verified models are allowed, declaring capabilities
+        # needs ai.manage (`PhoenixKitAI.update_endpoint/3` checks it again).
+        |> assign(:may_declare, not Guard.verified_only?() or Access.may_manage?(socket))
 
       {:noreply, socket}
     else
@@ -1132,7 +1139,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
   end
 
   defp save_endpoint(socket, params) do
-    opts = actor_opts(socket)
+    opts = actor_opts(socket) ++ [scope: Access.session_scope(socket)]
 
     result =
       if socket.assigns.endpoint do

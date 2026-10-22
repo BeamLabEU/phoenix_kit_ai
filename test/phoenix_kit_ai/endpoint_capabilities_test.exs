@@ -7,7 +7,10 @@ defmodule PhoenixKitAI.EndpointCapabilitiesTest do
 
   use PhoenixKitAI.DataCase, async: false
 
-  alias PhoenixKitAI.Endpoint
+  alias PhoenixKit.Settings
+  alias PhoenixKit.Test.Fixtures
+  alias PhoenixKit.Users.Auth.Scope
+  alias PhoenixKitAI.{Endpoint, Guard}
 
   defp endpoint_with_declaration(model, flags) do
     {:ok, endpoint} =
@@ -126,6 +129,78 @@ defmodule PhoenixKitAI.EndpointCapabilitiesTest do
         })
 
       refute_activity_logged("endpoint.capabilities_declared", resource_uuid: endpoint.uuid)
+    end
+  end
+
+  describe "while only verified models are allowed" do
+    defp verified_only! do
+      {:ok, _} =
+        Settings.update_boolean_setting_with_module(
+          Guard.verified_only_setting(),
+          true,
+          "ai"
+        )
+    end
+
+    defp declare(endpoint, flags, opts) do
+      PhoenixKitAI.update_endpoint(
+        endpoint,
+        %{
+          provider_settings:
+            Map.put(
+              endpoint.provider_settings,
+              "capabilities",
+              Map.put(flags, "model", endpoint.model)
+            )
+        },
+        opts
+      )
+    end
+
+    test "declaring needs ai.manage; an Owner may; clearing or keeping one needs nothing" do
+      endpoint = endpoint_with_declaration("pixtral-large-latest", %{"vision" => "yes"})
+      owner = Fixtures.user_fixture()
+      someone = Fixtures.user_fixture()
+      verified_only!()
+
+      # Without a scope, or with one that cannot manage the guard: refused.
+      for opts <- [[], [scope: Scope.for_user(someone)]] do
+        assert {:error, %Ecto.Changeset{errors: [provider_settings: _]}} =
+                 declare(endpoint, %{"vision" => "yes", "tools" => "yes"}, opts)
+      end
+
+      assert %{"vision" => "yes"} =
+               PhoenixKitAI.get_endpoint(endpoint.uuid).provider_settings["capabilities"]
+
+      # Leaving the declaration as it is, or removing it, is allowed.
+      assert {:ok, _} =
+               PhoenixKitAI.update_endpoint(endpoint, %{name: "Renamed #{endpoint.name}"})
+
+      assert {:ok, updated} =
+               PhoenixKitAI.update_endpoint(endpoint, %{
+                 provider_settings: Map.delete(endpoint.provider_settings, "capabilities")
+               })
+
+      refute Map.has_key?(updated.provider_settings, "capabilities")
+
+      assert {:ok, %Endpoint{provider_settings: %{"capabilities" => %{"tools" => "yes"}}}} =
+               declare(updated, %{"tools" => "yes"}, scope: Scope.for_user(owner))
+    end
+
+    test "a new endpoint with a declaration is refused without ai.manage" do
+      verified_only!()
+
+      assert {:error, %Ecto.Changeset{errors: [provider_settings: _]}} =
+               PhoenixKitAI.create_endpoint(%{
+                 name: "Declared new #{System.unique_integer([:positive])}",
+                 provider: "mistral",
+                 base_url: "https://api.mistral.ai/v1",
+                 model: "pixtral-large-latest",
+                 api_key: "mistral-test-key",
+                 provider_settings: %{
+                   "capabilities" => %{"model" => "pixtral-large-latest", "vision" => "yes"}
+                 }
+               })
     end
   end
 end

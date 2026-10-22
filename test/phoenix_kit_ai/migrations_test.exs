@@ -9,10 +9,13 @@ defmodule PhoenixKitAI.MigrationsTest do
 
   use PhoenixKitAI.DataCase, async: false
 
+  alias PhoenixKit.Test.Fixtures
   alias PhoenixKitAI.Migrations
   alias PhoenixKitAI.Test.SchemaMigration
 
-  @tables ~w(phoenix_kit_ai_model_capabilities)
+  @v1_tables ~w(phoenix_kit_ai_model_capabilities)
+  @tables ~w(phoenix_kit_ai_guard_events phoenix_kit_ai_model_capabilities phoenix_kit_ai_task_settings phoenix_kit_ai_task_user_limits)
+  @task_index "phoenix_kit_ai_requests_task_inserted_at_index"
 
   defp run(statements), do: Enum.each(statements, &Repo.query!/1)
   defp query(sql, params \\ []), do: Repo.query!(sql, params).rows
@@ -34,6 +37,104 @@ defmodule PhoenixKitAI.MigrationsTest do
   defp indexdef(name) do
     [[indexdef]] = query("SELECT indexdef FROM pg_indexes WHERE indexname = $1", [name])
     indexdef
+  end
+
+  defp index_names do
+    query("SELECT indexname FROM pg_indexes WHERE indexname = $1", [@task_index])
+  end
+
+  defp dump(uuid), do: Ecto.UUID.dump!(uuid)
+
+  defp user_uuid, do: Fixtures.user_fixture().uuid
+
+  defp endpoint_uuid do
+    {:ok, endpoint} =
+      PhoenixKitAI.create_endpoint(%{
+        name: "Migrations EP #{System.unique_integer([:positive])}",
+        provider: "openrouter",
+        model: "a/b",
+        api_key: "sk-test"
+      })
+
+    endpoint.uuid
+  end
+
+  defp flag_columns do
+    query(
+      "SELECT column_name, column_default, is_nullable FROM information_schema.columns WHERE table_name = 'phoenix_kit_ai_model_capabilities' AND column_name IN ('file_input', 'image_output') ORDER BY 1"
+    )
+  end
+
+  defp assert_v2_flags do
+    assert [
+             ["file_input", "'unknown'::character varying", "NO"],
+             ["image_output", "'unknown'::character varying", "NO"]
+           ] = flag_columns()
+
+    model = "m-#{System.unique_integer([:positive])}"
+
+    assert {:ok, _} =
+             Repo.query(
+               "INSERT INTO phoenix_kit_ai_model_capabilities (base_url, model, fetched_at) VALUES ('https://f.test/v1', $1, now())",
+               [model]
+             )
+
+    assert [["unknown", "unknown"]] =
+             query(
+               "SELECT file_input, image_output FROM phoenix_kit_ai_model_capabilities WHERE base_url = 'https://f.test/v1' AND model = $1",
+               [model]
+             )
+
+    for flag <- ~w(file_input image_output) do
+      assert {:error, %Postgrex.Error{postgres: %{code: :check_violation}}} =
+               Repo.query(
+                 "INSERT INTO phoenix_kit_ai_model_capabilities (base_url, model, fetched_at, #{flag}) VALUES ('https://f.test/v1', $1, now(), 'maybe')",
+                 [flag]
+               )
+    end
+  end
+
+  defp insert_event(kind, dedupe_key) do
+    Repo.query(
+      "INSERT INTO phoenix_kit_ai_guard_events (kind, task_key, dedupe_key) VALUES ($1, 't', $2)",
+      [kind, dedupe_key]
+    )
+  end
+
+  # The V2 objects as the database has them now.
+  defp assert_v2_structure do
+    assert {:error, %Postgrex.Error{postgres: %{code: :check_violation}}} =
+             insert_event("something_else", nil)
+
+    for kind <-
+          ~w(model_unfit limit_warning limit_reached limit_forgiven off_purpose off_purpose_signal anomaly blocked unblocked) do
+      assert {:ok, _} = insert_event(kind, nil)
+    end
+
+    assert {:ok, _} = insert_event("limit_reached", "k-#{System.unique_integer([:positive])}")
+    assert {:ok, _} = insert_event("limit_reached", "dup")
+
+    assert {:error, %Postgrex.Error{postgres: %{code: :unique_violation}}} =
+             insert_event("limit_reached", "dup")
+
+    assert indexdef("phoenix_kit_ai_guard_events_dedupe_key_index") =~
+             "WHERE (dedupe_key IS NOT NULL)"
+
+    assert indexdef("phoenix_kit_ai_task_settings_task_key_index") =~ "UNIQUE"
+
+    assert indexdef("phoenix_kit_ai_task_user_limits_task_key_user_uuid_index") =~
+             "(task_key, user_uuid)"
+
+    assert {:error, %Postgrex.Error{postgres: %{code: :check_violation}}} =
+             Repo.query(
+               "INSERT INTO phoenix_kit_ai_task_settings (task_key, guard_mode) VALUES ('m', 'loud')"
+             )
+
+    assert {:error, %Postgrex.Error{postgres: %{code: :check_violation}}} =
+             Repo.query(
+               "INSERT INTO phoenix_kit_ai_guard_events (kind, task_key, reason) VALUES ('anomaly', 't', $1)",
+               [String.duplicate("x", 501)]
+             )
   end
 
   defp insert_row(values) do
@@ -60,10 +161,10 @@ defmodule PhoenixKitAI.MigrationsTest do
 
   describe "the chain as built at boot" do
     test "is at the current version, with its table" do
-      assert Migrations.current_version() == 1
-      assert marker() == "ai_schema:1"
+      assert Migrations.current_version() == 2
+      assert marker() == "ai_schema:2"
       assert existing_tables() == @tables
-      assert Migrations.migrated_version_runtime() == 1
+      assert Migrations.migrated_version_runtime() == 2
     end
 
     test "the base URL and model pair is unique; the flags take yes, no or unknown only" do
@@ -83,22 +184,24 @@ defmodule PhoenixKitAI.MigrationsTest do
       run(Migrations.up_statements("public"))
       run(Migrations.up_statements("public"))
 
-      assert marker() == "ai_schema:1"
+      assert marker() == "ai_schema:2"
       assert existing_tables() == @tables
     end
 
     test "down to 0 drops the module's table, and up builds it again" do
       run(Migrations.down_statements("public", 0))
       assert existing_tables() == []
+      assert index_names() == []
       assert Migrations.migrated_version_runtime() == 0
 
       run(Migrations.up_statements("public"))
       assert existing_tables() == @tables
-      assert marker() == "ai_schema:1"
+      assert marker() == "ai_schema:2"
 
       # Built here, from the statements as they are now — not the schema a
       # persistent test database kept from an earlier V1.
       assert_structure()
+      assert_v2_structure()
     end
 
     test "down does not touch core's AI tables" do
@@ -111,8 +214,8 @@ defmodule PhoenixKitAI.MigrationsTest do
     end
 
     test "a version the chain does not have is refused in both directions" do
-      assert_raise ArgumentError, fn -> Migrations.up_statements("public", 2) end
-      assert_raise ArgumentError, fn -> Migrations.down_statements("public", 2) end
+      assert_raise ArgumentError, fn -> Migrations.up_statements("public", 3) end
+      assert_raise ArgumentError, fn -> Migrations.down_statements("public", 3) end
     end
 
     test "an invalid prefix is refused" do
@@ -121,6 +224,77 @@ defmodule PhoenixKitAI.MigrationsTest do
 
     test "up to 0 applies nothing" do
       assert Migrations.up_statements("public", 0) == []
+    end
+  end
+
+  describe "V2: task settings, personal limits, guard events, the task index" do
+    test "the guard event kinds are checked, a dedupe key is unique, and NULL keys repeat" do
+      assert_v2_structure()
+    end
+
+    test "deleting a user removes its personal limits and its events; the actor and endpoint are cleared" do
+      user = user_uuid()
+      actor = user_uuid()
+      endpoint = endpoint_uuid()
+
+      query(
+        "INSERT INTO phoenix_kit_ai_task_user_limits (task_key, user_uuid, limits) VALUES ('t', $1, '{}')",
+        [dump(user)]
+      )
+
+      query(
+        "INSERT INTO phoenix_kit_ai_guard_events (kind, task_key, user_uuid, endpoint_uuid, actor_uuid) VALUES ('limit_forgiven', 't', $1, $2, $3), ('model_unfit', 't', NULL, $2, $3)",
+        [dump(user), dump(endpoint), dump(actor)]
+      )
+
+      query(
+        "INSERT INTO phoenix_kit_ai_task_settings (task_key, updated_by_uuid, classifier_endpoint_uuid) VALUES ('t', $1, $2)",
+        [dump(actor), dump(endpoint)]
+      )
+
+      query("DELETE FROM phoenix_kit_users WHERE uuid = $1", [dump(user)])
+      assert query("SELECT count(*) FROM phoenix_kit_ai_task_user_limits") == [[0]]
+      assert query("SELECT kind FROM phoenix_kit_ai_guard_events") == [["model_unfit"]]
+
+      query("DELETE FROM phoenix_kit_users WHERE uuid = $1", [dump(actor)])
+      query("DELETE FROM phoenix_kit_ai_endpoints WHERE uuid = $1", [dump(endpoint)])
+
+      assert query("SELECT actor_uuid, endpoint_uuid FROM phoenix_kit_ai_guard_events") == [
+               [nil, nil]
+             ]
+
+      assert query(
+               "SELECT updated_by_uuid, classifier_endpoint_uuid FROM phoenix_kit_ai_task_settings"
+             ) == [[nil, nil]]
+    end
+
+    test "the capability snapshot gets file_input and image_output, unknown by default and checked" do
+      assert_v2_flags()
+
+      run(Migrations.down_statements("public", 1))
+      assert flag_columns() == []
+      run(Migrations.up_statements("public"))
+      assert_v2_flags()
+    end
+
+    test "the journal gets an index on the task and the time, with no status condition" do
+      index = indexdef(@task_index)
+      assert index =~ "phoenix_kit_ai_requests"
+      assert index =~ "((metadata ->> 'task'::text)), inserted_at"
+      refute index =~ "WHERE"
+    end
+
+    test "down to 1 removes what V2 added and keeps V1; up again restores it" do
+      run(Migrations.down_statements("public", 1))
+      assert existing_tables() == @v1_tables
+      assert index_names() == []
+      assert marker() == "ai_schema:1"
+      assert Migrations.migrated_version_runtime() == 1
+
+      run(Migrations.up_statements("public"))
+      assert existing_tables() == @tables
+      assert marker() == "ai_schema:2"
+      assert_v2_structure()
     end
   end
 
@@ -140,8 +314,9 @@ defmodule PhoenixKitAI.MigrationsTest do
 
       assert :ok = Ecto.Migrator.up(Repo, version, SchemaMigration, @migrator_opts)
       assert existing_tables() == @tables
-      assert Migrations.migrated_version_runtime() == 1
+      assert Migrations.migrated_version_runtime() == 2
       assert_structure()
+      assert_v2_structure()
     end
   end
 

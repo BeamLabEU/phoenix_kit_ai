@@ -43,7 +43,12 @@ Semantics, in order of how often they surprise:
 - **A refusal is a row.** The refused call is written as a zero-token
   `status: "error"` row with `metadata.refused: true` (and the call's
   `task`), so the journal shows who was turned away; it counts toward no
-  cap and no usage sink (`handle_ai_usage/1`) receives it.
+  cap and no usage sink (`handle_ai_usage/1`) receives it. It is also a
+  `limit_reached` guard event (scope `budget:<scope>`), and the guard's
+  watchers are told once per local day (`PhoenixKitAI.GuardEvents`).
+- **Task limits come first.** A call that names a declared task is checked
+  against the task's calendar-day and month limits (`PhoenixKitAI.TaskLimits`)
+  before the caps; the caps stay the site-wide rolling-24-hour safety net.
 - **No reservation.** The check reads the table; concurrent callers can
   overshoot by their in-flight calls. Atomic reservation is a TODO.
 - **Fails open.** A database error reads as zero spend and no cap, so a

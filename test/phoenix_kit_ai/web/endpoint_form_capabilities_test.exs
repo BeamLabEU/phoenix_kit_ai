@@ -14,6 +14,13 @@ defmodule PhoenixKitAI.Web.EndpointFormCapabilitiesTest do
 
   @moduletag :capture_log
 
+  alias PhoenixKit.ModuleRegistry
+  alias PhoenixKit.Settings
+  alias PhoenixKit.Test.Fixtures
+  alias PhoenixKit.Users.Auth.Scope
+  alias PhoenixKit.Users.{Permissions, Roles}
+  alias PhoenixKitAI.Guard
+
   @api_key "sk-or-v1-canary-key-0123456789abcdef"
 
   @openrouter_models [
@@ -199,6 +206,54 @@ defmodule PhoenixKitAI.Web.EndpointFormCapabilitiesTest do
                PhoenixKitAI.get_endpoint!(endpoint.uuid).provider_settings,
                "capabilities"
              )
+    end
+
+    test "with only verified models allowed, a person without ai.manage sees the declaration and keeps it on save",
+         %{conn: conn} do
+      endpoint =
+        mistral_endpoint(%{
+          "capabilities" => %{"model" => "pixtral-large-latest", "vision" => "yes"}
+        })
+
+      {:ok, _} =
+        Settings.update_boolean_setting_with_module(
+          Guard.verified_only_setting(),
+          true,
+          "ai"
+        )
+
+      ModuleRegistry.register(PhoenixKitAI)
+      on_exit(fn -> ModuleRegistry.unregister(PhoenixKitAI) end)
+      _owner = Fixtures.user_fixture()
+      user = Fixtures.user_fixture()
+      {:ok, _} = Roles.assign_role(user, "Admin")
+      %{uuid: role} = Roles.get_role_by_name("Admin")
+      :ok = Permissions.set_permissions(role, ["ai"])
+
+      {:ok, view, _html} =
+        conn
+        |> put_test_scope(Scope.for_user(user))
+        |> live("/en/admin/ai/endpoints/#{endpoint.uuid}/edit")
+
+      assert has_element?(view, "#endpoint-declare-locked", "Images")
+      refute has_element?(view, "#endpoint-declare-vision")
+
+      view
+      |> form("form[phx-submit=\"save\"]", endpoint: %{name: "Renamed #{endpoint.name}"})
+      |> render_submit()
+
+      assert %{"vision" => "yes"} =
+               PhoenixKitAI.get_endpoint!(endpoint.uuid).provider_settings["capabilities"]
+
+      # Holding ai.manage, the checkboxes are back.
+      :ok = Permissions.set_permissions(role, ["ai", "ai.manage"])
+
+      {:ok, view, _html} =
+        conn
+        |> put_test_scope(Scope.for_user(user))
+        |> live("/en/admin/ai/endpoints/#{endpoint.uuid}/edit")
+
+      assert has_element?(view, "#endpoint-declare-vision[checked]")
     end
 
     test "a model change in the form drops the declaration of the old model", %{conn: conn} do

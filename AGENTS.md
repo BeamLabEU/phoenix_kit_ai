@@ -250,8 +250,11 @@ lib/phoenix_kit_ai/
   capabilities.ex                what a model can do (catalogue + declared), ETS cache process
   task_spec.ex tasks.ex          AI task declarations (`ai_tasks/0`), the registry, fitness for a task
   recommendations.ex             cheapest fit models for a task + models that worked (journal, 30 days)
-  guard.ex                       the call-time check: needs of a call, fitness, require_parameters
+  guard.ex                       the call-time check: needs of a call, fitness, require_parameters; ai.manage; admit/4
+  task_limits.ex                 task limits: calendar windows, limits in force, counting from the journal, forgiving
+  guard_events.ex guard_watch.ex   guard events, dedupe, watchers, notifications; the model_unfit watch process
   migrations.ex model_capability.ex   the module's own migration chain; capability snapshot schema
+  task_setting.ex task_user_limit.ex guard_event.ex   schemas of the chain's V2 tables
   errors.ex                      error atom -> gettext string
   ai_model.ex routes.ex          model struct; admin sub-routes
   gettext.ex                     PhoenixKitAI.Gettext backend
@@ -296,6 +299,9 @@ Notes on the less obvious modules:
 | `phoenix_kit_ai_prompts` | `PhoenixKitAI.Prompt` | `{{Variable}}` templates |
 | `phoenix_kit_ai_requests` | `PhoenixKitAI.Request` | per-request usage log |
 | `phoenix_kit_ai_model_capabilities` | `PhoenixKitAI.ModelCapability` | capability snapshot of the endpoints' models (module chain) |
+| `phoenix_kit_ai_task_settings` | `PhoenixKitAI.TaskSetting` | a task's limits, warn percent (module chain V2) |
+| `phoenix_kit_ai_task_user_limits` | `PhoenixKitAI.TaskUserLimit` | a user's personal limits in a task (module chain V2) |
+| `phoenix_kit_ai_guard_events` | `PhoenixKitAI.GuardEvent` | what the guard noticed; `dedupe_key` unique where set (module chain V2) |
 
 ### PubSub topics
 
@@ -305,11 +311,14 @@ Notes on the less obvious modules:
 | `phoenix_kit:ai:prompts` | `subscribe_prompts/0` |
 | `phoenix_kit:ai:requests` | `subscribe_requests/0` |
 | `phoenix_kit:ai:capabilities` | `Capabilities.subscribe/0` |
+| `phoenix_kit:ai:guard` | `TaskLimits.topic/0` (`GuardWatch` subscribes) |
 
 Every message is `{event, uuid}`; a subscriber that needs the record reads
 it by uuid. The capabilities topic carries
 `{:capabilities_refreshed, base_urls}` after a catalogue refresh that changed
-the cache, with the base URLs that changed.
+the cache, with the base URLs that changed. The guard topic carries
+`{:task_limits_changed, task_key}` after a change of a task's limits, so
+every node drops its cached limits of the task.
 
 ### Settings & permissions
 
@@ -329,8 +338,12 @@ honours `dry_run:`). A refused call is written as a usage row (see
 "Feature notes").
 
 The call-time guard: `ai_guard_verified_models_only` (boolean, default
-`false`, no UI yet) refuses a call whose model's capability for a
-requirement is unknown instead of letting it through.
+`false`, switched on AI → Tasks) refuses a call whose model's capability
+for a requirement is unknown instead of letting it through; while it is on,
+a new or changed capability declaration on an endpoint needs `ai.manage`
+(`create_endpoint/2` / `update_endpoint/3` take `scope:`).
+`ai_guard_watchers` (JSON text of a list of user uuids, ≤ 1000 characters;
+empty = every Owner) is who gets the guard's `"ai_guard"` notifications.
 
 AI translation: `ai_translation_endpoint_uuid` / `ai_translation_prompt_uuid`
 pick the shared endpoint and prompt; `ai_translation_glossary_<target_lang>`
@@ -340,8 +353,16 @@ the prompt's `{{Glossary}}` slot, uncapped. A blank value cannot be stored,
 so `Settings.delete_setting/1` is how a language falls back to the shared
 key; `translate_fields/6`'s `glossary:` option overrides both (`nil` = none).
 
-Permissions: a single module permission `"ai"` from `permission_metadata/0`,
-checked with `Scope.has_module_access?/2`. No sub-permissions.
+Permissions: the module permission `"ai"` from `permission_metadata/0`,
+checked with `Scope.has_module_access?/2`, and one sub-permission,
+`"ai.manage"`: changing the task guard (limits, personal limits, forgiving,
+watchers, "only verified models", declaring capabilities while that is on).
+An Owner always may (`Guard.may_manage?/1`); core grants a new
+sub-permission to Admin once while Admin holds `ai`. Every context function
+that changes the guard takes the actor's scope and checks it; the Tasks
+page checks again per event, against the socket's scope and the scope as it
+is now (`PhoenixKitAI.Web.Access`: the session's through core's
+`SessionRef` where core has it, else the user's current row).
 
 ### Application env
 
@@ -479,8 +500,37 @@ core's). Version marker: `COMMENT ON TABLE phoenix_kit_ai_model_capabilities
 IS 'ai_schema:<N>'`. Every statement guards itself, so the chain re-runs
 cleanly; additive only. V1 creates `phoenix_kit_ai_model_capabilities`
 (unique `(base_url, model)`, flags `yes`/`no`/`unknown`), the snapshot
-`PhoenixKitAI.Capabilities` loads at start. Down to 0 drops it; the next
-refresh rebuilds it.
+`PhoenixKitAI.Capabilities` loads at start. V2 creates
+`phoenix_kit_ai_task_settings` (unique `task_key`),
+`phoenix_kit_ai_task_user_limits` (unique `(task_key, user_uuid)`, deleted
+with the user) and `phoenix_kit_ai_guard_events` (`kind` CHECK — a new kind
+is a new version; unique `dedupe_key WHERE dedupe_key IS NOT NULL`; user
+`CASCADE`, endpoint/request/actor `SET NULL`), and the index
+`phoenix_kit_ai_requests_task_inserted_at_index` on core's journal,
+`((metadata->>'task'), inserted_at)` with no status condition (core's
+schema repair reports extra columns of its tables, not extra indexes), and
+`file_input` / `image_output` flags on the snapshot (`unknown` until a
+later version fills them). Down to 1 drops what V2 added; down to 0 also
+the snapshot, which the next refresh rebuilds.
+
+**Before V2 on a host with a large journal, measure it**
+(`SELECT count(*), pg_size_pretty(pg_total_relation_size('phoenix_kit_ai_requests'))`)
+and run the update in a quiet window: the index is built with a plain
+`CREATE INDEX`, which holds a SHARE lock on `phoenix_kit_ai_requests` — every
+AI call's usage row waits — until it is built. `CONCURRENTLY` is not
+possible in this chain: the wrapper `mix phoenix_kit.update` generates for a
+module's migration has no `@disable_ddl_transaction`, so the chain runs in
+the migration's transaction, where `CREATE INDEX CONCURRENTLY` is refused;
+running it on another connection from inside the migration would wait for
+that very transaction to end. It needs a change in core's generator (a
+module asking for a non-transactional wrapper), not here. A host that
+edits its committed wrapper to `@disable_ddl_transaction true` still gets
+the plain build: the chain does not switch to `CONCURRENTLY` on its own.
+
+Between new code and the migration (code on V2, database still on V1) the
+capability snapshot cannot be loaded — its new columns are missing — and
+`Capabilities` starts with an empty cache, logged, until its first refresh;
+nothing fails. Migrate before starting the new code (`upgrade.sh` does).
 
 Primary keys are UUIDv7 (`@primary_key {:uuid, UUIDv7, autogenerate: true}`),
 and every table-backed schema must `use PhoenixKit.SchemaPrefix` so its queries
@@ -550,12 +600,14 @@ Test database `phoenix_kit_ai_test`.
 
 - Every provider-calling verb goes through one gate and one wrapper:
   `authorize/5` (endpoint usable; the model fits what the call and its
-  task need, `PhoenixKitAI.Guard`; spend caps have room) and `with_cache/6`
+  task need, `PhoenixKitAI.Guard`; the task's limits have room,
+  `PhoenixKitAI.TaskLimits`; spend caps have room) and `with_cache/6`
   (key, lookup, zero-cost hit row). A new verb joins both or it is not a
   verb — `dev_docs/guides/spend-caps-and-caching.md` holds the semantics
   of caps, cache, structured output and telemetry. A refusal past the
   endpoint check (`{:model_unfit, missing}`, `{:model_unverified, unclear}`,
-  `{:budget_exceeded, scope}`) writes an error row through `refuse/4`,
+  `{:task_limit_exceeded, scope, unit, period}`, `{:budget_exceeded,
+  scope}`) writes an error row through `refuse/4`,
   marked `metadata.refused: true`; `dispatch_usage_sinks/1` skips those.
 - AI tasks: modules declare `%PhoenixKitAI.TaskSpec{}`s in `ai_tasks/0`
   (duck-typed); `PhoenixKitAI.Tasks` keeps the registry, `fitness/2`,
@@ -568,6 +620,49 @@ Test database `phoenix_kit_ai_test`.
   `metadata.task`, and `:task` is not part of the cache key. A key no
   module declares is logged once and the call goes on. This module
   declares `ai.translation` and `ai.playground`.
+- Task limits (`PhoenixKitAI.TaskLimits`): scope `:task` (every call of
+  the task) and `:user` (one user in it) × money (micro-dollars) / requests
+  / tokens × calendar day / month in the site time zone. In force, cell by
+  cell: the user's personal limit, else the task's default for users, else
+  the declaration's `default_limits`; the task's own, else the
+  declaration's. Empty is none, `0` allows nothing. Counted from the
+  journal by `metadata->>'task'` (and `user_uuid`), `status = 'success'`
+  only — a cache hit is one request and no money or tokens, a refusal never
+  counts; money only where the provider reports a cost. Checked in
+  `authorize/5` after the model check and before `Budget`; a reached limit
+  is `{:error, {:task_limit_exceeded, scope, unit, period}}` with a refusal
+  row. Forgiving restarts one scope and period's count from that moment
+  (kept only as a `limit_forgiven` event). `Guard.admit/4` checks the
+  limits once for a piece of work (an assistant's turn) and gives a token
+  for `guard_admission:`; calls with it skip the limits (not the model
+  check, not `Budget`), only for the same task and user and until it
+  expires. Tokens live in the request cache's flags table, on one node.
+  A call reads the task's settings and personal limits from a per-node
+  cache in the same table (dropped on every change through `TaskLimits`,
+  here directly and on the other nodes through the guard topic; all of it
+  when `GuardWatch` starts; each entry read again after 60 s, which bounds
+  a lost broadcast and a change made inside the caller's transaction): a
+  task without limits costs about one load a minute; the usage is read only
+  when a limit is in force.
+- Guard signals (`PhoenixKitAI.GuardEvents`): `limit_warning` (at the
+  task's warn percent, default 80: a user's limit tells the user in the
+  app, the task's the watchers), `limit_reached` (the user and the
+  watchers; a `Budget` refusal too, scope `budget:<scope>`, once per local
+  day), `limit_forgiven`, `model_unfit` (`PhoenixKitAI.GuardWatch`: a
+  task's endpoint that was fit and is not after a catalogue refresh or an
+  endpoint save, once a day per task and endpoint). Once per window is a
+  unique `dedupe_key` inserted with `ON CONFLICT DO NOTHING`; only an
+  insert that went through signals. Watchers: `ai_guard_watchers` (else
+  every Owner) and the task's `watchers` callback, never the user; type
+  `"ai_guard"`. Activity: `guard.<kind>` with the event as `resource_uuid`
+  (never `target_uuid`). Texts carry no reasons and nothing of a call. A key
+  that was inserted is also kept on the node until its window ends, so a
+  limit past its threshold costs no further INSERT. `GuardWatch` emits
+  `[:phoenix_kit_ai, :guard_watch, :look]` after each look. Events older
+  than 180 days are deleted daily by `GuardEventsPruneWorker`, which the
+  module schedules through `oban_crons/0` (written into the host's crontab
+  by `mix phoenix_kit.install` / `update`); it runs in core's `default`
+  queue, so the host lists no queue for it.
 - Recommendations (`PhoenixKitAI.Recommendations`, live data only — no list
   of "best models", no `recommended:` in declarations): `cheapest/2` takes
   the catalogue the capability cache holds for the base URLs the endpoints
