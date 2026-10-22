@@ -157,6 +157,23 @@ defmodule PhoenixKitAI.CapabilitiesTest do
       assert %Capabilities{supported_parameters: nil} = Capabilities.from_openrouter(%{})
     end
 
+    test "Anthropic says which kinds of thinking a model takes" do
+      types = %{
+        "thinking" => %{
+          "types" => %{
+            "enabled" => %{"supported" => false},
+            "adaptive" => %{"supported" => true}
+          }
+        }
+      }
+
+      assert %Capabilities{thinking_enabled: :no, thinking_adaptive: :yes} =
+               Capabilities.from_anthropic(%{"capabilities" => types})
+
+      assert %Capabilities{thinking_enabled: :unknown, thinking_adaptive: :unknown} =
+               Capabilities.from_anthropic(%{"capabilities" => nil})
+    end
+
     test "Anthropic says whether thinking can be turned off" do
       takes = %{"thinking" => %{"types" => %{"disabled" => %{"supported" => true}}}}
       refuses = %{"thinking" => %{"types" => %{"disabled" => %{"supported" => false}}}}

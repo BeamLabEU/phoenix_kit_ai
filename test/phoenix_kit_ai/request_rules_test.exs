@@ -59,8 +59,24 @@ defmodule PhoenixKitAI.RequestRulesTest do
         "thinking" => %{
           "supported" => true,
           "types" => %{
+            "enabled" => %{"supported" => false},
             "adaptive" => %{"supported" => true},
             "disabled" => %{"supported" => false}
+          }
+        }
+      }
+    },
+    # An older model: a token budget, no adaptive thinking.
+    %{
+      "id" => "claude-budget-only",
+      "type" => "model",
+      "capabilities" => %{
+        "image_input" => %{"supported" => true},
+        "thinking" => %{
+          "supported" => true,
+          "types" => %{
+            "enabled" => %{"supported" => true},
+            "adaptive" => %{"supported" => false}
           }
         }
       }
@@ -170,6 +186,7 @@ defmodule PhoenixKitAI.RequestRulesTest do
       ep =
         anthropic_endpoint(%{
           top_p: 0.9,
+          top_k: 40,
           frequency_penalty: 0.5,
           presence_penalty: 0.5,
           repetition_penalty: 1.1,
@@ -183,7 +200,8 @@ defmodule PhoenixKitAI.RequestRulesTest do
       assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "hi")
       body = sent_body()
 
-      for key <- ~w(temperature top_p frequency_penalty presence_penalty repetition_penalty seed),
+      for key <-
+            ~w(temperature top_p top_k frequency_penalty presence_penalty repetition_penalty seed),
           do: refute(Map.has_key?(body, key), key)
 
       assert body["max_tokens"] == 500
@@ -208,23 +226,49 @@ defmodule PhoenixKitAI.RequestRulesTest do
       refute Map.has_key?(body, "seed")
     end
 
-    test "reasoning becomes thinking" do
+    test "reasoning becomes thinking, only in a form the model's catalogue says it takes" do
       stub()
+      adaptive = anthropic_endpoint(%{model: "claude-always-thinks", reasoning_enabled: true})
 
-      assert {:ok, _} =
-               PhoenixKitAI.ask(anthropic_endpoint(%{reasoning_enabled: true}).uuid, "hi")
+      adaptive_budget =
+        anthropic_endpoint(%{model: "claude-always-thinks", reasoning_max_tokens: 2048})
 
+      budget = anthropic_endpoint(%{model: "claude-budget-only", reasoning_max_tokens: 2048})
+
+      budget_no_value =
+        anthropic_endpoint(%{model: "claude-budget-only", reasoning_enabled: true})
+
+      # Before the catalogue is read nothing is known: no thinking field, and
+      # the reasoning object is not sent either (what the layer got before).
+      assert {:ok, _} = PhoenixKitAI.ask(adaptive.uuid, "hi")
       body = sent_body()
-      assert body["thinking"] == %{"type" => "adaptive"}
+      refute Map.has_key?(body, "thinking")
       refute Map.has_key?(body, "reasoning")
 
-      assert {:ok, _} =
-               PhoenixKitAI.ask(anthropic_endpoint(%{reasoning_max_tokens: 2048}).uuid, "hi")
+      start_catalogue()
 
+      assert %Capabilities{thinking_enabled: :no, thinking_adaptive: :yes} =
+               Capabilities.for_endpoint(adaptive)
+
+      assert %Capabilities{thinking_enabled: :yes, thinking_adaptive: :no} =
+               Capabilities.for_endpoint(budget)
+
+      assert {:ok, _} = PhoenixKitAI.ask(adaptive.uuid, "hi")
+      assert %{"thinking" => %{"type" => "adaptive"}} = sent_body()
+
+      assert {:ok, _} = PhoenixKitAI.ask(adaptive.uuid, "hi", reasoning_effort: "low")
+      assert %{"thinking" => %{"type" => "adaptive"}} = sent_body()
+
+      # A token budget is a 400 on a model without `enabled`: adaptive instead.
+      assert {:ok, _} = PhoenixKitAI.ask(adaptive_budget.uuid, "hi")
+      assert %{"thinking" => %{"type" => "adaptive"}} = sent_body()
+
+      assert {:ok, _} = PhoenixKitAI.ask(budget.uuid, "hi")
       assert %{"thinking" => %{"type" => "enabled", "budget_tokens" => 2048}} = sent_body()
 
-      assert {:ok, _} = PhoenixKitAI.ask(anthropic_endpoint().uuid, "hi", reasoning_effort: "low")
-      assert %{"thinking" => %{"type" => "adaptive"}} = sent_body()
+      # Neither a budget nor adaptive thinking: nothing is sent.
+      assert {:ok, _} = PhoenixKitAI.ask(budget_no_value.uuid, "hi")
+      refute Map.has_key?(sent_body(), "thinking")
     end
 
     test "thinking off is sent only to a model whose catalogue says it takes it" do

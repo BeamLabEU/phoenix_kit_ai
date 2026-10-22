@@ -4335,16 +4335,18 @@ defmodule PhoenixKitAI do
     |> Keyword.merge(opts)
   end
 
-  # Anthropic's OpenAI-compatible layer answers 400 to a `temperature` or
-  # `top_p` its newer models do not take, and ignores the penalties and
-  # `seed`: the endpoint's stored sampling values (the schema's 0.7 default
-  # among them) are not sent there. A caller's own `temperature:` /
-  # `top_p:` still is; `Completion` sends at most one of the two.
+  # Anthropic's OpenAI-compatible layer answers 400 to a `temperature`,
+  # `top_p` or `top_k` its newer models do not take, and ignores the
+  # penalties and `seed`: the endpoint's stored sampling values (the
+  # schema's 0.7 default among them) are not sent there. A caller's own
+  # `temperature:` / `top_p:` / `top_k:` still is; `Completion` never sends
+  # `temperature` and `top_p` together.
   defp caller_only_options(endpoint) do
     if Completion.anthropic?(endpoint),
       do: [
         :temperature,
         :top_p,
+        :top_k,
         :frequency_penalty,
         :presence_penalty,
         :repetition_penalty,

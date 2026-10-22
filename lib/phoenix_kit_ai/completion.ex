@@ -840,39 +840,45 @@ defmodule PhoenixKitAI.Completion do
     end
   end
 
-  # `enabled: false` → `{"type": "disabled"}`, but only for a model whose
-  # catalogue entry says it takes that (otherwise a 400) — else nothing is
-  # sent and the model's default applies. A token budget →
-  # `{"type": "enabled", "budget_tokens": n}`. Anything else asking for
-  # reasoning (`enabled: true`, an effort) → `{"type": "adaptive"}`.
+  # Each `thinking` form is sent only to a model whose catalogue entry says
+  # it accepts it — a form it does not take is a 400 (`budget_tokens` on any
+  # current Claude, `adaptive` before 4.6). Otherwise no `thinking` field is
+  # sent at all, which is what the compatibility layer got before (it
+  # ignores the `reasoning` object) and leaves the model's default.
+  #
+  #   * `enabled: false` → `{"type": "disabled"}` (`thinking_disabled: :yes`);
+  #   * a token budget → `{"type": "enabled", "budget_tokens": n}`
+  #     (`thinking_enabled: :yes`), else adaptive;
+  #   * `enabled: true` or an effort → `{"type": "adaptive"}`
+  #     (`thinking_adaptive: :yes`).
   defp anthropic_thinking(%{"reasoning" => reasoning} = body, endpoint) do
-    body = Map.delete(body, "reasoning")
+    caps = Capabilities.for_endpoint(endpoint)
 
-    cond do
-      reasoning["enabled"] == false ->
-        if thinking_disabled_accepted?(endpoint),
-          do: Map.put(body, "thinking", %{"type" => "disabled"}),
-          else: body
-
-      is_integer(reasoning["max_tokens"]) ->
-        Map.put(body, "thinking", %{
-          "type" => "enabled",
-          "budget_tokens" => reasoning["max_tokens"]
-        })
-
-      reasoning["enabled"] == true or is_binary(reasoning["effort"]) ->
-        Map.put(body, "thinking", %{"type" => "adaptive"})
-
-      true ->
-        body
-    end
+    body
+    |> Map.delete("reasoning")
+    |> maybe_add("thinking", thinking_form(reasoning, caps))
   end
 
   defp anthropic_thinking(body, _endpoint), do: body
 
-  defp thinking_disabled_accepted?(endpoint) do
-    match?(%Capabilities{thinking_disabled: :yes}, Capabilities.for_endpoint(endpoint))
+  defp thinking_form(%{"enabled" => false}, caps),
+    do: if(thinking_flag(caps, :thinking_disabled) == :yes, do: %{"type" => "disabled"})
+
+  defp thinking_form(%{"max_tokens" => budget}, caps) when is_integer(budget) do
+    if thinking_flag(caps, :thinking_enabled) == :yes,
+      do: %{"type" => "enabled", "budget_tokens" => budget},
+      else: adaptive_form(caps)
   end
+
+  defp thinking_form(reasoning, caps) do
+    if reasoning["enabled"] == true or is_binary(reasoning["effort"]), do: adaptive_form(caps)
+  end
+
+  defp adaptive_form(caps),
+    do: if(thinking_flag(caps, :thinking_adaptive) == :yes, do: %{"type" => "adaptive"})
+
+  defp thinking_flag(%Capabilities{} = caps, flag), do: Map.fetch!(caps, flag)
+  defp thinking_flag(_caps, _flag), do: :unknown
 
   # Build reasoning object for OpenRouter API
   # See: https://openrouter.ai/docs/guides/best-practices/reasoning-tokens
