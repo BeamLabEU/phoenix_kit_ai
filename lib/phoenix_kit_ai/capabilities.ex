@@ -47,8 +47,9 @@ defmodule PhoenixKitAI.Capabilities do
   is a model it does not have, and asks for nothing). They are single flight
   — callers arriving while one runs share it. A catalogue that cannot be read
   keeps what the cache had and is tried again on its own after 1, 5 and 30
-  minutes, then at the next 6-hourly refresh; an empty list counts as a
-  failure, and a base URL whose endpoints have no API key is not retried.
+  minutes, then at the next 6-hourly refresh, which starts the 1, 5, 30
+  minute retries over if it fails too; an empty list counts as a failure,
+  and a base URL whose endpoints have no API key is not retried.
   When a refresh changes what the cache holds,
   `{:capabilities_refreshed, base_urls}` is broadcast on `topic/0` with the
   base URLs that changed.
@@ -431,10 +432,12 @@ defmodule PhoenixKitAI.Capabilities do
   def handle_cast(:refresh_after_change, state), do: {:noreply, %{state | pending: true}}
 
   # The scheduled refresh starts a new cycle: what misses settled is
-  # forgotten, so a model that has appeared since is found.
+  # forgotten, so a model that has appeared since is found, and failures
+  # start counting again, so a catalogue that fails now gets the quick
+  # retries even if an earlier outage used them up.
   @impl true
   def handle_info(:tick, state) do
-    state = %{state | timer: nil, settled: MapSet.new()}
+    state = %{state | timer: nil, settled: MapSet.new(), failures: %{}}
 
     if state.task,
       do: {:noreply, %{state | pending: true}},
@@ -559,8 +562,8 @@ defmodule PhoenixKitAI.Capabilities do
   end
 
   # What still fails after this run, each with its count of failed attempts
-  # in a row and when to try again: the back-off steps, then nothing before
-  # the next scheduled refresh. A full run that read the endpoints says what
+  # in a row this cycle and when to try again: the back-off steps, then
+  # nothing before the next scheduled refresh (which resets the count). A full run that read the endpoints says what
   # fails now; a retry settles the base URLs it retried. A missing API key is
   # not retried — saving the endpoint asks for a refresh.
   defp next_failures(state, result, errors) do

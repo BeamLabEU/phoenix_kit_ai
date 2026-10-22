@@ -460,6 +460,29 @@ defmodule PhoenixKitAI.CapabilitiesServerTest do
       refute_receive {:capabilities_refreshed, _}, 100
     end
 
+    test "a scheduled refresh starts the back-off over", %{stub: stub} do
+      openrouter_endpoint("~google/gemini-flash-latest")
+      test_pid = self()
+
+      Req.Test.stub(stub, fn conn ->
+        send(test_pid, {:requested, System.monotonic_time(:millisecond)})
+        Plug.Conn.send_resp(conn, 503, "")
+      end)
+
+      # One quick retry per failure run, a "6-hourly" cycle of 400 ms.
+      start_cache(stub, retry_backoff: [20], refresh_interval: 400)
+
+      assert {:error, _} = Capabilities.refresh()
+      assert_received {:requested, _first}
+      # The quick retry; the back-off is then used up.
+      assert_receive {:requested, _retry}, 1_000
+      # The scheduled refresh fails too...
+      assert_receive {:requested, scheduled}, 1_000
+      # ...and gets its quick retry again, not another full cycle later.
+      assert_receive {:requested, retried}, 1_000
+      assert retried - scheduled < 300
+    end
+
     test "without an API key is not retried", %{stub: stub} do
       {:ok, endpoint} =
         PhoenixKitAI.create_endpoint(%{
