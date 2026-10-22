@@ -2429,7 +2429,7 @@ msgstr ""
 msgid "Images"
 msgstr ""
 
-#: lib/phoenix_kit_ai/tasks.ex:249
+#: lib/phoenix_kit_ai/tasks.ex:250
 #: lib/phoenix_kit_ai/web/components/capability_badges.ex:79
 #, elixir-autogen, elixir-format
 msgid "JSON schema"
@@ -2477,7 +2477,7 @@ msgstr ""
 msgid "It is not known whether the endpoint's model can do what this task needs (%{needs}). Mark the model's capabilities on the endpoint first."
 msgstr ""
 
-#: lib/phoenix_kit_ai/tasks.ex:250
+#: lib/phoenix_kit_ai/tasks.ex:251
 #, elixir-autogen, elixir-format
 msgid "JSON"
 msgstr ""
@@ -2556,7 +2556,7 @@ msgstr ""
 msgid "What each AI task needs and whether its endpoints fit"
 msgstr ""
 
-#: lib/phoenix_kit_ai/tasks.ex:245
+#: lib/phoenix_kit_ai/tasks.ex:246
 #, elixir-autogen, elixir-format
 msgid "images"
 msgstr ""
@@ -2566,7 +2566,7 @@ msgstr ""
 msgid "text only"
 msgstr ""
 
-#: lib/phoenix_kit_ai/tasks.ex:248
+#: lib/phoenix_kit_ai/tasks.ex:249
 #, elixir-autogen, elixir-format
 msgid "tools"
 msgstr ""
@@ -3040,12 +3040,12 @@ msgstr ""
 msgid "Not verified — mark it on the endpoint"
 msgstr ""
 
-#: lib/phoenix_kit_ai/tasks.ex:246
+#: lib/phoenix_kit_ai/tasks.ex:247
 #, elixir-autogen, elixir-format
 msgid "documents"
 msgstr ""
 
-#: lib/phoenix_kit_ai/tasks.ex:247
+#: lib/phoenix_kit_ai/tasks.ex:248
 #, elixir-autogen, elixir-format
 msgid "image generation"
 msgstr ""

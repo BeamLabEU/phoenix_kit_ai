@@ -404,7 +404,9 @@ defmodule PhoenixKitAI.TaskLimits do
   @doc """
   What the task (and `user_uuid` in it, when given) used in the day and month
   of `now`, from the moment a limit was forgiven when it was:
-  `%{task: %{unit => %{day:, month:}}, user: … | nil}`.
+  `%{task: %{unit => %{day:, month:}}, user: … | nil}`. The user is counted
+  for any task, also one declared with `user_limits: false`, where that
+  count limits nothing.
   """
   @spec usage(String.t(), String.t() | nil, DateTime.t()) :: %{
           task: %{unit() => %{period() => non_neg_integer()}},

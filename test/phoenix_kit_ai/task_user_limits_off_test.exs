@@ -14,7 +14,7 @@ defmodule PhoenixKitAI.TaskUserLimitsOffTest do
   alias PhoenixKit.ModuleRegistry
   alias PhoenixKit.Test.Fixtures
   alias PhoenixKit.Users.Auth.Scope
-  alias PhoenixKitAI.{GuardEvent, Request, TaskLimits, Tasks, TaskSetting, TaskSpec}
+  alias PhoenixKitAI.{Guard, GuardEvent, Request, TaskLimits, Tasks, TaskSetting, TaskSpec}
   alias PhoenixKitAI.TaskUserLimit
   alias PhoenixKitAI.Test.FakeOwnUserLimitsTasks
   alias PhoenixKitAI.Test.Repo, as: TestRepo
@@ -92,6 +92,11 @@ defmodule PhoenixKitAI.TaskUserLimitsOffTest do
     assert spec().user_limits == false
   end
 
+  test "a flag that is not false is read as true" do
+    assert Tasks.get("test.user_limits_nil").user_limits == true
+    assert Tasks.get("test.user_limits_other").user_limits == true
+  end
+
   describe "the limits in force" do
     test "only the task's: the declared and stored user values are ignored", %{user: user} do
       stored_user_values!(user)
@@ -135,6 +140,23 @@ defmodule PhoenixKitAI.TaskUserLimitsOffTest do
                TaskLimits.check(spec(), user_uuid: user)
 
       assert [%GuardEvent{kind: "limit_reached", user_uuid: nil}] = guard_events()
+    end
+  end
+
+  describe "the admission of a piece of work" do
+    test "the user values do not stop it; the task's limit does", %{user: user} do
+      stored_user_values!(user)
+      endpoint = endpoint_fixture()
+      row(endpoint, user)
+
+      assert {:ok, token} = Guard.admit(@key, user, "turn-1", 300)
+      assert Guard.admitted?(token, @key, user)
+
+      row(endpoint, user)
+      row(endpoint, user)
+
+      assert {:error, {:task_limit_exceeded, :task, :requests, :day}} =
+               Guard.admit(@key, user, "turn-2", 300)
     end
   end
 

@@ -2440,7 +2440,7 @@ msgstr "Объявлено, но по каталогу эта модель эт�
 msgid "Images"
 msgstr "Картинки"
 
-#: lib/phoenix_kit_ai/tasks.ex:249
+#: lib/phoenix_kit_ai/tasks.ex:250
 #: lib/phoenix_kit_ai/web/components/capability_badges.ex:79
 #, elixir-autogen, elixir-format
 msgid "JSON schema"
@@ -2488,7 +2488,7 @@ msgstr "Подходит"
 msgid "It is not known whether the endpoint's model can do what this task needs (%{needs}). Mark the model's capabilities on the endpoint first."
 msgstr "Неизвестно, умеет ли модель конечной точки то, что нужно задаче (%{needs}). Сначала отметьте возможности модели на конечной точке."
 
-#: lib/phoenix_kit_ai/tasks.ex:250
+#: lib/phoenix_kit_ai/tasks.ex:251
 #, elixir-autogen, elixir-format
 msgid "JSON"
 msgstr "JSON"
@@ -2567,7 +2567,7 @@ msgstr "Перевод"
 msgid "What each AI task needs and whether its endpoints fit"
 msgstr "Что нужно каждой задаче AI и подходят ли её конечные точки"
 
-#: lib/phoenix_kit_ai/tasks.ex:245
+#: lib/phoenix_kit_ai/tasks.ex:246
 #, elixir-autogen, elixir-format
 msgid "images"
 msgstr "картинки"
@@ -2577,7 +2577,7 @@ msgstr "картинки"
 msgid "text only"
 msgstr "только текст"
 
-#: lib/phoenix_kit_ai/tasks.ex:248
+#: lib/phoenix_kit_ai/tasks.ex:249
 #, elixir-autogen, elixir-format
 msgid "tools"
 msgstr "инструменты"
@@ -3051,12 +3051,12 @@ msgstr "Генерация изображений"
 msgid "Not verified — mark it on the endpoint"
 msgstr "Не проверено — отметьте на конечной точке"
 
-#: lib/phoenix_kit_ai/tasks.ex:246
+#: lib/phoenix_kit_ai/tasks.ex:247
 #, elixir-autogen, elixir-format
 msgid "documents"
 msgstr "документы"
 
-#: lib/phoenix_kit_ai/tasks.ex:247
+#: lib/phoenix_kit_ai/tasks.ex:248
 #, elixir-autogen, elixir-format
 msgid "image generation"
 msgstr "генерация изображений"

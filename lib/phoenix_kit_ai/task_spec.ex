@@ -39,7 +39,8 @@ defmodule PhoenixKitAI.TaskSpec do
   ignores the user part of `default_limits` and the user values an admin
   stored (they stay in the database), refuses to set user limits
   (`{:error, :user_limits_off}`), and «AI → Tasks» shows no user limits for
-  it.
+  it. Only `false` turns them off: `PhoenixKitAI.Tasks` reads any other
+  value (`nil` included) as `true`.
 
   `self_flag` says the consumer has its model flag off-purpose requests
   (the default of the task's guard mode, `PhoenixKitAI.Guard.self_flag?/1`).
