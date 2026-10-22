@@ -42,7 +42,8 @@ defmodule PhoenixKitAI.Providers.OpenAICompatible do
 
   @doc """
   Vision through chat completions: `messages` already carry the image
-  parts; `options` may hold `:response_format` and the sampling keys.
+  parts; `options` may hold `:response_format`, the sampling keys, the
+  call's reasoning options and `:require_parameters`.
   Not every model behind a chat endpoint takes `response_format`
   (image-output models answer 400), so a 4xx on a JSON request is retried
   once without the field — the prompt asks for JSON anyway.
@@ -51,7 +52,18 @@ defmodule PhoenixKitAI.Providers.OpenAICompatible do
   def vision(endpoint, messages, options) do
     chat_opts =
       options
-      |> Map.take([:temperature, :max_tokens, :top_p, :seed, :response_format])
+      |> Map.take([
+        :temperature,
+        :max_tokens,
+        :top_p,
+        :seed,
+        :response_format,
+        :reasoning_enabled,
+        :reasoning_effort,
+        :reasoning_max_tokens,
+        :reasoning_exclude,
+        :require_parameters
+      ])
       |> Enum.reject(fn {_k, v} -> is_nil(v) end)
 
     Completion.chat_completion(endpoint, messages, chat_opts)

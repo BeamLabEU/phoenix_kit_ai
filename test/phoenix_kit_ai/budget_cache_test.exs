@@ -104,8 +104,12 @@ defmodule PhoenixKitAI.BudgetCacheTest do
       # A cached answer is refused too: a cap is a stop switch.
       assert {:error, {:budget_exceeded, :global}} = PhoenixKitAI.ask(ep.uuid, "q1", cache: true)
 
-      assert 2 =
-               TestRepo.aggregate(from(r in Request, where: r.endpoint_uuid == ^ep.uuid), :count)
+      # Two paid calls; each refusal is a zero-cost error row marked refused.
+      {refused, paid} = Enum.split_with(rows(ep), &(&1.metadata["refused"] == true))
+      assert [%{status: "success"}, %{status: "success"}] = paid
+
+      assert [%{status: "error", cost_cents: nil}, %{status: "error", cost_cents: nil}] =
+               refused
     end
 
     test "dry_run: does not lift the cap on a verb that ignores it", %{endpoint: ep} do
@@ -262,7 +266,13 @@ defmodule PhoenixKitAI.BudgetCacheTest do
       assert_received :provider_called
       assert {:ok, second} = PhoenixKitAI.ask(ep.uuid, "same question", cache: true, source: "B")
       refute_received :provider_called
-      assert first == second
+      # The same answer, each naming its own usage row.
+      assert Map.delete(first, "request_uuid") == Map.delete(second, "request_uuid")
+      assert first["request_uuid"] != second["request_uuid"]
+      assert %{metadata: %{"source" => "A"}} = PhoenixKitAI.get_request(first["request_uuid"])
+
+      assert %{metadata: %{"source" => "B", "cached" => true}} =
+               PhoenixKitAI.get_request(second["request_uuid"])
 
       # Telemetry metadata is tags only — the hit callback is not in it.
       assert_received {:event, [:phoenix_kit_ai, :cache, :hit], _, meta}
@@ -301,11 +311,14 @@ defmodule PhoenixKitAI.BudgetCacheTest do
       end)
 
       assert {:ok, b} = PhoenixKitAI.ask(ep.uuid, "q", cache: [refresh: true])
-      assert b != a
-      assert {:ok, ^b} = PhoenixKitAI.ask(ep.uuid, "q", cache: true)
+      b = Map.delete(b, "request_uuid")
+      assert b != Map.delete(a, "request_uuid")
+      assert {:ok, hit} = PhoenixKitAI.ask(ep.uuid, "q", cache: true)
+      assert Map.delete(hit, "request_uuid") == b
 
       Application.put_env(:phoenix_kit_ai, :request_cache, default: true)
-      assert {:ok, ^b} = PhoenixKitAI.ask(ep.uuid, "q")
+      assert {:ok, hit} = PhoenixKitAI.ask(ep.uuid, "q")
+      assert Map.delete(hit, "request_uuid") == b
       stub_chat(self())
       assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "q", cache: false)
       assert_received :provider_called
@@ -383,7 +396,7 @@ defmodule PhoenixKitAI.BudgetCacheTest do
       assert_received :provider_called
       assert {:ok, b} = PhoenixKitAI.ask(ep.uuid, "second wording", cache: [key: "product:1"])
       refute_received :provider_called
-      assert a == b
+      assert Map.delete(a, "request_uuid") == Map.delete(b, "request_uuid")
       assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "second wording", cache: [key: "product:2"])
       assert_received :provider_called
 

@@ -38,6 +38,7 @@ defmodule PhoenixKitAI.Test.Router do
 
       live("/playground", Playground, :index, as: :ai_playground)
       live("/usage", Endpoints, :usage, as: :ai_usage)
+      live("/tasks", Tasks, :index, as: :ai_tasks)
     end
   end
 end

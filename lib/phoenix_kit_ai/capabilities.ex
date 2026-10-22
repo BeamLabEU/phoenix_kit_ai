@@ -11,14 +11,23 @@ defmodule PhoenixKitAI.Capabilities do
       `modality` string) → `vision`; `tools` in `supported_parameters` →
       `tools`; `structured_outputs` → `json_schema`; `response_format`
       without `structured_outputs` → `json` only. `supported_parameters` is
-      the union over OpenRouter's upstream providers.
+      the union over OpenRouter's upstream providers; the list itself is
+      kept as `supported_parameters` (the call-time guard leaves out what it
+      lacks when it asks OpenRouter to require every parameter). Neither it
+      nor the `thinking_*` flags are in the snapshot: after a restart they
+      are unknown until the first refresh.
     * **Anthropic** (native `GET /v1/models`, read by
       `OpenRouterClient.fetch_models/2`): `capabilities.image_input` →
       `vision` (`capabilities: null` leaves it `:unknown`), `max_input_tokens`
       → `context_length`, `lifecycle`. Chat goes through Anthropic's
       OpenAI-compatible layer, which ignores `response_format`, so
       `json_schema` is `:no` and `json` is `:yes` (the schema is written into
-      the prompt instead); `tools` is `:yes`.
+      the prompt instead); `tools` is `:yes`;
+      `capabilities.thinking.types.{enabled,adaptive,disabled}` →
+      `thinking_enabled` / `thinking_adaptive` / `thinking_disabled` (which
+      `thinking: {type: …}` forms the model accepts; the documented
+      catalogue rows show only `enabled` and `adaptive`, so
+      `thinking_disabled` is expected to stay `:unknown`).
     * **Every other provider** — `:unknown`, unless declared.
 
   ## Declared capabilities
@@ -90,7 +99,11 @@ defmodule PhoenixKitAI.Capabilities do
             context_length: nil,
             source: :catalogue,
             fetched_at: nil,
-            lifecycle: nil
+            lifecycle: nil,
+            supported_parameters: nil,
+            thinking_disabled: :unknown,
+            thinking_enabled: :unknown,
+            thinking_adaptive: :unknown
 
   @type flag :: :yes | :no | :unknown
   @type t :: %__MODULE__{
@@ -101,7 +114,11 @@ defmodule PhoenixKitAI.Capabilities do
           context_length: pos_integer() | nil,
           source: :catalogue | :declared,
           fetched_at: DateTime.t() | nil,
-          lifecycle: :active | :deprecated | :retired | nil
+          lifecycle: :active | :deprecated | :retired | nil,
+          supported_parameters: [String.t()] | nil,
+          thinking_disabled: flag(),
+          thinking_enabled: flag(),
+          thinking_adaptive: flag()
         }
 
   # ===========================================
@@ -279,7 +296,8 @@ defmodule PhoenixKitAI.Capabilities do
       tools: param_flag(params, ["tools"]),
       json_schema: param_flag(params, ["structured_outputs"]),
       json: param_flag(params, ["structured_outputs", "response_format"]),
-      context_length: positive_integer(context_length)
+      context_length: positive_integer(context_length),
+      supported_parameters: if(is_list(params), do: params)
     }
   end
 
@@ -306,9 +324,26 @@ defmodule PhoenixKitAI.Capabilities do
       json_schema: :no,
       json: :yes,
       context_length: positive_integer(row["max_input_tokens"]),
-      lifecycle: lifecycle(row["lifecycle"])
+      lifecycle: lifecycle(row["lifecycle"]),
+      thinking_disabled: thinking_type(row["capabilities"], "disabled"),
+      thinking_enabled: thinking_type(row["capabilities"], "enabled"),
+      thinking_adaptive: thinking_type(row["capabilities"], "adaptive")
     }
   end
+
+  # Which `thinking: {type: …}` forms a model accepts, from
+  # `capabilities.thinking.types.<type>.supported`; a catalogue that does not
+  # say leaves it `:unknown`, and a form that is not `:yes` is not sent.
+  # Anthropic's documented examples list only `enabled` and `adaptive`, so
+  # `disabled` is expected to stay `:unknown` until a catalogue shows it.
+  defp thinking_type(%{"thinking" => %{"types" => %{} = types}}, type) do
+    case types[type] do
+      %{"supported" => supported} when is_boolean(supported) -> yes_no(supported)
+      _ -> :unknown
+    end
+  end
+
+  defp thinking_type(_capabilities, _type), do: :unknown
 
   defp anthropic_vision(%{"image_input" => %{"supported" => supported}})
        when is_boolean(supported),

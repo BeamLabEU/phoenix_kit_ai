@@ -159,6 +159,43 @@ keep forever". Every usage row emits `[:phoenix_kit_ai, :request]`
 telemetry; the full contract is in
 `dev_docs/guides/spend-caps-and-caching.md`.
 
+### AI tasks and the model check
+
+A module declares what it uses AI for, and what the model must be able to
+do, in an `ai_tasks/0` callback; calls name the task.
+
+```elixir
+def ai_tasks do
+  [
+    %PhoenixKitAI.TaskSpec{
+      key: "my_module.photo_count",
+      label: "Count items in a photo",
+      purpose: "Count the stock items visible in a shelf photo.",
+      needs: [:vision, :json_schema],
+      endpoints: {MyModule.Settings, :photo_endpoint_uuids, []}
+    }
+  ]
+end
+
+{:ok, %{json: json, request_uuid: row}} =
+  PhoenixKitAI.describe_image(endpoint_uuid, photos, task: "my_module.photo_count", schema: schema)
+
+# A settings form, before saving the chosen endpoint
+:ok = PhoenixKitAI.Tasks.check_selection("my_module.photo_count", endpoint_uuid)
+PhoenixKitAI.Tasks.endpoint_options("my_module.photo_count")  # [%{endpoint:, fitness:}]
+```
+
+Before any HTTP, every verb checks the model (or the call's `model:`
+override) against the task's `needs` and what the call itself shows —
+image parts, `tools:`, `schema:` / `json:`. A model that says no to
+images, tools or a JSON schema is refused with
+`{:error, {:model_unfit, missing}}`, written as an error row marked
+`refused: true` that no usage sink receives; an unknown capability passes
+unless `ai_guard_verified_models_only` is on. Each usage row carries
+`metadata.task`, and each result the uuid of its row (`"request_uuid"` /
+`:request_uuid`). «AI → Tasks» lists the declared tasks with their
+endpoints and fitness.
+
 ### Host apps in the translation pipeline
 
 ```elixir
@@ -666,6 +703,7 @@ create:
 | Prompt form | `/admin/ai/prompts/new`, `.../edit` | Create/edit with variable extraction |
 | Playground | `/admin/ai/playground` | Interactive testing with live variables |
 | Usage | `/admin/ai/usage` | Dashboard stats and request history |
+| Tasks | `/admin/ai/tasks` | Declared AI tasks, their needs, endpoints and fitness |
 
 ## Supported providers
 

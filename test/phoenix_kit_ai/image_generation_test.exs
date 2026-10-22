@@ -125,7 +125,8 @@ defmodule PhoenixKitAI.ImageGenerationTest do
       ep = endpoint_fixture()
 
       assert {:ok, result} = PhoenixKitAI.generate_image(ep.uuid, "a cat")
-      assert Enum.sort(Map.keys(result)) == [:images, :model, :warnings]
+      assert Enum.sort(Map.keys(result)) == [:images, :model, :request_uuid, :warnings]
+      assert %{request_type: "image"} = PhoenixKitAI.get_request(result.request_uuid)
     end
   end
 

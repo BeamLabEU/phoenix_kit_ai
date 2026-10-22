@@ -23,9 +23,9 @@ host supplies endpoint and router (`config/` exists only for tests).
 - **Consumed by:** `phoenix_kit_catalogue`, `phoenix_kit_publishing`,
   `phoenix_kit_projects`, `phoenix_kit_restyle`, `phoenix_kit_ecommerce` — all
   through the `PhoenixKitAI` context module.
-- **Admin surface:** one parent tab `AI` at `ai` with four subtabs —
-  `ai/endpoints`, `ai/prompts`, `ai/playground`, `ai/usage`. Sub-routes for the
-  new/edit forms come from `route_module/0`.
+- **Admin surface:** one parent tab `AI` at `ai` with five subtabs —
+  `ai/endpoints`, `ai/prompts`, `ai/playground`, `ai/usage`, `ai/tasks`.
+  Sub-routes for the new/edit forms come from `route_module/0`.
 - **Module key** `"ai"`; settings prefix `ai_`.
 
 ## What this module does NOT do
@@ -248,6 +248,8 @@ lib/phoenix_kit_ai/
   images.ex images/              generic image layer: operations → prompt, option fitting, describe/compare, model-capability cache
   openrouter_client.ex           generic across providers despite the name
   capabilities.ex                what a model can do (catalogue + declared), ETS cache process
+  task_spec.ex tasks.ex          AI task declarations (`ai_tasks/0`), the registry, fitness for a task
+  guard.ex                       the call-time check: needs of a call, fitness, require_parameters
   migrations.ex model_capability.ex   the module's own migration chain; capability snapshot schema
   errors.ex                      error atom -> gettext string
   ai_model.ex routes.ex          model struct; admin sub-routes
@@ -256,7 +258,7 @@ lib/phoenix_kit_ai/
   realtime/session.ex            one xAI realtime WebSocket per Playground LiveView
   translat*.ex translate_worker.ex   generic AI-translation pipeline
   components/ai_translate*       reusable translate button/glue components
-  web/                           admin LiveViews: Endpoints, EndpointForm, Prompts, PromptForm, Playground
+  web/                           admin LiveViews: Endpoints, EndpointForm, Prompts, PromptForm, Playground, Tasks
 ```
 
 Notes on the less obvious modules:
@@ -322,7 +324,12 @@ read through the settings cache. Every provider-calling verb (not the
 realtime voice session) checks them first and returns
 `{:error, {:budget_exceeded, scope}}` once one is reached, cached answers
 included; only a `process_image/4` dry run skips the check (no other verb
-honours `dry_run:`).
+honours `dry_run:`). A refused call is written as a usage row (see
+"Feature notes").
+
+The call-time guard: `ai_guard_verified_models_only` (boolean, default
+`false`, no UI yet) refuses a call whose model's capability for a
+requirement is unknown instead of letting it through.
 
 AI translation: `ai_translation_endpoint_uuid` / `ai_translation_prompt_uuid`
 pick the shared endpoint and prompt; `ai_translation_glossary_<target_lang>`
@@ -350,6 +357,7 @@ checked with `Scope.has_module_access?/2`. No sub-permissions.
 | `:max_image_bytes` | `25_000_000` | Largest image accepted as input or fetched as output by the image verbs |
 | `:translatables` | `[]` | `[{resource_type, adapter_module}]` a host app registers for the AI-translation pipeline without being a kit module; configured entries win over module-declared ones |
 | `:request_cache` | `[]` | `ttl:` (seconds, default 86 400), `sweep:` (300), `max_entries:` (10 000), `max_value_bytes:` (8 000 000), `default:` (`true` caches every verb unless a call says `cache: false`); read per call by `PhoenixKitAI.RequestCache` |
+| `:task_registry_retry_ms` | `60_000` | How long a task registry built while a module's `ai_tasks/0` failed is kept before the next access builds it again |
 | `:allow_internal_image_urls` | `false` | Lift the image-fetch host policy (loopback / link-local / RFC 1918 / `.local`, resolved addresses included) — tests and air-gapped installs only; separate from the endpoint base-URL switch |
 
 ### Providers
@@ -540,10 +548,49 @@ Test database `phoenix_kit_ai_test`.
 ## Feature notes
 
 - Every provider-calling verb goes through one gate and one wrapper:
-  `authorize/2` (endpoint usable, spend caps have room) and `with_cache/6`
+  `authorize/5` (endpoint usable; the model fits what the call and its
+  task need, `PhoenixKitAI.Guard`; spend caps have room) and `with_cache/6`
   (key, lookup, zero-cost hit row). A new verb joins both or it is not a
   verb — `dev_docs/guides/spend-caps-and-caching.md` holds the semantics
-  of caps, cache, structured output and telemetry.
+  of caps, cache, structured output and telemetry. A refusal past the
+  endpoint check (`{:model_unfit, missing}`, `{:model_unverified, unclear}`,
+  `{:budget_exceeded, scope}`) writes an error row through `refuse/4`,
+  marked `metadata.refused: true`; `dispatch_usage_sinks/1` skips those.
+- AI tasks: modules declare `%PhoenixKitAI.TaskSpec{}`s in `ai_tasks/0`
+  (duck-typed); `PhoenixKitAI.Tasks` keeps the registry, `fitness/2`,
+  `endpoint_options/1` and `check_selection/2`. The registry is rebuilt
+  only when the module set changes, or a minute after a build in which a
+  module's `ai_tasks/0` failed (raised, exited or threw) — not when code
+  is hot-reloaded: a changed `ai_tasks/0` with the same modules needs a
+  restart to show. Every verb takes `task:`; every row it writes
+  (success, error, refusal, cache hit, unparsed JSON) carries
+  `metadata.task`, and `:task` is not part of the cache key. A key no
+  module declares is logged once and the call goes on. This module
+  declares `ai.translation` and `ai.playground`.
+- Every verb's result names its usage row: `"request_uuid"` in the chat and
+  embedding responses, `:request_uuid` in the other verbs' maps; a cache
+  hit names the row it wrote, not the first one.
+- Anthropic (`api.anthropic.com`, its OpenAI-compatible layer): the
+  endpoint's stored `temperature`/`top_p`/`top_k`/penalties/`seed` are
+  not sent, a caller's own sampling values are (never `temperature` with
+  `top_p`), and the OpenRouter-shaped reasoning options become `thinking`
+  only in a form the model's catalogue lists
+  (`capabilities.thinking.types.<type>.supported`): a token budget as
+  `enabled` + `budget_tokens`, else `adaptive`; with neither listed (or
+  the catalogue not read yet) no `thinking` is sent, as before. Anthropic's
+  documented catalogue rows show only `enabled` and `adaptive`, so
+  `reasoning_enabled: false` (`disabled`) is expected to send nothing
+  until a catalogue lists it — check one live `/v1/models` answer.
+- On OpenRouter a call with a hard `:tools`/`:json_schema` need sends
+  `provider.require_parameters` — only when the model's parameter list is
+  in the capability cache (not before the first catalogue read after a
+  restart, not for a model the catalogue lacks) — and leaves out the
+  parameters that list lacks (`metadata.stripped_params`, logged once per
+  endpoint and parameter); `max_tokens`, `tools` and `response_format` are
+  never left out. OpenRouter's "no provider for these parameters" answer
+  is `{:no_provider_for_params, params}` (the endpoint's parameters only).
+- A refused row is `status: "error"` with `metadata.refused`; the Usage tab
+  marks it "Refused" and its status filter has a `refused` choice.
 - Structured output (`schema:` / `json: true`) is parsed *inside* the
   cached closure, so a prose answer to a JSON request is logged with its
   usage but never stored as a success.
@@ -621,10 +668,8 @@ folder with no `FOLLOW_UP.md` means "not triaged yet"; a stub file is what
   (spend caps are too coarse against a scrape); one `%Result{}` struct
   across verbs instead of provider-shaped maps; streaming chat/TTS with
   cancellation and an async (Oban) mode for slow verbs; provider-neutral
-  tool calling; endpoint capability flags (chat / json_schema / vision /
-  embed / tts) that fail fast before HTTP — needs core columns; pre- and
-  post-dispatch policy hooks for tenancy and redaction; usage rows for the
-  realtime voice session.
+  tool calling; pre- and post-dispatch policy hooks for tenancy and
+  redaction; usage rows for the realtime voice session.
 - Image layer follow-ups, in rough order of value:
   async execution (an Oban worker with progress and cancellation for
   batch jobs); retries with backoff and idempotent replay on top of the

@@ -680,6 +680,14 @@
                           label={PhoenixKitAI.Request.status_label(request.status)}
                           size={:sm}
                         />
+                        <span
+                          :if={PhoenixKitAI.Request.refused?(request)}
+                          class="badge badge-ghost badge-sm"
+                          data-refused={request.uuid}
+                          title={gettext("Refused before reaching the provider")}
+                        >
+                          {gettext("Refused")}
+                        </span>
                         <%= if request.error_message do %>
                           <span title={request.error_message} class="inline-block align-middle">
                             <.icon
@@ -757,6 +765,12 @@
               label={PhoenixKitAI.Request.status_label(@selected_request.status)}
               size={:sm}
             />
+            <span
+              :if={PhoenixKitAI.Request.refused?(@selected_request)}
+              class="badge badge-ghost badge-sm"
+            >
+              {gettext("Refused")}
+            </span>
           </div>
           <div>
             <div class="text-xs text-base-content/70">{gettext("Latency")}</div>
