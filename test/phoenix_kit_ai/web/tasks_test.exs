@@ -46,7 +46,7 @@ defmodule PhoenixKitAI.Web.TasksTest do
     {:ok, view, html} = live(conn, "/en/admin/ai/tasks")
     assert html =~ "<h1>Tasks</h1>"
 
-    task = "#ai-task-test-photo"
+    task = "[data-task-key='test.photo']"
     assert has_element?(view, task, "Photo reading")
     assert has_element?(view, task, "Read the items in a shelf photo.")
     assert has_element?(view, "#{task} [data-need=vision]")
@@ -66,16 +66,29 @@ defmodule PhoenixKitAI.Web.TasksTest do
            )
 
     # This module's own tasks are listed too.
-    assert has_element?(view, "#ai-task-ai-translation")
-    assert has_element?(view, "#ai-task-ai-playground")
+    assert has_element?(view, "[data-task-key='ai.translation']")
+    assert has_element?(view, "[data-task-key='ai.playground']")
+  end
+
+  test "keys that differ only in punctuation get distinct card ids", %{conn: conn} do
+    {:ok, _view, html} = live(conn, "/en/admin/ai/tasks")
+    doc = LazyHTML.from_document(html)
+
+    ids =
+      for key <- ["test.same.id", "test.same-id"] do
+        [id] = doc |> LazyHTML.query("[data-task-key='#{key}']") |> LazyHTML.attribute("id")
+        id
+      end
+
+    assert Enum.uniq(ids) == ids
   end
 
   test "greys out a task of a switched-off module", %{conn: conn} do
     Application.put_env(:phoenix_kit_ai, :fake_ai_tasks_enabled, false)
     {:ok, view, _html} = live(conn, "/en/admin/ai/tasks")
 
-    assert has_element?(view, "#ai-task-test-photo [data-module-off]")
-    refute has_element?(view, "#ai-task-ai-playground [data-module-off]")
+    assert has_element?(view, "[data-task-key='test.photo'] [data-module-off]")
+    refute has_element?(view, "[data-task-key='ai.playground'] [data-module-off]")
   end
 
   test "recomputes the fitness when the capability cache changes", %{conn: conn} do

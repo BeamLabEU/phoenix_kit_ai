@@ -33,6 +33,9 @@ defmodule PhoenixKitAI.Test.FakeAITasks do
       },
       %TaskSpec{key: "test.tools", label: "Tool user", needs: [:tools]},
       %TaskSpec{key: "test.plain", label: "Plain text", needs: []},
+      # Two keys a naive DOM id would make the same.
+      %TaskSpec{key: "test.same.id", label: "Dotted"},
+      %TaskSpec{key: "test.same-id", label: "Dashed"},
       %TaskSpec{key: "test.json", label: "Loose JSON", needs: [:json]},
       # Accepted for later parts of the guard, not used yet.
       %TaskSpec{

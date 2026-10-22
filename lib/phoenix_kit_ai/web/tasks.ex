@@ -87,7 +87,7 @@ defmodule PhoenixKitAI.Web.Tasks do
       for spec <- Tasks.list() do
         %{
           spec: spec,
-          dom_id: "ai-task-" <> String.replace(spec.key, ~r/[^A-Za-z0-9_-]/, "-"),
+          dom_id: dom_id(spec.key),
           endpoints:
             spec
             |> Tasks.endpoints()
@@ -96,6 +96,12 @@ defmodule PhoenixKitAI.Web.Tasks do
       end
 
     assign(socket, :tasks, tasks)
+  end
+
+  # Readable, and unique: `a.b` and `a-b` slug alike, the hash tells them apart.
+  defp dom_id(key) do
+    hash = :sha256 |> :crypto.hash(key) |> Base.encode16(case: :lower) |> binary_part(0, 8)
+    "ai-task-" <> String.replace(key, ~r/[^A-Za-z0-9_-]/, "-") <> "-" <> hash
   end
 
   @impl true
