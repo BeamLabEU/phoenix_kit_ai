@@ -22,7 +22,7 @@ defmodule PhoenixKitAI.Completion do
 
   require Logger
 
-  alias PhoenixKitAI.{Endpoint, Images, OpenRouterClient, Provider}
+  alias PhoenixKitAI.{Capabilities, Endpoint, Images, OpenRouterClient, Provider}
 
   @timeout 120_000
 
@@ -92,15 +92,15 @@ defmodule PhoenixKitAI.Completion do
   def chat_completion(endpoint, messages, opts \\ []) do
     url = build_url(endpoint, "/chat/completions")
     headers = OpenRouterClient.build_headers_from_endpoint(endpoint)
-    body = build_chat_body(endpoint.model, messages, opts)
+    body = build_chat_body(endpoint, messages, opts)
     start_time = System.monotonic_time(:millisecond)
 
     case http_post(url, headers, body) do
       {:ok, %{status_code: 200, body: response_body}} ->
-        parse_success_response(response_body, start_time)
+        response_body |> parse_success_response(start_time) |> with_sent_params(body)
 
       {:ok, %{status_code: status, body: response_body}} ->
-        handle_error_status(status, response_body)
+        status |> handle_error_status(response_body) |> with_sent_params(body)
 
       {:error, :timeout} ->
         {:error, :request_timeout}
@@ -142,7 +142,24 @@ defmodule PhoenixKitAI.Completion do
   def handle_error_status(402, _body), do: {:error, :insufficient_credits}
   def handle_error_status(429, _body), do: {:error, :rate_limited}
 
-  def handle_error_status(status, response_body) do
+  # OpenRouter's answer to `provider.require_parameters` when no upstream
+  # provider of the model takes every parameter sent. The model itself is
+  # fine; the set of parameters is not. `chat_completion/3` fills in which
+  # parameters were sent.
+  def handle_error_status(404, response_body) do
+    message = extract_error_message(response_body) || ""
+
+    if message =~ ~r/requested parameters/i do
+      Logger.warning("OpenRouter completion failed: 404 - #{message}")
+      {:error, {:no_provider_for_params, []}}
+    else
+      generic_error_status(404, response_body)
+    end
+  end
+
+  def handle_error_status(status, response_body), do: generic_error_status(status, response_body)
+
+  defp generic_error_status(status, response_body) do
     # Log only the parsed error message (not the raw body) to avoid
     # persisting potentially sensitive provider data to application logs.
     case extract_error_message(response_body) do
@@ -155,6 +172,32 @@ defmodule PhoenixKitAI.Completion do
 
     {:error, {:api_error, status}}
   end
+
+  # The parameters a refused request carried, by name — what the error
+  # reports, never their values.
+  defp with_sent_params({:error, {:no_provider_for_params, _}}, body) do
+    params =
+      body
+      |> Map.drop(["model", "messages", "provider", "stream"])
+      |> Map.keys()
+      |> Enum.sort()
+
+    {:error, {:no_provider_for_params, params}}
+  end
+
+  defp with_sent_params(result, _body), do: result
+
+  @doc false
+  # Whether chat goes to Anthropic (its OpenAI-compatible layer), which
+  # takes parameters by its own rules — see `build_chat_body/3`.
+  @spec anthropic?(Endpoint.t() | map()) :: boolean()
+  def anthropic?(%{provider: provider} = endpoint) do
+    Capabilities.catalogue_kind(base_provider(provider), Capabilities.resolved_base_url(endpoint)) ==
+      :anthropic
+  end
+
+  defp base_provider(provider) when is_binary(provider), do: Endpoint.base_provider(provider)
+  defp base_provider(provider), do: provider
 
   @doc """
   Makes an embeddings request to OpenRouter.
@@ -748,11 +791,11 @@ defmodule PhoenixKitAI.Completion do
 
   # Private functions
 
-  defp build_chat_body(model, messages, opts) do
+  defp build_chat_body(endpoint, messages, opts) do
     normalized_messages = Enum.map(messages, &normalize_message/1)
 
     %{
-      "model" => model,
+      "model" => endpoint.model,
       "messages" => normalized_messages
     }
     |> maybe_add("temperature", Keyword.get(opts, :temperature))
@@ -770,6 +813,65 @@ defmodule PhoenixKitAI.Completion do
     |> maybe_add("tool_choice", Keyword.get(opts, :tool_choice))
     |> maybe_add("parallel_tool_calls", Keyword.get(opts, :parallel_tool_calls))
     |> maybe_add_reasoning(opts)
+    |> maybe_require_parameters(opts)
+    |> provider_rules(endpoint)
+  end
+
+  # Set by the call-time guard for a call with a hard requirement on
+  # OpenRouter: route only to upstream providers that take every parameter.
+  defp maybe_require_parameters(body, opts) do
+    if Keyword.get(opts, :require_parameters) == true,
+      do: Map.put(body, "provider", %{"require_parameters" => true}),
+      else: body
+  end
+
+  # Anthropic's OpenAI-compatible layer: never `temperature` and `top_p`
+  # together (a 400 on its own; `temperature` is kept); no penalties and no
+  # `seed` (ignored there); the OpenRouter-shaped `reasoning` object, which
+  # that layer silently ignores, becomes its `thinking` field.
+  defp provider_rules(body, endpoint) do
+    if anthropic?(endpoint) do
+      body
+      |> Map.drop(["frequency_penalty", "presence_penalty", "repetition_penalty", "seed"])
+      |> then(&if(Map.has_key?(&1, "temperature"), do: Map.delete(&1, "top_p"), else: &1))
+      |> anthropic_thinking(endpoint)
+    else
+      body
+    end
+  end
+
+  # `enabled: false` → `{"type": "disabled"}`, but only for a model whose
+  # catalogue entry says it takes that (otherwise a 400) — else nothing is
+  # sent and the model's default applies. A token budget →
+  # `{"type": "enabled", "budget_tokens": n}`. Anything else asking for
+  # reasoning (`enabled: true`, an effort) → `{"type": "adaptive"}`.
+  defp anthropic_thinking(%{"reasoning" => reasoning} = body, endpoint) do
+    body = Map.delete(body, "reasoning")
+
+    cond do
+      reasoning["enabled"] == false ->
+        if thinking_disabled_accepted?(endpoint),
+          do: Map.put(body, "thinking", %{"type" => "disabled"}),
+          else: body
+
+      is_integer(reasoning["max_tokens"]) ->
+        Map.put(body, "thinking", %{
+          "type" => "enabled",
+          "budget_tokens" => reasoning["max_tokens"]
+        })
+
+      reasoning["enabled"] == true or is_binary(reasoning["effort"]) ->
+        Map.put(body, "thinking", %{"type" => "adaptive"})
+
+      true ->
+        body
+    end
+  end
+
+  defp anthropic_thinking(body, _endpoint), do: body
+
+  defp thinking_disabled_accepted?(endpoint) do
+    match?(%Capabilities{thinking_disabled: :yes}, Capabilities.for_endpoint(endpoint))
   end
 
   # Build reasoning object for OpenRouter API

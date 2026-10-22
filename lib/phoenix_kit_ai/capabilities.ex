@@ -11,14 +11,20 @@ defmodule PhoenixKitAI.Capabilities do
       `modality` string) → `vision`; `tools` in `supported_parameters` →
       `tools`; `structured_outputs` → `json_schema`; `response_format`
       without `structured_outputs` → `json` only. `supported_parameters` is
-      the union over OpenRouter's upstream providers.
+      the union over OpenRouter's upstream providers; the list itself is
+      kept as `supported_parameters` (the call-time guard leaves out what it
+      lacks when it asks OpenRouter to require every parameter). Neither it
+      nor `thinking_disabled` is in the snapshot: after a restart they are
+      unknown until the first refresh.
     * **Anthropic** (native `GET /v1/models`, read by
       `OpenRouterClient.fetch_models/2`): `capabilities.image_input` →
       `vision` (`capabilities: null` leaves it `:unknown`), `max_input_tokens`
       → `context_length`, `lifecycle`. Chat goes through Anthropic's
       OpenAI-compatible layer, which ignores `response_format`, so
       `json_schema` is `:no` and `json` is `:yes` (the schema is written into
-      the prompt instead); `tools` is `:yes`.
+      the prompt instead); `tools` is `:yes`;
+      `capabilities.thinking.types.disabled` → `thinking_disabled` (whether
+      `thinking: {type: "disabled"}` is accepted).
     * **Every other provider** — `:unknown`, unless declared.
 
   ## Declared capabilities
@@ -90,7 +96,9 @@ defmodule PhoenixKitAI.Capabilities do
             context_length: nil,
             source: :catalogue,
             fetched_at: nil,
-            lifecycle: nil
+            lifecycle: nil,
+            supported_parameters: nil,
+            thinking_disabled: :unknown
 
   @type flag :: :yes | :no | :unknown
   @type t :: %__MODULE__{
@@ -101,7 +109,9 @@ defmodule PhoenixKitAI.Capabilities do
           context_length: pos_integer() | nil,
           source: :catalogue | :declared,
           fetched_at: DateTime.t() | nil,
-          lifecycle: :active | :deprecated | :retired | nil
+          lifecycle: :active | :deprecated | :retired | nil,
+          supported_parameters: [String.t()] | nil,
+          thinking_disabled: flag()
         }
 
   # ===========================================
@@ -279,7 +289,8 @@ defmodule PhoenixKitAI.Capabilities do
       tools: param_flag(params, ["tools"]),
       json_schema: param_flag(params, ["structured_outputs"]),
       json: param_flag(params, ["structured_outputs", "response_format"]),
-      context_length: positive_integer(context_length)
+      context_length: positive_integer(context_length),
+      supported_parameters: if(is_list(params), do: params)
     }
   end
 
@@ -306,9 +317,20 @@ defmodule PhoenixKitAI.Capabilities do
       json_schema: :no,
       json: :yes,
       context_length: positive_integer(row["max_input_tokens"]),
-      lifecycle: lifecycle(row["lifecycle"])
+      lifecycle: lifecycle(row["lifecycle"]),
+      thinking_disabled: anthropic_thinking_disabled(row["capabilities"])
     }
   end
+
+  # Whether `thinking: {type: "disabled"}` is accepted; an older model or a
+  # catalogue that does not say leaves it `:unknown` (and it is not sent).
+  defp anthropic_thinking_disabled(%{
+         "thinking" => %{"types" => %{"disabled" => %{"supported" => supported}}}
+       })
+       when is_boolean(supported),
+       do: yes_no(supported)
+
+  defp anthropic_thinking_disabled(_capabilities), do: :unknown
 
   defp anthropic_vision(%{"image_input" => %{"supported" => supported}})
        when is_boolean(supported),

@@ -235,6 +235,7 @@ defmodule PhoenixKitAI.Web.Playground do
 
         opts =
           [source: "PhoenixKitAI.Web.Playground"]
+          |> Keyword.merge(call_opts(socket.assigns))
           |> maybe_opt(:prompt, socket.assigns.edit_prompt)
           |> maybe_opt(:model, socket.assigns.edit_model)
 
@@ -627,17 +628,24 @@ defmodule PhoenixKitAI.Web.Playground do
     if prompt do
       # Use edited content (user may have modified the template)
       prompt_with_edits = %{prompt | content: edited_content || prompt.content}
-      execute_prompt_request(endpoint_uuid, prompt_with_edits, variable_values)
+
+      execute_prompt_request(
+        endpoint_uuid,
+        prompt_with_edits,
+        variable_values,
+        call_opts(assigns)
+      )
     else
       execute_freeform_request(
         endpoint_uuid,
         assigns.freeform_message,
-        assigns.freeform_system
+        assigns.freeform_system,
+        call_opts(assigns)
       )
     end
   end
 
-  defp execute_prompt_request(endpoint_uuid, prompt, variable_values) do
+  defp execute_prompt_request(endpoint_uuid, prompt, variable_values, call_opts) do
     with {:ok, rendered_content} <- Prompt.render(prompt, variable_values),
          {:ok, rendered_system} <- Prompt.render_system_prompt(prompt, variable_values) do
       opts =
@@ -646,6 +654,7 @@ defmodule PhoenixKitAI.Web.Playground do
           prompt_uuid: prompt.uuid,
           prompt_name: prompt.name
         ]
+        |> Keyword.merge(call_opts)
         |> maybe_add_system(rendered_system)
 
       case AI.ask(endpoint_uuid, rendered_content, opts) do
@@ -659,13 +668,14 @@ defmodule PhoenixKitAI.Web.Playground do
     end
   end
 
-  defp execute_freeform_request(_endpoint_uuid, "", _system) do
+  defp execute_freeform_request(_endpoint_uuid, "", _system, _call_opts) do
     {:error, :empty_input}
   end
 
-  defp execute_freeform_request(endpoint_uuid, message, system) do
+  defp execute_freeform_request(endpoint_uuid, message, system, call_opts) do
     opts =
       [source: "Playground"]
+      |> Keyword.merge(call_opts)
       |> maybe_add_system(if(system == "", do: nil, else: system))
 
     case AI.ask(endpoint_uuid, message, opts) do
@@ -837,8 +847,21 @@ defmodule PhoenixKitAI.Web.Playground do
 
     options
     |> Keyword.put(:source, "PhoenixKitAI.Web.Playground")
+    |> Keyword.merge(call_opts(assigns))
     |> Keyword.put(:verify, assigns.edit_verify)
     |> maybe_opt(:model, assigns.edit_model)
+  end
+
+  # Every Playground call is the `ai.playground` task, made by the signed-in
+  # user, so per-user caps and the task's rules apply to it.
+  defp call_opts(assigns) do
+    [task: "ai.playground"]
+    |> then(fn opts ->
+      case PhoenixKitWeb.Actor.uuid(assigns) do
+        nil -> opts
+        user_uuid -> Keyword.put(opts, :user_uuid, user_uuid)
+      end
+    end)
   end
 
   defp edit_option_params(opt) when is_map(opt),

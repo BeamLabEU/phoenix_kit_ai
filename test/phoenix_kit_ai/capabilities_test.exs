@@ -149,6 +149,33 @@ defmodule PhoenixKitAI.CapabilitiesTest do
     end
   end
 
+  describe "fields for the request rules" do
+    test "OpenRouter keeps the parameter list; none given stays nil" do
+      assert %Capabilities{supported_parameters: ["tools", "top_k"]} =
+               Capabilities.from_openrouter(%{"supported_parameters" => ["tools", "top_k"]})
+
+      assert %Capabilities{supported_parameters: nil} = Capabilities.from_openrouter(%{})
+    end
+
+    test "Anthropic says whether thinking can be turned off" do
+      takes = %{"thinking" => %{"types" => %{"disabled" => %{"supported" => true}}}}
+      refuses = %{"thinking" => %{"types" => %{"disabled" => %{"supported" => false}}}}
+      silent = %{"thinking" => %{"types" => %{"adaptive" => %{"supported" => true}}}}
+
+      assert %Capabilities{thinking_disabled: :yes} =
+               Capabilities.from_anthropic(%{"capabilities" => takes})
+
+      assert %Capabilities{thinking_disabled: :no} =
+               Capabilities.from_anthropic(%{"capabilities" => refuses})
+
+      assert %Capabilities{thinking_disabled: :unknown} =
+               Capabilities.from_anthropic(%{"capabilities" => silent})
+
+      assert %Capabilities{thinking_disabled: :unknown} =
+               Capabilities.from_anthropic(%{"capabilities" => nil})
+    end
+  end
+
   describe "catalogue_kind/2" do
     test "by the provider key or by the host of the base URL" do
       assert Capabilities.catalogue_kind("openrouter", nil) == :openrouter

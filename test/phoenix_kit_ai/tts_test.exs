@@ -132,8 +132,9 @@ defmodule PhoenixKitAI.TTSTest do
       # and is part of `speak/3`'s own @spec; it is nil for every other
       # provider, which is what this Mistral endpoint exercises. `latency_ms`
       # is still stripped before returning — it is logged, not exposed.
-      assert Map.keys(result) |> Enum.sort() == [:audio, :format, :timestamps]
+      assert Map.keys(result) |> Enum.sort() == [:audio, :format, :request_uuid, :timestamps]
       assert is_nil(result.timestamps)
+      assert %{request_type: "tts"} = PhoenixKitAI.get_request(result.request_uuid)
     end
   end
 
