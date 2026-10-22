@@ -311,11 +311,14 @@ Notes on the less obvious modules:
 | `phoenix_kit:ai:prompts` | `subscribe_prompts/0` |
 | `phoenix_kit:ai:requests` | `subscribe_requests/0` |
 | `phoenix_kit:ai:capabilities` | `Capabilities.subscribe/0` |
+| `phoenix_kit:ai:guard` | `TaskLimits.topic/0` (`GuardWatch` subscribes) |
 
 Every message is `{event, uuid}`; a subscriber that needs the record reads
 it by uuid. The capabilities topic carries
 `{:capabilities_refreshed, base_urls}` after a catalogue refresh that changed
-the cache, with the base URLs that changed.
+the cache, with the base URLs that changed. The guard topic carries
+`{:task_limits_changed, task_key}` after a change of a task's limits, so
+every node drops its cached limits of the task.
 
 ### Settings & permissions
 
@@ -505,9 +508,27 @@ is a new version; unique `dedupe_key WHERE dedupe_key IS NOT NULL`; user
 `CASCADE`, endpoint/request/actor `SET NULL`), and the index
 `phoenix_kit_ai_requests_task_inserted_at_index` on core's journal,
 `((metadata->>'task'), inserted_at)` with no status condition (core's
-schema repair reports extra columns of its tables, not extra indexes). Down
-to 1 drops what V2 added; down to 0 also the snapshot, which the next
-refresh rebuilds.
+schema repair reports extra columns of its tables, not extra indexes), and
+`file_input` / `image_output` flags on the snapshot (`unknown` until a
+later version fills them). Down to 1 drops what V2 added; down to 0 also
+the snapshot, which the next refresh rebuilds.
+
+**Before V2 on a host with a large journal, measure it**
+(`SELECT count(*), pg_size_pretty(pg_total_relation_size('phoenix_kit_ai_requests'))`)
+and run the update in a quiet window: the index is built with a plain
+`CREATE INDEX`, which holds a SHARE lock on `phoenix_kit_ai_requests` — every
+AI call's usage row waits — until it is built. `CONCURRENTLY` is not
+possible in this chain: the wrapper `mix phoenix_kit.update` generates for a
+module's migration has no `@disable_ddl_transaction`, so the chain runs in
+the migration's transaction, where `CREATE INDEX CONCURRENTLY` is refused;
+running it on another connection from inside the migration would wait for
+that very transaction to end. It needs a change in core's generator (a
+module asking for a non-transactional wrapper), not here.
+
+Between new code and the migration (code on V2, database still on V1) the
+capability snapshot cannot be loaded — its new columns are missing — and
+`Capabilities` starts with an empty cache, logged, until its first refresh;
+nothing fails. Migrate before starting the new code (`upgrade.sh` does).
 
 Primary keys are UUIDv7 (`@primary_key {:uuid, UUIDv7, autogenerate: true}`),
 and every table-backed schema must `use PhoenixKit.SchemaPrefix` so its queries
@@ -614,6 +635,11 @@ Test database `phoenix_kit_ai_test`.
   for `guard_admission:`; calls with it skip the limits (not the model
   check, not `Budget`), only for the same task and user and until it
   expires. Tokens live in the request cache's flags table, on one node.
+  A call reads the task's settings and personal limits from a per-node
+  cache in the same table (dropped on every change through `TaskLimits`,
+  here directly and on the other nodes through the guard topic): a task
+  without limits costs no query; the usage is read only when a limit is in
+  force.
 - Guard signals (`PhoenixKitAI.GuardEvents`): `limit_warning` (at the
   task's warn percent, default 80: a user's limit tells the user in the
   app, the task's the watchers), `limit_reached` (the user and the
@@ -625,8 +651,14 @@ Test database `phoenix_kit_ai_test`.
   insert that went through signals. Watchers: `ai_guard_watchers` (else
   every Owner) and the task's `watchers` callback, never the user; type
   `"ai_guard"`. Activity: `guard.<kind>` with the event as `resource_uuid`
-  (never `target_uuid`). Texts carry no reasons and nothing of a call. The
-  180-day pruning of the events is not built yet.
+  (never `target_uuid`). Texts carry no reasons and nothing of a call. A key
+  that was inserted is also kept on the node until its window ends, so a
+  limit past its threshold costs no further INSERT. `GuardWatch` emits
+  `[:phoenix_kit_ai, :guard_watch, :look]` after each look. Events older
+  than 180 days are deleted daily by `GuardEventsPruneWorker`, which the
+  module schedules through `oban_crons/0` (written into the host's crontab
+  by `mix phoenix_kit.install` / `update`); it runs in core's `default`
+  queue, so the host lists no queue for it.
 - Recommendations (`PhoenixKitAI.Recommendations`, live data only — no list
   of "best models", no `recommended:` in declarations): `cheapest/2` takes
   the catalogue the capability cache holds for the base URLs the endpoints

@@ -727,10 +727,13 @@ create:
 - **`phoenix_kit_ai_task_settings`**, **`phoenix_kit_ai_task_user_limits`**
   — the limits of AI tasks and users' personal limits
 - **`phoenix_kit_ai_guard_events`** — what the task guard noticed (limits,
-  models that stopped fitting), deduplicated per window
+  models that stopped fitting), deduplicated per window; kept 180 days (a
+  daily job the module schedules in core's `default` queue)
 
 It also adds one index to core's `phoenix_kit_ai_requests`:
-`((metadata->>'task'), inserted_at)`.
+`((metadata->>'task'), inserted_at)`. It is built inside the migration's
+transaction, not concurrently, and AI usage rows wait while it builds: on a
+large journal, measure it first and update in a quiet window.
 
 ## Admin pages
 
