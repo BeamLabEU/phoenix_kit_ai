@@ -333,6 +333,22 @@ defmodule PhoenixKitAI.RequestRulesTest do
                TestRepo.all(from(r in Request, where: r.endpoint_uuid == ^ep.uuid))
     end
 
+    test "without the model's parameter list (catalogue not read) nothing changes" do
+      stub()
+      ep = endpoint(%{top_k: 40})
+      tools = [%{"type" => "function", "function" => %{"name" => "f", "parameters" => %{}}}]
+
+      assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "hi", tools: tools)
+      body = sent_body()
+      refute Map.has_key?(body, "provider")
+      assert body["top_k"] == 40
+
+      assert [%{metadata: metadata}] =
+               TestRepo.all(from(r in Request, where: r.endpoint_uuid == ^ep.uuid))
+
+      refute Map.has_key?(metadata, "stripped_params")
+    end
+
     test "tools: asks for it; a call without a hard need does not" do
       stub()
       ep = endpoint(%{top_k: 40})

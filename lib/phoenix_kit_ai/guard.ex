@@ -29,7 +29,10 @@ defmodule PhoenixKitAI.Guard do
   model could still land on a provider that ignores the schema. The
   request parameters the model's catalogue entry does not list are then
   left out (the row notes them as `stripped_params`), since one of them
-  would leave no provider at all.
+  would leave no provider at all. Without the model's parameter list in the
+  cache (before the first catalogue read after a restart, or a model the
+  catalogue lacks) the request goes as it did before: no flag, nothing left
+  out.
   """
 
   alias PhoenixKitAI.{Capabilities, Endpoint, Tasks, TaskSpec}
@@ -128,7 +131,7 @@ defmodule PhoenixKitAI.Guard do
          %{
            admission
            | warnings: soft_warnings(caps, needs),
-             require_parameters: require_parameters?(endpoint, needs),
+             require_parameters: require_parameters?(endpoint, needs, supported_parameters(caps)),
              supported_parameters: supported_parameters(caps)
          }}
       end
@@ -152,13 +155,19 @@ defmodule PhoenixKitAI.Guard do
     if :json in needs and Tasks.flag(caps, :json) == :no, do: ["json"], else: []
   end
 
-  defp require_parameters?(endpoint, needs) do
+  # Only with the model's own parameter list in hand: without it (before the
+  # first catalogue read after a restart, or a model the catalogue lacks)
+  # nothing could be left out, and a parameter of the endpoint's that no
+  # provider takes would turn a call that works into a refusal.
+  defp require_parameters?(_endpoint, _needs, nil), do: false
+
+  defp require_parameters?(endpoint, needs, _params) do
     Enum.any?([:tools, :json_schema], &(&1 in needs)) and
       Capabilities.catalogue_kind(endpoint.provider, Capabilities.resolved_base_url(endpoint)) ==
         :openrouter
   end
 
-  defp supported_parameters(%Capabilities{supported_parameters: params}) when is_list(params),
+  defp supported_parameters(%Capabilities{supported_parameters: [_ | _] = params}),
     do: params
 
   defp supported_parameters(_caps), do: nil
@@ -167,17 +176,14 @@ defmodule PhoenixKitAI.Guard do
   The call's request options for an admission that asks OpenRouter to
   require its parameters: `:require_parameters` set, and every option the
   model's catalogue entry does not list left out. Returns the options and
-  the names left out. Without the flag, or without a known parameter list,
-  the options are returned as they are.
+  the names left out. Without the flag (which is set only with a known
+  parameter list) the options are returned as they are.
   """
   @spec require_parameters(keyword(), admission()) :: {keyword(), [String.t()]}
-  def require_parameters(opts, %{require_parameters: true, supported_parameters: params}) do
-    opts = Keyword.put(opts, :require_parameters, true)
-
-    case params do
-      list when is_list(list) -> strip(opts, list)
-      _ -> {opts, []}
-    end
+  def require_parameters(opts, %{require_parameters: true, supported_parameters: [_ | _] = params}) do
+    opts
+    |> Keyword.put(:require_parameters, true)
+    |> strip(params)
   end
 
   def require_parameters(opts, _admission), do: {opts, []}
