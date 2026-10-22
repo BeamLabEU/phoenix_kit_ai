@@ -73,9 +73,14 @@ defmodule PhoenixKitAI.TaskLimits do
   task: a task without limits costs no query. Every change through this
   module drops the task's entry here and broadcasts
   `{:task_limits_changed, task_key}` on `topic/0`, which
-  `PhoenixKitAI.GuardWatch` turns into the same drop on every node. The
-  usage and forgiving are always read from the database, and only when a
-  limit is in force.
+  `PhoenixKitAI.GuardWatch` turns into the same drop on every node; a
+  restarted watch drops the whole cache, since it may have missed a
+  broadcast. An entry is also read again after 60 seconds, which bounds what
+  a lost broadcast can leave behind. A change made inside the caller's own
+  `Repo.transaction` drops the cache before that transaction commits, so a
+  call in between may cache the old values again; the 60 seconds bound that
+  too. The usage and forgiving are always read from the database, and only
+  when a limit is in force.
   """
 
   import Ecto.Query
@@ -94,6 +99,7 @@ defmodule PhoenixKitAI.TaskLimits do
   @periods [:day, :month]
   @default_warn_percent 80
   @topic "phoenix_kit:ai:guard"
+  @cache_ttl_ms :timer.seconds(60)
 
   @type scope :: :task | :user
   @type unit :: :money | :requests | :tokens
@@ -241,6 +247,11 @@ defmodule PhoenixKitAI.TaskLimits do
   def topic, do: @topic
 
   @doc false
+  # How long a cached entry is used before it is read again.
+  @spec cache_ttl_ms() :: pos_integer()
+  def cache_ttl_ms, do: @cache_ttl_ms
+
+  @doc false
   # Drops this node's cached limits of `task_key`: bumping the task's
   # generation makes an entry loaded before the change unusable, even one
   # written back after this.
@@ -267,14 +278,15 @@ defmodule PhoenixKitAI.TaskLimits do
   defp cached(task_key) do
     table = flags_table()
     generation = generation(table, task_key)
+    now = System.monotonic_time(:millisecond)
 
     case :ets.lookup(table, {__MODULE__, :limits, task_key}) do
-      [{_key, {^generation, entry}}] ->
+      [{_key, {^generation, loaded_at, entry}}] when now - loaded_at < @cache_ttl_ms ->
         entry
 
-      _missing_or_stale ->
+      _missing_stale_or_old ->
         entry = load(task_key)
-        :ets.insert(table, {{__MODULE__, :limits, task_key}, {generation, entry}})
+        :ets.insert(table, {{__MODULE__, :limits, task_key}, {generation, now, entry}})
         entry
     end
   rescue

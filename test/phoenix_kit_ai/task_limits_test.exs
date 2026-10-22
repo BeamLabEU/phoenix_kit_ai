@@ -383,6 +383,43 @@ defmodule PhoenixKitAI.TaskLimitsTest do
                TaskLimits.check(spec("test.unlimited"), [])
     end
 
+    test "a cached entry older than its time to live is read again from the database" do
+      assert :ok = TaskLimits.check(spec("test.unlimited"), [])
+
+      # Written where no broadcast reaches this node.
+      TestRepo.insert!(%PhoenixKitAI.TaskSetting{
+        task_key: "test.unlimited",
+        limits: %{"task" => %{"requests" => %{"day" => 0}}}
+      })
+
+      assert :ok = TaskLimits.check(spec("test.unlimited"), [])
+
+      # Age the entry past the TTL without waiting.
+      table = PhoenixKitAI.RequestCache.flags_table()
+      key = {TaskLimits, :limits, "test.unlimited"}
+      [{^key, {generation, loaded_at, entry}}] = :ets.lookup(table, key)
+      :ets.insert(table, {key, {generation, loaded_at - TaskLimits.cache_ttl_ms() - 1, entry}})
+
+      assert {:error, {:task_limit_exceeded, :task, :requests, :day}} =
+               TaskLimits.check(spec("test.unlimited"), [])
+    end
+
+    test "a restarted watch starts this node's cache afresh (a broadcast may have been missed)" do
+      assert :ok = TaskLimits.check(spec("test.unlimited"), [])
+
+      TestRepo.insert!(%PhoenixKitAI.TaskSetting{
+        task_key: "test.unlimited",
+        limits: %{"task" => %{"requests" => %{"day" => 0}}}
+      })
+
+      assert :ok = TaskLimits.check(spec("test.unlimited"), [])
+      watch = start_supervised!(PhoenixKitAI.GuardWatch)
+      _ = :sys.get_state(watch)
+
+      assert {:error, {:task_limit_exceeded, :task, :requests, :day}} =
+               TaskLimits.check(spec("test.unlimited"), [])
+    end
+
     test "past the warn percent, only the first crossing writes an event", %{
       owner: owner,
       endpoint: ep

@@ -523,7 +523,9 @@ module's migration has no `@disable_ddl_transaction`, so the chain runs in
 the migration's transaction, where `CREATE INDEX CONCURRENTLY` is refused;
 running it on another connection from inside the migration would wait for
 that very transaction to end. It needs a change in core's generator (a
-module asking for a non-transactional wrapper), not here.
+module asking for a non-transactional wrapper), not here. A host that
+edits its committed wrapper to `@disable_ddl_transaction true` still gets
+the plain build: the chain does not switch to `CONCURRENTLY` on its own.
 
 Between new code and the migration (code on V2, database still on V1) the
 capability snapshot cannot be loaded — its new columns are missing — and
@@ -637,9 +639,11 @@ Test database `phoenix_kit_ai_test`.
   expires. Tokens live in the request cache's flags table, on one node.
   A call reads the task's settings and personal limits from a per-node
   cache in the same table (dropped on every change through `TaskLimits`,
-  here directly and on the other nodes through the guard topic): a task
-  without limits costs no query; the usage is read only when a limit is in
-  force.
+  here directly and on the other nodes through the guard topic; all of it
+  when `GuardWatch` starts; each entry read again after 60 s, which bounds
+  a lost broadcast and a change made inside the caller's transaction): a
+  task without limits costs about one load a minute; the usage is read only
+  when a limit is in force.
 - Guard signals (`PhoenixKitAI.GuardEvents`): `limit_warning` (at the
   task's warn percent, default 80: a user's limit tells the user in the
   app, the task's the watchers), `limit_reached` (the user and the
