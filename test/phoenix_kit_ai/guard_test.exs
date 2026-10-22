@@ -185,6 +185,45 @@ defmodule PhoenixKitAI.GuardTest do
     end
   end
 
+  describe "require_parameters/2" do
+    defp admission(params) do
+      %{
+        task: nil,
+        needs: [:tools],
+        warnings: [],
+        require_parameters: true,
+        supported_parameters: params,
+        endpoint_uuid: Ecto.UUID.generate()
+      }
+    end
+
+    test "leaves out only what was going to be sent, and never max_tokens" do
+      {opts, stripped} =
+        Guard.require_parameters(
+          [stop: [], seed: nil, top_k: 5, max_tokens: 100, temperature: 0.2],
+          admission(["tools", "temperature"])
+        )
+
+      assert stripped == ["top_k"]
+      assert opts[:max_tokens] == 100
+      assert opts[:temperature] == 0.2
+      assert opts[:require_parameters] == true
+      refute Keyword.has_key?(opts, :top_k)
+    end
+
+    test "logs each left-out parameter once per endpoint" do
+      admission = admission(["tools"])
+
+      first = capture_log(fn -> Guard.require_parameters([top_k: 5], admission) end)
+      again = capture_log(fn -> Guard.require_parameters([top_k: 5], admission) end)
+      other = capture_log(fn -> Guard.require_parameters([seed: 1], admission) end)
+
+      assert first =~ "top_k"
+      refute again =~ "top_k"
+      assert other =~ "seed"
+    end
+  end
+
   describe "a refused call" do
     test "an image to a model without vision: no HTTP, an error row with the task" do
       stub()

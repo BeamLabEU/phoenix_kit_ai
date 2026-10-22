@@ -35,13 +35,17 @@ defmodule PhoenixKitAI.Guard do
   out.
   """
 
+  require Logger
+
   alias PhoenixKitAI.{Capabilities, Endpoint, Tasks, TaskSpec}
 
   @verified_only_setting "ai_guard_verified_models_only"
 
   # Request options a `require_parameters` call may leave out, by the name
   # OpenRouter's `supported_parameters` uses. The ones that ARE the
-  # requirement (`tools`, `response_format`) are never stripped.
+  # requirement (`tools`, `response_format`) are never stripped, and neither
+  # is `max_tokens`: without it the answer has no length cap, which costs
+  # money — better the provider's refusal (`:no_provider_for_params`).
   @strippable %{
     temperature: "temperature",
     top_p: "top_p",
@@ -51,7 +55,6 @@ defmodule PhoenixKitAI.Guard do
     repetition_penalty: "repetition_penalty",
     stop: "stop",
     seed: "seed",
-    max_tokens: "max_tokens",
     tool_choice: "tool_choice",
     parallel_tool_calls: "parallel_tool_calls"
   }
@@ -78,7 +81,8 @@ defmodule PhoenixKitAI.Guard do
           needs: [TaskSpec.need()],
           warnings: [String.t()],
           require_parameters: boolean(),
-          supported_parameters: [String.t()] | nil
+          supported_parameters: [String.t()] | nil,
+          endpoint_uuid: String.t() | nil
         }
 
   @doc """
@@ -118,7 +122,8 @@ defmodule PhoenixKitAI.Guard do
       needs: needs,
       warnings: [],
       require_parameters: false,
-      supported_parameters: nil
+      supported_parameters: nil,
+      endpoint_uuid: endpoint.uuid
     }
 
     if needs == [] do
@@ -163,8 +168,10 @@ defmodule PhoenixKitAI.Guard do
 
   defp require_parameters?(endpoint, needs, _params) do
     Enum.any?([:tools, :json_schema], &(&1 in needs)) and
-      Capabilities.catalogue_kind(endpoint.provider, Capabilities.resolved_base_url(endpoint)) ==
-        :openrouter
+      Capabilities.catalogue_kind(
+        base_provider(endpoint.provider),
+        Capabilities.resolved_base_url(endpoint)
+      ) == :openrouter
   end
 
   defp supported_parameters(%Capabilities{supported_parameters: [_ | _] = params}),
@@ -180,10 +187,17 @@ defmodule PhoenixKitAI.Guard do
   parameter list) the options are returned as they are.
   """
   @spec require_parameters(keyword(), admission()) :: {keyword(), [String.t()]}
-  def require_parameters(opts, %{require_parameters: true, supported_parameters: [_ | _] = params}) do
-    opts
-    |> Keyword.put(:require_parameters, true)
-    |> strip(params)
+  def require_parameters(
+        opts,
+        %{require_parameters: true, supported_parameters: [_ | _] = params} = admission
+      ) do
+    {opts, stripped} =
+      opts
+      |> Keyword.put(:require_parameters, true)
+      |> strip(params)
+
+    Enum.each(stripped, &warn_stripped_once(admission[:endpoint_uuid], &1))
+    {opts, stripped}
   end
 
   def require_parameters(opts, _admission), do: {opts, []}
@@ -191,17 +205,45 @@ defmodule PhoenixKitAI.Guard do
   defp strip(opts, supported) do
     unsupported =
       for {key, name} <- @strippable,
-          not is_nil(opts[key]),
+          sent?(opts[key]),
           name not in supported,
           do: {key, name}
 
     reasoning? =
-      Enum.any?(@reasoning_options, &(not is_nil(opts[&1]))) and "reasoning" not in supported
+      Enum.any?(@reasoning_options, &sent?(opts[&1])) and "reasoning" not in supported
 
     drop = Keyword.keys(unsupported) ++ if(reasoning?, do: @reasoning_options, else: [])
     names = Enum.map(unsupported, &elem(&1, 1)) ++ if(reasoning?, do: ["reasoning"], else: [])
 
     {Keyword.drop(opts, drop), Enum.sort(names)}
+  end
+
+  # A legacy provider string may name a connection ("openrouter:work").
+  defp base_provider(provider) when is_binary(provider), do: Endpoint.base_provider(provider)
+  defp base_provider(provider), do: provider
+
+  # What `Completion` leaves out of the body anyway is not "stripped".
+  defp sent?(value), do: value not in [nil, []]
+
+  # Once per endpoint and parameter per node, in the request cache's flags
+  # table; the row's `stripped_params` records every time.
+  defp warn_stripped_once(endpoint_uuid, name) do
+    first? =
+      try do
+        :ets.insert_new(
+          PhoenixKitAI.RequestCache.flags_table(),
+          {{:stripped_param, endpoint_uuid, name}, true}
+        )
+      rescue
+        ArgumentError -> false
+      end
+
+    if first? do
+      Logger.warning(
+        "[PhoenixKitAI] endpoint #{endpoint_uuid}: #{name} is left out of requests that need " <>
+          "every parameter supported (the model's catalogue entry does not list it)"
+      )
+    end
   end
 
   @doc """
