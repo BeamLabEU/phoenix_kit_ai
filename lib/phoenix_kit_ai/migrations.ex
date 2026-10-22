@@ -38,6 +38,18 @@ defmodule PhoenixKitAI.Migrations do
       schema check reports extra columns of its tables, not extra indexes,
       so it is not drift there; the index is dropped with V2.
 
+  ## V3: blocks
+
+    * `phoenix_kit_ai_guard_blocks` — a person blocked from a group of AI
+      tasks (`block_group`; a task's own key unless it names a group) until
+      the block is lifted. The row keeps where it came from (the task and
+      the flag), whether its reason is private, who set it and when, and
+      who lifted it, when and why. One active block per group and person:
+      a unique index on (`block_group`, `user_uuid`) where `lifted_at` is
+      NULL; lifted blocks stay as the history. The guard event kinds of V2
+      already include `off_purpose`, `off_purpose_signal`, `anomaly`,
+      `blocked` and `unblocked`.
+
   ## Version marker
 
   `COMMENT ON TABLE phoenix_kit_ai_model_capabilities IS 'ai_schema:<N>'`.
@@ -54,7 +66,7 @@ defmodule PhoenixKitAI.Migrations do
 
   alias PhoenixKit.Migrations.Postgres.Helpers
 
-  @current_version 2
+  @current_version 3
   @default_prefix "public"
   @marker_prefix "ai_schema:"
   @version_table "phoenix_kit_ai_model_capabilities"
@@ -170,6 +182,7 @@ defmodule PhoenixKitAI.Migrations do
 
   defp version_up(1, prefix), do: v1_statements(prefix)
   defp version_up(2, prefix), do: v2_statements(prefix)
+  defp version_up(3, prefix), do: v3_statements(prefix)
 
   defp version_down(1, prefix),
     do: [
@@ -177,6 +190,9 @@ defmodule PhoenixKitAI.Migrations do
     ]
 
   defp version_down(2, prefix), do: v2_down_statements(prefix)
+
+  defp version_down(3, prefix),
+    do: ["DROP TABLE IF EXISTS #{Helpers.qualify_table("phoenix_kit_ai_guard_blocks", prefix)}"]
 
   # ── V1 ────────────────────────────────────────────────────────────────
 
@@ -325,6 +341,52 @@ defmodule PhoenixKitAI.Migrations do
         ~w(phoenix_kit_ai_guard_events phoenix_kit_ai_task_user_limits phoenix_kit_ai_task_settings),
         &"DROP TABLE IF EXISTS #{Helpers.qualify_table(&1, prefix)}"
       )
+  end
+
+  # ── V3 ────────────────────────────────────────────────────────────────
+
+  defp v3_statements(prefix) do
+    uuid7 = Helpers.uuid_v7_call(prefix)
+    users = Helpers.qualify_table("phoenix_kit_users", prefix)
+    events = Helpers.qualify_table("phoenix_kit_ai_guard_events", prefix)
+    blocks = Helpers.qualify_table("phoenix_kit_ai_guard_blocks", prefix)
+
+    [
+      """
+      CREATE TABLE IF NOT EXISTS #{blocks} (
+        uuid uuid DEFAULT #{uuid7} NOT NULL,
+        block_group character varying(255) NOT NULL,
+        user_uuid uuid NOT NULL,
+        origin_task_key character varying(255),
+        origin_event_uuid uuid,
+        private boolean DEFAULT false NOT NULL,
+        reason text,
+        blocked_by_uuid uuid,
+        blocked_at timestamp without time zone DEFAULT now() NOT NULL,
+        lifted_at timestamp without time zone,
+        lifted_by_uuid uuid,
+        lift_note text,
+        CONSTRAINT phoenix_kit_ai_guard_blocks_pkey PRIMARY KEY (uuid),
+        CONSTRAINT phoenix_kit_ai_guard_blocks_user_uuid_fkey
+          FOREIGN KEY (user_uuid) REFERENCES #{users}(uuid) ON DELETE CASCADE,
+        CONSTRAINT phoenix_kit_ai_guard_blocks_origin_event_uuid_fkey
+          FOREIGN KEY (origin_event_uuid) REFERENCES #{events}(uuid) ON DELETE SET NULL,
+        CONSTRAINT phoenix_kit_ai_guard_blocks_blocked_by_uuid_fkey
+          FOREIGN KEY (blocked_by_uuid) REFERENCES #{users}(uuid) ON DELETE SET NULL,
+        CONSTRAINT phoenix_kit_ai_guard_blocks_lifted_by_uuid_fkey
+          FOREIGN KEY (lifted_by_uuid) REFERENCES #{users}(uuid) ON DELETE SET NULL,
+        CONSTRAINT phoenix_kit_ai_guard_blocks_text_check CHECK (
+          (reason IS NULL OR char_length(reason) <= 500) AND
+          (lift_note IS NULL OR char_length(lift_note) <= 500)
+        )
+      )
+      """,
+      "CREATE UNIQUE INDEX IF NOT EXISTS phoenix_kit_ai_guard_blocks_active_index ON #{blocks} (block_group, user_uuid) WHERE lifted_at IS NULL",
+      "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_guard_blocks_user_uuid_index ON #{blocks} (user_uuid)",
+      "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_guard_blocks_origin_event_uuid_index ON #{blocks} (origin_event_uuid) WHERE origin_event_uuid IS NOT NULL",
+      "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_guard_blocks_blocked_by_uuid_index ON #{blocks} (blocked_by_uuid) WHERE blocked_by_uuid IS NOT NULL",
+      "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_guard_blocks_lifted_by_uuid_index ON #{blocks} (lifted_by_uuid) WHERE lifted_by_uuid IS NOT NULL"
+    ]
   end
 
   defp sql_list(values), do: Enum.map_join(values, ", ", &"'#{&1}'")
