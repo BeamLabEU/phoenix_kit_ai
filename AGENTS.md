@@ -357,6 +357,7 @@ checked with `Scope.has_module_access?/2`. No sub-permissions.
 | `:max_image_bytes` | `25_000_000` | Largest image accepted as input or fetched as output by the image verbs |
 | `:translatables` | `[]` | `[{resource_type, adapter_module}]` a host app registers for the AI-translation pipeline without being a kit module; configured entries win over module-declared ones |
 | `:request_cache` | `[]` | `ttl:` (seconds, default 86 400), `sweep:` (300), `max_entries:` (10 000), `max_value_bytes:` (8 000 000), `default:` (`true` caches every verb unless a call says `cache: false`); read per call by `PhoenixKitAI.RequestCache` |
+| `:task_registry_retry_ms` | `60_000` | How long a task registry built while a module's `ai_tasks/0` failed is kept before the next access builds it again |
 | `:allow_internal_image_urls` | `false` | Lift the image-fetch host policy (loopback / link-local / RFC 1918 / `.local`, resolved addresses included) — tests and air-gapped installs only; separate from the endpoint base-URL switch |
 
 ### Providers
@@ -556,9 +557,12 @@ Test database `phoenix_kit_ai_test`.
   `{:budget_exceeded, scope}`) writes an error row through `refuse/4`,
   marked `metadata.refused: true`; `dispatch_usage_sinks/1` skips those.
 - AI tasks: modules declare `%PhoenixKitAI.TaskSpec{}`s in `ai_tasks/0`
-  (duck-typed); `PhoenixKitAI.Tasks` keeps the registry (rebuilt only when
-  the module set changes), `fitness/2`, `endpoint_options/1` and
-  `check_selection/2`. Every verb takes `task:`; every row it writes
+  (duck-typed); `PhoenixKitAI.Tasks` keeps the registry, `fitness/2`,
+  `endpoint_options/1` and `check_selection/2`. The registry is rebuilt
+  only when the module set changes, or a minute after a build in which a
+  module's `ai_tasks/0` failed (raised, exited or threw) — not when code
+  is hot-reloaded: a changed `ai_tasks/0` with the same modules needs a
+  restart to show. Every verb takes `task:`; every row it writes
   (success, error, refusal, cache hit, unparsed JSON) carries
   `metadata.task`, and `:task` is not part of the cache key. A key no
   module declares is logged once and the call goes on. This module
@@ -567,14 +571,26 @@ Test database `phoenix_kit_ai_test`.
   embedding responses, `:request_uuid` in the other verbs' maps; a cache
   hit names the row it wrote, not the first one.
 - Anthropic (`api.anthropic.com`, its OpenAI-compatible layer): the
-  endpoint's stored `temperature`/`top_p`/penalties/`seed` are not sent,
-  a caller's own `temperature`/`top_p` is (never both), and the
-  OpenRouter-shaped reasoning options become `thinking` (`disabled` only
-  for a model whose catalogue says it takes it). On OpenRouter a call with
-  a hard `:tools`/`:json_schema` need sends `provider.require_parameters`
-  and leaves out the parameters the model's catalogue entry does not list
-  (`metadata.stripped_params`); OpenRouter's "no provider for these
-  parameters" answer is `{:no_provider_for_params, params}`.
+  endpoint's stored `temperature`/`top_p`/`top_k`/penalties/`seed` are
+  not sent, a caller's own sampling values are (never `temperature` with
+  `top_p`), and the OpenRouter-shaped reasoning options become `thinking`
+  only in a form the model's catalogue lists
+  (`capabilities.thinking.types.<type>.supported`): a token budget as
+  `enabled` + `budget_tokens`, else `adaptive`; with neither listed (or
+  the catalogue not read yet) no `thinking` is sent, as before. Anthropic's
+  documented catalogue rows show only `enabled` and `adaptive`, so
+  `reasoning_enabled: false` (`disabled`) is expected to send nothing
+  until a catalogue lists it — check one live `/v1/models` answer.
+- On OpenRouter a call with a hard `:tools`/`:json_schema` need sends
+  `provider.require_parameters` — only when the model's parameter list is
+  in the capability cache (not before the first catalogue read after a
+  restart, not for a model the catalogue lacks) — and leaves out the
+  parameters that list lacks (`metadata.stripped_params`, logged once per
+  endpoint and parameter); `max_tokens`, `tools` and `response_format` are
+  never left out. OpenRouter's "no provider for these parameters" answer
+  is `{:no_provider_for_params, params}` (the endpoint's parameters only).
+- A refused row is `status: "error"` with `metadata.refused`; the Usage tab
+  marks it "Refused" and its status filter has a `refused` choice.
 - Structured output (`schema:` / `json: true`) is parsed *inside* the
   cached closure, so a prose answer to a JSON request is logged with its
   usage but never stored as a success.
