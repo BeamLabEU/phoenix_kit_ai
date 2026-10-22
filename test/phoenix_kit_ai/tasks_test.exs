@@ -268,4 +268,27 @@ defmodule PhoenixKitAI.TasksTest do
       0 -> :ok
     end
   end
+
+  describe "TaskSpec.purpose/1" do
+    test "translates the purpose through the declaring module's backend; the msgid stays as declared" do
+      spec = Enum.find(PhoenixKitAI.ai_tasks(), &(&1.key == "ai.translation"))
+
+      assert spec.purpose =~ "Translate the text fields"
+      assert TaskSpec.purpose(spec) =~ "Translate the text fields"
+
+      Gettext.with_locale(PhoenixKitAI.Gettext, "ru", fn ->
+        assert TaskSpec.purpose(spec) =~ "Переводит текстовые поля"
+      end)
+
+      Gettext.with_locale(PhoenixKitAI.Gettext, "et", fn ->
+        assert TaskSpec.purpose(spec) =~ "Tõlgib kirje tekstiväljad"
+      end)
+    end
+
+    test "without a backend or a purpose" do
+      assert TaskSpec.purpose(%TaskSpec{key: "x", purpose: "Plain"}) == "Plain"
+      assert TaskSpec.purpose(%TaskSpec{key: "x", purpose: nil}) == nil
+      assert TaskSpec.purpose(%TaskSpec{key: "x", purpose: ""}) == nil
+    end
+  end
 end

@@ -10,7 +10,7 @@ defmodule PhoenixKitAI.TaskSpec do
             key: "warehouse.inventory_photo",
             label: gettext_noop("Inventory by photo"),
             gettext_backend: MyModule.Gettext,
-            purpose: "Count the stock items visible in shelf photos.",
+            purpose: gettext_noop("Count the stock items visible in shelf photos."),
             needs: [:vision, :json_schema],
             endpoints: {MyModule.Settings, :inventory_endpoint_uuids, []}
           }
@@ -106,4 +106,22 @@ defmodule PhoenixKitAI.TaskSpec do
   end
 
   def label(%__MODULE__{label: label}), do: label
+
+  @doc """
+  The task's purpose for display, translated through the declaring module's
+  `gettext_backend` when one is set (declare it with `gettext_noop/1`). The
+  untranslated text is what prompts and classifiers get, so their wording
+  stays the same in every locale.
+  """
+  @spec purpose(t()) :: String.t() | nil
+  def purpose(%__MODULE__{purpose: purpose}) when purpose in [nil, ""], do: nil
+
+  def purpose(%__MODULE__{purpose: purpose, gettext_backend: backend})
+      when is_atom(backend) and not is_nil(backend) do
+    Gettext.dgettext(backend, "default", purpose)
+  rescue
+    _ -> purpose
+  end
+
+  def purpose(%__MODULE__{purpose: purpose}), do: purpose
 end

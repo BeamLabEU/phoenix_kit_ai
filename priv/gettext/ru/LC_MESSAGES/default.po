@@ -1798,7 +1798,7 @@ msgid "Endpoints"
 msgstr "Конечные точки"
 
 #: lib/phoenix_kit_ai.ex:1062
-#: lib/phoenix_kit_ai.ex:1089
+#: lib/phoenix_kit_ai.ex:1092
 #: lib/phoenix_kit_ai/web/playground.ex:55
 #, elixir-autogen, elixir-format
 msgid "Playground"
@@ -2591,3 +2591,13 @@ msgstr "Отказано"
 #, elixir-autogen, elixir-format
 msgid "Refused before reaching the provider"
 msgstr "Отказано до обращения к провайдеру"
+
+#: lib/phoenix_kit_ai.ex:1095
+#, elixir-autogen, elixir-format
+msgid "Let an administrator try endpoints and prompts by hand."
+msgstr "Даёт администратору вручную проверить конечные точки и промпты."
+
+#: lib/phoenix_kit_ai.ex:1083
+#, elixir-autogen, elixir-format
+msgid "Translate the text fields of a record from one language into another, keeping the field structure."
+msgstr "Переводит текстовые поля записи с одного языка на другой, сохраняя структуру полей."

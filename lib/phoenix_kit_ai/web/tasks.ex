@@ -148,7 +148,7 @@ defmodule PhoenixKitAI.Web.Tasks do
               </span>
             </div>
 
-            <p :if={task.spec.purpose} class="text-sm">{task.spec.purpose}</p>
+            <p :if={TaskSpec.purpose(task.spec)} class="text-sm">{TaskSpec.purpose(task.spec)}</p>
 
             <div class="flex flex-wrap items-center gap-1 text-sm">
               <span class="text-base-content/70">{gettext("Needs:")}</span>

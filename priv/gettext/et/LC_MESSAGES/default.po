@@ -1792,7 +1792,7 @@ msgid "Endpoints"
 msgstr "Lõpp-punktid"
 
 #: lib/phoenix_kit_ai.ex:1062
-#: lib/phoenix_kit_ai.ex:1089
+#: lib/phoenix_kit_ai.ex:1092
 #: lib/phoenix_kit_ai/web/playground.ex:55
 #, elixir-autogen, elixir-format
 msgid "Playground"
@@ -2580,3 +2580,13 @@ msgstr "Keeldutud"
 #, elixir-autogen, elixir-format
 msgid "Refused before reaching the provider"
 msgstr "Keeldutud enne pakkujani jõudmist"
+
+#: lib/phoenix_kit_ai.ex:1095
+#, elixir-autogen, elixir-format
+msgid "Let an administrator try endpoints and prompts by hand."
+msgstr "Laseb administraatoril lõpp-punkte ja prompte käsitsi proovida."
+
+#: lib/phoenix_kit_ai.ex:1083
+#, elixir-autogen, elixir-format
+msgid "Translate the text fields of a record from one language into another, keeping the field structure."
+msgstr "Tõlgib kirje tekstiväljad ühest keelest teise, säilitades väljade struktuuri."

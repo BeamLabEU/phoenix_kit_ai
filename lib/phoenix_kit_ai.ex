@@ -1080,7 +1080,10 @@ defmodule PhoenixKitAI do
         label: dgettext_noop("default", "Translation"),
         gettext_backend: PhoenixKitAI.Gettext,
         purpose:
-          "Translate the text fields of a record from one language into another, keeping the field structure.",
+          dgettext_noop(
+            "default",
+            "Translate the text fields of a record from one language into another, keeping the field structure."
+          ),
         needs: [],
         endpoints: {PhoenixKitAI.Translations, :unattended_endpoint_uuid, []}
       },
@@ -1088,7 +1091,8 @@ defmodule PhoenixKitAI do
         key: "ai.playground",
         label: dgettext_noop("default", "Playground"),
         gettext_backend: PhoenixKitAI.Gettext,
-        purpose: "Let an administrator try endpoints and prompts by hand.",
+        purpose:
+          dgettext_noop("default", "Let an administrator try endpoints and prompts by hand."),
         needs: [],
         block_group: "free_text"
       }
