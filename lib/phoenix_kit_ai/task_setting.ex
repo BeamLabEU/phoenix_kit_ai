@@ -7,7 +7,9 @@ defmodule PhoenixKitAI.TaskSetting do
   `limits` is `%{"task" => %{unit => %{period => amount}}, "user" => …}`:
   the task's own limits and the default for each user in it (see
   `PhoenixKitAI.TaskLimits`). `warn_percent` is nil for the default (80).
-  The guard mode and classifier fields are for the guard's later parts.
+  `guard_mode` (`off` / `self_flag`, set with
+  `PhoenixKitAI.TaskLimits.set_guard_mode/3`) overrides the declaration's
+  `self_flag`; the classifier fields are for a later part of the guard.
   """
 
   use Ecto.Schema

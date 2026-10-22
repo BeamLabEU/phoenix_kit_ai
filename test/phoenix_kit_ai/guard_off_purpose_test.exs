@@ -219,6 +219,71 @@ defmodule PhoenixKitAI.GuardOffPurposeTest do
     end
   end
 
+  describe "setting the guard mode" do
+    test "needs ai.manage; off and on are seen at once and written to Activity", %{owner: owner} do
+      for scope <- [nil, scope_with([]), scope_with(["ai"])] do
+        assert {:error, :forbidden} =
+                 PhoenixKitAI.TaskLimits.set_guard_mode(scope, "agent.chat", "off")
+      end
+
+      assert Guard.self_flag?("agent.chat")
+      manager = scope_with(["ai", "ai.manage"])
+
+      assert {:ok, %TaskSetting{guard_mode: "off"} = setting} =
+               PhoenixKitAI.TaskLimits.set_guard_mode(manager, "agent.chat", "off")
+
+      refute Guard.self_flag?("agent.chat")
+      assert :off = Guard.report_off_purpose("agent.chat", owner.uuid, "x", "t-off")
+
+      assert_activity_logged("guard.mode_updated",
+        resource_uuid: setting.uuid,
+        actor_uuid: manager.user.uuid,
+        metadata_has: %{"task" => "agent.chat", "guard_mode" => "off", "guard_mode_before" => nil}
+      )
+
+      # The Owner turns it on for a task whose declaration says no.
+      assert {:ok, _} =
+               PhoenixKitAI.TaskLimits.set_guard_mode(
+                 Scope.for_user(owner),
+                 "test.quiet",
+                 "self_flag"
+               )
+
+      assert Guard.self_flag?("test.quiet")
+    end
+
+    test "only off and self_flag; a task nobody declares is refused", %{owner: owner} do
+      scope = Scope.for_user(owner)
+
+      assert {:error, :invalid_mode} =
+               PhoenixKitAI.TaskLimits.set_guard_mode(scope, "agent.chat", "classifier")
+
+      assert {:error, :invalid_mode} =
+               PhoenixKitAI.TaskLimits.set_guard_mode(scope, "agent.chat", "loud")
+
+      assert {:error, :unknown_task} =
+               PhoenixKitAI.TaskLimits.set_guard_mode(scope, "no.such", "off")
+
+      assert Guard.self_flag?("agent.chat")
+    end
+
+    test "the limits stay as they were", %{owner: owner} do
+      scope = Scope.for_user(owner)
+
+      {:ok, before} =
+        PhoenixKitAI.TaskLimits.update_settings(scope, "agent.chat", %{
+          "limits" => %{"task" => %{"requests" => %{"day" => "7"}}},
+          "warn_percent" => "50"
+        })
+
+      {:ok, setting} = PhoenixKitAI.TaskLimits.set_guard_mode(scope, "agent.chat", "off")
+      assert setting.uuid == before.uuid
+      assert setting.limits == before.limits
+      assert get_in(setting.limits, ["task", "requests", "day"]) == 7
+      assert setting.warn_percent == 50
+    end
+  end
+
   describe "self_flag?/1 and self_flag_instruction/1" do
     test "the guard mode decides; without one, the declaration" do
       assert Guard.self_flag?("agent.chat")

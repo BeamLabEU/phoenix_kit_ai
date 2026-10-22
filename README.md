@@ -252,7 +252,8 @@ PhoenixKitAI.Guard.report_off_purpose("my_module.chat", user_uuid, reason, %{tur
 ```
 
 The watchers are told of a person's first flag in a task each day, never
-with the reason. A declaration may also set norms that need no content
+with the reason. An admin with `ai.manage` turns self-flagging off (or on)
+per task on «AI → Tasks»; `self_flag?/1` follows at once. A declaration may also set norms that need no content
 (`sources:`, `max_calls_per_hour:`, `max_tokens_per_call:`); a broken one
 is signalled once a day and blocks nothing.
 

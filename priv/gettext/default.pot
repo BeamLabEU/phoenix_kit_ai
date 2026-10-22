@@ -1091,7 +1091,7 @@ msgstr ""
 
 #: lib/phoenix_kit_ai/web/endpoints.ex:62
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:221
-#: lib/phoenix_kit_ai/web/tasks.ex:1210
+#: lib/phoenix_kit_ai/web/tasks.ex:1244
 #, elixir-autogen, elixir-format
 msgid "Requests"
 msgstr ""
@@ -1388,7 +1388,7 @@ msgstr ""
 #: lib/phoenix_kit_ai/web/endpoints.ex:63
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:224
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:615
-#: lib/phoenix_kit_ai/web/tasks.ex:1211
+#: lib/phoenix_kit_ai/web/tasks.ex:1245
 #, elixir-autogen, elixir-format
 msgid "Tokens"
 msgstr ""
@@ -1848,8 +1848,8 @@ msgid "Please add at least one image"
 msgstr ""
 
 #: lib/phoenix_kit_ai/web/playground.html.heex:279
-#: lib/phoenix_kit_ai/web/tasks.ex:703
-#: lib/phoenix_kit_ai/web/tasks.ex:887
+#: lib/phoenix_kit_ai/web/tasks.ex:716
+#: lib/phoenix_kit_ai/web/tasks.ex:900
 #, elixir-autogen, elixir-format
 msgid "Remove"
 msgstr ""
@@ -2456,18 +2456,18 @@ msgstr ""
 msgid "Tools"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:538
+#: lib/phoenix_kit_ai/web/tasks.ex:551
 #, elixir-autogen, elixir-format
 msgid "Each task is declared by a module. A call with a task is refused before it reaches the provider when the model lacks something the task needs."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:600
+#: lib/phoenix_kit_ai/web/tasks.ex:613
 #, elixir-autogen, elixir-format
 msgid "Endpoints in use:"
 msgstr ""
 
 #: lib/phoenix_kit_ai/web/components/task_model_picker.ex:108
-#: lib/phoenix_kit_ai/web/tasks.ex:1248
+#: lib/phoenix_kit_ai/web/tasks.ex:1282
 #, elixir-autogen, elixir-format
 msgid "Fits"
 msgstr ""
@@ -2483,27 +2483,27 @@ msgid "JSON"
 msgstr ""
 
 #: lib/phoenix_kit_ai/web/components/task_model_picker.ex:118
-#: lib/phoenix_kit_ai/web/tasks.ex:1258
+#: lib/phoenix_kit_ai/web/tasks.ex:1292
 #, elixir-autogen, elixir-format
 msgid "Lacks: %{needs}"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:296
+#: lib/phoenix_kit_ai/web/tasks.ex:305
 #, elixir-autogen, elixir-format
 msgid "Model catalogues refreshed"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:578
+#: lib/phoenix_kit_ai/web/tasks.ex:591
 #, elixir-autogen, elixir-format
 msgid "Module off"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:585
+#: lib/phoenix_kit_ai/web/tasks.ex:598
 #, elixir-autogen, elixir-format
 msgid "Needs:"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:562
+#: lib/phoenix_kit_ai/web/tasks.ex:575
 #, elixir-autogen, elixir-format
 msgid "No module declares an AI task."
 msgstr ""
@@ -2513,24 +2513,24 @@ msgstr ""
 msgid "No provider of this model accepts all the request's parameters (%{params}). Remove the ones it does not support from the endpoint."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:603
+#: lib/phoenix_kit_ai/web/tasks.ex:616
 #, elixir-autogen, elixir-format
 msgid "None chosen; the caller names an endpoint per call."
 msgstr ""
 
 #: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:241
 #: lib/phoenix_kit_ai/web/components/task_model_picker.ex:128
-#: lib/phoenix_kit_ai/web/tasks.ex:1268
+#: lib/phoenix_kit_ai/web/tasks.ex:1302
 #, elixir-autogen, elixir-format
 msgid "Not verified: %{needs}"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:550
+#: lib/phoenix_kit_ai/web/tasks.ex:563
 #, elixir-autogen, elixir-format
 msgid "Refresh catalogues"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:299
+#: lib/phoenix_kit_ai/web/tasks.ex:308
 #, elixir-autogen, elixir-format
 msgid "Some model catalogues could not be read"
 msgstr ""
@@ -2561,7 +2561,7 @@ msgstr ""
 msgid "images"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:587
+#: lib/phoenix_kit_ai/web/tasks.ex:600
 #, elixir-autogen, elixir-format
 msgid "text only"
 msgstr ""
@@ -2713,12 +2713,12 @@ msgstr ""
 msgid "%{email} has reached the %{name} (%{limit}) in the AI task %{task}."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:672
+#: lib/phoenix_kit_ai/web/tasks.ex:685
 #, elixir-autogen, elixir-format
 msgid "A call is refused when nobody knows whether the model can do what its task needs. Declaring capabilities on an endpoint then needs this permission too."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:267
+#: lib/phoenix_kit_ai/web/tasks.ex:276
 #, elixir-autogen, elixir-format
 msgid "A limit must be a whole number, or dollars for money"
 msgstr ""
@@ -2733,7 +2733,7 @@ msgstr ""
 msgid "AI task guard"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:717
+#: lib/phoenix_kit_ai/web/tasks.ex:730
 #, elixir-autogen, elixir-format
 msgid "Add a person…"
 msgstr ""
@@ -2743,40 +2743,40 @@ msgstr ""
 msgid "An AI spending cap (%{cap}) refused a call. Calls are refused until spending is below it."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:932
-#: lib/phoenix_kit_ai/web/tasks.ex:1088
-#: lib/phoenix_kit_ai/web/tasks.ex:1169
+#: lib/phoenix_kit_ai/web/tasks.ex:945
+#: lib/phoenix_kit_ai/web/tasks.ex:1122
+#: lib/phoenix_kit_ai/web/tasks.ex:1203
 #, elixir-autogen, elixir-format
 msgid "Cancel"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:657
+#: lib/phoenix_kit_ai/web/tasks.ex:670
 #, elixir-autogen, elixir-format
 msgid "Changing the guard needs the “Manage the AI task guard” permission."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:809
+#: lib/phoenix_kit_ai/web/tasks.ex:822
 #, elixir-autogen, elixir-format
 msgid "Days and months follow the site time zone. An empty limit is none; 0 allows nothing. Calls running at the same time can each go past a limit by their own size."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:760
+#: lib/phoenix_kit_ai/web/tasks.ex:773
 #, elixir-autogen, elixir-format
 msgid "Each user, a day"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:761
+#: lib/phoenix_kit_ai/web/tasks.ex:774
 #, elixir-autogen, elixir-format
 msgid "Each user, a month"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:693
+#: lib/phoenix_kit_ai/web/tasks.ex:706
 #, elixir-autogen, elixir-format
 msgid "Every Owner"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:838
-#: lib/phoenix_kit_ai/web/tasks.ex:863
+#: lib/phoenix_kit_ai/web/tasks.ex:851
+#: lib/phoenix_kit_ai/web/tasks.ex:876
 #, elixir-autogen, elixir-format
 msgid "Forgive"
 msgstr ""
@@ -2786,7 +2786,7 @@ msgstr ""
 msgid "Limit forgiven"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:747
+#: lib/phoenix_kit_ai/web/tasks.ex:760
 #, elixir-autogen, elixir-format
 msgid "Limits and use:"
 msgstr ""
@@ -2801,24 +2801,24 @@ msgstr ""
 msgid "Manage the AI task guard"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1209
+#: lib/phoenix_kit_ai/web/tasks.ex:1243
 #, elixir-autogen, elixir-format
 msgid "Money"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:720
-#: lib/phoenix_kit_ai/web/tasks.ex:902
+#: lib/phoenix_kit_ai/web/tasks.ex:733
+#: lib/phoenix_kit_ai/web/tasks.ex:915
 #, elixir-autogen, elixir-format
 msgid "No matches"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:870
-#: lib/phoenix_kit_ai/web/tasks.ex:969
+#: lib/phoenix_kit_ai/web/tasks.ex:883
+#: lib/phoenix_kit_ai/web/tasks.ex:1003
 #, elixir-autogen, elixir-format
 msgid "None"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:670
+#: lib/phoenix_kit_ai/web/tasks.ex:683
 #, elixir-autogen, elixir-format
 msgid "Only verified models"
 msgstr ""
@@ -2828,7 +2828,7 @@ msgstr ""
 msgid "Only verified models are allowed: declaring capabilities needs the “Manage the AI task guard” permission."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:844
+#: lib/phoenix_kit_ai/web/tasks.ex:857
 #, elixir-autogen, elixir-format
 msgid "People at a limit now:"
 msgstr ""
@@ -2843,48 +2843,48 @@ msgstr ""
 msgid "Personal limits saved"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:869
+#: lib/phoenix_kit_ai/web/tasks.ex:882
 #, elixir-autogen, elixir-format
 msgid "Personal limits:"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:826
+#: lib/phoenix_kit_ai/web/tasks.ex:839
 #, elixir-autogen, elixir-format
 msgid "Reached: %{limit}"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:929
+#: lib/phoenix_kit_ai/web/tasks.ex:942
 #, elixir-autogen, elixir-format
 msgid "Save"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:798
+#: lib/phoenix_kit_ai/web/tasks.ex:811
 #, elixir-autogen, elixir-format
 msgid "Save limits"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:719
-#: lib/phoenix_kit_ai/web/tasks.ex:901
+#: lib/phoenix_kit_ai/web/tasks.ex:732
+#: lib/phoenix_kit_ai/web/tasks.ex:914
 #, elixir-autogen, elixir-format
 msgid "Searching…"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:899
+#: lib/phoenix_kit_ai/web/tasks.ex:912
 #, elixir-autogen, elixir-format
 msgid "Set personal limits for…"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:655
+#: lib/phoenix_kit_ai/web/tasks.ex:668
 #, elixir-autogen, elixir-format
 msgid "Task guard"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:758
+#: lib/phoenix_kit_ai/web/tasks.ex:771
 #, elixir-autogen, elixir-format
 msgid "Task, a day"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:759
+#: lib/phoenix_kit_ai/web/tasks.ex:772
 #, elixir-autogen, elixir-format
 msgid "Task, a month"
 msgstr ""
@@ -2904,7 +2904,7 @@ msgstr ""
 msgid "The AI task %{task} uses the endpoint %{endpoint}, whose model now lacks: %{needs}."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:288
+#: lib/phoenix_kit_ai/web/tasks.ex:297
 #, elixir-autogen, elixir-format
 msgid "The change was not saved"
 msgstr ""
@@ -2914,37 +2914,37 @@ msgstr ""
 msgid "This AI task has reached its %{name}"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:285
+#: lib/phoenix_kit_ai/web/tasks.ex:294
 #, elixir-autogen, elixir-format
 msgid "Too many watchers"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:757
+#: lib/phoenix_kit_ai/web/tasks.ex:770
 #, elixir-autogen, elixir-format
 msgid "Used this month"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:756
+#: lib/phoenix_kit_ai/web/tasks.ex:769
 #, elixir-autogen, elixir-format
 msgid "Used today"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:802
+#: lib/phoenix_kit_ai/web/tasks.ex:815
 #, elixir-autogen, elixir-format
 msgid "Warn at %{percent}%"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:790
+#: lib/phoenix_kit_ai/web/tasks.ex:803
 #, elixir-autogen, elixir-format
 msgid "Warn at, %"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:258
+#: lib/phoenix_kit_ai/web/tasks.ex:267
 #, elixir-autogen, elixir-format
 msgid "Watchers saved"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:685
+#: lib/phoenix_kit_ai/web/tasks.ex:698
 #, elixir-autogen, elixir-format
 msgid "Who is told"
 msgstr ""
@@ -2965,7 +2965,7 @@ msgid "You have used %{used} of your %{name} (%{limit}) in the AI task %{task}."
 msgstr ""
 
 #: lib/phoenix_kit_ai/web/tasks.ex:100
-#: lib/phoenix_kit_ai/web/tasks.ex:264
+#: lib/phoenix_kit_ai/web/tasks.ex:273
 #, elixir-autogen, elixir-format
 msgid "You may not change the AI task guard"
 msgstr ""
@@ -3025,12 +3025,12 @@ msgstr ""
 msgid "the whole site"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:270
+#: lib/phoenix_kit_ai/web/tasks.ex:279
 #, elixir-autogen, elixir-format
 msgid "That person was not found"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:814
+#: lib/phoenix_kit_ai/web/tasks.ex:827
 #, elixir-autogen, elixir-format
 msgid "Money is not counted for chat calls on %{endpoints}: the provider does not report what a call cost. Requests and tokens still apply."
 msgstr ""
@@ -3090,7 +3090,7 @@ msgstr ""
 msgid "Not verified"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:677
+#: lib/phoenix_kit_ai/web/tasks.ex:690
 #, elixir-autogen, elixir-format
 msgid "Without a catalogue (OpenAI, xAI, Z.ai) the capabilities have to be marked on the endpoint, or the calls are refused."
 msgstr ""
@@ -3115,9 +3115,9 @@ msgstr ""
 msgid "An AI task is near or at a limit, a spending cap refused a call, a task's model no longer fits it, a request was flagged as off-purpose, a task is used unusually, or a person was blocked or unblocked"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:995
-#: lib/phoenix_kit_ai/web/tasks.ex:1049
-#: lib/phoenix_kit_ai/web/tasks.ex:1085
+#: lib/phoenix_kit_ai/web/tasks.ex:1029
+#: lib/phoenix_kit_ai/web/tasks.ex:1083
+#: lib/phoenix_kit_ai/web/tasks.ex:1119
 #, elixir-autogen, elixir-format
 msgid "Block"
 msgstr ""
@@ -3132,12 +3132,12 @@ msgstr ""
 msgid "Blocked"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1093
+#: lib/phoenix_kit_ai/web/tasks.ex:1127
 #, elixir-autogen, elixir-format
 msgid "Blocked now:"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1104
+#: lib/phoenix_kit_ai/web/tasks.ex:1138
 #, elixir-autogen, elixir-format
 msgid "By"
 msgstr ""
@@ -3147,87 +3147,87 @@ msgstr ""
 msgid "Change the limits of AI tasks, who is told about them and which models may be used; block a person from a task; see why a private task's request was flagged"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:977
+#: lib/phoenix_kit_ai/web/tasks.ex:1011
 #, elixir-autogen, elixir-format
 msgid "Flags"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1024
-#: lib/phoenix_kit_ai/web/tasks.ex:1117
+#: lib/phoenix_kit_ai/web/tasks.ex:1058
+#: lib/phoenix_kit_ai/web/tasks.ex:1151
 #, elixir-autogen, elixir-format
 msgid "Hidden: the task is private"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1031
+#: lib/phoenix_kit_ai/web/tasks.ex:1065
 #, elixir-autogen, elixir-format
 msgid "Journal row"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1138
-#: lib/phoenix_kit_ai/web/tasks.ex:1166
+#: lib/phoenix_kit_ai/web/tasks.ex:1172
+#: lib/phoenix_kit_ai/web/tasks.ex:1200
 #, elixir-autogen, elixir-format
 msgid "Lift"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:687
+#: lib/phoenix_kit_ai/web/tasks.ex:700
 #, elixir-autogen, elixir-format
 msgid "Limits near or reached, spending caps, models that stop fitting, off-purpose flags, unusual use and blocks are sent to these people (and to the people a task names), never with a reason. Nobody chosen: every Owner."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:405
+#: lib/phoenix_kit_ai/web/tasks.ex:418
 #, elixir-autogen, elixir-format
 msgid "No user"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1095
+#: lib/phoenix_kit_ai/web/tasks.ex:1129
 #, elixir-autogen, elixir-format
 msgid "Nobody"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:276
+#: lib/phoenix_kit_ai/web/tasks.ex:285
 #, elixir-autogen, elixir-format
 msgid "Nobody but an Owner lifts their own block"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1160
+#: lib/phoenix_kit_ai/web/tasks.ex:1194
 #, elixir-autogen, elixir-format
 msgid "Note"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:967
+#: lib/phoenix_kit_ai/web/tasks.ex:1001
 #, elixir-autogen, elixir-format
 msgid "Off-purpose flags, last 30 days:"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:273
+#: lib/phoenix_kit_ai/web/tasks.ex:282
 #, elixir-autogen, elixir-format
 msgid "Only an Owner blocks an Owner or lifts their block"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:976
-#: lib/phoenix_kit_ai/web/tasks.ex:1008
-#: lib/phoenix_kit_ai/web/tasks.ex:1102
+#: lib/phoenix_kit_ai/web/tasks.ex:1010
+#: lib/phoenix_kit_ai/web/tasks.ex:1042
+#: lib/phoenix_kit_ai/web/tasks.ex:1136
 #, elixir-autogen, elixir-format
 msgid "Person"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1009
-#: lib/phoenix_kit_ai/web/tasks.ex:1105
+#: lib/phoenix_kit_ai/web/tasks.ex:1043
+#: lib/phoenix_kit_ai/web/tasks.ex:1139
 #, elixir-autogen, elixir-format
 msgid "Reason"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1103
+#: lib/phoenix_kit_ai/web/tasks.ex:1137
 #, elixir-autogen, elixir-format
 msgid "Since"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:282
+#: lib/phoenix_kit_ai/web/tasks.ex:291
 #, elixir-autogen, elixir-format
 msgid "That block was lifted already"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:279
+#: lib/phoenix_kit_ai/web/tasks.ex:288
 #, elixir-autogen, elixir-format
 msgid "That person is blocked from this task already"
 msgstr ""
@@ -3237,7 +3237,7 @@ msgstr ""
 msgid "The AI task %{task} was asked for something outside its purpose. The flags are on the AI tasks page."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1078
+#: lib/phoenix_kit_ai/web/tasks.ex:1112
 #, elixir-autogen, elixir-format
 msgid "The person cannot use the tasks of the group %{group} until the block is lifted."
 msgstr ""
@@ -3252,12 +3252,12 @@ msgstr ""
 msgid "Unusual use of the AI task %{task}: %{rule}."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1007
+#: lib/phoenix_kit_ai/web/tasks.ex:1041
 #, elixir-autogen, elixir-format
 msgid "When"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1073
+#: lib/phoenix_kit_ai/web/tasks.ex:1107
 #, elixir-autogen, elixir-format
 msgid "Why (seen by those who manage the guard)"
 msgstr ""
@@ -3290,4 +3290,14 @@ msgstr ""
 #: lib/phoenix_kit_ai/guard_events.ex:795
 #, elixir-autogen, elixir-format
 msgid "more than %{limit} calls in an hour"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/tasks.ex:992
+#, elixir-autogen, elixir-format
+msgid "The model flags off-purpose requests"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/tasks.ex:994
+#, elixir-autogen, elixir-format
+msgid "The module that uses this task asks the model to refuse what is not the task's purpose and to flag it. Off: no such instruction, and no flags are written."
 msgstr ""

@@ -66,7 +66,8 @@ defmodule PhoenixKitAI.Web.TasksBlocksTest do
        }},
       {"lift_open", %{"block" => block_uuid}},
       {"lift_cancel", %{}},
-      {"lift_block", %{"block" => block_uuid, "note" => "x"}}
+      {"lift_block", %{"block" => block_uuid, "note" => "x"}},
+      {"toggle_self_flag", %{"task" => "test.flagged"}}
     ]
   end
 
@@ -207,6 +208,35 @@ defmodule PhoenixKitAI.Web.TasksBlocksTest do
 
       assert html =~ "Only an Owner blocks an Owner or lifts their block"
       refute Guard.blocked?("test.flagged", owner.uuid)
+    end
+  end
+
+  describe "the self-flag switch" do
+    test "turns self-flagging off and on again; shown only where the task self-flags",
+         %{conn: conn} do
+      {user, _role} = role_with(["ai", "ai.manage"])
+      view = open(conn, user)
+
+      assert has_element?(view, "#{@open} [data-self-flag]:not([disabled])[checked]")
+      refute has_element?(view, "[data-task-key='test.quiet'] [data-self-flag]")
+
+      view |> element("#{@open} [data-self-flag]") |> render_click()
+      refute Guard.self_flag?("test.flagged")
+      assert has_element?(view, "#{@open} [data-self-flag]:not([checked])")
+
+      view |> element("#{@open} [data-self-flag]") |> render_click()
+      assert Guard.self_flag?("test.flagged")
+      assert has_element?(view, "#{@open} [data-self-flag][checked]")
+    end
+
+    test "read-only without ai.manage, and the event is refused", %{conn: conn} do
+      {user, _role} = role_with(["ai"])
+      view = open(conn, user)
+
+      assert has_element?(view, "#{@open} [data-self-flag][disabled]")
+      html = render_hook(view, "toggle_self_flag", %{"task" => "test.flagged"})
+      assert html =~ "You may not change the AI task guard"
+      assert Guard.self_flag?("test.flagged")
     end
   end
 

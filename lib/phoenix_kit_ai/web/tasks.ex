@@ -93,7 +93,7 @@ defmodule PhoenixKitAI.Web.Tasks do
            limit_user_search limit_user_pick limit_user_cancel save_user_limits
            delete_user_limits watcher_search watcher_pick remove_watcher
            toggle_verified_only block_open block_cancel block_user lift_open
-           lift_cancel lift_block) do
+           lift_cancel lift_block toggle_self_flag) do
     if Access.may_manage?(socket) do
       manage(event, params, socket)
     else
@@ -251,6 +251,15 @@ defmodule PhoenixKitAI.Web.Tasks do
     end
   end
 
+  defp manage("toggle_self_flag", %{"task" => key}, socket) do
+    mode = if Guard.self_flag?(key), do: "off", else: "self_flag"
+
+    case TaskLimits.set_guard_mode(Access.session_scope(socket), key, mode) do
+      {:ok, _setting} -> {:noreply, load_tasks(socket)}
+      error -> {:noreply, refused(socket, error)}
+    end
+  end
+
   defp manage(_event, _params, socket), do: {:noreply, socket}
 
   defp save_watchers(socket, uuids) do
@@ -355,6 +364,10 @@ defmodule PhoenixKitAI.Web.Tasks do
 
     %{
       group: group,
+      self_flag: Guard.self_flag?(spec),
+      # The switch is for a task whose consumer flags: its declaration says
+      # so, or an admin turned it on.
+      self_flag_switch: spec.self_flag == true or Guard.self_flag?(spec),
       counts:
         Enum.map(counts, fn {user_uuid, count} ->
           %{
@@ -964,6 +977,27 @@ defmodule PhoenixKitAI.Web.Tasks do
 
     ~H"""
     <div id={@id} class="flex min-w-0 flex-col gap-2 text-sm" data-guard-flags>
+      <label :if={@guard.self_flag_switch} class="flex items-start gap-3 cursor-pointer">
+        <input
+          id={@id <> "-self-flag"}
+          type="checkbox"
+          class="toggle toggle-sm mt-0.5"
+          checked={@guard.self_flag}
+          disabled={!@can_manage}
+          phx-click={@can_manage && "toggle_self_flag"}
+          phx-value-task={@key}
+          data-self-flag
+        />
+        <span class="flex flex-col">
+          <span class="font-medium">{gettext("The model flags off-purpose requests")}</span>
+          <span class="text-xs text-base-content/70">
+            {gettext(
+              "The module that uses this task asks the model to refuse what is not the task's purpose and to flag it. Off: no such instruction, and no flags are written."
+            )}
+          </span>
+        </span>
+      </label>
+
       <span class="text-base-content/70">{gettext("Off-purpose flags, last 30 days:")}</span>
       <span :if={@guard.counts == []} class="text-base-content/60" data-no-flags>
         {gettext("None")}

@@ -361,7 +361,7 @@ Permissions: the module permission `"ai"` from `permission_metadata/0`,
 checked with `Scope.has_module_access?/2`, and one sub-permission,
 `"ai.manage"`: changing the task guard (limits, personal limits, forgiving,
 watchers, "only verified models", declaring capabilities while that is on,
-blocking and lifting), and seeing the reasons of a private task's flags and
+a task's self-flag mode, blocking and lifting), and seeing the reasons of a private task's flags and
 blocks.
 An Owner always may (`Guard.may_manage?/1`); core grants a new
 sub-permission to Admin once while Admin holds `ai`. Every context function
@@ -689,7 +689,10 @@ Test database `phoenix_kit_ai_test`.
   queue, so the host lists no queue for it.
 - Off-purpose use (`PhoenixKitAI.Guard`): the consumer flags, the guard
   never edits a prompt or a schema. `self_flag?/1` (the task's guard mode,
-  else the declaration's `self_flag`) before building the prompt;
+  else the declaration's `self_flag`) before building the prompt; the mode
+  is set to `off` or `self_flag` on the Tasks page
+  (`TaskLimits.set_guard_mode/3`, `ai.manage`; the classifier modes come
+  with the classifier);
   `self_flag_instruction/1` is English text with the purpose (an admin's
   override when set), "refuse politely and flag", "judge only the user's
   own message" and "no quote in the reason"; `report_off_purpose/4` writes
