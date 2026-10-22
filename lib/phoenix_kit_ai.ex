@@ -2815,6 +2815,20 @@ defmodule PhoenixKitAI do
     })
   end
 
+  # A thinking budget not below `max_tokens` is not sent (`Completion`);
+  # the row says why the call ran without thinking.
+  defp note_skipped_thinking(guard, endpoint, opts) do
+    if PhoenixKitAI.Completion.thinking_budget_skipped?(endpoint, opts),
+      do:
+        Map.update(
+          guard,
+          :guard_warnings,
+          ["thinking_budget_not_below_max_tokens"],
+          &(&1 ++ ["thinking_budget_not_below_max_tokens"])
+        ),
+      else: guard
+  end
+
   # Where a verb's result carries the uuid of its usage row: the chat and
   # embedding responses are provider maps with string keys, the rest are
   # this module's atom-keyed maps.
@@ -3210,7 +3224,10 @@ defmodule PhoenixKitAI do
       {merged_opts, stripped} =
         endpoint |> merge_endpoint_opts(opts) |> Guard.require_parameters(admission)
 
-      guard = Guard.row_metadata(admission, stripped)
+      guard =
+        admission
+        |> Guard.row_metadata(stripped)
+        |> note_skipped_thinking(endpoint, merged_opts)
 
       # Extract prompt info if present (from ask_with_prompt, complete_with_system_prompt)
       # + the ATTRIBUTION payload (the projects work-ledger seam): an
@@ -3823,7 +3840,13 @@ defmodule PhoenixKitAI do
       {opts, stripped} = Guard.require_parameters(opts, admission)
 
       trace =
-        trace(source, stacktrace, caller_context, opts, Guard.row_metadata(admission, stripped))
+        trace(
+          source,
+          stacktrace,
+          caller_context,
+          opts,
+          admission |> Guard.row_metadata(stripped) |> note_skipped_thinking(endpoint, opts)
+        )
 
       result =
         with_cache(
@@ -3890,7 +3913,13 @@ defmodule PhoenixKitAI do
       {opts, stripped} = Guard.require_parameters(opts, admission)
 
       trace =
-        trace(source, stacktrace, caller_context, opts, Guard.row_metadata(admission, stripped))
+        trace(
+          source,
+          stacktrace,
+          caller_context,
+          opts,
+          admission |> Guard.row_metadata(stripped) |> note_skipped_thinking(endpoint, opts)
+        )
 
       result =
         with_cache(

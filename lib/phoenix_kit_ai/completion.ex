@@ -858,12 +858,37 @@ defmodule PhoenixKitAI.Completion do
   defp anthropic_thinking(%{"reasoning" => reasoning} = body, endpoint) do
     caps = Capabilities.for_endpoint(endpoint)
 
+    thinking =
+      if reasoning["enabled"] != false and
+           budget_not_below_max?(reasoning["max_tokens"], body["max_tokens"], caps),
+         do: nil,
+         else: thinking_form(reasoning, caps)
+
     body
     |> Map.delete("reasoning")
-    |> maybe_add("thinking", thinking_form(reasoning, caps))
+    |> maybe_add("thinking", thinking)
   end
 
   defp anthropic_thinking(body, _endpoint), do: body
+
+  @doc false
+  # Whether a call's thinking budget would go out as `budget_tokens` while
+  # not below its `max_tokens` — a 400 on a budget-only model, so no
+  # `thinking` is sent. The verbs note it on the usage row.
+  @spec thinking_budget_skipped?(Endpoint.t(), keyword()) :: boolean()
+  def thinking_budget_skipped?(endpoint, opts) do
+    opts[:reasoning_enabled] != false and anthropic?(endpoint) and
+      budget_not_below_max?(
+        opts[:reasoning_max_tokens],
+        opts[:max_tokens],
+        Capabilities.for_endpoint(endpoint)
+      )
+  end
+
+  defp budget_not_below_max?(budget, max_tokens, caps) do
+    is_integer(budget) and is_integer(max_tokens) and budget >= max_tokens and
+      thinking_flag(caps, :thinking_enabled) == :yes
+  end
 
   defp thinking_form(%{"enabled" => false}, caps),
     do: if(thinking_flag(caps, :thinking_disabled) == :yes, do: %{"type" => "disabled"})

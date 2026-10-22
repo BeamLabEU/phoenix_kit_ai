@@ -271,6 +271,48 @@ defmodule PhoenixKitAI.RequestRulesTest do
       refute Map.has_key?(sent_body(), "thinking")
     end
 
+    test "a budget not below max_tokens sends no thinking and notes it on the row" do
+      stub()
+
+      ep =
+        anthropic_endpoint(%{
+          model: "claude-budget-only",
+          reasoning_max_tokens: 2048,
+          max_tokens: 1000
+        })
+
+      start_catalogue()
+
+      assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "hi")
+      body = sent_body()
+      refute Map.has_key?(body, "thinking")
+      assert body["max_tokens"] == 1000
+
+      # Vision takes the call's own options: the same rule.
+      assert {:ok, _} =
+               PhoenixKitAI.describe_image(ep.uuid, @jpeg,
+                 reasoning_max_tokens: 4096,
+                 max_tokens: 4096
+               )
+
+      refute Map.has_key?(sent_body(), "thinking")
+
+      # A budget below max_tokens is sent.
+      assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "hi", max_tokens: 4000)
+      assert %{"thinking" => %{"type" => "enabled", "budget_tokens" => 2048}} = sent_body()
+
+      rows =
+        TestRepo.all(from(r in Request, where: r.endpoint_uuid == ^ep.uuid, order_by: r.uuid))
+
+      assert [
+               %{metadata: %{"guard_warnings" => ["thinking_budget_not_below_max_tokens"]}},
+               %{metadata: %{"guard_warnings" => ["thinking_budget_not_below_max_tokens"]}},
+               %{metadata: third}
+             ] = rows
+
+      refute Map.has_key?(third, "guard_warnings")
+    end
+
     test "thinking off is sent only to a model whose catalogue says it takes it" do
       stub()
       takes = anthropic_endpoint(%{reasoning_enabled: false})
