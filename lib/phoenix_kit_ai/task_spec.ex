@@ -33,6 +33,14 @@ defmodule PhoenixKitAI.TaskSpec do
   people to tell about the task's limits (`PhoenixKitAI.GuardEvents`); the
   user is never told as a watcher.
 
+  `user_limits` (default `true`) says whether the guard limits each user in
+  the task. `false` is for a task whose module keeps its own limits per
+  user: `PhoenixKitAI.TaskLimits` then has only the task's limits for it,
+  ignores the user part of `default_limits` and the user values an admin
+  stored (they stay in the database), refuses to set user limits
+  (`{:error, :user_limits_off}`), and «AI → Tasks» shows no user limits for
+  it.
+
   `self_flag` says the consumer has its model flag off-purpose requests
   (the default of the task's guard mode, `PhoenixKitAI.Guard.self_flag?/1`).
   `private` hides the reasons of the task's flags and blocks from all but
@@ -70,6 +78,7 @@ defmodule PhoenixKitAI.TaskSpec do
           watchers: mfa_ref() | nil,
           content: mfa_ref() | nil,
           default_limits: map(),
+          user_limits: boolean(),
           typical_tokens: {non_neg_integer(), non_neg_integer()} | nil,
           module: module() | nil,
           enabled: boolean()
@@ -92,6 +101,7 @@ defmodule PhoenixKitAI.TaskSpec do
             watchers: nil,
             content: nil,
             default_limits: %{},
+            user_limits: true,
             typical_tokens: nil,
             module: nil,
             enabled: true

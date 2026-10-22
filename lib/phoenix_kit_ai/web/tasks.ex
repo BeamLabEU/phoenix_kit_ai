@@ -297,6 +297,9 @@ defmodule PhoenixKitAI.Web.Tasks do
   defp refused(socket, {:error, :too_long}),
     do: put_flash(socket, :error, gettext("Too many watchers"))
 
+  defp refused(socket, {:error, :user_limits_off}),
+    do: put_flash(socket, :error, gettext("Limits per user are set by the task's module"))
+
   defp refused(socket, _error),
     do: put_flash(socket, :error, gettext("The change was not saved"))
 
@@ -433,20 +436,15 @@ defmodule PhoenixKitAI.Web.Tasks do
 
   defp limits_view(spec, endpoints) do
     layers = TaskLimits.layers(spec)
-    personal = TaskLimits.list_user_limits(spec.key)
-    # Who reached a limit in this window and is still at it (not forgiven
-    # since, the limit not raised).
-    reached =
-      for user_uuid <-
-            spec.key |> GuardEvents.reached_users() |> Enum.map(& &1.user_uuid) |> Enum.uniq(),
-          status <- TaskLimits.statuses(spec, user_uuid),
-          status.scope == :user and status.used >= status.limit,
-          do: Map.put(status, :user_uuid, user_uuid)
+    user_limits? = spec.user_limits != false
+    personal = if user_limits?, do: TaskLimits.list_user_limits(spec.key), else: []
+    reached = if user_limits?, do: users_at_limit(spec), else: []
 
     emails = emails(Enum.map(personal, & &1.user_uuid) ++ Enum.map(reached, & &1.user_uuid))
 
     %{
       layers: layers,
+      user_limits?: user_limits?,
       used: TaskLimits.usage(spec.key, nil).task,
       warn_percent: layers.setting && layers.setting.warn_percent,
       personal:
@@ -460,6 +458,16 @@ defmodule PhoenixKitAI.Web.Tasks do
       reached: Enum.map(reached, &Map.put(&1, :email, emails[&1.user_uuid] || &1.user_uuid)),
       money_uncounted: for(e <- endpoints, !TaskLimits.money_counted?(e), do: e.name)
     }
+  end
+
+  # Who reached a limit in this window and is still at it (not forgiven
+  # since, the limit not raised).
+  defp users_at_limit(spec) do
+    for user_uuid <-
+          spec.key |> GuardEvents.reached_users() |> Enum.map(& &1.user_uuid) |> Enum.uniq(),
+        status <- TaskLimits.statuses(spec, user_uuid),
+        status.scope == :user and status.used >= status.limit,
+        do: Map.put(status, :user_uuid, user_uuid)
   end
 
   defp load_guard(socket) do
@@ -808,8 +816,8 @@ defmodule PhoenixKitAI.Web.Tasks do
                 <th>{gettext("Used this month")}</th>
                 <th>{gettext("Task, a day")}</th>
                 <th>{gettext("Task, a month")}</th>
-                <th>{gettext("Each user, a day")}</th>
-                <th>{gettext("Each user, a month")}</th>
+                <th :if={@view.user_limits?}>{gettext("Each user, a day")}</th>
+                <th :if={@view.user_limits?}>{gettext("Each user, a month")}</th>
               </tr>
             </thead>
             <tbody>
@@ -817,7 +825,7 @@ defmodule PhoenixKitAI.Web.Tasks do
                 <th>{unit_label(unit)}</th>
                 <td data-used="day">{GuardEvents.format_amount(unit, @view.used[unit].day)}</td>
                 <td data-used="month">{GuardEvents.format_amount(unit, @view.used[unit].month)}</td>
-                <td :for={{scope, period} <- [task: :day, task: :month, user: :day, user: :month]}>
+                <td :for={{scope, period} <- limit_cells(@view)}>
                   <.limit_cell
                     can_manage={@can_manage}
                     name={"limits[#{scope}][#{unit}][#{period}]"}
@@ -891,6 +899,10 @@ defmodule PhoenixKitAI.Web.Tasks do
         </div>
       </div>
 
+      <p :if={!@view.user_limits?} class="text-xs text-base-content/60" data-user-limits-off>
+        {gettext("Limits per user are set by the task's module")}
+      </p>
+
       <div :if={@view.reached != []} class="flex flex-col gap-1" data-users-reached>
         <span class="text-base-content/70">{gettext("People at a limit now:")}</span>
         <div
@@ -916,7 +928,7 @@ defmodule PhoenixKitAI.Web.Tasks do
         </div>
       </div>
 
-      <div class="flex flex-col gap-1" data-personal-limits>
+      <div :if={@view.user_limits?} class="flex flex-col gap-1" data-personal-limits>
         <span class="text-base-content/70">{gettext("Personal limits:")}</span>
         <span :if={@view.personal == []} class="text-base-content/60">{gettext("None")}</span>
         <div
@@ -1301,6 +1313,13 @@ defmodule PhoenixKitAI.Web.Tasks do
       end
     )
   end
+
+  # The editable cells of a row: the task's, then each user's when the guard
+  # limits the task's users.
+  defp limit_cells(%{user_limits?: true}),
+    do: [task: :day, task: :month, user: :day, user: :month]
+
+  defp limit_cells(_view), do: [task: :day, task: :month]
 
   # The task's own limits whose count has reached them now.
   defp reached_task_limits(view) do

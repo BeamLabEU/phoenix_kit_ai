@@ -651,10 +651,15 @@ Test database `phoenix_kit_ai_test`.
   / tokens × calendar day / month in the site time zone. In force, cell by
   cell: the user's personal limit, else the task's default for users, else
   the declaration's `default_limits`; the task's own, else the
-  declaration's. Empty is none, `0` allows nothing. Counted from the
-  journal by `metadata->>'task'` (and `user_uuid`), `status = 'success'`
-  only — a cache hit is one request and no money or tokens, a refusal never
-  counts; money only where the provider reports a cost. Checked in
+  declaration's. A task declared with `user_limits: false` (its module
+  limits its users) has no `:user` scope: the declared and stored user
+  values are ignored (kept), and `put_user_limits/4`, `forgive/6` of
+  `:user` and `update_settings/3` with a user amount are
+  `{:error, :user_limits_off}`. Empty is none, `0` allows nothing.
+  Counted from the journal by `metadata->>'task'` (and `user_uuid`),
+  `status = 'success'` only — a cache hit is one request and no money or
+  tokens, a refusal never counts; money only where the provider reports a
+  cost. Checked in
   `authorize/5` after the model check and before `Budget`; a reached limit
   is `{:error, {:task_limit_exceeded, scope, unit, period}}` with a refusal
   row. Forgiving restarts one scope and period's count from that moment
