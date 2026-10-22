@@ -37,6 +37,8 @@ defmodule PhoenixKitAI.Web.Tasks do
   alias PhoenixKitAI.Web.Components.TaskModelPicker
   alias PhoenixKitAI.Web.MessageShape
 
+  @max_dollars Decimal.new(1_000_000_000)
+
   @impl true
   def mount(_params, session, socket) do
     if connected?(socket), do: Capabilities.subscribe()
@@ -358,15 +360,18 @@ defmodule PhoenixKitAI.Web.Tasks do
     end
   end
 
+  # Dollars, finite, from 0 to $1 000 000 000; a positive amount that would
+  # round to 0 micro-dollars is refused (0 allows nothing).
   defp amount("money", value) do
-    case Decimal.parse(value) do
-      {decimal, ""} ->
-        if Decimal.negative?(decimal),
-          do: :error,
-          else: decimal |> Decimal.mult(1_000_000) |> Decimal.round(0) |> Decimal.to_integer()
-
-      _ ->
-        :error
+    with {decimal, ""} <- Decimal.parse(value),
+         false <- Decimal.nan?(decimal) or Decimal.inf?(decimal),
+         false <- Decimal.negative?(decimal),
+         false <- Decimal.gt?(decimal, @max_dollars),
+         micro = decimal |> Decimal.mult(1_000_000) |> Decimal.round(0) |> Decimal.to_integer(),
+         false <- micro == 0 and not Decimal.eq?(decimal, 0) do
+      micro
+    else
+      _ -> :error
     end
   end
 

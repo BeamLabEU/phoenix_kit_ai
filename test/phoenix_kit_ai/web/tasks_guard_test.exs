@@ -178,6 +178,35 @@ defmodule PhoenixKitAI.Web.TasksGuardTest do
       assert TestRepo.aggregate(TaskSetting, :count) == 0
     end
 
+    test "money that is not a finite amount, is negative, too large or rounds to nothing is a form error",
+         %{conn: conn} do
+      {user, _role} = admin(["ai", "ai.manage"])
+      view = open(conn, user)
+
+      for value <- ["NaN", "nan", "inf", "-Infinity", "1e400", "1000000001", "-1", "0.0000001"] do
+        params = %{
+          "task" => "test.limited",
+          "limits" => %{"task" => %{"money" => %{"day" => value}}}
+        }
+
+        assert render_hook(view, "save_limits", params) =~ "A limit must be a whole number",
+               "#{value} was accepted"
+
+        assert Process.alive?(view.pid)
+      end
+
+      assert TestRepo.aggregate(TaskSetting, :count) == 0
+
+      # A blank field is no limit, not an error; a small real amount is kept.
+      render_hook(view, "save_limits", %{
+        "task" => "test.limited",
+        "limits" => %{"task" => %{"money" => %{"day" => "", "month" => "0.000001"}}}
+      })
+
+      assert %TaskSetting{limits: %{"task" => %{"money" => %{"month" => 1}}}} =
+               TestRepo.get_by(TaskSetting, task_key: "test.limited")
+    end
+
     test "use is shown, a reached task limit can be forgiven", %{conn: conn, owner: owner} do
       {:ok, endpoint} =
         PhoenixKitAI.create_endpoint(%{
