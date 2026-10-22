@@ -15,8 +15,8 @@ defmodule PhoenixKitAI.Tasks do
 
   ## Fitness
 
-  `fitness/2` compares a task's hard needs (`:vision`, `:tools`,
-  `:json_schema`) with `PhoenixKitAI.Capabilities.for_endpoint/1` (the
+  `fitness/2` compares a task's hard needs (`:vision`, `:file_input`,
+  `:image_output`, `:tools`, `:json_schema`) with `PhoenixKitAI.Capabilities.for_endpoint/1` (the
   catalogue, the endpoint's declaration filling what it does not know):
   `:fit`, `{:unfit, missing}` when the model says no to something, or
   `{:unknown, unclear}` when nobody knows. `:json` is soft — the module falls
@@ -240,9 +240,11 @@ defmodule PhoenixKitAI.Tasks do
     :ok
   end
 
-  @doc "A requirement in words: images, tools, JSON schema, JSON."
+  @doc "A requirement in words: images, documents, image generation, tools, JSON schema, JSON."
   @spec need_label(TaskSpec.need()) :: String.t()
   def need_label(:vision), do: gettext("images")
+  def need_label(:file_input), do: gettext("documents")
+  def need_label(:image_output), do: gettext("image generation")
   def need_label(:tools), do: gettext("tools")
   def need_label(:json_schema), do: gettext("JSON schema")
   def need_label(:json), do: gettext("JSON")

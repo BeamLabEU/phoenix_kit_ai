@@ -1,8 +1,9 @@
 defmodule PhoenixKitAI.Web.Components.CapabilityBadges do
   @moduledoc """
-  The badges for what a model can do (images, tools, JSON schema) as its
-  catalogue says: one per capability it has, a muted one with "?" where the
-  catalogue does not know, one "unknown" badge when it knows nothing, and
+  The badges for what a model can do (images, documents, image generation,
+  tools, JSON schema) as its catalogue says: one per capability it has, a
+  grey one with "?" where nobody verified it (never styled like a missing
+  one, which has no badge), one "unknown" badge when nothing is known, and
   Anthropic's lifecycle when the model is leaving. Shared by the endpoint
   form's model grid and the task model picker.
   """
@@ -14,9 +15,16 @@ defmodule PhoenixKitAI.Web.Components.CapabilityBadges do
 
   attr(:capabilities, :any, default: nil)
 
+  attr(:context, :atom,
+    default: :endpoint,
+    values: [:endpoint, :catalogue],
+    doc:
+      "`:catalogue` for a model no endpoint has yet (recommendations): the hint on a \"?\" then only says it is not verified"
+  )
+
   # What the catalogue says the model can do: a badge per capability it has
-  # (a muted one with "?" where it does not know), one "unknown" badge when
-  # it knows nothing, and Anthropic's lifecycle when the model is leaving.
+  # (a grey one with "?" where nobody verified it), one "unknown" badge when
+  # nothing is known, and Anthropic's lifecycle when the model is leaving.
   def badges(assigns) do
     ~H"""
     <%= if match?(%Capabilities{}, @capabilities) do %>
@@ -24,7 +32,7 @@ defmodule PhoenixKitAI.Web.Components.CapabilityBadges do
         <span
           data-capability="unknown"
           class="badge badge-ghost badge-xs h-auto"
-          title={gettext("Not reported by the provider")}
+          title={hint(@context)}
         >
           {gettext("Capabilities unknown")}
         </span>
@@ -38,7 +46,7 @@ defmodule PhoenixKitAI.Web.Components.CapabilityBadges do
               "badge badge-xs h-auto",
               if(known?, do: "badge-info badge-outline", else: "badge-ghost")
             ]}
-            title={if(!known?, do: gettext("Not reported by the provider"))}
+            title={if(!known?, do: hint(@context))}
           >
             {label(flag)}{if(!known?, do: "?")}
           </span>
@@ -65,6 +73,17 @@ defmodule PhoenixKitAI.Web.Components.CapabilityBadges do
 
   @doc "The capability in words."
   def label(:vision), do: gettext("Images")
+  def label(:file_input), do: gettext("Documents")
+  def label(:image_output), do: gettext("Image generation")
   def label(:tools), do: gettext("Tools")
   def label(:json_schema), do: gettext("JSON schema")
+
+  @doc "The hint on a capability nobody verified: where to mark it."
+  def unverified_hint, do: gettext("Not verified — mark it on the endpoint")
+
+  @doc "The hint on a capability nobody verified, for a model no endpoint has yet."
+  def catalogue_hint, do: gettext("Not verified")
+
+  defp hint(:catalogue), do: catalogue_hint()
+  defp hint(_context), do: unverified_hint()
 end

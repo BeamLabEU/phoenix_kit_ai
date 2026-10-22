@@ -123,6 +123,7 @@ defmodule PhoenixKitAI do
   alias PhoenixKitAI.{Budget, Endpoint, Prompt, Provider, RequestCache, StructuredOutput}
   alias PhoenixKitAI.Capabilities
   alias PhoenixKitAI.Guard
+  alias PhoenixKitAI.GuardBlocks
   alias PhoenixKitAI.GuardEvents
   alias PhoenixKitAI.Images.{ImageModel, ImageModels, Operations}
   alias PhoenixKitAI.Request
@@ -946,7 +947,8 @@ defmodule PhoenixKitAI do
       icon: "hero-sparkles",
       description: "AI endpoints, prompts, and usage tracking",
       # `ai.manage`: changes to the AI task guard (limits, watchers, "only
-      # verified models", forgiving a limit). Core grants a new
+      # verified models", forgiving a limit, blocks) and the reasons of a
+      # private task's flags and blocks. Core grants a new
       # sub-permission to Admin once while Admin holds `ai`; an Owner holds
       # every key.
       sub_permissions: [
@@ -954,7 +956,7 @@ defmodule PhoenixKitAI do
           key: "manage",
           label: "Manage the AI task guard",
           description:
-            "Change the limits of AI tasks, who is told about them, and which models may be used"
+            "Change the limits of AI tasks, who is told about them and which models may be used; block a person from a task; see why a private task's request was flagged"
         }
       ],
       # Renders the label translated in the admin permissions matrix, the
@@ -967,8 +969,10 @@ defmodule PhoenixKitAI do
   @doc """
   The notification type of the module: `"ai_guard"`, what the watchers of
   the AI task guard get when a task's limit is near or reached, a spending
-  cap refuses a call, or a task's model stops fitting it
-  (`PhoenixKitAI.GuardEvents`). A watcher can switch it off for themselves.
+  cap refuses a call, a task's model stops fitting it, a person's request is
+  flagged as off-purpose (once a day), a task's anomaly rule is broken, or a
+  person is blocked or unblocked (`PhoenixKitAI.GuardEvents`). A watcher can
+  switch it off for themselves.
   """
   @impl PhoenixKit.Module
   @spec notification_types() :: [map()]
@@ -979,7 +983,7 @@ defmodule PhoenixKitAI do
         label: gettext("AI task guard"),
         description:
           gettext(
-            "An AI task is near or at a limit, a spending cap refused a call, or a task's model no longer fits it"
+            "An AI task is near or at a limit, a spending cap refused a call, a task's model no longer fits it, a request was flagged as off-purpose, a task is used unusually, or a person was blocked or unblocked"
           ),
         actions: [],
         default: true
@@ -1111,7 +1115,7 @@ defmodule PhoenixKitAI do
       dgettext_noop("default", "Manage the AI task guard"),
       dgettext_noop(
         "default",
-        "Change the limits of AI tasks, who is told about them, and which models may be used"
+        "Change the limits of AI tasks, who is told about them and which models may be used; block a person from a task; see why a private task's request was flagged"
       )
     ]
   end
@@ -2543,6 +2547,7 @@ defmodule PhoenixKitAI do
       {:ok, request} ->
         emit_request_telemetry(request)
         dispatch_usage_sinks(request)
+        Guard.check_anomalies(request)
         {:ok, request}
 
       {:error, %Ecto.Changeset{} = changeset} = error ->
@@ -3681,7 +3686,8 @@ defmodule PhoenixKitAI do
           {:ok, %{images: [%{url: String.t() | nil, data: binary() | nil}]}} | {:error, term()}
   def generate_image(endpoint_uuid, prompt, opts \\ []) when is_binary(prompt) do
     with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
-         {:ok, admission} <- authorize(endpoint, opts, :generate_image, []) do
+         {:ok, admission} <-
+           authorize(endpoint, opts, :generate_image, Guard.implied_needs(:generate_image, opts)) do
       {auto_source, stacktrace, caller_context} = capture_caller_info()
       source = Keyword.get(opts, :source) || auto_source
       caller_context = Map.put(caller_context, :user_uuid, opts[:user_uuid])
@@ -3735,7 +3741,8 @@ defmodule PhoenixKitAI do
   def edit_image(endpoint_uuid, prompt, images, opts \\ [])
       when is_binary(prompt) and is_list(images) do
     with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
-         {:ok, admission} <- authorize(endpoint, opts, :edit_image, []) do
+         {:ok, admission} <-
+           authorize(endpoint, opts, :edit_image, Guard.implied_needs(:edit_image, opts)) do
       {auto_source, stacktrace, caller_context} = capture_caller_info()
       source = Keyword.get(opts, :source) || auto_source
       caller_context = Map.put(caller_context, :user_uuid, opts[:user_uuid])
@@ -3792,7 +3799,13 @@ defmodule PhoenixKitAI do
   def process_image(endpoint_uuid, images, operations, opts \\ []) when is_list(images) do
     with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
          {:ok, admission} <-
-           authorize(endpoint, opts, :process_image, [], !Keyword.get(opts, :dry_run, false)) do
+           authorize(
+             endpoint,
+             opts,
+             :process_image,
+             Guard.implied_needs(:process_image, opts),
+             !Keyword.get(opts, :dry_run, false)
+           ) do
       {auto_source, stacktrace, caller_context} = capture_caller_info()
       source = Keyword.get(opts, :source) || auto_source
       caller_context = Map.put(caller_context, :user_uuid, opts[:user_uuid])
@@ -4319,8 +4332,10 @@ defmodule PhoenixKitAI do
   end
 
   # Every provider-calling verb passes here, in this order: the endpoint
-  # must be usable; [the task's block on the user — a later part of the
-  # guard — goes here]; the model must fit what the call and its task need
+  # must be usable; the user must not be blocked from the task's group
+  # (`GuardBlocks.check/2`, skipped for a call that holds an admission of
+  # `Guard.admit/4`, which checked it); the model must fit what the call
+  # and its task need
   # (`Guard.check/4`, `implied` being what the call itself shows); the
   # task's own limits (`TaskLimits.check/3`, skipped for a call that holds
   # an admission of `Guard.admit/4` for its task and user); when caps are
@@ -4331,8 +4346,8 @@ defmodule PhoenixKitAI do
   # `spends?` is false only for a `process_image/4` dry run, the one verb
   # that honours `dry_run:` — reading the option here let every other verb
   # skip the cap and still call the provider. A dry run still has its
-  # fitness checked; it skips the spend caps and the task's limits (and will
-  # skip its blocks).
+  # fitness checked; it skips the spend caps, the task's limits and its
+  # blocks.
   #
   # A refusal after the endpoint check is written as a usage row by
   # `refuse/4`; an unusable endpoint is not (that is a configuration error,
@@ -4353,11 +4368,20 @@ defmodule PhoenixKitAI do
   defp admit(endpoint, opts, implied, spends?) do
     task = Tasks.for_call(opts[:task])
 
-    with {:ok, admission} <- Guard.check(endpoint, opts, task, implied),
+    with :ok <- if(spends?, do: blocks(task, opts), else: :ok),
+         {:ok, admission} <- Guard.check(endpoint, opts, task, implied),
          :ok <- if(spends?, do: task_limits(task, opts), else: :ok),
          :ok <- if(spends?, do: budget(endpoint, opts), else: :ok) do
       {:ok, admission}
     end
+  end
+
+  defp blocks(nil, _opts), do: :ok
+
+  defp blocks(task, opts) do
+    if Guard.admitted?(opts[:guard_admission], task.key, opts[:user_uuid]),
+      do: :ok,
+      else: GuardBlocks.check(task, opts[:user_uuid])
   end
 
   defp task_limits(nil, _opts), do: :ok
@@ -4513,8 +4537,9 @@ defmodule PhoenixKitAI do
   # `top_p` or `top_k` its newer models do not take, and ignores the
   # penalties and `seed`: the endpoint's stored sampling values (the
   # schema's 0.7 default among them) are not sent there. A caller's own
-  # `temperature:` / `top_p:` / `top_k:` still is; `Completion` never sends
-  # `temperature` and `top_p` together.
+  # `temperature:` / `top_p:` / `top_k:` still is, except that `Completion`
+  # never sends `temperature` and `top_p` together, nor either of them to a
+  # model from Claude Opus 4.7 on.
   defp caller_only_options(endpoint) do
     if Completion.anthropic?(endpoint),
       do: [

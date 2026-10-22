@@ -45,6 +45,20 @@ defmodule PhoenixKitAI.ErrorsTest do
     end
   end
 
+  describe "message/1 — blocks" do
+    test "{:task_blocked, group} says the person is blocked, and names no reason" do
+      assert Errors.message({:task_blocked, "free_text"}) ==
+               "You are blocked from this AI task until an administrator lifts the block"
+
+      for locale <- ["et", "ru"] do
+        Gettext.with_locale(PhoenixKitAI.Gettext, locale, fn ->
+          refute Errors.message({:task_blocked, "free_text"}) =~ "blocked",
+                 "#{locale} fell back to English"
+        end)
+      end
+    end
+  end
+
   describe "message/1 — plain atoms" do
     # Pin the EXACT translated string for every atom in the public
     # error vocabulary. `assert is_binary/1` is the wrong bar — every

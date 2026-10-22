@@ -151,6 +151,11 @@ defmodule PhoenixKitAI.Errors do
     )
   end
 
+  # The group only: the block's reason is not for the blocked person, and a
+  # refusal is a journal row every holder of `ai` reads.
+  def message({:task_blocked, _group}),
+    do: gettext("You are blocked from this AI task until an administrator lifts the block")
+
   def message({:model_unfit, missing}) when is_list(missing) do
     gettext("The endpoint's model cannot do what this task needs: %{needs}",
       needs: PhoenixKitAI.Tasks.need_labels(missing)

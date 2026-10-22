@@ -187,11 +187,16 @@ PhoenixKitAI.Tasks.endpoint_options("my_module.photo_count")  # [%{endpoint:, fi
 
 Before any HTTP, every verb checks the model (or the call's `model:`
 override) against the task's `needs` and what the call itself shows —
-image parts, `tools:`, `schema:` / `json:`. A model that says no to
-images, tools or a JSON schema is refused with
+image parts, file parts, `tools:`, `schema:` / `json:`, and image output
+for `generate_image` / `edit_image` / `process_image`. A model that says
+no to images, documents, image generation, tools or a JSON schema is
+refused with
 `{:error, {:model_unfit, missing}}`, written as an error row marked
 `refused: true` that no usage sink receives; an unknown capability passes
-unless `ai_guard_verified_models_only` is on. Each usage row carries
+unless `ai_guard_verified_models_only` is on. With it on, providers whose
+model list says nothing about capabilities (OpenAI, xAI, Z.ai) need them
+marked on the endpoint — image generation included — or their calls are
+refused. Each usage row carries
 `metadata.task`, and each result the uuid of its row (`"request_uuid"` /
 `:request_uuid`). «AI → Tasks» lists the declared tasks with their
 endpoints and fitness.
@@ -227,6 +232,39 @@ when a limit is reached, the user and the watchers (`ai_guard_watchers`,
 else every Owner, plus the task's own) get a notification of type
 `"ai_guard"`, once per window; a `Budget` refusal is told once a day, and a
 task whose endpoint's model stops fitting once a day per endpoint.
+
+### Off-purpose use and blocks
+
+The consumer has its model flag requests that are not what the task is
+for; the guard never edits a prompt or a schema. It gives the instruction
+text and takes the report:
+
+```elixir
+if PhoenixKitAI.Guard.self_flag?("my_module.photo_count") do
+  # Into the system prompt, plus the consumer's own way to flag
+  # (a field of its JSON schema, a marker in the answer):
+  PhoenixKitAI.Guard.self_flag_instruction("my_module.photo_count")
+end
+
+# When the model flagged a call (once per call, or per turn with a turn_ref):
+PhoenixKitAI.Guard.report_off_purpose("my_module.photo_count", user_uuid, reason, request_uuid)
+PhoenixKitAI.Guard.report_off_purpose("my_module.chat", user_uuid, reason, %{turn_ref: turn_ref})
+```
+
+The watchers are told of a person's first flag in a task each day, never
+with the reason. An admin with `ai.manage` turns self-flagging off (or on)
+per task on «AI → Tasks»; `self_flag?/1` follows at once. A declaration may also set norms that need no content
+(`sources:`, `max_calls_per_hour:`, `max_tokens_per_call:`); a broken one
+is signalled once a day and blocks nothing.
+
+A person with `ai.manage` (or an Owner) blocks someone from a task on
+«AI → Tasks», from a flag or the person's row; the block lands on the
+task's `block_group` (the Playground and free-text tasks share
+`free_text`), and the person's calls are refused with
+`{:error, {:task_blocked, group}}` until it is lifted. Only an Owner blocks
+an Owner or lifts their block, and nobody but an Owner lifts their own. A
+`private: true` task shows the reasons of its flags and blocks only to
+`ai.manage` and Owners.
 
 ### Host apps in the translation pipeline
 
@@ -722,13 +760,15 @@ The module's own chain (`PhoenixKitAI.Migrations`, run by
 create:
 
 - **`phoenix_kit_ai_model_capabilities`** — the snapshot of what each
-  endpoint's model can do (images, tools, JSON schema), read from the
-  provider's catalogue
+  endpoint's model can do (images and documents in, images out, tools,
+  JSON schema), read from the provider's catalogue
 - **`phoenix_kit_ai_task_settings`**, **`phoenix_kit_ai_task_user_limits`**
   — the limits of AI tasks and users' personal limits
 - **`phoenix_kit_ai_guard_events`** — what the task guard noticed (limits,
   models that stopped fitting), deduplicated per window; kept 180 days (a
   daily job the module schedules in core's `default` queue)
+- **`phoenix_kit_ai_guard_blocks`** — people blocked from a group of AI
+  tasks, with who set and lifted each block; one active per group and person
 
 It also adds one index to core's `phoenix_kit_ai_requests`:
 `((metadata->>'task'), inserted_at)`. It is built inside the migration's
@@ -745,7 +785,7 @@ large journal, measure it first and update in a quiet window.
 | Prompt form | `/admin/ai/prompts/new`, `.../edit` | Create/edit with variable extraction |
 | Playground | `/admin/ai/playground` | Interactive testing with live variables |
 | Usage | `/admin/ai/usage` | Dashboard stats and request history |
-| Tasks | `/admin/ai/tasks` | Declared AI tasks, their needs, endpoints and fitness; limits, use, watchers (changes need `ai.manage`) |
+| Tasks | `/admin/ai/tasks` | Declared AI tasks, their needs, endpoints and fitness; limits, use, watchers; off-purpose flags and blocks (changes need `ai.manage`) |
 
 ## Supported providers
 

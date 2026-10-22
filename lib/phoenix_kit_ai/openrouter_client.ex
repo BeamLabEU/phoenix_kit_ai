@@ -24,6 +24,7 @@ defmodule PhoenixKitAI.OpenRouterClient do
       {:ok, models} = PhoenixKitAI.OpenRouterClient.fetch_models("sk-or-v1-...")
   """
 
+  alias PhoenixKit.Integrations.Providers
   alias PhoenixKit.Utils.Values
   alias PhoenixKitAI.AIModel
   alias PhoenixKitAI.Capabilities
@@ -863,27 +864,37 @@ defmodule PhoenixKitAI.OpenRouterClient do
     |> Enum.filter(&model_matches_type?(&1, model_type))
     |> Enum.map(fn model ->
       top_provider = model["top_provider"] || %{}
+      capabilities = catalogue_capabilities(kind, model)
 
       %AIModel{
         id: model["id"],
         name: model["name"] || extract_model_name(model["id"]),
         description: model["description"],
-        context_length: model["context_length"],
-        max_completion_tokens: top_provider["max_completion_tokens"],
+        context_length: model["context_length"] || capabilities.context_length,
+        max_completion_tokens:
+          top_provider["max_completion_tokens"] || model["max_output_tokens"],
         supported_parameters: model["supported_parameters"] || [],
         pricing: normalize_pricing(model),
         architecture: model["architecture"] || %{},
         top_provider: top_provider,
-        # Only OpenRouter's rows describe capabilities; any other
-        # OpenAI-compatible `/models` is read as saying nothing.
-        capabilities:
-          if(kind == :openrouter, do: Capabilities.from_openrouter(model), else: %Capabilities{})
+        capabilities: capabilities
       }
     end)
   end
 
+  # OpenRouter's, DeepSeek's and Mistral's rows describe what a model can
+  # do; any other OpenAI-compatible `/models` is read as saying nothing.
+  defp catalogue_capabilities(:openrouter, model), do: Capabilities.from_openrouter(model)
+  defp catalogue_capabilities(:deepseek, model), do: Capabilities.from_deepseek(model)
+  defp catalogue_capabilities(:mistral, model), do: Capabilities.from_mistral(model)
+  defp catalogue_capabilities(_kind, _model), do: %Capabilities{}
+
   # Anthropic's native `/v1/models`: Bearer works there as on the
-  # compatibility layer, plus the version header. Pages of up to 1000 are
+  # compatibility layer, plus the headers the core registry declares for the
+  # provider's key check (`validation.extra_headers`, ported from
+  # BeamLabEU/phoenix_kit_ai#42) — with this module's `anthropic-version`
+  # when the registry has none (a core that does not know Anthropic yet).
+  # Pages of up to 1000 are
   # followed by `last_id` while `has_more`. Without a `lifecycle` filter the
   # list leaves retired models out, so all three stages are asked for; a
   # server that refuses the filter is asked again without it.
@@ -893,10 +904,9 @@ defmodule PhoenixKitAI.OpenRouterClient do
   @anthropic_max_pages 20
 
   defp fetch_anthropic_models(api_key, base_url, opts, model_type) do
-    headers = [
-      {"anthropic-version", @anthropic_version}
-      | build_headers(api_key, Keyword.put(opts, :include_usage, false))
-    ]
+    headers =
+      build_headers(api_key, Keyword.put(opts, :include_usage, false)) ++
+        anthropic_headers()
 
     url = "#{String.trim_trailing(base_url, "/")}/models"
 
@@ -909,6 +919,20 @@ defmodule PhoenixKitAI.OpenRouterClient do
     with {:ok, rows} <- result do
       {:ok, normalize_anthropic_models(rows, model_type)}
     end
+  end
+
+  defp anthropic_headers do
+    registry =
+      case Providers.get("anthropic") do
+        %{validation: %{extra_headers: headers}} when is_list(headers) -> headers
+        _ -> []
+      end
+
+    if Enum.any?(registry, fn {name, _value} -> String.downcase(name) == "anthropic-version" end),
+      do: registry,
+      else: [{"anthropic-version", @anthropic_version} | registry]
+  rescue
+    _ -> [{"anthropic-version", @anthropic_version}]
   end
 
   defp anthropic_pages(_url, _headers, _filter, _after_id, _acc, page)
@@ -969,8 +993,8 @@ defmodule PhoenixKitAI.OpenRouterClient do
     end
   end
 
-  # Anthropic lists no prices and no sampling parameters, so those stay
-  # empty as they did when the compatibility layer's `/models` was read.
+  # Anthropic lists no prices (unknown, not free: the card shows none) and
+  # no sampling parameters.
   defp normalize_anthropic_models(rows, model_type) do
     rows
     |> Enum.filter(&(is_binary(&1["id"]) and model_matches_type?(&1, model_type)))
@@ -980,7 +1004,7 @@ defmodule PhoenixKitAI.OpenRouterClient do
         name: row["display_name"] || row["id"],
         context_length: row["max_input_tokens"],
         max_completion_tokens: row["max_tokens"],
-        pricing: %{"prompt" => 0, "completion" => 0},
+        pricing: %{"prompt" => nil, "completion" => nil},
         capabilities: Capabilities.from_anthropic(row)
       }
     end)
@@ -1182,7 +1206,7 @@ defmodule PhoenixKitAI.OpenRouterClient do
     end
   end
 
-  defp normalize_pricing(nil), do: %{"prompt" => 0, "completion" => 0}
+  defp normalize_pricing(nil), do: %{"prompt" => nil, "completion" => nil}
 
   # OpenRouter (and Mistral/DeepSeek, which mirror its shape) nest pricing
   # under a `pricing` map of dollars-per-token.
@@ -1207,7 +1231,10 @@ defmodule PhoenixKitAI.OpenRouterClient do
     }
   end
 
-  defp normalize_pricing(_model), do: %{"prompt" => 0, "completion" => 0}
+  # A row that names no price at all (OpenAI's `/models`, for one): the
+  # price is unknown, not free, so the model card shows no price badge
+  # rather than "$0.00" (ported from BeamLabEU/phoenix_kit_ai#42).
+  defp normalize_pricing(_model), do: %{"prompt" => nil, "completion" => nil}
 
   defp flat_token_price_to_dollars(value) when is_number(value), do: value / 10_000_000_000
   defp flat_token_price_to_dollars(_), do: 0

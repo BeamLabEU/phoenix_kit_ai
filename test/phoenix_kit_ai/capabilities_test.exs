@@ -264,8 +264,8 @@ defmodule PhoenixKitAI.CapabilitiesTest do
     end
 
     test "every other provider has no catalogue" do
-      assert Capabilities.catalogue_kind("mistral", "https://api.mistral.ai/v1") == nil
-      assert Capabilities.catalogue_kind("deepseek", "https://api.deepseek.com") == nil
+      assert Capabilities.catalogue_kind("openai", "https://api.openai.com/v1") == nil
+      assert Capabilities.catalogue_kind("xai", "https://api.x.ai/v1") == nil
       assert Capabilities.catalogue_kind(nil, nil) == nil
     end
   end

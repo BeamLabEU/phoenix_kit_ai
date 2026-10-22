@@ -100,6 +100,8 @@ defmodule PhoenixKitAI.TaskLimits do
   @default_warn_percent 80
   @topic "phoenix_kit:ai:guard"
   @cache_ttl_ms :timer.seconds(60)
+  # What the Tasks page sets; the classifier modes come with the classifier.
+  @settable_modes ~w(off self_flag)
 
   @type scope :: :task | :user
   @type unit :: :money | :requests | :tokens
@@ -275,6 +277,13 @@ defmodule PhoenixKitAI.TaskLimits do
   rescue
     ArgumentError -> :ok
   end
+
+  @doc false
+  # The task's settings row from this node's cache (nil when none): what
+  # the guard reads per call besides the limits (the guard mode, the
+  # purpose override).
+  @spec cached_setting(String.t()) :: TaskSetting.t() | nil
+  def cached_setting(task_key) when is_binary(task_key), do: cached(task_key).setting
 
   defp cached(task_key) do
     table = flags_table()
@@ -635,6 +644,35 @@ defmodule PhoenixKitAI.TaskLimits do
           "limits_before" => setting.limits || %{},
           "warn_percent" => row.warn_percent,
           "warn_percent_before" => setting.warn_percent
+        }
+      end)
+    end
+  end
+
+  @doc """
+  Sets a task's guard mode: `"self_flag"` (its consumer has the model flag
+  off-purpose requests) or `"off"` — what `PhoenixKitAI.Guard.self_flag?/1`
+  answers from then on, in place of the declaration's `self_flag`. The
+  limits stay as they are. Needs `ai.manage`; written to the Activity log.
+  """
+  @spec set_guard_mode(term(), String.t(), String.t()) ::
+          {:ok, TaskSetting.t()}
+          | {:error, :forbidden | :unknown_task | :invalid_mode | Ecto.Changeset.t()}
+  def set_guard_mode(scope, task_key, mode) when is_binary(task_key) do
+    with :ok <- Guard.authorize_manage(scope),
+         :ok <- declared(task_key),
+         :ok <- if(mode in @settable_modes, do: :ok, else: {:error, :invalid_mode}) do
+      setting = settings(task_key) || %TaskSetting{task_key: task_key}
+
+      setting
+      |> Ecto.Changeset.change(%{guard_mode: mode, updated_by_uuid: Guard.actor_uuid(scope)})
+      |> repo().insert_or_update()
+      |> changed(task_key)
+      |> log("guard.mode_updated", scope, fn row ->
+        %{
+          "task" => task_key,
+          "guard_mode" => row.guard_mode,
+          "guard_mode_before" => setting.guard_mode
         }
       end)
     end

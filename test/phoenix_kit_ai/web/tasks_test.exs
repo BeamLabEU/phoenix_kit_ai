@@ -181,6 +181,26 @@ defmodule PhoenixKitAI.Web.TasksTest do
     end
   end
 
+  test "the only-verified switch says that models without a catalogue need their capabilities marked",
+       %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/en/admin/ai/tasks")
+
+    msgid =
+      "Without a catalogue (OpenAI, xAI, Z.ai) the capabilities have to be marked on the endpoint, or the calls are refused."
+
+    assert has_element?(view, "#ai-guard-verified-only-hint", msgid)
+
+    for locale <- ["ru", "et"] do
+      translated =
+        Gettext.with_locale(PhoenixKitAI.Gettext, locale, fn ->
+          Gettext.dgettext(PhoenixKitAI.Gettext, "default", msgid)
+        end)
+
+      assert translated != msgid, locale
+      assert translated =~ "OpenAI, xAI, Z.ai", locale
+    end
+  end
+
   test "keys that differ only in punctuation get distinct card ids", %{conn: conn} do
     {:ok, _view, html} = live(conn, "/en/admin/ai/tasks")
     doc = LazyHTML.from_document(html)

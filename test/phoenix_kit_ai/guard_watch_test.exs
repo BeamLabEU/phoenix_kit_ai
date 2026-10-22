@@ -17,6 +17,10 @@ defmodule PhoenixKitAI.GuardWatchTest do
   alias PhoenixKitAI.Test.FakeLimitTasks
   alias PhoenixKitAI.Test.Repo, as: TestRepo
 
+  # A look of the watch (and a catalogue refresh) is awaited by its message,
+  # with room for a loaded machine: the default 100 ms failed under load.
+  @wait 5_000
+
   defp model(id, inputs) do
     %{
       "id" => id,
@@ -82,7 +86,7 @@ defmodule PhoenixKitAI.GuardWatchTest do
 
     watch = start_supervised!(GuardWatch)
     # The first look at the fitness is taken before any change.
-    assert_receive {:guard_watch_looked, :first_look}
+    assert_receive {:guard_watch_looked, :first_look}, @wait
 
     {:ok, owner: owner, endpoint: endpoint, catalogue: catalogue, watch: watch}
   end
@@ -92,8 +96,8 @@ defmodule PhoenixKitAI.GuardWatchTest do
   defp refresh_with(catalogue, models, _watch) do
     Agent.update(catalogue, fn _ -> models end)
     assert :ok = Capabilities.refresh()
-    assert_receive {:capabilities_refreshed, _}
-    assert_receive {:guard_watch_looked, :capabilities}
+    assert_receive {:capabilities_refreshed, _}, @wait
+    assert_receive {:guard_watch_looked, :capabilities}, @wait
   end
 
   test "a refresh that takes the images away is one event, and the watchers are told once",
@@ -141,10 +145,10 @@ defmodule PhoenixKitAI.GuardWatchTest do
     :ok = stop_supervised(GuardWatch)
     Agent.update(catalogue, fn _ -> [model("vendor/eye", ["text"])] end)
     assert :ok = Capabilities.refresh()
-    assert_receive {:capabilities_refreshed, _}
+    assert_receive {:capabilities_refreshed, _}, @wait
 
     watch = start_supervised!(GuardWatch)
-    assert_receive {:guard_watch_looked, :first_look}
+    assert_receive {:guard_watch_looked, :first_look}, @wait
 
     refresh_with(
       catalogue,
@@ -164,7 +168,7 @@ defmodule PhoenixKitAI.GuardWatchTest do
     )
 
     {:ok, _} = PhoenixKitAI.update_endpoint(ep, %{model: "vendor/blind"})
-    assert_receive {:guard_watch_looked, :endpoint}
+    assert_receive {:guard_watch_looked, :endpoint}, @wait
 
     assert [%GuardEvent{endpoint_uuid: endpoint_uuid}] = unfit_events()
     assert endpoint_uuid == ep.uuid

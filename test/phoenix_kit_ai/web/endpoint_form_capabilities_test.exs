@@ -183,6 +183,33 @@ defmodule PhoenixKitAI.Web.EndpointFormCapabilitiesTest do
       )
     end
 
+    test "documents and image generation are declared like the other capabilities", %{
+      conn: conn
+    } do
+      endpoint = mistral_endpoint()
+      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/#{endpoint.uuid}/edit")
+
+      assert has_element?(view, "#endpoint-declare-file_input")
+      assert has_element?(view, "#endpoint-declare-image_output")
+
+      view
+      |> form("form[phx-submit=\"save\"]",
+        endpoint: %{
+          name: endpoint.name,
+          provider_settings: %{
+            "capabilities" => %{"file_input" => "true", "image_output" => "true"}
+          }
+        }
+      )
+      |> render_submit()
+
+      assert PhoenixKitAI.get_endpoint!(endpoint.uuid).provider_settings["capabilities"] == %{
+               "model" => "pixtral-large-latest",
+               "file_input" => "yes",
+               "image_output" => "yes"
+             }
+    end
+
     test "a stored declaration shows ticked; unticking everything removes it", %{conn: conn} do
       endpoint =
         mistral_endpoint(%{
@@ -345,6 +372,46 @@ defmodule PhoenixKitAI.Web.EndpointFormCapabilitiesTest do
       assert has_element?(view, card("claude-old") <> ~s( [data-lifecycle="deprecated"]))
       assert has_element?(view, card("claude-gone") <> ~s( [data-lifecycle="retired"]))
       refute has_element?(view, card("claude-new") <> " [data-lifecycle]")
+    end
+
+    test "its card shows what the catalogue says it reads, and no price it does not give", %{
+      conn: conn,
+      stub: stub
+    } do
+      Req.Test.stub(stub, fn conn ->
+        Req.Test.json(conn, %{
+          "data" => [
+            %{
+              "id" => "claude-reads",
+              "display_name" => "Claude Reads",
+              "capabilities" => %{
+                "image_input" => %{"supported" => true},
+                "pdf_input" => %{"supported" => true}
+              }
+            }
+          ],
+          "has_more" => false
+        })
+      end)
+
+      name = "anthropic-#{System.unique_integer([:positive])}"
+      %{uuid: integration_uuid} = seed_openrouter_connection(name)
+
+      endpoint =
+        fixture_endpoint(
+          provider: "anthropic",
+          base_url: "https://api.anthropic.com/v1",
+          model: "claude-reads",
+          integration_uuid: integration_uuid
+        )
+
+      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/#{endpoint.uuid}/edit")
+      load_models(view, stub, integration_uuid, name, "openrouter")
+
+      assert has_element?(view, card("claude-reads") <> ~s( [data-capability="vision"]))
+      assert has_element?(view, card("claude-reads") <> ~s( [data-capability="file_input"]))
+      refute has_element?(view, card("claude-reads"), "/M in")
+      refute has_element?(view, card("claude-reads"), "$0.00")
     end
   end
 end

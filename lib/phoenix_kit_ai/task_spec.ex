@@ -18,9 +18,10 @@ defmodule PhoenixKitAI.TaskSpec do
       end
 
   The key is a string prefixed with the module's key. `needs` says what the
-  model has to be able to do: `:vision` (images in), `:tools`,
-  `:json_schema` (a strict JSON schema) — hard requirements a call is
-  refused for — and `:json` (any JSON; soft, only noted). `endpoints` is an
+  model has to be able to do: `:vision` (images in), `:file_input`
+  (documents such as PDF in), `:image_output` (it generates images),
+  `:tools`, `:json_schema` (a strict JSON schema) — hard requirements a
+  call is refused for — and `:json` (any JSON; soft, only noted). `endpoints` is an
   `{module, function, args}` returning the endpoints the task uses now (uuids
   or `%PhoenixKitAI.Endpoint{}`s, a single one, `{:ok, uuid}` or `nil`).
 
@@ -32,18 +33,24 @@ defmodule PhoenixKitAI.TaskSpec do
   people to tell about the task's limits (`PhoenixKitAI.GuardEvents`); the
   user is never told as a watcher.
 
-  `self_flag`, `private`, `sources`, `max_calls_per_hour`,
-  `max_tokens_per_call`, `auto_block_threshold`, `block_group` and
-  `content` are accepted and kept for the guard's later parts (off-purpose
-  marks, blocks); nothing reads them yet. `typical_tokens` (`{input,
-  output}` of a typical call) is read by `PhoenixKitAI.Recommendations` to
-  estimate the price of a call.
+  `self_flag` says the consumer has its model flag off-purpose requests
+  (the default of the task's guard mode, `PhoenixKitAI.Guard.self_flag?/1`).
+  `private` hides the reasons of the task's flags and blocks from all but
+  the holders of `ai.manage`. `block_group` names the group a block of the
+  task lands on (nil: the task's own key; `"free_text"` for tasks that take
+  free text). `sources` (the `source` values a call may come from; a
+  module name allows its functions), `max_calls_per_hour` (per person) and
+  `max_tokens_per_call` are norms whose breach is signalled, never blocked
+  (`PhoenixKitAI.Guard.check_anomalies/1`). `auto_block_threshold` and
+  `content` are kept for a later part of the guard (a classifier); nothing
+  reads them yet. `typical_tokens` (`{input, output}` of a typical call) is
+  read by `PhoenixKitAI.Recommendations` to estimate the price of a call.
 
   `module` and `enabled` are filled in by `PhoenixKitAI.Tasks`: the module
   that declared the task, and whether that module is switched on.
   """
 
-  @type need :: :vision | :tools | :json_schema | :json
+  @type need :: :vision | :file_input | :image_output | :tools | :json_schema | :json
   @type mfa_ref :: {module(), atom(), list()}
 
   @type t :: %__MODULE__{
@@ -89,8 +96,8 @@ defmodule PhoenixKitAI.TaskSpec do
             module: nil,
             enabled: true
 
-  @needs [:vision, :tools, :json_schema, :json]
-  @hard_needs [:vision, :tools, :json_schema]
+  @needs [:vision, :file_input, :image_output, :tools, :json_schema, :json]
+  @hard_needs [:vision, :file_input, :image_output, :tools, :json_schema]
 
   @doc "Every requirement a task or a call can have."
   @spec needs() :: [need()]
