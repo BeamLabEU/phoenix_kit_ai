@@ -226,7 +226,9 @@ defmodule PhoenixKitAI.Tasks do
       try do
         :ets.insert_new(PhoenixKitAI.RequestCache.flags_table(), {{:unknown_ai_task, key}, true})
       rescue
-        ArgumentError -> true
+        # No flags table (the request cache is not running): stay quiet
+        # rather than warn on every call.
+        ArgumentError -> false
       end
 
     if first? do
