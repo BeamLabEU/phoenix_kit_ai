@@ -15,6 +15,11 @@ defmodule PhoenixKitAI.GuardWatch do
   Tasks page, and a consumer's form refuses to save an unfit choice.
 
   Each node runs its own; the event's dedupe key keeps the signal to one.
+
+  After every look it emits `[:phoenix_kit_ai, :guard_watch, :look]`
+  (measurement `pairs`, metadata `trigger`: `:first_look`, `:capabilities`
+  or `:endpoint`), so whoever needs to know that a change has been looked at
+  can wait for it.
   """
 
   use GenServer
@@ -38,24 +43,37 @@ defmodule PhoenixKitAI.GuardWatch do
 
   @impl true
   def handle_continue(:first_look, state),
-    do: {:noreply, %{state | last: look(state.last, false)}}
+    do: {:noreply, %{state | last: look(state.last, :first_look)}}
 
   @impl true
   def handle_info({:capabilities_refreshed, _base_urls}, state),
-    do: {:noreply, %{state | last: look(state.last, true)}}
+    do: {:noreply, %{state | last: look(state.last, :capabilities)}}
 
   def handle_info({event, _uuid}, state) when event in @endpoint_events,
-    do: {:noreply, %{state | last: look(state.last, true)}}
+    do: {:noreply, %{state | last: look(state.last, :endpoint)}}
 
   def handle_info(msg, state) do
     Logger.debug(fn -> "[PhoenixKitAI.GuardWatch] unhandled: #{MessageShape.describe(msg)}" end)
     {:noreply, state}
   end
 
-  defp look(last, signal?) do
+  defp look(last, trigger) do
+    last = compare(last, trigger)
+
+    :telemetry.execute(
+      [:phoenix_kit_ai, :guard_watch, :look],
+      %{pairs: map_size(last)},
+      %{trigger: trigger}
+    )
+
+    last
+  end
+
+  # The first look only records what is known; later ones signal fit → unfit.
+  defp compare(last, trigger) do
     now = fitness_now()
 
-    if signal? do
+    if trigger != :first_look do
       for {pair, {spec, endpoint, {:unfit, missing}}} <- now,
           last[pair] == :fit,
           do: GuardEvents.model_unfit(spec, endpoint, missing)

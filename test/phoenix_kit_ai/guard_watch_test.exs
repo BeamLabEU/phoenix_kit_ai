@@ -64,20 +64,36 @@ defmodule PhoenixKitAI.GuardWatchTest do
     assert :ok = Capabilities.refresh()
     Capabilities.subscribe()
 
+    # Each look of the watch is awaited by its telemetry event, never by
+    # timing: the broadcast reaches the watch and the test independently.
+    test_pid = self()
+    handler = "guard-watch-#{System.unique_integer([:positive])}"
+
+    :telemetry.attach(
+      handler,
+      [:phoenix_kit_ai, :guard_watch, :look],
+      fn _event, _measurements, %{trigger: trigger}, _config ->
+        send(test_pid, {:guard_watch_looked, trigger})
+      end,
+      nil
+    )
+
+    on_exit(fn -> :telemetry.detach(handler) end)
+
     watch = start_supervised!(GuardWatch)
     # The first look at the fitness is taken before any change.
-    _ = :sys.get_state(watch)
+    assert_receive {:guard_watch_looked, :first_look}
 
     {:ok, owner: owner, endpoint: endpoint, catalogue: catalogue, watch: watch}
   end
 
   defp unfit_events, do: TestRepo.all(from(e in GuardEvent, where: e.kind == "model_unfit"))
 
-  defp refresh_with(catalogue, models, watch) do
+  defp refresh_with(catalogue, models, _watch) do
     Agent.update(catalogue, fn _ -> models end)
     assert :ok = Capabilities.refresh()
     assert_receive {:capabilities_refreshed, _}
-    _ = :sys.get_state(watch)
+    assert_receive {:guard_watch_looked, :capabilities}
   end
 
   test "a refresh that takes the images away is one event, and the watchers are told once",
@@ -128,7 +144,7 @@ defmodule PhoenixKitAI.GuardWatchTest do
     assert_receive {:capabilities_refreshed, _}
 
     watch = start_supervised!(GuardWatch)
-    _ = :sys.get_state(watch)
+    assert_receive {:guard_watch_looked, :first_look}
 
     refresh_with(
       catalogue,
@@ -148,7 +164,7 @@ defmodule PhoenixKitAI.GuardWatchTest do
     )
 
     {:ok, _} = PhoenixKitAI.update_endpoint(ep, %{model: "vendor/blind"})
-    _ = :sys.get_state(watch)
+    assert_receive {:guard_watch_looked, :endpoint}
 
     assert [%GuardEvent{endpoint_uuid: endpoint_uuid}] = unfit_events()
     assert endpoint_uuid == ep.uuid
