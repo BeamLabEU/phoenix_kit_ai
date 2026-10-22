@@ -249,7 +249,7 @@ lib/phoenix_kit_ai/
   openrouter_client.ex           generic across providers despite the name
   capabilities.ex                what a model can do (catalogue + declared), ETS cache process
   task_spec.ex tasks.ex          AI task declarations (`ai_tasks/0`), the registry, fitness for a task
-  recommendations.ex             cheapest fit models for a task + models that worked (journal, 30 days)
+  recommendations.ex             models for a task grouped by capability (verified / possible / experimental) + models that worked (journal, 30 days)
   guard.ex                       the call-time check: needs of a call, fitness, require_parameters; ai.manage; admit/4
   task_limits.ex                 task limits: calendar windows, limits in force, counting from the journal, forgiving
   guard_events.ex guard_watch.ex   guard events, dedupe, watchers, notifications; the model_unfit watch process
@@ -420,13 +420,21 @@ provided the API exposes `<base_url>/chat/completions` and `/models`.
 - The chat model list keeps every model whose only output is text
   (`output_modalities == ["text"]`, or the right side of `modality`), so
   models that also take images are in it. Each card carries the model's
-  `PhoenixKitAI.Capabilities` as badges (images, tools, JSON schema; an
-  Anthropic model's lifecycle); where the catalogue says nothing, the
+  `PhoenixKitAI.Capabilities` as badges (images, documents, image
+  generation, tools, JSON schema; a grey "?" with a hint where nobody
+  verified it; an Anthropic model's lifecycle) and no price badge where the
+  listing names no price; where the catalogue says nothing, the
   Current Model panel offers checkboxes that declare capabilities in
   `provider_settings["capabilities"]` for that model id only (the changeset
   drops a declaration naming another model; each change is an
   `endpoint.capabilities_declared` activity). An Anthropic endpoint's list
-  comes from the native `/v1/models` (all pages, all lifecycle stages).
+  comes from the native `/v1/models` (all pages, all lifecycle stages),
+  with the headers the core registry declares for `anthropic`
+  (`validation.extra_headers`; `anthropic-version` of this module when it
+  has none). DeepSeek's `/models` (input/output modalities, context window)
+  and Mistral's `/v1/models` (`capabilities.vision`, `function_calling`,
+  context length) are catalogues too; OpenAI, xAI and Z.ai list no
+  capabilities (`:unknown` unless declared).
 - The `base_url` guard resolves a name only when the URL is being changed,
   for two seconds at most, never for the provider's registry default and
   never from `change_endpoint/2` (a form's per-keystroke changeset); a name
@@ -664,21 +672,31 @@ Test database `phoenix_kit_ai_test`.
   by `mix phoenix_kit.install` / `update`); it runs in core's `default`
   queue, so the host lists no queue for it.
 - Recommendations (`PhoenixKitAI.Recommendations`, live data only — no list
-  of "best models", no `recommended:` in declarations): `cheapest/2` takes
+  of "best models", no `recommended:` in declarations): `ranked/2` takes
   the catalogue the capability cache holds for the base URLs the endpoints
-  use, keeps models that are `:fit` for all the task's hard needs (an
-  unverified one is not) and answer in text, drops retired, marks
-  deprecated, and ranks by `typical_tokens × catalogue prices` (else the
-  journal's median tokens over 30 days, else the input price alone —
-  `estimate: :rough`). Anthropic lists no prices: unpriced, after the priced
-  rows, one place kept; never mapped to an OpenRouter model by name. The
+  use and groups the models by capability first: `verified` (`:fit` for
+  every need), `possible` (nothing `:no`, something `:unknown`, named in the
+  row's `unverified`) and `experimental` (an id with `preview`/`beta`/`exp`,
+  a `:free` variant or a free price, an alias, or no price in OpenRouter's
+  catalogue — at most one free row). The needs are the task's, its images /
+  documents / image generation ones replaced by the filters (the task's own
+  by default; `refilter/2` regroups without the journal). Models must
+  answer in text unless image generation is needed; retired ones are
+  dropped, deprecated marked. Inside a group the rows are ranked by
+  `typical_tokens × catalogue prices` (else the journal's median tokens over
+  30 days, else the input price alone — `estimate: :rough`). Anthropic,
+  DeepSeek and Mistral list no prices: unpriced, after the priced rows, one
+  place kept; never mapped to an OpenRouter model by name. `cheapest/2`
+  is every fit model by price, whatever it looks like. The
   cache therefore keeps each model's `name`, `prompt_price`,
   `completion_price` and `text_output` (not in the DB snapshot: after a
   restart they are empty until the first refresh). `worked/2` is one
   aggregate over `phoenix_kit_ai_requests` by `metadata->>'task'`, without
   `metadata.refused` rows. The UI is `Web.Components.TaskModelPicker`
   (`picker/1` for a consumer's form field, `recommendations/1` for the
-  panel alone, as on AI → Tasks); its create link needs the `ai`
+  panel alone, as on AI → Tasks); the panel is the live component
+  `Web.Components.RecommendationsPanel` (its filters are its own state,
+  kept over the page's re-renders); its create link needs the `ai`
   permission in the `scope` attr and opens the new-endpoint form with
   `?name=&model=&integration_uuid=` prefilled — never saved by the link.
 - Every verb's result names its usage row: `"request_uuid"` in the chat and
@@ -687,7 +705,9 @@ Test database `phoenix_kit_ai_test`.
 - Anthropic (`api.anthropic.com`, its OpenAI-compatible layer): the
   endpoint's stored `temperature`/`top_p`/`top_k`/penalties/`seed` are
   not sent, a caller's own sampling values are (never `temperature` with
-  `top_p`), and the OpenRouter-shaped reasoning options become `thinking`
+  `top_p`, and neither to a model from Claude Opus 4.7 on, decided from the
+  model id — `Completion.anthropic_sampling?/1`; an id it cannot read
+  counts as newer), and the OpenRouter-shaped reasoning options become `thinking`
   only in a form the model's catalogue lists
   (`capabilities.thinking.types.<type>.supported`): a token budget as
   `enabled` + `budget_tokens`, else `adaptive`; with neither listed (or

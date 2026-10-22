@@ -187,8 +187,10 @@ PhoenixKitAI.Tasks.endpoint_options("my_module.photo_count")  # [%{endpoint:, fi
 
 Before any HTTP, every verb checks the model (or the call's `model:`
 override) against the task's `needs` and what the call itself shows —
-image parts, `tools:`, `schema:` / `json:`. A model that says no to
-images, tools or a JSON schema is refused with
+image parts, file parts, `tools:`, `schema:` / `json:`, and image output
+for `generate_image` / `edit_image` / `process_image`. A model that says
+no to images, documents, image generation, tools or a JSON schema is
+refused with
 `{:error, {:model_unfit, missing}}`, written as an error row marked
 `refused: true` that no usage sink receives; an unknown capability passes
 unless `ai_guard_verified_models_only` is on. Each usage row carries
@@ -722,8 +724,8 @@ The module's own chain (`PhoenixKitAI.Migrations`, run by
 create:
 
 - **`phoenix_kit_ai_model_capabilities`** — the snapshot of what each
-  endpoint's model can do (images, tools, JSON schema), read from the
-  provider's catalogue
+  endpoint's model can do (images and documents in, images out, tools,
+  JSON schema), read from the provider's catalogue
 - **`phoenix_kit_ai_task_settings`**, **`phoenix_kit_ai_task_user_limits`**
   — the limits of AI tasks and users' personal limits
 - **`phoenix_kit_ai_guard_events`** — what the task guard noticed (limits,
