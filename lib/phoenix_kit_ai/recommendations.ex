@@ -1,14 +1,26 @@
 defmodule PhoenixKitAI.Recommendations do
   @moduledoc """
   What to choose for an AI task, from live data only — there is no list of
-  "best models" in the module.
+  "best models" in the module. What a model can do comes first, its price
+  second.
 
-    * `cheapest/2` — the models of the catalogues the endpoints use
-      (`PhoenixKitAI.Capabilities.catalogue/1`) that are fit for **all** of
-      the task's hard needs, ranked by the estimated price of one call.
+    * `ranked/2` — the models of the catalogues the endpoints use
+      (`PhoenixKitAI.Capabilities.catalogue/1`) in groups: `verified` (the
+      catalogue, or the endpoint's declaration, says the model has every
+      need), `possible` (it lacks none, but at least one nobody verified —
+      each row names those in `unverified`) and `experimental` (models of
+      either kind that look experimental: an id with `preview`, `beta` or
+      `exp`, a `:free` variant or a free price, an alias, or no price in a
+      catalogue that prices its models), each ranked by the estimated price
+      of one call.
+    * The needs are the task's, with its images / documents / image
+      generation needs replaced by the `filters` (`filterable/0`; the
+      task's own by default). `refilter/2` regroups for other filters.
+    * `cheapest/2` — the models fit for **all** of the task's hard needs,
+      ranked by price, whatever they look like.
     * `worked/2` — the models that already worked in this task, from the
       usage journal over the last 30 days.
-    * `for_task/2` — both, for the recommendations block.
+    * `for_task/2` — all of it, for the recommendations block.
 
   ## Ranking
 
@@ -20,9 +32,11 @@ defmodule PhoenixKitAI.Recommendations do
   (`estimate: :journal`); else nothing is known (`estimate: :rough`) and the
   rows are ranked by the input price alone, with no price per call.
 
-  A model fits when `PhoenixKitAI.Tasks.assess/2` says `:fit` — a model
-  that is only unverified does not — and it answers in text. Retired
-  models are left out; deprecated ones are marked. The `/models` of
+  Inside each group the rows are ranked so. A model is in `verified` when
+  `PhoenixKitAI.Tasks.assess/2` says `:fit`, in `possible` when it says
+  `{:unknown, _}`, nowhere when it says `{:unfit, _}`; it must answer in
+  text unless image generation is among the needs. Retired models are left
+  out; deprecated ones are marked. The `/models` of
   Anthropic, DeepSeek and Mistral list no prices, so their models are
   unpriced (they are never mapped to an OpenRouter model by name), and no
   provider but OpenRouter reports what a call cost; they come after the
@@ -41,13 +55,22 @@ defmodule PhoenixKitAI.Recommendations do
   @limit 5
   @worked_limit 10
   @window_days 30
+  @filterable [:vision, :file_input, :image_output]
+  # `preview`, `beta`, `exp` or `experimental` as a word of the model id.
+  @experimental_id ~r/(^|[^a-z])(preview|beta|exp|experimental)([^a-z]|$)/i
 
   @type note :: :alias | :cost_not_reported | :json_schema_openrouter_only | :free
   @type estimate :: :declared | :journal | :rough
 
+  @doc "The capabilities the recommendations can be filtered by: images, documents, image generation."
+  @spec filterable() :: [TaskSpec.need()]
+  def filterable, do: @filterable
+
   @doc """
-  Both lists for a task (a key or a `%TaskSpec{}`):
-  `%{cheapest: rows, estimate: estimate, tokens: {in, out} | nil, worked: rows}`.
+  Everything for a task (a key or a `%TaskSpec{}`): the groups of
+  `ranked/2` with its `filters`, `estimate` and `tokens`, and `worked`
+  (`worked/2`). It also keeps `spec` and the injected `catalogue` (nil
+  unless the `:catalogue` option was given) for `refilter/2`.
   """
   @spec for_task(String.t() | TaskSpec.t(), keyword()) :: map()
   def for_task(task, opts \\ []) do
@@ -70,17 +93,50 @@ defmodule PhoenixKitAI.Recommendations do
     worked = worked_by_task(keys, opts)
 
     Map.new(specs, fn spec ->
-      %{rows: rows, estimate: estimate, tokens: tokens} =
-        rank_for(spec, sources, Map.get(medians, spec.key), opts)
+      {estimate, tokens} = estimate_tokens(spec, Map.get(medians, spec.key))
 
-      {spec.key,
-       %{
-         cheapest: rows,
-         estimate: estimate,
-         tokens: tokens,
-         worked: Map.get(worked, spec.key, [])
-       }}
+      recs =
+        %{
+          spec: spec,
+          catalogue: Keyword.get(opts, :catalogue),
+          estimate: estimate,
+          tokens: tokens,
+          worked: Map.get(worked, spec.key, [])
+        }
+        |> Map.merge(groups(spec, sources, tokens, filters(spec, opts), opts))
+
+      {spec.key, recs}
     end)
+  end
+
+  @doc """
+  The models for the task in groups, `limit` (5) rows each:
+  `%{verified, possible, experimental, filters, estimate, tokens}`. A row is
+  as in `cheapest/2`, plus `unverified` — the needs nobody verified (`[]`
+  in `verified`).
+
+  Options: `:filters` (a subset of `filterable/0`; the task's own needs
+  among them by default), `:limit`, `:days`, `:catalogue` (as in
+  `cheapest/2`).
+  """
+  @spec ranked(String.t() | TaskSpec.t(), keyword()) :: map()
+  def ranked(task, opts \\ []) do
+    spec = spec(task)
+    {estimate, tokens} = estimate_tokens(spec, Map.get(medians([spec.key], opts), spec.key))
+
+    %{estimate: estimate, tokens: tokens}
+    |> Map.merge(groups(spec, sources_for(opts), tokens, filters(spec, opts), opts))
+  end
+
+  @doc """
+  The recommendations of `for_task/2` regrouped for other `filters`, from
+  the catalogues as the cache holds them now (or the injected one); the
+  journal part and the estimate are kept, nothing is asked of the journal.
+  """
+  @spec refilter(map(), [atom()]) :: map()
+  def refilter(%{spec: spec, tokens: tokens} = recs, filters) do
+    sources = recs[:catalogue] || sources()
+    Map.merge(recs, groups(spec, sources, tokens, filters(spec, filters: filters), []))
   end
 
   @doc """
@@ -133,6 +189,63 @@ defmodule PhoenixKitAI.Recommendations do
 
   defp spec(key) when is_binary(key),
     do: Tasks.get(key) || %TaskSpec{key: key}
+
+  # The task's needs with its filterable ones replaced by the filters; the
+  # filters as given (only filterable ones, in their order), or the task's
+  # own.
+  defp filters(spec, opts) do
+    case Keyword.fetch(opts, :filters) do
+      {:ok, filters} -> Enum.filter(@filterable, &(&1 in List.wrap(filters)))
+      :error -> Enum.filter(@filterable, &(&1 in spec.needs))
+    end
+  end
+
+  defp groups(spec, sources, tokens, filters, opts) do
+    needs = Enum.reject(spec.needs, &(&1 in @filterable)) ++ filters
+    limit = Keyword.get(opts, :limit, @limit)
+
+    rows =
+      for source <- sources,
+          {id, %Capabilities{} = caps} <- source.models,
+          listed?(caps, needs),
+          group = group(Tasks.assess(caps, needs)),
+          group != nil do
+        {group,
+         source |> row(id, caps, tokens) |> Map.put(:unverified, unverified(group, caps, needs))}
+      end
+
+    {experimental, main} = Enum.split_with(rows, fn {_group, row} -> experimental?(row) end)
+
+    %{
+      filters: filters,
+      verified: main |> of_group(:verified) |> rank(tokens, limit),
+      possible: main |> of_group(:possible) |> rank(tokens, limit),
+      experimental: experimental |> Enum.map(&elem(&1, 1)) |> rank(tokens, limit)
+    }
+  end
+
+  defp group(:fit), do: :verified
+  defp group({:unknown, _unclear}), do: :possible
+  defp group({:unfit, _missing}), do: nil
+
+  defp unverified(:verified, _caps, _needs), do: []
+
+  defp unverified(:possible, caps, needs) do
+    {:unknown, unclear} = Tasks.assess(caps, needs)
+    unclear
+  end
+
+  defp of_group(rows, group), do: for({^group, row} <- rows, do: row)
+
+  # A model that does not answer in text is listed only when images out are
+  # what the task needs; retired ones never.
+  defp listed?(caps, needs),
+    do: (caps.text_output != false or :image_output in needs) and caps.lifecycle != :retired
+
+  defp experimental?(%{model: id} = row) do
+    alias?(id) or String.contains?(id, ":free") or Regex.match?(@experimental_id, id) or
+      :free in row.notes or (row.provider == :openrouter and row.sort_price == nil)
+  end
 
   defp rank_for(spec, sources, median, opts) do
     {estimate, tokens} = estimate_tokens(spec, median)
@@ -279,8 +392,7 @@ defmodule PhoenixKitAI.Recommendations do
 
   defp candidates(%{models: models} = source, needs, tokens) do
     for {id, %Capabilities{} = caps} <- models,
-        caps.text_output != false,
-        caps.lifecycle != :retired,
+        listed?(caps, needs),
         Tasks.assess(caps, needs) == :fit,
         do: row(source, id, caps, tokens)
   end

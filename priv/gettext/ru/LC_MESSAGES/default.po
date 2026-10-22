@@ -771,8 +771,8 @@ msgstr "Отсутствуют переменные промпта: %{vars}"
 msgid "Missing variables:"
 msgstr "Отсутствующие переменные:"
 
-#: lib/phoenix_kit_ai/web/components/task_model_picker.ex:118
-#: lib/phoenix_kit_ai/web/components/task_model_picker.ex:179
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:115
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:220
 #: lib/phoenix_kit_ai/web/endpoints.ex:61
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:218
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:607
@@ -1046,8 +1046,8 @@ msgstr "Промпт не найден"
 msgid "Prompt updated successfully"
 msgstr "Промпт успешно обновлён"
 
-#: lib/phoenix_kit_ai/web/components/task_model_picker.ex:119
-#: lib/phoenix_kit_ai/web/components/task_model_picker.ex:180
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:116
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:221
 #: lib/phoenix_kit_ai/web/endpoint_form.html.heex:62
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:216
 #, elixir-autogen, elixir-format
@@ -2452,7 +2452,7 @@ msgid "Retired"
 msgstr "Снята"
 
 #: lib/phoenix_kit_ai/web/components/capability_badges.ex:54
-#: lib/phoenix_kit_ai/web/components/task_model_picker.ex:140
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:247
 #, elixir-autogen, elixir-format
 msgid "Retiring"
 msgstr "Уходит"
@@ -2477,7 +2477,7 @@ msgstr "Каждую задачу объявляет модуль. Вызов с
 msgid "Endpoints in use:"
 msgstr "Используемые конечные точки:"
 
-#: lib/phoenix_kit_ai/web/components/task_model_picker.ex:228
+#: lib/phoenix_kit_ai/web/components/task_model_picker.ex:108
 #: lib/phoenix_kit_ai/web/tasks.ex:860
 #, elixir-autogen, elixir-format
 msgid "Fits"
@@ -2493,7 +2493,7 @@ msgstr "Неизвестно, умеет ли модель конечной то
 msgid "JSON"
 msgstr "JSON"
 
-#: lib/phoenix_kit_ai/web/components/task_model_picker.ex:238
+#: lib/phoenix_kit_ai/web/components/task_model_picker.ex:118
 #: lib/phoenix_kit_ai/web/tasks.ex:870
 #, elixir-autogen, elixir-format
 msgid "Lacks: %{needs}"
@@ -2529,7 +2529,8 @@ msgstr "Ни один провайдер этой модели не приним
 msgid "None chosen; the caller names an endpoint per call."
 msgstr "Не выбраны: конечную точку указывает каждый вызов."
 
-#: lib/phoenix_kit_ai/web/components/task_model_picker.ex:248
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:239
+#: lib/phoenix_kit_ai/web/components/task_model_picker.ex:128
 #: lib/phoenix_kit_ai/web/tasks.ex:880
 #, elixir-autogen, elixir-format
 msgid "Not verified: %{needs}"
@@ -2608,117 +2609,112 @@ msgstr "Даёт администратору вручную проверить 
 msgid "Translate the text fields of a record from one language into another, keeping the field structure."
 msgstr "Переводит текстовые поля записи с одного языка на другой, сохраняя структуру полей."
 
-#: lib/phoenix_kit_ai/web/components/task_model_picker.ex:171
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:107
 #, elixir-autogen, elixir-format
 msgid "Already worked in this task"
 msgstr "Уже работали в этой задаче"
 
-#: lib/phoenix_kit_ai/web/components/task_model_picker.ex:182
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:118
 #, elixir-autogen, elixir-format
 msgid "Average cost"
 msgstr "Средняя цена"
 
-#: lib/phoenix_kit_ai/web/components/task_model_picker.ex:184
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:120
 #, elixir-autogen, elixir-format
 msgid "Average latency"
 msgstr "Средняя задержка"
 
-#: lib/phoenix_kit_ai/web/components/task_model_picker.ex:181
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:117
 #, elixir-autogen, elixir-format
 msgid "Calls"
 msgstr "Вызовов"
 
-#: lib/phoenix_kit_ai/web/components/task_model_picker.ex:121
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:223
 #, elixir-autogen, elixir-format
 msgid "Context"
 msgstr "Контекст"
 
-#: lib/phoenix_kit_ai/web/components/task_model_picker.ex:161
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:264
 #, elixir-autogen, elixir-format
 msgid "Create endpoint with this model"
 msgstr "Создать конечную точку с этой моделью"
 
-#: lib/phoenix_kit_ai/web/components/task_model_picker.ex:183
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:119
 #, elixir-autogen, elixir-format
 msgid "Errors"
 msgstr "Ошибки"
 
-#: lib/phoenix_kit_ai/web/components/task_model_picker.ex:107
-#, elixir-autogen, elixir-format
-msgid "Fit and cheapest"
-msgstr "Подходят и дешевле всего"
-
-#: lib/phoenix_kit_ai/web/components/task_model_picker.ex:309
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:310
 #, elixir-autogen, elixir-format
 msgid "Input, per 1M tokens"
 msgstr "Вход, за 1 млн токенов"
 
-#: lib/phoenix_kit_ai/web/components/task_model_picker.ex:359
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:362
 #, elixir-autogen, elixir-format
 msgid "JSON schema only through OpenRouter"
 msgstr "JSON-схема только через OpenRouter"
 
-#: lib/phoenix_kit_ai/web/components/task_model_picker.ex:173
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:109
 #, elixir-autogen, elixir-format
 msgid "No calls in the last 30 days."
 msgstr "За последние 30 дней вызовов не было."
 
-#: lib/phoenix_kit_ai/web/components/task_model_picker.ex:112
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:159
 #, elixir-autogen, elixir-format
 msgid "No model of the connected catalogues is known to fit this task."
 msgstr "В подключённых каталогах не известно ни одной модели, подходящей для этой задачи."
 
-#: lib/phoenix_kit_ai/web/components/task_model_picker.ex:289
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:290
 #, elixir-autogen, elixir-format
 msgid "Price of a call of about %{input} input and %{output} output tokens, as the task declares."
 msgstr "Цена вызова примерно из %{input} входных и %{output} выходных токенов — как объявляет задача."
 
-#: lib/phoenix_kit_ai/web/components/task_model_picker.ex:297
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:298
 #, elixir-autogen, elixir-format
 msgid "Price of a call of about %{input} input and %{output} output tokens, the median of this task's calls in the last 30 days."
 msgstr "Цена вызова примерно из %{input} входных и %{output} выходных токенов — медиана вызовов этой задачи за последние 30 дней."
 
-#: lib/phoenix_kit_ai/web/components/task_model_picker.ex:103
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:84
 #, elixir-autogen, elixir-format
 msgid "Recommended models"
 msgstr "Рекомендуемые модели"
 
-#: lib/phoenix_kit_ai/web/components/task_model_picker.ex:305
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:306
 #, elixir-autogen, elixir-format
 msgid "The size of a call is not known yet, so the models are ranked by the input price alone (rough)."
 msgstr "Размер вызова пока не известен, поэтому модели упорядочены только по цене входа (приблизительно)."
 
-#: lib/phoenix_kit_ai/web/components/task_model_picker.ex:355
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:358
 #, elixir-autogen, elixir-format
 msgid "alias model, may change"
 msgstr "модель-алиас, может смениться"
 
-#: lib/phoenix_kit_ai/web/components/task_model_picker.ex:356
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:359
 #, elixir-autogen, elixir-format
 msgid "cost is not counted"
 msgstr "деньги не считаются"
 
-#: lib/phoenix_kit_ai/web/components/task_model_picker.ex:269
+#: lib/phoenix_kit_ai/web/components/task_model_picker.ex:149
 #, elixir-autogen, elixir-format
 msgid "no %{needs}"
 msgstr "нет: %{needs}"
 
-#: lib/phoenix_kit_ai/web/components/task_model_picker.ex:271
+#: lib/phoenix_kit_ai/web/components/task_model_picker.ex:151
 #, elixir-autogen, elixir-format
 msgid "not verified"
 msgstr "не проверено"
 
-#: lib/phoenix_kit_ai/web/components/task_model_picker.ex:318
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:319
 #, elixir-autogen, elixir-format
 msgid "price not known"
 msgstr "цена не известна"
 
-#: lib/phoenix_kit_ai/web/components/task_model_picker.ex:310
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:311
 #, elixir-autogen, elixir-format
 msgid "≈ Price per call"
 msgstr "≈ Цена вызова"
 
-#: lib/phoenix_kit_ai/web/components/task_model_picker.ex:354
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:357
 #, elixir-autogen, elixir-format
 msgid "free — the operator's limits and terms apply"
 msgstr "бесплатная — лимиты и условия оператора"
@@ -3072,7 +3068,7 @@ msgstr "Документы"
 msgid "Image generation"
 msgstr "Генерация изображений"
 
-#: lib/phoenix_kit_ai/web/components/capability_badges.ex:74
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:75
 #, elixir-autogen, elixir-format
 msgid "Not verified — mark it on the endpoint"
 msgstr "Не проверено — отметьте на конечной точке"
@@ -3086,3 +3082,28 @@ msgstr "документы"
 #, elixir-autogen, elixir-format
 msgid "image generation"
 msgstr "генерация изображений"
+
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:168
+#, elixir-autogen, elixir-format
+msgid "Can do everything needed (verified)"
+msgstr "Умеют всё нужное (проверено)"
+
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:190
+#, elixir-autogen, elixir-format
+msgid "Experimental (%{count})"
+msgstr "Экспериментальные (%{count})"
+
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:178
+#, elixir-autogen, elixir-format
+msgid "May be able to (not verified)"
+msgstr "Возможно умеют (не проверено)"
+
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:88
+#, elixir-autogen, elixir-format
+msgid "Must handle:"
+msgstr "Должна уметь:"
+
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:194
+#, elixir-autogen, elixir-format
+msgid "Previews, betas, free variants, aliases and models without a price: they can change or disappear."
+msgstr "Превью, беты, бесплатные варианты, алиасы и модели без цены: они могут измениться или пропасть."

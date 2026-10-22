@@ -595,7 +595,7 @@ defmodule PhoenixKitAI.RecommendationsTest do
 
       assert by_key == by_spec
 
-      assert %{cheapest: [%{model: "v/m"}], worked: [%{model: "v/a"}], estimate: :declared} =
+      assert %{verified: [%{model: "v/m"}], worked: [%{model: "v/a"}], estimate: :declared} =
                by_key
     end
   end

@@ -71,5 +71,6 @@ defmodule PhoenixKitAI.Web.Components.CapabilityBadges do
   def label(:tools), do: gettext("Tools")
   def label(:json_schema), do: gettext("JSON schema")
 
-  defp unverified_hint, do: gettext("Not verified — mark it on the endpoint")
+  @doc "The hint on a capability nobody verified: where to mark it."
+  def unverified_hint, do: gettext("Not verified — mark it on the endpoint")
 end

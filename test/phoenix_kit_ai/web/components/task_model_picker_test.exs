@@ -55,9 +55,14 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPickerTest do
   defp recs(overrides \\ %{}) do
     Map.merge(
       %{
+        spec: %PhoenixKitAI.TaskSpec{key: "test.photo", needs: [:vision, :json_schema]},
+        catalogue: [],
+        filters: [:vision],
         estimate: :declared,
         tokens: {10_000, 1_000},
-        cheapest: [
+        possible: [],
+        experimental: [],
+        verified: [
           %{
             model: "google/gemini-flash",
             name: "Gemini Flash",
@@ -177,7 +182,7 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPickerTest do
   end
 
   describe "the recommendations panel" do
-    test "is collapsed and lists the cheapest fit models and the ones that worked" do
+    test "is collapsed and lists the models that can do it and the ones that worked" do
       html = render_picker(%{})
 
       assert present?(html, "details[id$='-recommendations']:not([open])")
@@ -247,7 +252,7 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPickerTest do
         recs(%{
           estimate: :rough,
           tokens: nil,
-          cheapest: [%{hd(recs().cheapest) | price_per_call: nil}],
+          verified: [%{hd(recs().verified) | price_per_call: nil}],
           worked: []
         })
 
@@ -260,7 +265,7 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPickerTest do
     end
 
     test "says so when nothing fits" do
-      html = render_picker(%{recommendations: recs(%{cheapest: [], worked: []})})
+      html = render_picker(%{recommendations: recs(%{verified: [], worked: []})})
       assert present?(html, "[data-recommended-empty]")
     end
 
@@ -290,12 +295,18 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPickerTest do
       for {locale, expected} <- [
             {"ru",
              [
-               "Подходят и дешевле всего",
+               "Умеют всё нужное (проверено)",
+               "Должна уметь:",
                "Уже работали в этой задаче",
                "цена не известна",
                "бесплатная — лимиты"
              ]},
-            {"et", ["Sobivad ja odavaimad", "Selles ülesandes juba töötanud", "hind pole teada"]}
+            {"et",
+             [
+               "Oskavad kõike vajalikku (kontrollitud)",
+               "Selles ülesandes juba töötanud",
+               "hind pole teada"
+             ]}
           ] do
         Gettext.put_locale(PhoenixKitAI.Gettext, locale)
         html = render_picker(%{scope: scope(["ai"])})
