@@ -59,6 +59,41 @@ defmodule PhoenixKitAI.MigrationsTest do
     endpoint.uuid
   end
 
+  defp flag_columns do
+    query(
+      "SELECT column_name, column_default, is_nullable FROM information_schema.columns WHERE table_name = 'phoenix_kit_ai_model_capabilities' AND column_name IN ('file_input', 'image_output') ORDER BY 1"
+    )
+  end
+
+  defp assert_v2_flags do
+    assert [
+             ["file_input", "'unknown'::character varying", "NO"],
+             ["image_output", "'unknown'::character varying", "NO"]
+           ] = flag_columns()
+
+    model = "m-#{System.unique_integer([:positive])}"
+
+    assert {:ok, _} =
+             Repo.query(
+               "INSERT INTO phoenix_kit_ai_model_capabilities (base_url, model, fetched_at) VALUES ('https://f.test/v1', $1, now())",
+               [model]
+             )
+
+    assert [["unknown", "unknown"]] =
+             query(
+               "SELECT file_input, image_output FROM phoenix_kit_ai_model_capabilities WHERE base_url = 'https://f.test/v1' AND model = $1",
+               [model]
+             )
+
+    for flag <- ~w(file_input image_output) do
+      assert {:error, %Postgrex.Error{postgres: %{code: :check_violation}}} =
+               Repo.query(
+                 "INSERT INTO phoenix_kit_ai_model_capabilities (base_url, model, fetched_at, #{flag}) VALUES ('https://f.test/v1', $1, now(), 'maybe')",
+                 [flag]
+               )
+    end
+  end
+
   defp insert_event(kind, dedupe_key) do
     Repo.query(
       "INSERT INTO phoenix_kit_ai_guard_events (kind, task_key, dedupe_key) VALUES ($1, 't', $2)",
@@ -231,6 +266,15 @@ defmodule PhoenixKitAI.MigrationsTest do
       assert query(
                "SELECT updated_by_uuid, classifier_endpoint_uuid FROM phoenix_kit_ai_task_settings"
              ) == [[nil, nil]]
+    end
+
+    test "the capability snapshot gets file_input and image_output, unknown by default and checked" do
+      assert_v2_flags()
+
+      run(Migrations.down_statements("public", 1))
+      assert flag_columns() == []
+      run(Migrations.up_statements("public"))
+      assert_v2_flags()
     end
 
     test "the journal gets an index on the task and the time, with no status condition" do

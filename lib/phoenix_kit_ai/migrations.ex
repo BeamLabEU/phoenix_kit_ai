@@ -29,6 +29,9 @@ defmodule PhoenixKitAI.Migrations do
       against the known kinds; a new kind is a new version). `dedupe_key` is
       unique where it is set, so a signal sent once per window is an insert
       that either happens or does not.
+    * Two more flags on `phoenix_kit_ai_model_capabilities`: `file_input`
+      and `image_output` (`yes`, `no` or `unknown`, default `unknown`),
+      for what a later version of the capability cache reads.
     * An index on the journal (core's `phoenix_kit_ai_requests`):
       `((metadata->>'task'), inserted_at)`, with no condition on the status,
       for the task limits and the models that worked in a task. Core's
@@ -58,6 +61,7 @@ defmodule PhoenixKitAI.Migrations do
 
   @kinds ~w(model_unfit limit_warning limit_reached limit_forgiven off_purpose off_purpose_signal anomaly blocked unblocked)
   @guard_modes ~w(off self_flag classifier self_flag+classifier)
+  @v2_flags ~w(file_input image_output)
 
   @doc "The version this code expects the schema to be at."
   @spec current_version() :: pos_integer()
@@ -218,95 +222,105 @@ defmodule PhoenixKitAI.Migrations do
     settings = Helpers.qualify_table("phoenix_kit_ai_task_settings", prefix)
     user_limits = Helpers.qualify_table("phoenix_kit_ai_task_user_limits", prefix)
     events = Helpers.qualify_table("phoenix_kit_ai_guard_events", prefix)
+    caps = Helpers.qualify_table("phoenix_kit_ai_model_capabilities", prefix)
 
-    [
-      """
-      CREATE TABLE IF NOT EXISTS #{settings} (
-        uuid uuid DEFAULT #{uuid7} NOT NULL,
-        task_key character varying(255) NOT NULL,
-        purpose_override text,
-        guard_mode character varying(32),
-        classifier_endpoint_uuid uuid,
-        classifier_sample_percent integer,
-        auto_block_threshold integer,
-        limits jsonb DEFAULT '{}'::jsonb NOT NULL,
-        warn_percent integer,
-        updated_by_uuid uuid,
-        inserted_at timestamp without time zone DEFAULT now() NOT NULL,
-        updated_at timestamp without time zone DEFAULT now() NOT NULL,
-        CONSTRAINT phoenix_kit_ai_task_settings_pkey PRIMARY KEY (uuid),
-        CONSTRAINT phoenix_kit_ai_task_settings_classifier_endpoint_uuid_fkey
-          FOREIGN KEY (classifier_endpoint_uuid) REFERENCES #{endpoints}(uuid) ON DELETE SET NULL,
-        CONSTRAINT phoenix_kit_ai_task_settings_updated_by_uuid_fkey
-          FOREIGN KEY (updated_by_uuid) REFERENCES #{users}(uuid) ON DELETE SET NULL,
-        CONSTRAINT phoenix_kit_ai_task_settings_values_check CHECK (
-          (guard_mode IS NULL OR guard_mode IN (#{sql_list(@guard_modes)})) AND
-          (warn_percent IS NULL OR warn_percent BETWEEN 1 AND 100) AND
-          (classifier_sample_percent IS NULL OR classifier_sample_percent BETWEEN 0 AND 100) AND
-          (auto_block_threshold IS NULL OR auto_block_threshold > 0)
+    Enum.map(@v2_flags, &flag_column(caps, &1)) ++
+      [
+        """
+        CREATE TABLE IF NOT EXISTS #{settings} (
+          uuid uuid DEFAULT #{uuid7} NOT NULL,
+          task_key character varying(255) NOT NULL,
+          purpose_override text,
+          guard_mode character varying(32),
+          classifier_endpoint_uuid uuid,
+          classifier_sample_percent integer,
+          auto_block_threshold integer,
+          limits jsonb DEFAULT '{}'::jsonb NOT NULL,
+          warn_percent integer,
+          updated_by_uuid uuid,
+          inserted_at timestamp without time zone DEFAULT now() NOT NULL,
+          updated_at timestamp without time zone DEFAULT now() NOT NULL,
+          CONSTRAINT phoenix_kit_ai_task_settings_pkey PRIMARY KEY (uuid),
+          CONSTRAINT phoenix_kit_ai_task_settings_classifier_endpoint_uuid_fkey
+            FOREIGN KEY (classifier_endpoint_uuid) REFERENCES #{endpoints}(uuid) ON DELETE SET NULL,
+          CONSTRAINT phoenix_kit_ai_task_settings_updated_by_uuid_fkey
+            FOREIGN KEY (updated_by_uuid) REFERENCES #{users}(uuid) ON DELETE SET NULL,
+          CONSTRAINT phoenix_kit_ai_task_settings_values_check CHECK (
+            (guard_mode IS NULL OR guard_mode IN (#{sql_list(@guard_modes)})) AND
+            (warn_percent IS NULL OR warn_percent BETWEEN 1 AND 100) AND
+            (classifier_sample_percent IS NULL OR classifier_sample_percent BETWEEN 0 AND 100) AND
+            (auto_block_threshold IS NULL OR auto_block_threshold > 0)
+          )
         )
-      )
-      """,
-      "CREATE UNIQUE INDEX IF NOT EXISTS phoenix_kit_ai_task_settings_task_key_index ON #{settings} (task_key)",
-      "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_task_settings_classifier_endpoint_uuid_index ON #{settings} (classifier_endpoint_uuid) WHERE classifier_endpoint_uuid IS NOT NULL",
-      "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_task_settings_updated_by_uuid_index ON #{settings} (updated_by_uuid) WHERE updated_by_uuid IS NOT NULL",
-      """
-      CREATE TABLE IF NOT EXISTS #{user_limits} (
-        uuid uuid DEFAULT #{uuid7} NOT NULL,
-        task_key character varying(255) NOT NULL,
-        user_uuid uuid NOT NULL,
-        limits jsonb DEFAULT '{}'::jsonb NOT NULL,
-        inserted_at timestamp without time zone DEFAULT now() NOT NULL,
-        updated_at timestamp without time zone DEFAULT now() NOT NULL,
-        CONSTRAINT phoenix_kit_ai_task_user_limits_pkey PRIMARY KEY (uuid),
-        CONSTRAINT phoenix_kit_ai_task_user_limits_user_uuid_fkey
-          FOREIGN KEY (user_uuid) REFERENCES #{users}(uuid) ON DELETE CASCADE
-      )
-      """,
-      "CREATE UNIQUE INDEX IF NOT EXISTS phoenix_kit_ai_task_user_limits_task_key_user_uuid_index ON #{user_limits} (task_key, user_uuid)",
-      "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_task_user_limits_user_uuid_index ON #{user_limits} (user_uuid)",
-      """
-      CREATE TABLE IF NOT EXISTS #{events} (
-        uuid uuid DEFAULT #{uuid7} NOT NULL,
-        kind character varying(32) NOT NULL,
-        task_key character varying(255),
-        user_uuid uuid,
-        endpoint_uuid uuid,
-        request_uuid uuid,
-        ref jsonb,
-        reason text,
-        dedupe_key text,
-        actor_uuid uuid,
-        inserted_at timestamp without time zone DEFAULT now() NOT NULL,
-        CONSTRAINT phoenix_kit_ai_guard_events_pkey PRIMARY KEY (uuid),
-        CONSTRAINT phoenix_kit_ai_guard_events_user_uuid_fkey
-          FOREIGN KEY (user_uuid) REFERENCES #{users}(uuid) ON DELETE CASCADE,
-        CONSTRAINT phoenix_kit_ai_guard_events_endpoint_uuid_fkey
-          FOREIGN KEY (endpoint_uuid) REFERENCES #{endpoints}(uuid) ON DELETE SET NULL,
-        CONSTRAINT phoenix_kit_ai_guard_events_request_uuid_fkey
-          FOREIGN KEY (request_uuid) REFERENCES #{requests}(uuid) ON DELETE SET NULL,
-        CONSTRAINT phoenix_kit_ai_guard_events_actor_uuid_fkey
-          FOREIGN KEY (actor_uuid) REFERENCES #{users}(uuid) ON DELETE SET NULL,
-        CONSTRAINT phoenix_kit_ai_guard_events_kind_check CHECK (kind IN (#{sql_list(@kinds)})),
-        CONSTRAINT phoenix_kit_ai_guard_events_reason_check
-          CHECK (reason IS NULL OR char_length(reason) <= 500)
-      )
-      """,
-      "CREATE UNIQUE INDEX IF NOT EXISTS phoenix_kit_ai_guard_events_dedupe_key_index ON #{events} (dedupe_key) WHERE dedupe_key IS NOT NULL",
-      "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_guard_events_task_kind_inserted_at_index ON #{events} (task_key, kind, inserted_at)",
-      "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_guard_events_user_uuid_index ON #{events} (user_uuid) WHERE user_uuid IS NOT NULL",
-      "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_guard_events_endpoint_uuid_index ON #{events} (endpoint_uuid) WHERE endpoint_uuid IS NOT NULL",
-      "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_guard_events_request_uuid_index ON #{events} (request_uuid) WHERE request_uuid IS NOT NULL",
-      "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_guard_events_actor_uuid_index ON #{events} (actor_uuid) WHERE actor_uuid IS NOT NULL",
-      # On core's journal: an object of this chain, not of core's (see the moduledoc).
-      "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_requests_task_inserted_at_index ON #{requests} ((metadata->>'task'), inserted_at)"
-    ]
+        """,
+        "CREATE UNIQUE INDEX IF NOT EXISTS phoenix_kit_ai_task_settings_task_key_index ON #{settings} (task_key)",
+        "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_task_settings_classifier_endpoint_uuid_index ON #{settings} (classifier_endpoint_uuid) WHERE classifier_endpoint_uuid IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_task_settings_updated_by_uuid_index ON #{settings} (updated_by_uuid) WHERE updated_by_uuid IS NOT NULL",
+        """
+        CREATE TABLE IF NOT EXISTS #{user_limits} (
+          uuid uuid DEFAULT #{uuid7} NOT NULL,
+          task_key character varying(255) NOT NULL,
+          user_uuid uuid NOT NULL,
+          limits jsonb DEFAULT '{}'::jsonb NOT NULL,
+          inserted_at timestamp without time zone DEFAULT now() NOT NULL,
+          updated_at timestamp without time zone DEFAULT now() NOT NULL,
+          CONSTRAINT phoenix_kit_ai_task_user_limits_pkey PRIMARY KEY (uuid),
+          CONSTRAINT phoenix_kit_ai_task_user_limits_user_uuid_fkey
+            FOREIGN KEY (user_uuid) REFERENCES #{users}(uuid) ON DELETE CASCADE
+        )
+        """,
+        "CREATE UNIQUE INDEX IF NOT EXISTS phoenix_kit_ai_task_user_limits_task_key_user_uuid_index ON #{user_limits} (task_key, user_uuid)",
+        "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_task_user_limits_user_uuid_index ON #{user_limits} (user_uuid)",
+        """
+        CREATE TABLE IF NOT EXISTS #{events} (
+          uuid uuid DEFAULT #{uuid7} NOT NULL,
+          kind character varying(32) NOT NULL,
+          task_key character varying(255),
+          user_uuid uuid,
+          endpoint_uuid uuid,
+          request_uuid uuid,
+          ref jsonb,
+          reason text,
+          dedupe_key text,
+          actor_uuid uuid,
+          inserted_at timestamp without time zone DEFAULT now() NOT NULL,
+          CONSTRAINT phoenix_kit_ai_guard_events_pkey PRIMARY KEY (uuid),
+          CONSTRAINT phoenix_kit_ai_guard_events_user_uuid_fkey
+            FOREIGN KEY (user_uuid) REFERENCES #{users}(uuid) ON DELETE CASCADE,
+          CONSTRAINT phoenix_kit_ai_guard_events_endpoint_uuid_fkey
+            FOREIGN KEY (endpoint_uuid) REFERENCES #{endpoints}(uuid) ON DELETE SET NULL,
+          CONSTRAINT phoenix_kit_ai_guard_events_request_uuid_fkey
+            FOREIGN KEY (request_uuid) REFERENCES #{requests}(uuid) ON DELETE SET NULL,
+          CONSTRAINT phoenix_kit_ai_guard_events_actor_uuid_fkey
+            FOREIGN KEY (actor_uuid) REFERENCES #{users}(uuid) ON DELETE SET NULL,
+          CONSTRAINT phoenix_kit_ai_guard_events_kind_check CHECK (kind IN (#{sql_list(@kinds)})),
+          CONSTRAINT phoenix_kit_ai_guard_events_reason_check
+            CHECK (reason IS NULL OR char_length(reason) <= 500)
+        )
+        """,
+        "CREATE UNIQUE INDEX IF NOT EXISTS phoenix_kit_ai_guard_events_dedupe_key_index ON #{events} (dedupe_key) WHERE dedupe_key IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_guard_events_task_kind_inserted_at_index ON #{events} (task_key, kind, inserted_at)",
+        "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_guard_events_user_uuid_index ON #{events} (user_uuid) WHERE user_uuid IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_guard_events_endpoint_uuid_index ON #{events} (endpoint_uuid) WHERE endpoint_uuid IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_guard_events_request_uuid_index ON #{events} (request_uuid) WHERE request_uuid IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_guard_events_actor_uuid_index ON #{events} (actor_uuid) WHERE actor_uuid IS NOT NULL",
+        # On core's journal: an object of this chain, not of core's (see the moduledoc).
+        "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_requests_task_inserted_at_index ON #{requests} ((metadata->>'task'), inserted_at)"
+      ]
+  end
+
+  # The column's CHECK rides on ADD COLUMN, so a re-run skips both.
+  defp flag_column(table, flag) do
+    "ALTER TABLE #{table} ADD COLUMN IF NOT EXISTS #{flag} character varying(8) DEFAULT 'unknown' NOT NULL " <>
+      "CONSTRAINT phoenix_kit_ai_model_capabilities_#{flag}_check CHECK (#{flag} IN ('yes', 'no', 'unknown'))"
   end
 
   defp v2_down_statements(prefix) do
     index = Helpers.qualify_table("phoenix_kit_ai_requests_task_inserted_at_index", prefix)
+    caps = Helpers.qualify_table("phoenix_kit_ai_model_capabilities", prefix)
 
     ["DROP INDEX IF EXISTS #{index}"] ++
+      Enum.map(@v2_flags, &"ALTER TABLE #{caps} DROP COLUMN IF EXISTS #{&1}") ++
       Enum.map(
         ~w(phoenix_kit_ai_guard_events phoenix_kit_ai_task_user_limits phoenix_kit_ai_task_settings),
         &"DROP TABLE IF EXISTS #{Helpers.qualify_table(&1, prefix)}"
