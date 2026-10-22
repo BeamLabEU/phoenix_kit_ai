@@ -419,6 +419,25 @@ defmodule PhoenixKitAI.GuardTest do
       refute failed.metadata["refused"]
     end
 
+    test "a hit whose row cannot be written names no row, never the first call's" do
+      stub()
+      ep = endpoint()
+      # Chat sends the endpoint's model, but a hit's row records model: — one
+      # longer than the column takes makes that insert fail.
+      long = String.duplicate("m", 150)
+
+      assert {:ok, %{"request_uuid" => first}} =
+               PhoenixKitAI.ask(ep.uuid, "q", cache: true, model: long)
+
+      assert is_binary(first)
+
+      capture_log(fn ->
+        assert {:ok, hit} = PhoenixKitAI.ask(ep.uuid, "q", cache: true, model: long)
+        assert Map.has_key?(hit, "request_uuid")
+        assert hit["request_uuid"] == nil
+      end)
+    end
+
     test "image verbs record attribution and task; a hit answers with its own row" do
       stub(text_answer("A cat."))
       ep = endpoint(nil, %{"vision" => "yes"})

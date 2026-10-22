@@ -2830,7 +2830,9 @@ defmodule PhoenixKitAI do
   # marked cached, with the same attribution, prompt link and task as a
   # fresh one, keeps reports truthful without pretending a provider was
   # called. The answer handed back names this row, not the one the cached
-  # answer was first logged under.
+  # answer was first logged under — and names no row (`nil`) when this one
+  # could not be written, since the stored uuid is another call's, perhaps
+  # another user's.
   defp cached_row(endpoint, verb, model, row) do
     prompt_info = row[:prompt_info] || %{}
 
@@ -2843,7 +2845,7 @@ defmodule PhoenixKitAI do
         |> Map.merge(row[:guard] || %{})
 
       logged =
-        create_request(%{
+        safe_create_request(%{
           endpoint_uuid: endpoint.uuid,
           endpoint_name: endpoint.name,
           prompt_uuid: prompt_info[:prompt_uuid],
@@ -2860,8 +2862,27 @@ defmodule PhoenixKitAI do
           metadata: metadata
         })
 
-      {:replace, put_request_uuid(value, request_uuid_key(verb), logged)}
+      uuid =
+        case logged do
+          {:ok, %Request{uuid: uuid}} -> uuid
+          _ -> nil
+        end
+
+      {:replace, if(is_map(value), do: Map.put(value, request_uuid_key(verb), uuid), else: value)}
     end
+  end
+
+  # A hit's row must never fail the hit: a database error is logged and
+  # read as "no row".
+  defp safe_create_request(attrs) do
+    create_request(attrs)
+  rescue
+    error ->
+      Logger.warning(
+        "[PhoenixKitAI] cache hit usage row not written: #{inspect(error.__struct__)}"
+      )
+
+      {:error, :not_written}
   end
 
   @doc """
