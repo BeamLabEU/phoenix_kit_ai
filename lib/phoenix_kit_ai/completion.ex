@@ -830,19 +830,61 @@ defmodule PhoenixKitAI.Completion do
   end
 
   # Anthropic's OpenAI-compatible layer: never `temperature` and `top_p`
-  # together (a 400 on its own; `temperature` is kept); no penalties and no
-  # `seed` (ignored there); the OpenRouter-shaped `reasoning` object, which
-  # that layer silently ignores, becomes its `thinking` field.
+  # together (a 400 on its own; `temperature` is kept), and neither of them
+  # to a model from Claude Opus 4.7 on, which refuses each even when the
+  # caller set it (`anthropic_sampling?/1`); no penalties and no `seed`
+  # (ignored there); the OpenRouter-shaped `reasoning` object, which that
+  # layer silently ignores, becomes its `thinking` field.
   defp provider_rules(body, endpoint) do
     if anthropic?(endpoint) do
       body
       |> Map.drop(["frequency_penalty", "presence_penalty", "repetition_penalty", "seed"])
-      |> then(&if(Map.has_key?(&1, "temperature"), do: Map.delete(&1, "top_p"), else: &1))
+      |> anthropic_sampling(endpoint.model)
       |> anthropic_thinking(endpoint)
     else
       body
     end
   end
+
+  defp anthropic_sampling(body, model) do
+    cond do
+      not anthropic_sampling?(model) -> Map.drop(body, ["temperature", "top_p"])
+      Map.has_key?(body, "temperature") -> Map.delete(body, "top_p")
+      true -> body
+    end
+  end
+
+  # The first Claude that refuses `temperature` and `top_p` (a 400, "… is
+  # deprecated for this model"); checked against live models in
+  # BeamLabEU/phoenix_kit_ai#42.
+  @anthropic_no_sampling_since {4, 7}
+
+  @doc false
+  # Whether an Anthropic model takes `temperature` / `top_p` (one of them):
+  # a model older than Claude Opus 4.7. Its catalogue entry does not say, so
+  # the model id decides; an id this cannot read is taken for a newer model.
+  @spec anthropic_sampling?(String.t() | nil) :: boolean()
+  def anthropic_sampling?(model_id) do
+    case anthropic_version(model_id) do
+      nil -> false
+      version -> version < @anthropic_no_sampling_since
+    end
+  end
+
+  # `claude-opus-4-5-20251101`, `claude-opus-5`, `claude-fable-5-1`, and the
+  # older `claude-3-5-sonnet-20241022` naming.
+  defp anthropic_version(id) when is_binary(id) do
+    id = id |> String.split("/") |> List.last()
+
+    case Regex.run(~r/^claude-[a-z]+-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?$/, id) ||
+           Regex.run(~r/^claude-(\d+)(?:-(\d{1,2}))?-[a-z]+/, id) do
+      [_, major] -> {String.to_integer(major), 0}
+      [_, major, minor] -> {String.to_integer(major), String.to_integer(minor)}
+      nil -> nil
+    end
+  end
+
+  defp anthropic_version(_id), do: nil
 
   # Each `thinking` form is sent only to a model whose catalogue entry says
   # it accepts it — a form it does not take is a 400 (`budget_tokens` on any

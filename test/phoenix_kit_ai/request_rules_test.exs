@@ -209,7 +209,9 @@ defmodule PhoenixKitAI.RequestRulesTest do
 
     test "a caller's own temperature or top_p is sent, never both; penalties never" do
       stub()
-      ep = anthropic_endpoint()
+      # A model before Claude Opus 4.7: the later ones take neither
+      # (`AnthropicRulesTest`).
+      ep = anthropic_endpoint(%{model: "claude-sonnet-4-6"})
 
       assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "hi", temperature: 1.0)
       assert %{"temperature" => 1.0} = sent_body()

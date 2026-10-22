@@ -4509,8 +4509,9 @@ defmodule PhoenixKitAI do
   # `top_p` or `top_k` its newer models do not take, and ignores the
   # penalties and `seed`: the endpoint's stored sampling values (the
   # schema's 0.7 default among them) are not sent there. A caller's own
-  # `temperature:` / `top_p:` / `top_k:` still is; `Completion` never sends
-  # `temperature` and `top_p` together.
+  # `temperature:` / `top_p:` / `top_k:` still is, except that `Completion`
+  # never sends `temperature` and `top_p` together, nor either of them to a
+  # model from Claude Opus 4.7 on.
   defp caller_only_options(endpoint) do
     if Completion.anthropic?(endpoint),
       do: [
