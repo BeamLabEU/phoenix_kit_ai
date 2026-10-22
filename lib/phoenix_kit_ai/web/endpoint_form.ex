@@ -405,24 +405,30 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     {:ok, socket}
   end
 
-  defp load_endpoint(socket, nil) do
-    # New endpoint: nothing is pre-selected. The picker reflects the
-    # endpoint's actual state (no integration yet), so the operator
-    # explicitly picks one. Auto-selecting a single available connection
-    # would mask "no integration set" with "an integration is set" and
-    # confuse anyone scanning the form to verify wiring.
+  defp load_endpoint(socket, nil, params) do
+    # New endpoint: nothing is pre-selected unless the page was opened from a
+    # recommendation (`prefill/2`): then the name, the model and the
+    # operator's integration are filled in for the person to look over —
+    # nothing is saved. Otherwise, auto-selecting a single available
+    # connection would mask "no integration set" with "an integration is
+    # set" and confuse anyone scanning the form to verify wiring.
+    {attrs, connection} = prefill(params, socket.assigns.provider_connections)
+    active = connection && connection.uuid
+
     socket
     |> assign(:page_crumbs, [endpoints_crumb()])
     |> assign(:page_title, gettext("New endpoint"))
     |> assign(:page_subtitle, new_endpoint_subtitle())
     |> assign(:endpoint, nil)
-    |> assign(:form, to_form(AI.change_endpoint(%Endpoint{})))
-    |> assign(:active_connection, nil)
-    |> assign(:selected_uuids, [])
-    |> assign(:integration_connected, false)
+    |> assign(:form, to_form(AI.change_endpoint(%Endpoint{}, attrs)))
+    |> assign(:active_connection, active)
+    |> assign(:selected_uuids, List.wrap(active))
+    |> assign(:integration_connected, !!active && Integrations.connected?(active))
+    |> assign(:current_provider, attrs["provider"] || socket.assigns.current_provider)
+    |> maybe_fetch_models_on_load(!!active && Integrations.connected?(active))
   end
 
-  defp load_endpoint(socket, id) do
+  defp load_endpoint(socket, id, _params) do
     case AI.get_endpoint(id) do
       nil ->
         socket
@@ -452,6 +458,25 @@ defmodule PhoenixKitAI.Web.EndpointForm do
         |> assign(:model_type, model_type_for(endpoint.model))
         |> maybe_fetch_models_on_load(connected)
     end
+  end
+
+  # The form fields a recommendation's «Create an endpoint with this model»
+  # link carries: `name`, `model` and the `integration_uuid` of the same
+  # operator's key. An integration this install does not have is ignored.
+  defp prefill(params, connections) do
+    connection = Enum.find(connections, &(&1.uuid == params["integration_uuid"]))
+
+    attrs =
+      %{
+        "name" => params["name"],
+        "model" => params["model"],
+        "integration_uuid" => connection && connection.uuid,
+        "provider" => connection && connection.data["provider"]
+      }
+      |> Enum.filter(fn {_key, value} -> is_binary(value) and value != "" end)
+      |> Map.new()
+
+    {attrs, connection}
   end
 
   defp endpoints_crumb do
@@ -535,7 +560,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
         |> assign(:project_title, Settings.get_project_title())
         |> assign(:site_url, Settings.get_setting("site_url"))
         |> assign(:provider_connections, connections)
-        |> load_endpoint(params["id"])
+        |> load_endpoint(params["id"], params)
         |> refresh_provider_options(connections)
         |> assign(:loaded_id, params["id"])
 
