@@ -118,8 +118,13 @@ defmodule PhoenixKitAI.OpenRouterClient do
   - `architecture` - Model architecture details
   """
   def fetch_models(api_key, opts \\ []) do
-    url = "#{Keyword.get(opts, :base_url, @base_url)}/models"
-    headers = build_headers(api_key, opts) ++ Keyword.get(opts, :extra_headers, [])
+    base_url = Keyword.get(opts, :base_url, @base_url)
+    url = "#{base_url}/models"
+
+    headers =
+      build_headers(api_key, opts) ++
+        Keyword.get_lazy(opts, :extra_headers, fn -> provider_headers(base_url) end)
+
     model_type = Keyword.get(opts, :model_type, :all)
 
     case http_get(url, headers) do
@@ -150,6 +155,29 @@ defmodule PhoenixKitAI.OpenRouterClient do
         {:error, {:connection_error, reason}}
     end
   end
+
+  # Without `:extra_headers`, the ones the core registry declares for the
+  # provider whose base URL this is (Anthropic's `anthropic-version`): a
+  # caller that knows only an endpoint's base URL lists its models too.
+  defp provider_headers(base_url) when is_binary(base_url) do
+    base = String.trim_trailing(base_url, "/")
+
+    :ai_completions
+    |> PhoenixKit.Integrations.Providers.with_capability()
+    |> Enum.find_value([], fn provider ->
+      with url when is_binary(url) <- provider[:base_url],
+           true <- String.trim_trailing(url, "/") == base,
+           %{extra_headers: headers} when is_list(headers) <- provider[:validation] do
+        headers
+      else
+        _ -> nil
+      end
+    end)
+  rescue
+    _ -> []
+  end
+
+  defp provider_headers(_base_url), do: []
 
   @doc """
   Fetches models and groups them by provider.
@@ -871,6 +899,11 @@ defmodule PhoenixKitAI.OpenRouterClient do
 
       model
       |> Map.merge(Map.take(fields, ["name", "context_length", "supported_parameters"]))
+      |> Map.update(
+        "architecture",
+        %{"input_modalities" => fields["input_modalities"]},
+        &Map.put_new(&1, "input_modalities", fields["input_modalities"])
+      )
       |> Map.put(
         "top_provider",
         Map.put(
@@ -1091,7 +1124,13 @@ defmodule PhoenixKitAI.OpenRouterClient do
     }
   end
 
-  defp normalize_pricing(_model), do: %{"prompt" => 0, "completion" => 0}
+  # Anthropic's `/models` names no price at all: unknown, not free, so the
+  # model card shows no price badge rather than "$0.00".
+  defp normalize_pricing(model) do
+    if PhoenixKitAI.Anthropic.model?(model),
+      do: %{"prompt" => nil, "completion" => nil},
+      else: %{"prompt" => 0, "completion" => 0}
+  end
 
   defp flat_token_price_to_dollars(value) when is_number(value), do: value / 10_000_000_000
   defp flat_token_price_to_dollars(_), do: 0

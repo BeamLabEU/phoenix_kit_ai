@@ -89,8 +89,13 @@ defmodule PhoenixKitAI.AnthropicTest do
       assert opus.name == "Claude Opus 5.5"
       assert opus.context_length == 1_000_000
       assert opus.max_completion_tokens == 128_000
-      assert opus.supported_parameters == ~w(max_tokens stop top_k)
+      assert opus.supported_parameters == ~w(max_tokens stop top_k tools)
+      assert opus.architecture["input_modalities"] == ["text", "image"]
+      assert sonnet.architecture["input_modalities"] == ["text"]
+      assert OpenRouterClient.model_supports_parameter?(opus, "tools")
       assert "temperature" in sonnet.supported_parameters
+      # No price in the listing: unknown, not free.
+      assert opus.pricing == %{"prompt" => nil, "completion" => nil}
     end
 
     test "the vision list keeps the models that take images" do

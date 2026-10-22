@@ -41,13 +41,17 @@ defmodule PhoenixKitAI.Anthropic do
   The fields of an Anthropic `/models` entry the model card shows: name,
   context window, output limit and the generation parameters it takes.
   """
+  # Every Claude chat model takes tools; images only where the entry says so.
   @spec model_fields(map()) :: map()
   def model_fields(model) do
+    images? = get_in(model, ["capabilities", "image_input", "supported"]) == true
+
     %{
       "name" => model["display_name"],
       "context_length" => model["max_input_tokens"],
       "max_completion_tokens" => model["max_tokens"],
-      "supported_parameters" => supported_parameters(model["id"])
+      "supported_parameters" => supported_parameters(model["id"]) ++ ["tools"],
+      "input_modalities" => if(images?, do: ["text", "image"], else: ["text"])
     }
   end
 
