@@ -174,11 +174,15 @@ defmodule PhoenixKitAI.Completion do
   end
 
   # The parameters a refused request carried, by name — what the error
-  # reports, never their values.
+  # reports, never their values. Only the ones an endpoint's settings put
+  # there: the call's own tools and answer format are not something to
+  # remove from the endpoint.
   defp with_sent_params({:error, {:no_provider_for_params, _}}, body) do
     params =
       body
-      |> Map.drop(["model", "messages", "provider", "stream"])
+      |> Map.drop(
+        ~w(model messages provider stream tools tool_choice parallel_tool_calls response_format)
+      )
       |> Map.keys()
       |> Enum.sort()
 

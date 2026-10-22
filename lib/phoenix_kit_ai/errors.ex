@@ -152,6 +152,12 @@ defmodule PhoenixKitAI.Errors do
     )
   end
 
+  def message({:no_provider_for_params, []}) do
+    gettext(
+      "No provider of this model accepts all the request's parameters. Remove the ones it does not support from the endpoint."
+    )
+  end
+
   def message({:no_provider_for_params, params}) when is_list(params) do
     gettext(
       "No provider of this model accepts all the request's parameters (%{params}). Remove the ones it does not support from the endpoint.",

@@ -399,9 +399,12 @@ defmodule PhoenixKitAI.RequestRulesTest do
       assert {:error, {:no_provider_for_params, params}} =
                PhoenixKitAI.ask(ep.uuid, "hi", tools: tools)
 
-      assert "tools" in params
+      # Only what an endpoint's settings put there: the call's own tools and
+      # format are not something to remove from the endpoint.
       assert "max_tokens" in params
-      refute "messages" in params
+
+      for name <- ~w(tools tool_choice parallel_tool_calls response_format messages),
+          do: refute(name in params, name)
 
       assert [%{status: "error", error_message: message, metadata: metadata}] =
                TestRepo.all(from(r in Request, where: r.endpoint_uuid == ^ep.uuid))
@@ -449,6 +452,7 @@ defmodule PhoenixKitAI.RequestRulesTest do
       assert Errors.message({:model_unverified, [:tools]}) =~ "tools"
 
       assert Errors.message({:no_provider_for_params, ["top_k", "seed"]}) =~ "top_k, seed"
+      refute Errors.message({:no_provider_for_params, []}) =~ "()"
     end
   end
 end
