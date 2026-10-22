@@ -148,6 +148,57 @@ defmodule PhoenixKitAI.CataloguesDeepSeekMistralTest do
   end
 
   describe "the model list" do
+    test "Mistral's chat picker excludes non-chat models and its vision picker uses capabilities",
+         %{stub: stub} do
+      Req.Test.stub(stub, &Req.Test.json(&1, %{"data" => @mistral_models}))
+      opts = [base_url: @mistral, fallback_provider: "mistral"]
+
+      assert {:ok, chat} = OpenRouterClient.fetch_models("key", opts ++ [model_type: :text])
+      assert Enum.map(chat, & &1.id) == ["pixtral-large-latest", "codestral-latest"]
+
+      assert {:ok, [%AIModel{id: "pixtral-large-latest"}]} =
+               OpenRouterClient.fetch_models("key", opts ++ [model_type: :vision])
+
+      assert {:ok, []} = OpenRouterClient.fetch_models("key", opts ++ [model_type: :image_gen])
+    end
+
+    test "a native chat capability takes precedence over an image-like model name", %{stub: stub} do
+      row = %{
+        "id" => "mistral-image-reader",
+        "capabilities" => %{"completion_chat" => true, "vision" => true}
+      }
+
+      Req.Test.stub(stub, &Req.Test.json(&1, %{"data" => [row]}))
+
+      assert {:ok, [%AIModel{id: "mistral-image-reader"}]} =
+               OpenRouterClient.fetch_models("key",
+                 base_url: @mistral,
+                 fallback_provider: "mistral",
+                 model_type: :text
+               )
+    end
+
+    test "DeepSeek's native modalities drive chat, vision and image-generation pickers",
+         %{stub: stub} do
+      image_model = %{
+        "id" => "deepseek-painter",
+        "input_modalities" => ["text", "image"],
+        "output_modalities" => ["image"]
+      }
+
+      Req.Test.stub(stub, &Req.Test.json(&1, %{"data" => @deepseek_models ++ [image_model]}))
+      opts = [base_url: @deepseek, fallback_provider: "deepseek"]
+
+      assert {:ok, chat} = OpenRouterClient.fetch_models("key", opts ++ [model_type: :text])
+      assert Enum.map(chat, & &1.id) == ["deepseek-v4-flash", "deepseek-v4-pro"]
+
+      assert {:ok, [%AIModel{id: "deepseek-v4-flash"}]} =
+               OpenRouterClient.fetch_models("key", opts ++ [model_type: :vision])
+
+      assert {:ok, [%AIModel{id: "deepseek-painter"}]} =
+               OpenRouterClient.fetch_models("key", opts ++ [model_type: :image_gen])
+    end
+
     test "DeepSeek's models carry their capabilities, context and output limit", %{stub: stub} do
       test_pid = self()
 

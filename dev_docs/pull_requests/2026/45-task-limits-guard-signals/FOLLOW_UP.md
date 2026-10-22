@@ -43,3 +43,11 @@ Re-armed warning/reached signals after forgiveness; mapped uniqueness conflicts;
 See [GPT_REVIEW.md](GPT_REVIEW.md) for evidence, regression coverage and the
 remaining design tradeoffs. This section supersedes the corresponding earlier
 “Not changed” entries; Claude's review is preserved.
+
+## GPT second recheck after PR #48 — 2026-10-22
+
+Fixed `TaskLimits.check/3` letting a connection-pool exit escape its documented
+fail-open boundary. The regression injects a repository exit and checks the
+default behavior and payload-free logging, together with #48's related paths.
+The Tasks page now receives task-setting changes from other sessions through
+the existing guard topic. See [GPT_REVIEW.md](GPT_REVIEW.md).

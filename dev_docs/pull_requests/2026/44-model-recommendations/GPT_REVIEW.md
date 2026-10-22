@@ -45,3 +45,10 @@ recommendations to frequently rerendered forms, as documented.
 
 See [the combined recheck](../../../reviews/2026-10-22-merged-pr-recheck.md)
 for the final full-suite and precommit results.
+
+## Second recheck after PRs #46 and #48
+
+Rechecked at `0f3f879` on 2026-10-22: the extracted recommendation panel retains
+gateway/provider prefill, task call estimates, refusal/cache-hit exclusions and
+caller-selected capability filters. Price ranking and native unpriced models
+were checked against PR #46's grouping changes. No additional defect found here.

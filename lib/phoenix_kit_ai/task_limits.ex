@@ -589,6 +589,10 @@ defmodule PhoenixKitAI.TaskLimits do
       )
 
       :ok
+  catch
+    :exit, _reason ->
+      Logger.warning("[PhoenixKitAI] task limits of #{inspect(spec.key)} not checked: exit")
+      :ok
   end
 
   # A caller may pass a visitor's own id as `user_uuid:`; the journal's

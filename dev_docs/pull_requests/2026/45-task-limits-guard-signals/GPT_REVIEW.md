@@ -65,3 +65,19 @@ Forgiveness retains the journal's existing second-level time precision.
 
 See [the combined recheck](../../../reviews/2026-10-22-merged-pr-recheck.md)
 for the final full-suite and precommit results.
+
+## Second recheck after PRs #46 and #48
+
+Rechecked at `0f3f879` on 2026-10-22: inheritance, calendar windows, forgiving,
+signal re-arming, admission tokens and current-session management rights were
+cross-checked against blocks and off-purpose reporting.
+
+### BUG - MEDIUM — connection-pool exits fail the caller (fixed)
+
+`TaskLimits.check/3` rescued exceptions but did not catch `:exit`, so a database
+disconnect escaped the documented fail-open result. It now catches exits and
+logs the failure class without the payload. The injected-repository regression
+also covers #48's related fallback boundaries; see its review for details.
+
+The Tasks page also reloads task settings received over the guard topic, so
+changes made by another administrator become visible on an already-open page.

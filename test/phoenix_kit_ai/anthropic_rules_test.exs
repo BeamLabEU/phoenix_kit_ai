@@ -186,6 +186,17 @@ defmodule PhoenixKitAI.AnthropicRulesTest do
       for {key, value} <- headers, key == name, do: value
     end
 
+    test "native image-input capabilities populate the vision list, without image generation" do
+      stub_models()
+      opts = [base_url: @anthropic, fallback_provider: "anthropic"]
+
+      assert {:ok, [%AIModel{id: "claude-opus-5-5"}]} =
+               OpenRouterClient.fetch_models("sk-ant-test", opts ++ [model_type: :vision])
+
+      assert {:ok, []} =
+               OpenRouterClient.fetch_models("sk-ant-test", opts ++ [model_type: :image_gen])
+    end
+
     test "carries the headers the core registry declares for the provider" do
       :ok = ModuleRegistry.register(RegistryProvider)
       on_exit(fn -> ModuleRegistry.unregister(RegistryProvider) end)

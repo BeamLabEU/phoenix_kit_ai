@@ -861,10 +861,10 @@ defmodule PhoenixKitAI.OpenRouterClient do
 
   defp normalize_models(models, model_type, kind) do
     models
-    |> Enum.filter(&model_matches_type?(&1, model_type))
-    |> Enum.map(fn model ->
+    |> Enum.map(&{&1, catalogue_capabilities(kind, &1)})
+    |> Enum.filter(fn {model, caps} -> model_matches_type?(model, model_type, caps) end)
+    |> Enum.map(fn {model, capabilities} ->
       top_provider = model["top_provider"] || %{}
-      capabilities = catalogue_capabilities(kind, model)
 
       %AIModel{
         id: model["id"],
@@ -997,7 +997,10 @@ defmodule PhoenixKitAI.OpenRouterClient do
   # no sampling parameters.
   defp normalize_anthropic_models(rows, model_type) do
     rows
-    |> Enum.filter(&(is_binary(&1["id"]) and model_matches_type?(&1, model_type)))
+    |> Enum.filter(fn row ->
+      is_binary(row["id"]) and
+        model_matches_type?(row, model_type, Capabilities.from_anthropic(row))
+    end)
     |> Enum.map(fn row ->
       %AIModel{
         id: row["id"],
@@ -1016,6 +1019,40 @@ defmodule PhoenixKitAI.OpenRouterClient do
   # - "text+image->text" = multimodal input, text output (vision models)
   # - "text->text+image" = pure text-to-image generation
   # - "text+image->text+image" = multimodal with image generation (can edit images)
+
+  # Native catalogues have capability fields instead of OpenRouter's
+  # architecture. Use their answers first, retaining the old heuristics
+  # where the provider has not described the model.
+  defp model_matches_type?(model, :text, caps) do
+    text? =
+      case {caps.text_output, output_modalities(model)} do
+        {false, _outputs} -> false
+        {_text, ["text"]} -> true
+        {_text, [_ | _]} -> false
+        {true, []} -> true
+        _ -> model_matches_type?(model, :text)
+      end
+
+    text? and caps.image_output != :yes and not tts_model?(model)
+  end
+
+  defp model_matches_type?(model, :vision, caps) do
+    case caps.vision do
+      :yes -> caps.text_output != false and caps.image_output != :yes
+      :no -> false
+      :unknown -> model_matches_type?(model, :vision)
+    end
+  end
+
+  defp model_matches_type?(model, :image_gen, caps) do
+    case caps.image_output do
+      :yes -> true
+      :no -> false
+      :unknown -> model_matches_type?(model, :image_gen)
+    end
+  end
+
+  defp model_matches_type?(model, type, _caps), do: model_matches_type?(model, type)
 
   defp model_matches_type?(_model, :all), do: true
 
@@ -1111,6 +1148,8 @@ defmodule PhoenixKitAI.OpenRouterClient do
   # OpenRouter lists `output_modalities`; the older `modality` string carries
   # the same on its right side ("text+image->text"). `[]` when the model
   # declares neither.
+  defp output_modalities(%{"output_modalities" => outputs}) when is_list(outputs), do: outputs
+
   defp output_modalities(model) do
     architecture = model["architecture"] || %{}
 

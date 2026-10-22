@@ -553,6 +553,10 @@ defmodule PhoenixKitAI.Guard do
       )
 
       nil
+  catch
+    :exit, _reason ->
+      Logger.warning("[PhoenixKitAI] settings of #{inspect(task_key)} not read: exit")
+      nil
   end
 
   @doc """
@@ -668,6 +672,10 @@ defmodule PhoenixKitAI.Guard do
   rescue
     error ->
       Logger.warning("[PhoenixKitAI] anomaly rules not checked: #{inspect(error.__struct__)}")
+      :ok
+  catch
+    :exit, _reason ->
+      Logger.warning("[PhoenixKitAI] anomaly rules not checked: exit")
       :ok
   end
 

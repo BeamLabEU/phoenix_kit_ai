@@ -32,3 +32,11 @@ for this latency issue.
 
 See [the combined recheck](../../../reviews/2026-10-22-merged-pr-recheck.md)
 for the final full-suite and precommit results.
+
+## Second recheck after PRs #46 and #48
+
+Rechecked at `0f3f879` on 2026-10-22: cache refresh/retry/snapshot behavior and
+declaration precedence remain consistent with the added capability flags and
+catalogues. Removed the compiler warning from matching a floating-point zero in
+the pricing test; the assertion still checks the returned price. Native model
+filtering repairs are documented under PR #46.

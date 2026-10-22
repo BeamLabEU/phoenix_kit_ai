@@ -31,6 +31,7 @@ defmodule PhoenixKitAI.Web.Tasks do
 
   import Ecto.Query, only: [from: 2]
 
+  alias PhoenixKit.PubSub.Manager, as: PubSub
   alias PhoenixKit.Settings
   alias PhoenixKit.Users.Auth
   alias PhoenixKit.Users.Auth.User
@@ -45,7 +46,10 @@ defmodule PhoenixKitAI.Web.Tasks do
 
   @impl true
   def mount(_params, session, socket) do
-    if connected?(socket), do: Capabilities.subscribe()
+    if connected?(socket) do
+      Capabilities.subscribe()
+      PubSub.subscribe(TaskLimits.topic())
+    end
 
     socket =
       socket
@@ -312,6 +316,15 @@ defmodule PhoenixKitAI.Web.Tasks do
   @impl true
   def handle_info({:capabilities_refreshed, _base_urls}, socket),
     do: {:noreply, load_tasks(socket)}
+
+  def handle_info({event, _key}, socket)
+      when event in [:guard_blocks_changed, :task_limits_changed] do
+    {:noreply,
+     socket
+     |> assign(:can_manage, Access.may_manage?(socket))
+     |> load_guard()
+     |> load_tasks()}
+  end
 
   # Catch-all for messages from other topics: shape only, never content.
   def handle_info(msg, socket) do

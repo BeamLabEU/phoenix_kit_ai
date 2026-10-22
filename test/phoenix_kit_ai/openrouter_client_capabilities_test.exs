@@ -47,7 +47,11 @@ defmodule PhoenixKitAI.OpenRouterClientCapabilitiesTest do
         "output_modalities" => ["image", "text"]
       }
     },
-    %{"id" => "openai/dall-e", "architecture" => %{"modality" => "text->image"}}
+    %{"id" => "openai/dall-e", "architecture" => %{"modality" => "text->image"}},
+    %{
+      "id" => "vendor/audio-output",
+      "architecture" => %{"output_modalities" => ["text", "audio"]}
+    }
   ]
 
   describe "the chat list" do

@@ -46,3 +46,11 @@ those rows would change the usage/audit contract and is outside this repair.
 
 See [the combined recheck](../../../reviews/2026-10-22-merged-pr-recheck.md)
 for the final full-suite and precommit results.
+
+## Second recheck after PRs #46 and #48
+
+Rechecked at `0f3f879` on 2026-10-22: task discovery, implied requirements,
+model-override boundaries, refusal rows, request UUIDs and cache accounting were
+cross-checked against native capability support and block admission. No additional
+call-routing defect was found. Removed an unused default argument in the request
+rules test helper so the suite compiles without that warning.

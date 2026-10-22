@@ -93,7 +93,7 @@ defmodule PhoenixKitAI.GuardBlocks do
   def check(%TaskSpec{} = spec, user_uuid) when is_binary(user_uuid) do
     group = group(spec)
 
-    if Map.has_key?(cached(), {group, user_uuid}),
+    if active_in_group(group, user_uuid),
       do: {:error, {:task_blocked, group}},
       else: :ok
   rescue
@@ -102,6 +102,10 @@ defmodule PhoenixKitAI.GuardBlocks do
         "[PhoenixKitAI] blocks of #{inspect(spec.key)} not checked: #{inspect(error.__struct__)}"
       )
 
+      :ok
+  catch
+    :exit, _reason ->
+      Logger.warning("[PhoenixKitAI] blocks of #{inspect(spec.key)} not checked: exit")
       :ok
   end
 
@@ -147,11 +151,20 @@ defmodule PhoenixKitAI.GuardBlocks do
   defp active_block(task_key, user_uuid) when is_binary(user_uuid) do
     case Tasks.get(task_key) do
       nil -> nil
-      spec -> Map.get(cached(), {group(spec), user_uuid})
+      spec -> active_in_group(group(spec), user_uuid)
     end
   end
 
   defp active_block(_task_key, _user_uuid), do: nil
+
+  # The database stores canonical UUIDs; callers may use upper-case hex or
+  # the 16-byte representation that Ecto also accepts.
+  defp active_in_group(group, user_uuid) do
+    case Ecto.UUID.cast(user_uuid) do
+      {:ok, uuid} -> Map.get(cached(), {group, uuid})
+      :error -> nil
+    end
+  end
 
   @doc "The active blocks of a group, newest first (from the database)."
   @spec list_active(String.t()) :: [GuardBlock.t()]

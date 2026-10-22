@@ -104,6 +104,32 @@ defmodule PhoenixKitAI.GuardBlocksTest do
     do: TestRepo.all(from(n in Notification, where: n.recipient_uuid == ^user_uuid))
 
   describe "a block refuses the calls" do
+    test "equivalent UUID spellings cannot bypass a block", %{owner_scope: owner} do
+      stub_chat(self())
+      ep = endpoint_fixture()
+      user = Fixtures.user_fixture().uuid
+      {:ok, block} = Guard.block(owner, "agent.chat", user, "Private reason", nil)
+
+      for identity <- [String.upcase(user), Ecto.UUID.dump!(user)] do
+        assert Guard.blocked?("ai.playground", identity)
+
+        assert %GuardBlock{uuid: block_uuid, reason: nil} =
+                 GuardBlocks.active("ai.playground", identity)
+
+        assert block_uuid == block.uuid
+
+        assert {:error, {:task_blocked, "free_text"}} =
+                 Guard.admit("agent.chat", identity, "turn", 300)
+      end
+
+      assert {:error, {:task_blocked, "free_text"}} =
+               PhoenixKitAI.ask(ep.uuid, "hi", task: "agent.chat", user_uuid: String.upcase(user))
+
+      refute_received :provider_called
+      refute Guard.blocked?("agent.chat", "external-id")
+      assert GuardBlocks.active("agent.chat", "external-id") == nil
+    end
+
     test "before HTTP, with a refusal row naming the task and no usage sink", %{
       owner_scope: owner
     } do

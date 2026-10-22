@@ -113,6 +113,26 @@ defmodule PhoenixKitAI.Web.TasksBlocksTest do
   end
 
   describe "blocking and lifting" do
+    test "another administrator's block and lift update an open page", %{
+      conn: conn,
+      person: person,
+      owner: owner
+    } do
+      {user, _role} = role_with(["ai"])
+      view = open(conn, user)
+      refute has_element?(view, "#{@private} [data-active-block]")
+
+      {:ok, block} =
+        Guard.block(Scope.for_user(owner), "test.private", person.uuid, "PRIVATE-BLOCK", nil)
+
+      assert has_element?(view, "#{@private} [data-active-block='#{person.uuid}']")
+      refute render(view) =~ "PRIVATE-BLOCK"
+
+      {:ok, _} = Guard.unblock(Scope.for_user(owner), block, "PRIVATE-NOTE")
+      refute has_element?(view, "#{@private} [data-active-block]")
+      refute render(view) =~ "PRIVATE-NOTE"
+    end
+
     test "from a flag: the block is set with its reason and shown; then lifted with a note",
          %{conn: conn, person: person, flag: flag} do
       {user, _role} = role_with(["ai", "ai.manage"])
@@ -212,6 +232,24 @@ defmodule PhoenixKitAI.Web.TasksBlocksTest do
   end
 
   describe "the self-flag switch" do
+    test "a guard-mode change by another administrator updates an open page", %{
+      conn: conn,
+      owner: owner
+    } do
+      {user, _role} = role_with(["ai"])
+      view = open(conn, user)
+      assert has_element?(view, "#{@open} [data-self-flag][checked]")
+
+      assert {:ok, _} =
+               PhoenixKitAI.TaskLimits.set_guard_mode(
+                 Scope.for_user(owner),
+                 "test.flagged",
+                 "off"
+               )
+
+      assert has_element?(view, "#{@open} [data-self-flag]:not([checked])")
+    end
+
     test "turns self-flagging off and on again; shown only where the task self-flags",
          %{conn: conn} do
       {user, _role} = role_with(["ai", "ai.manage"])

@@ -43,8 +43,10 @@ defmodule PhoenixKitAI.CapabilitiesTest do
 
       assert %Capabilities{prompt_price: nil} = Capabilities.from_openrouter(%{"id" => "x"})
 
-      assert %Capabilities{prompt_price: 0.0} =
+      assert %Capabilities{prompt_price: price} =
                Capabilities.from_openrouter(%{"pricing" => %{"prompt" => "0"}})
+
+      assert price == 0.0
     end
 
     test "an Anthropic row has a name and text output, and no price" do

@@ -183,7 +183,7 @@ defmodule PhoenixKitAI.RequestRulesTest do
     endpoint
   end
 
-  defp anthropic_endpoint(attrs \\ %{}) do
+  defp anthropic_endpoint(attrs) do
     endpoint(
       Map.merge(
         %{provider: "anthropic", base_url: @anthropic, model: "claude-takes-disabled"},
