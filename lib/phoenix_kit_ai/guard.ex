@@ -9,12 +9,17 @@ defmodule PhoenixKitAI.Guard do
 
   | verb | implied |
   |---|---|
-  | `complete/3`, `ask/3`, `ask_with_prompt/4`, `complete_with_system_prompt/5` | `image_url` parts in the messages → `:vision`; `tools:` → `:tools`; `schema:` / `json:` → `:json` |
+  | `complete/3`, `ask/3`, `ask_with_prompt/4`, `complete_with_system_prompt/5` | `image_url` parts in the messages → `:vision`; `file` parts → `:file_input` (string or atom keys either way); `tools:` → `:tools`; `schema:` / `json:` → `:json` |
   | `describe_image/3` | `:vision`; `:json` with `schema:` / `json:` |
   | `extract_text/3`, `compare_images/4` | `:vision`, `:json` |
-  | `embed/3`, `speak/3`, `generate_image/3`, `edit_image/4`, `process_image/4` | nothing (images given to a generation model are not vision) |
+  | `generate_image/3`, `edit_image/4`, `process_image/4` | `:image_output` (images given to a generation model are not vision) |
+  | `embed/3`, `speak/3` | nothing |
 
-  A hard need (`:vision`, `:tools`, `:json_schema`) the model says no to
+  The model checked is the one the verb sends: a `model:` override of the
+  vision and image verbs, the endpoint's model otherwise.
+
+  A hard need (`:vision`, `:file_input`, `:image_output`, `:tools`,
+  `:json_schema`) the model says no to
   refuses the call with `{:error, {:model_unfit, missing}}`. A need nobody
   knows about lets the call through, unless the module setting
   `ai_guard_verified_models_only` is on — then it refuses with
@@ -113,7 +118,8 @@ defmodule PhoenixKitAI.Guard do
 
   def implied_needs(:complete, opts, messages) do
     []
-    |> add_if(:vision, has_image_part?(messages))
+    |> add_if(:vision, has_part?(messages, "image_url"))
+    |> add_if(:file_input, has_part?(messages, "file"))
     |> add_if(:tools, match?([_ | _], opts[:tools]))
     |> add_if(:json, json_requested?(opts))
   end
@@ -123,6 +129,10 @@ defmodule PhoenixKitAI.Guard do
 
   def implied_needs(verb, _opts, _input) when verb in [:extract_text, :compare_images],
     do: [:vision, :json]
+
+  def implied_needs(verb, _opts, _input)
+      when verb in [:generate_image, :edit_image, :process_image],
+      do: [:image_output]
 
   def implied_needs(_verb, _opts, _input), do: []
 
@@ -439,22 +449,22 @@ defmodule PhoenixKitAI.Guard do
 
   defp json_requested?(opts), do: is_map(opts[:schema]) or opts[:json] == true
 
-  defp has_image_part?(messages) when is_list(messages),
-    do: Enum.any?(messages, &(&1 |> content() |> image_content?()))
+  defp has_part?(messages, type) when is_list(messages),
+    do: Enum.any?(messages, &(&1 |> content() |> part_of_type?(type)))
 
-  defp has_image_part?(_messages), do: false
+  defp has_part?(_messages, _type), do: false
 
   defp content(%{} = message), do: message[:content] || message["content"]
   defp content(_message), do: nil
 
-  defp image_content?(parts) when is_list(parts) do
+  defp part_of_type?(parts, type) when is_list(parts) do
     Enum.any?(parts, fn
-      %{} = part -> to_string(part[:type] || part["type"]) == "image_url"
+      %{} = part -> to_string(part[:type] || part["type"]) == type
       _ -> false
     end)
   end
 
-  defp image_content?(_content), do: false
+  defp part_of_type?(_content, _type), do: false
 
   defp add_if(list, need, true), do: list ++ [need]
   defp add_if(list, _need, _false), do: list

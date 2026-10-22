@@ -18,9 +18,10 @@ defmodule PhoenixKitAI.TaskSpec do
       end
 
   The key is a string prefixed with the module's key. `needs` says what the
-  model has to be able to do: `:vision` (images in), `:tools`,
-  `:json_schema` (a strict JSON schema) — hard requirements a call is
-  refused for — and `:json` (any JSON; soft, only noted). `endpoints` is an
+  model has to be able to do: `:vision` (images in), `:file_input`
+  (documents such as PDF in), `:image_output` (it generates images),
+  `:tools`, `:json_schema` (a strict JSON schema) — hard requirements a
+  call is refused for — and `:json` (any JSON; soft, only noted). `endpoints` is an
   `{module, function, args}` returning the endpoints the task uses now (uuids
   or `%PhoenixKitAI.Endpoint{}`s, a single one, `{:ok, uuid}` or `nil`).
 
@@ -43,7 +44,7 @@ defmodule PhoenixKitAI.TaskSpec do
   that declared the task, and whether that module is switched on.
   """
 
-  @type need :: :vision | :tools | :json_schema | :json
+  @type need :: :vision | :file_input | :image_output | :tools | :json_schema | :json
   @type mfa_ref :: {module(), atom(), list()}
 
   @type t :: %__MODULE__{
@@ -89,8 +90,8 @@ defmodule PhoenixKitAI.TaskSpec do
             module: nil,
             enabled: true
 
-  @needs [:vision, :tools, :json_schema, :json]
-  @hard_needs [:vision, :tools, :json_schema]
+  @needs [:vision, :file_input, :image_output, :tools, :json_schema, :json]
+  @hard_needs [:vision, :file_input, :image_output, :tools, :json_schema]
 
   @doc "Every requirement a task or a call can have."
   @spec needs() :: [need()]

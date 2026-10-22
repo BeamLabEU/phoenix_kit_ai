@@ -3681,7 +3681,8 @@ defmodule PhoenixKitAI do
           {:ok, %{images: [%{url: String.t() | nil, data: binary() | nil}]}} | {:error, term()}
   def generate_image(endpoint_uuid, prompt, opts \\ []) when is_binary(prompt) do
     with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
-         {:ok, admission} <- authorize(endpoint, opts, :generate_image, []) do
+         {:ok, admission} <-
+           authorize(endpoint, opts, :generate_image, Guard.implied_needs(:generate_image, opts)) do
       {auto_source, stacktrace, caller_context} = capture_caller_info()
       source = Keyword.get(opts, :source) || auto_source
       caller_context = Map.put(caller_context, :user_uuid, opts[:user_uuid])
@@ -3735,7 +3736,8 @@ defmodule PhoenixKitAI do
   def edit_image(endpoint_uuid, prompt, images, opts \\ [])
       when is_binary(prompt) and is_list(images) do
     with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
-         {:ok, admission} <- authorize(endpoint, opts, :edit_image, []) do
+         {:ok, admission} <-
+           authorize(endpoint, opts, :edit_image, Guard.implied_needs(:edit_image, opts)) do
       {auto_source, stacktrace, caller_context} = capture_caller_info()
       source = Keyword.get(opts, :source) || auto_source
       caller_context = Map.put(caller_context, :user_uuid, opts[:user_uuid])
@@ -3792,7 +3794,13 @@ defmodule PhoenixKitAI do
   def process_image(endpoint_uuid, images, operations, opts \\ []) when is_list(images) do
     with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
          {:ok, admission} <-
-           authorize(endpoint, opts, :process_image, [], !Keyword.get(opts, :dry_run, false)) do
+           authorize(
+             endpoint,
+             opts,
+             :process_image,
+             Guard.implied_needs(:process_image, opts),
+             !Keyword.get(opts, :dry_run, false)
+           ) do
       {auto_source, stacktrace, caller_context} = capture_caller_info()
       source = Keyword.get(opts, :source) || auto_source
       caller_context = Map.put(caller_context, :user_uuid, opts[:user_uuid])

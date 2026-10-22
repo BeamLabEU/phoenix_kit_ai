@@ -15,8 +15,8 @@ defmodule PhoenixKitAI.Tasks do
 
   ## Fitness
 
-  `fitness/2` compares a task's hard needs (`:vision`, `:tools`,
-  `:json_schema`) with `PhoenixKitAI.Capabilities.for_endpoint/1` (the
+  `fitness/2` compares a task's hard needs (`:vision`, `:file_input`,
+  `:image_output`, `:tools`, `:json_schema`) with `PhoenixKitAI.Capabilities.for_endpoint/1` (the
   catalogue, the endpoint's declaration filling what it does not know):
   `:fit`, `{:unfit, missing}` when the model says no to something, or
   `{:unknown, unclear}` when nobody knows. `:json` is soft — the module falls

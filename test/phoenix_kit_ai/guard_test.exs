@@ -174,14 +174,30 @@ defmodule PhoenixKitAI.GuardTest do
       assert Guard.implied_needs(:complete, [tools: []], []) == []
     end
 
-    test "vision verbs need images; generation verbs need nothing" do
+    test "vision verbs need images; generation verbs need image output, not images in" do
       assert Guard.implied_needs(:describe_image, []) == [:vision]
       assert Guard.implied_needs(:describe_image, json: true) == [:vision, :json]
       assert Guard.implied_needs(:extract_text, []) == [:vision, :json]
       assert Guard.implied_needs(:compare_images, []) == [:vision, :json]
 
-      for verb <- [:embed, :speak, :generate_image, :edit_image, :process_image],
-          do: assert(Guard.implied_needs(verb, []) == [])
+      for verb <- [:generate_image, :edit_image, :process_image],
+          do: assert(Guard.implied_needs(verb, []) == [:image_output])
+
+      for verb <- [:embed, :speak], do: assert(Guard.implied_needs(verb, []) == [])
+    end
+
+    test "chat: file parts with string or atom keys need documents" do
+      string_part = %{"type" => "file", "file" => %{"filename" => "a.pdf", "file_data" => "x"}}
+      atom_part = %{type: "file", file: %{filename: "a.pdf", file_data: "x"}}
+
+      assert Guard.implied_needs(:complete, [], image_message(string_part)) == [:file_input]
+      assert Guard.implied_needs(:complete, [], image_message(atom_part)) == [:file_input]
+
+      image = %{type: "image_url", image_url: %{url: @image_url}}
+
+      assert Guard.implied_needs(:complete, [], [
+               %{role: "user", content: [image, string_part]}
+             ]) == [:vision, :file_input]
     end
   end
 
@@ -295,7 +311,7 @@ defmodule PhoenixKitAI.GuardTest do
                rows(ep)
     end
 
-    test "a generation verb implies nothing: a vision-less model may take images" do
+    test "a generation verb does not imply vision: a vision-less model may take images" do
       Req.Test.stub(__MODULE__, fn conn ->
         Req.Test.json(conn, %{"data" => [%{"b64_json" => Base.encode64(@png)}]})
       end)
@@ -343,6 +359,101 @@ defmodule PhoenixKitAI.GuardTest do
                rows(ep)
     after
       Budget.set_limit(:global, 0)
+    end
+  end
+
+  describe "documents and image generation" do
+    test "a file part to a model without documents is refused before any HTTP" do
+      stub()
+      ep = endpoint(nil, %{"file_input" => "no"})
+      part = %{"type" => "file", "file" => %{"filename" => "a.pdf", "file_data" => "x"}}
+
+      assert {:error, {:model_unfit, [:file_input]}} =
+               PhoenixKitAI.complete(ep.uuid, image_message(part))
+
+      refute_received {:post, _, _}
+      assert [%{metadata: %{"refused" => true}}] = rows(ep)
+
+      ok = endpoint(nil, %{"file_input" => "yes"})
+      assert {:ok, _} = PhoenixKitAI.complete(ok.uuid, image_message(part))
+    end
+
+    test "generating or editing an image on a model that cannot make one is refused" do
+      stub()
+      ep = endpoint(nil, %{"image_output" => "no"})
+
+      assert {:error, {:model_unfit, [:image_output]}} =
+               PhoenixKitAI.generate_image(ep.uuid, "a cat")
+
+      assert {:error, {:model_unfit, [:image_output]}} =
+               PhoenixKitAI.edit_image(ep.uuid, "make it blue", [@jpeg])
+
+      assert {:error, {:model_unfit, [:image_output]}} =
+               PhoenixKitAI.process_image(ep.uuid, [@jpeg], [:enhance], dry_run: true)
+
+      refute_received {:post, _, _}
+    end
+
+    test "the model a generation verb sends is the one checked" do
+      Req.Test.stub(__MODULE__, fn conn ->
+        case conn.method do
+          "GET" ->
+            Req.Test.json(conn, %{
+              "data" => [
+                %{
+                  "id" => "vendor/painter",
+                  "architecture" => %{
+                    "input_modalities" => ["text", "image"],
+                    "output_modalities" => ["image", "text"]
+                  }
+                },
+                %{
+                  "id" => "vendor/writer",
+                  "architecture" => %{
+                    "input_modalities" => ["text"],
+                    "output_modalities" => ["text"]
+                  }
+                }
+              ]
+            })
+
+          "POST" ->
+            Req.Test.json(conn, %{"data" => [%{"b64_json" => Base.encode64(@png)}]})
+        end
+      end)
+
+      writer = endpoint("vendor/writer")
+      painter = endpoint("vendor/painter")
+      start_catalogue()
+
+      assert {:error, {:model_unfit, [:image_output]}} =
+               PhoenixKitAI.generate_image(writer.uuid, "a cat")
+
+      assert {:ok, %{images: [_]}} =
+               PhoenixKitAI.generate_image(writer.uuid, "a cat", model: "vendor/painter")
+
+      assert {:error, {:model_unfit, [:image_output]}} =
+               PhoenixKitAI.generate_image(painter.uuid, "a cat", model: "vendor/writer")
+    end
+
+    test "a task may need both; unknown passes unless only verified models are allowed" do
+      stub()
+      ep = endpoint()
+
+      assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "hi", task: "test.documents")
+
+      {:ok, _} =
+        PhoenixKit.Settings.update_boolean_setting_with_module(
+          Guard.verified_only_setting(),
+          true,
+          "ai"
+        )
+
+      assert {:error, {:model_unverified, [:file_input]}} =
+               PhoenixKitAI.ask(ep.uuid, "hi", task: "test.documents")
+
+      assert PhoenixKitAI.Errors.message({:model_unfit, [:file_input, :image_output]}) =~
+               "documents, image generation"
     end
   end
 
