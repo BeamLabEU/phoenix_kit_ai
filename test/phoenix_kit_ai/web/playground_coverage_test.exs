@@ -11,6 +11,7 @@ defmodule PhoenixKitAI.Web.PlaygroundCoverageTest do
 
   alias PhoenixKit.Test.Fixtures
   alias PhoenixKit.Users.Auth.Scope
+  alias PhoenixKitAI.Web.Playground
 
   setup do
     Application.put_env(:phoenix_kit_ai, :req_options,
@@ -323,6 +324,32 @@ defmodule PhoenixKitAI.Web.PlaygroundCoverageTest do
 
       assert html =~ "hero-currency-dollar"
       assert html =~ "$0.0021"
+    end
+
+    test "a usage row of another endpoint gives no cost" do
+      mine = fixture_endpoint()
+      other = fixture_endpoint()
+
+      {:ok, row} =
+        PhoenixKitAI.create_request(%{
+          endpoint_uuid: other.uuid,
+          endpoint_name: other.name,
+          model: other.model,
+          status: "success",
+          input_tokens: 1,
+          output_tokens: 1,
+          total_tokens: 2,
+          cost_cents: 1_400_000,
+          latency_ms: 5
+        })
+
+      response = %{
+        "request_uuid" => row.uuid,
+        "usage" => %{"prompt_tokens" => 1, "completion_tokens" => 1, "total_tokens" => 2}
+      }
+
+      assert %{cost_cents: nil} = Playground.response_usage(response, mine.uuid)
+      assert %{cost_cents: 1_400_000} = Playground.response_usage(response, other.uuid)
     end
 
     test "a call nothing prices shows no cost", %{conn: conn} do
