@@ -584,7 +584,7 @@ defmodule PhoenixKitAI.Guard do
          true <- self_flag?(spec) || :off,
          {:ok, ref} <- flag_ref(ref),
          {:ok, user_uuid} <- reported_user(user_uuid) do
-      GuardEvents.off_purpose(spec, user_uuid, GuardBlocks.text(reason), ref)
+      GuardEvents.off_purpose(spec, user_uuid, flag_reason(reason), ref)
     end
   rescue
     error ->
@@ -594,6 +594,14 @@ defmodule PhoenixKitAI.Guard do
     :exit, _reason ->
       Logger.warning("[PhoenixKitAI] off-purpose flag not recorded: exit")
       {:error, :not_recorded}
+  end
+
+  # The model's reason can echo the user's words whatever the instruction
+  # asks, so it is kept only while request content is (`:capture_request_content`);
+  # the flag itself is kept either way.
+  defp flag_reason(reason) do
+    if Application.get_env(:phoenix_kit_ai, :capture_request_content, true),
+      do: GuardBlocks.text(reason)
   end
 
   defp reported_task(task) do

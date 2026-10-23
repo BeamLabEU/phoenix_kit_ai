@@ -2246,7 +2246,7 @@ defmodule PhoenixKitAI do
           ilike(p.name, ^pattern) or
             ilike(p.description, ^pattern) or
             ilike(p.content, ^pattern),
-        order_by: [asc: p.sort_order, desc: p.inserted_at],
+        order_by: [asc: p.sort_order, desc: p.inserted_at, asc: p.uuid],
         limit: ^limit
       )
 
@@ -2267,7 +2267,7 @@ defmodule PhoenixKitAI do
     query =
       from(p in Prompt,
         where: ^variable_name in p.variables,
-        order_by: [asc: p.sort_order, desc: p.inserted_at]
+        order_by: [asc: p.sort_order, desc: p.inserted_at, asc: p.uuid]
       )
 
     repo().all(query)
@@ -2499,11 +2499,13 @@ defmodule PhoenixKitAI do
               :status,
               :endpoint_name
             ] do
-    order_by(query, [r], [{^dir, field(r, ^field)}])
+    # `inserted_at` has second precision: the uuid (time-ordered) breaks a tie,
+    # so a page boundary inside one second neither repeats nor skips a row.
+    order_by(query, [r], [{^dir, field(r, ^field)}, {^dir, r.uuid}])
   end
 
   defp apply_request_sorting(query, _field, _dir) do
-    order_by(query, [r], desc: r.inserted_at)
+    order_by(query, [r], desc: r.inserted_at, desc: r.uuid)
   end
 
   @doc """

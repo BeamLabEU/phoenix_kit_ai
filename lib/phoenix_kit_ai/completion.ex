@@ -880,7 +880,7 @@ defmodule PhoenixKitAI.Completion do
   defp anthropic_version(id) when is_binary(id) do
     id = id |> String.split("/") |> List.last()
 
-    case Regex.run(~r/^claude-[a-z]+-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?$/, id) ||
+    case Regex.run(~r/^claude-[a-z]+-(\d+)(?:-(\d{1,2}))?(?:-(?:\d{8}|latest))?$/, id) ||
            Regex.run(~r/^claude-(\d+)(?:-(\d{1,2}))?-[a-z]+/, id) do
       [_, major] -> {String.to_integer(major), 0}
       [_, major, minor] -> {String.to_integer(major), String.to_integer(minor)}

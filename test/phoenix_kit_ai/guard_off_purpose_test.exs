@@ -119,6 +119,18 @@ defmodule PhoenixKitAI.GuardOffPurposeTest do
       assert length(events("off_purpose")) == 2
     end
 
+    test "the reason is kept only while request content is captured" do
+      Application.put_env(:phoenix_kit_ai, :capture_request_content, false)
+      on_exit(fn -> Application.delete_env(:phoenix_kit_ai, :capture_request_content) end)
+
+      user = Fixtures.user_fixture().uuid
+
+      assert {:ok, %GuardEvent{kind: "off_purpose", reason: nil}} =
+               Guard.report_off_purpose("agent.chat", user, "SECRET-FLAG-REASON", "turn-1")
+
+      assert [%GuardEvent{reason: nil}] = events("off_purpose")
+    end
+
     test "one flag per call, by the journal row; the row is linked" do
       user = Fixtures.user_fixture().uuid
       stub_chat(10)

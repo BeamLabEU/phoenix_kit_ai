@@ -739,7 +739,8 @@ Test database `phoenix_kit_ai_test`.
   override when set), "refuse politely and flag", "judge only the user's
   own message" and "no quote in the reason"; `report_off_purpose/4` writes
   one `off_purpose` event per turn (`%{turn_ref: …}`) or call (the row's
-  request uuid), reason ≤ 500, a no-op (`:off`) while the task does not
+  request uuid), reason ≤ 500 (kept only while `capture_request_content?/0`
+  is true, like any text that can echo the user), a no-op (`:off`) while the task does not
   self-flag, and tells the watchers once a day per person and task
   (`off_purpose_signal`, no reason). Anomaly rules of a declaration
   (`sources`, `max_calls_per_hour` per person, `max_tokens_per_call`) are

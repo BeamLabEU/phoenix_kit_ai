@@ -123,11 +123,13 @@ defmodule PhoenixKitAI.AnthropicPricing do
     end
   end
 
-  # A configured rate wins over the table; a malformed one is left out.
+  # A configured rate wins over the table; a malformed one is left out, and so
+  # is a setting that is neither a map nor a list (a call is never failed by it).
   defp rates do
     configured =
       :phoenix_kit_ai
       |> Application.get_env(:anthropic_prices, %{})
+      |> configured_prices()
       |> Enum.filter(fn
         {id, {input, output}} ->
           is_binary(id) and is_number(input) and input >= 0 and is_number(output) and output >= 0
@@ -139,4 +141,7 @@ defmodule PhoenixKitAI.AnthropicPricing do
 
     Map.merge(@rates, configured)
   end
+
+  defp configured_prices(prices) when is_map(prices) or is_list(prices), do: prices
+  defp configured_prices(_prices), do: []
 end
