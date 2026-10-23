@@ -507,7 +507,11 @@ defmodule PhoenixKitAI.RequestRulesTest do
       assert [%{status: "error", error_message: message, metadata: metadata}] =
                TestRepo.all(from(r in Request, where: r.endpoint_uuid == ^ep.uuid))
 
-      assert message == Errors.message({:no_provider_for_params, params})
+      # The module's text, then the provider's own words.
+      assert message ==
+               Errors.message({:no_provider_for_params, params}) <>
+                 " — No endpoints found that can handle the requested parameters."
+
       refute metadata["refused"]
     end
 

@@ -22,7 +22,7 @@ defmodule PhoenixKitAI.Completion do
 
   require Logger
 
-  alias PhoenixKitAI.{Capabilities, Endpoint, Images, OpenRouterClient, Provider}
+  alias PhoenixKitAI.{Capabilities, Endpoint, Images, OpenRouterClient, Provider, ProviderError}
 
   @timeout 120_000
 
@@ -138,15 +138,31 @@ defmodule PhoenixKitAI.Completion do
   @doc false
   # Public for testability. Maps an HTTP status + response body to a
   # `{:error, reason}` tuple where `reason` is an atom or tagged tuple.
-  def handle_error_status(401, _body), do: {:error, :invalid_api_key}
-  def handle_error_status(402, _body), do: {:error, :insufficient_credits}
-  def handle_error_status(429, _body), do: {:error, :rate_limited}
+  # The body decides where the providers document that the status alone
+  # misleads — money sent as a 429, say (`ProviderError`) — and what it
+  # said is noted for the request row.
+  def handle_error_status(status, response_body) do
+    error = ProviderError.parse(response_body)
+
+    result =
+      case ProviderError.class(status, error) do
+        nil -> status_error(status, response_body)
+        class -> {:error, class}
+      end
+
+    :ok = ProviderError.note(status, error, result)
+    result
+  end
+
+  defp status_error(401, _body), do: {:error, :invalid_api_key}
+  defp status_error(402, _body), do: {:error, :insufficient_credits}
+  defp status_error(429, _body), do: {:error, :rate_limited}
 
   # OpenRouter's answer to `provider.require_parameters` when no upstream
   # provider of the model takes every parameter sent. The model itself is
   # fine; the set of parameters is not. `chat_completion/3` fills in which
   # parameters were sent.
-  def handle_error_status(404, response_body) do
+  defp status_error(404, response_body) do
     message = extract_error_message(response_body) || ""
 
     if message =~ ~r/requested parameters/i do
@@ -160,7 +176,7 @@ defmodule PhoenixKitAI.Completion do
     end
   end
 
-  def handle_error_status(status, response_body), do: generic_error_status(status, response_body)
+  defp status_error(status, response_body), do: generic_error_status(status, response_body)
 
   defp generic_error_status(status, response_body) do
     # Log only the parsed error message (not the raw body) to avoid
@@ -1007,8 +1023,12 @@ defmodule PhoenixKitAI.Completion do
     # `Application.put_env(:phoenix_kit_ai, :req_options, plug: {Req.Test, Stub})`.
     opts = base_opts ++ Application.get_env(:phoenix_kit_ai, :req_options, [])
 
+    :ok = ProviderError.clear()
+
     case Req.post(url, opts) do
-      {:ok, %Req.Response{status: status, body: response_body}} ->
+      {:ok, %Req.Response{status: status, body: response_body} = response} ->
+        if status not in 200..299, do: ProviderError.put_retry_after(response)
+
         # Req automatically decodes JSON, so encode it back to string for consistency
         body_string =
           if is_map(response_body) or is_list(response_body) do

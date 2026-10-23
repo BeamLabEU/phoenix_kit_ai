@@ -128,6 +128,7 @@ defmodule PhoenixKitAI do
   alias PhoenixKitAI.GuardEvents
   alias PhoenixKitAI.Images.{ImageModel, ImageModels, Operations}
   alias PhoenixKitAI.ManualPrice
+  alias PhoenixKitAI.ProviderError
   alias PhoenixKitAI.Request
   alias PhoenixKitAI.TaskLimits
   alias PhoenixKitAI.Tasks
@@ -4338,7 +4339,7 @@ defmodule PhoenixKitAI do
       }
       |> Map.merge(trace_metadata(trace))
 
-    create_request(%{
+    %{
       endpoint_uuid: endpoint.uuid,
       endpoint_name: endpoint.name,
       model: trace[:model] || endpoint.model,
@@ -4351,7 +4352,9 @@ defmodule PhoenixKitAI do
       user_uuid: trace[:user_uuid],
       error_message: PhoenixKitAI.Errors.message(reason),
       metadata: base_metadata |> maybe_add_content(:input, capture_content, fn -> prompt end)
-    })
+    }
+    |> with_provider_error()
+    |> create_request()
   end
 
   # `[:phoenix_kit_ai, :image, :request]` — one event per provider call the
@@ -4878,7 +4881,7 @@ defmodule PhoenixKitAI do
       |> Map.merge(prompt_info[:guard] || %{})
       |> maybe_add_content(:messages, capture_content, fn -> normalize_messages(messages) end)
 
-    create_request(%{
+    %{
       endpoint_uuid: endpoint.uuid,
       endpoint_name: endpoint.name,
       prompt_uuid: prompt_info[:prompt_uuid],
@@ -4889,7 +4892,27 @@ defmodule PhoenixKitAI do
       user_uuid: caller_context[:user_uuid],
       error_message: error_reason_to_string(reason),
       metadata: metadata
-    })
+    }
+    |> with_provider_error()
+    |> create_request()
+  end
+
+  # What the provider said on the call that just failed
+  # (`PhoenixKitAI.ProviderError`): its words after the module's text in
+  # `error_message`, and its status, code, message and Retry-After under
+  # `provider_error` in the metadata.
+  defp with_provider_error(%{error_message: text, metadata: metadata} = attrs) do
+    case ProviderError.take() do
+      nil ->
+        attrs
+
+      note ->
+        %{
+          attrs
+          | error_message: ProviderError.describe(text, note),
+            metadata: Map.put(metadata, :provider_error, note)
+        }
+    end
   end
 
   defp maybe_add_content(metadata, _key, false, _build),
@@ -4976,7 +4999,7 @@ defmodule PhoenixKitAI do
   defp call_cost(_endpoint, _response, _usage, _output_tokens), do: {nil, %{}}
 
   defp log_failed_embedding_request(endpoint, reason, {source, stacktrace, caller_context, guard}) do
-    create_request(%{
+    %{
       endpoint_uuid: endpoint.uuid,
       endpoint_name: endpoint.name,
       model: endpoint.model,
@@ -4995,7 +5018,9 @@ defmodule PhoenixKitAI do
           },
           guard
         )
-    })
+    }
+    |> with_provider_error()
+    |> create_request()
   end
 
   # TTS responses carry no token usage — billing is per-character (or per-token with
@@ -5088,7 +5113,7 @@ defmodule PhoenixKitAI do
       caller_context: caller_context
     }
 
-    create_request(%{
+    %{
       endpoint_uuid: endpoint.uuid,
       endpoint_name: endpoint.name,
       model: endpoint.model,
@@ -5100,6 +5125,8 @@ defmodule PhoenixKitAI do
         base_metadata
         |> Map.merge(guard)
         |> maybe_add_content(:input, capture_content, fn -> text end)
-    })
+    }
+    |> with_provider_error()
+    |> create_request()
   end
 end
