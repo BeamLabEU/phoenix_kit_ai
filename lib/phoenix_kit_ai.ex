@@ -121,8 +121,15 @@ defmodule PhoenixKitAI do
   alias PhoenixKit.Utils.Reorder
   alias PhoenixKit.Utils.UUID, as: UUIDUtils
   alias PhoenixKitAI.{Budget, Endpoint, Prompt, Provider, RequestCache, StructuredOutput}
+  alias PhoenixKitAI.Capabilities
+  alias PhoenixKitAI.Guard
+  alias PhoenixKitAI.GuardBlocks
+  alias PhoenixKitAI.GuardEvents
   alias PhoenixKitAI.Images.{ImageModel, ImageModels, Operations}
   alias PhoenixKitAI.Request
+  alias PhoenixKitAI.TaskLimits
+  alias PhoenixKitAI.Tasks
+  alias PhoenixKitAI.TaskSpec
   alias PhoenixKitAI.TtsPricing
 
   # ===========================================
@@ -939,12 +946,59 @@ defmodule PhoenixKitAI do
       label: "AI",
       icon: "hero-sparkles",
       description: "AI endpoints, prompts, and usage tracking",
+      # `ai.manage`: changes to the AI task guard (limits, watchers, "only
+      # verified models", forgiving a limit, blocks) and the reasons of a
+      # private task's flags and blocks. Core grants a new
+      # sub-permission to Admin once while Admin holds `ai`; an Owner holds
+      # every key.
+      sub_permissions: [
+        %{
+          key: "manage",
+          label: "Manage the AI task guard",
+          description:
+            "Change the limits of AI tasks, who is told about them and which models may be used; block a person from a task; see why a private task's request was flagged"
+        }
+      ],
       # Renders the label translated in the admin permissions matrix, the
       # same way the sidebar tabs below translate theirs.
       gettext_backend: PhoenixKitAI.Gettext,
       gettext_domain: "default"
     }
   end
+
+  @doc """
+  The notification type of the module: `"ai_guard"`, what the watchers of
+  the AI task guard get when a task's limit is near or reached, a spending
+  cap refuses a call, a task's model stops fitting it, a person's request is
+  flagged as off-purpose (once a day), a task's anomaly rule is broken, or a
+  person is blocked or unblocked (`PhoenixKitAI.GuardEvents`). A watcher can
+  switch it off for themselves.
+  """
+  @impl PhoenixKit.Module
+  @spec notification_types() :: [map()]
+  def notification_types do
+    [
+      %{
+        key: GuardEvents.notice_type(),
+        label: gettext("AI task guard"),
+        description:
+          gettext(
+            "An AI task is near or at a limit, a spending cap refused a call, a task's model no longer fits it, a request was flagged as off-purpose, a task is used unusually, or a person was blocked or unblocked"
+          ),
+        actions: [],
+        default: true
+      }
+    ]
+  end
+
+  @doc """
+  The module's scheduled job: the daily pruning of the guard's events older
+  than 180 days (`PhoenixKitAI.GuardEventsPruneWorker`, core `default`
+  queue).
+  """
+  @impl PhoenixKit.Module
+  @spec oban_crons() :: [{String.t(), module()}]
+  def oban_crons, do: [{"17 3 * * *", PhoenixKitAI.GuardEventsPruneWorker}]
 
   @impl PhoenixKit.Module
   @spec admin_tabs() :: [PhoenixKit.Dashboard.Tab.t()]
@@ -1013,6 +1067,18 @@ defmodule PhoenixKitAI do
         parent: :admin_ai,
         gettext_backend: PhoenixKitAI.Gettext,
         gettext_domain: "default"
+      },
+      %Tab{
+        id: :admin_ai_tasks,
+        label: "Tasks",
+        icon: "hero-clipboard-document-check",
+        path: "ai/tasks",
+        priority: 645,
+        level: :admin,
+        permission: module_key(),
+        parent: :admin_ai,
+        gettext_backend: PhoenixKitAI.Gettext,
+        gettext_domain: "default"
       }
     ]
   end
@@ -1044,7 +1110,47 @@ defmodule PhoenixKitAI do
       dgettext_noop("default", "Endpoints"),
       dgettext_noop("default", "Prompts"),
       dgettext_noop("default", "Playground"),
-      dgettext_noop("default", "Usage")
+      dgettext_noop("default", "Usage"),
+      dgettext_noop("default", "Tasks"),
+      dgettext_noop("default", "Manage the AI task guard"),
+      dgettext_noop(
+        "default",
+        "Change the limits of AI tasks, who is told about them and which models may be used; block a person from a task; see why a private task's request was flagged"
+      )
+    ]
+  end
+
+  @doc """
+  The AI tasks this module runs itself, found by `PhoenixKitAI.Tasks` like
+  any module's `ai_tasks/0`: the translation pipeline and the Playground.
+  Neither needs more than text in and text out. The Playground takes free
+  text, so it shares the `free_text` block group with other free-text
+  tasks.
+  """
+  @spec ai_tasks() :: [TaskSpec.t()]
+  def ai_tasks do
+    [
+      %TaskSpec{
+        key: "ai.translation",
+        label: dgettext_noop("default", "Translation"),
+        gettext_backend: PhoenixKitAI.Gettext,
+        purpose:
+          dgettext_noop(
+            "default",
+            "Translate the text fields of a record from one language into another, keeping the field structure."
+          ),
+        needs: [],
+        endpoints: {PhoenixKitAI.Translations, :unattended_endpoint_uuid, []}
+      },
+      %TaskSpec{
+        key: "ai.playground",
+        label: dgettext_noop("default", "Playground"),
+        gettext_backend: PhoenixKitAI.Gettext,
+        purpose:
+          dgettext_noop("default", "Let an administrator try endpoints and prompts by hand."),
+        needs: [],
+        block_group: "free_text"
+      }
     ]
   end
 
@@ -1070,9 +1176,20 @@ defmodule PhoenixKitAI do
   def children do
     [
       {DynamicSupervisor, name: PhoenixKitAI.Realtime.Supervisor, strategy: :one_for_one},
-      PhoenixKitAI.RequestCache
+      PhoenixKitAI.RequestCache,
+      PhoenixKitAI.Capabilities,
+      PhoenixKitAI.GuardWatch
     ]
   end
+
+  @doc """
+  The module's own migration chain (`PhoenixKitAI.Migrations`), run by
+  `mix phoenix_kit.update` after core's. It holds only tables core does not
+  create; the endpoint, prompt and request tables stay in core's chain.
+  """
+  @impl PhoenixKit.Module
+  @spec migration_module() :: module()
+  def migration_module, do: PhoenixKitAI.Migrations
 
   @impl PhoenixKit.Module
   @spec required_integrations() :: [String.t()]
@@ -1370,9 +1487,12 @@ defmodule PhoenixKitAI do
     # `log: false`: the query log would print the api key.
     %Endpoint{}
     |> Endpoint.changeset(attrs)
+    |> guard_declaration(%Endpoint{}, opts)
     |> repo().insert(log: false)
     |> broadcast_endpoint_change(:endpoint_created)
     |> log_endpoint_activity("endpoint.created", opts)
+    |> log_capabilities_declaration(%Endpoint{}, opts)
+    |> refresh_capabilities(true)
     |> log_failed_endpoint_mutation("endpoint.created", opts)
   end
 
@@ -1387,7 +1507,7 @@ defmodule PhoenixKitAI do
           {:ok, Endpoint.t()} | {:error, Ecto.Changeset.t()}
   def update_endpoint(%Endpoint{} = endpoint, attrs, opts \\ []) do
     was_enabled = endpoint.enabled
-    changeset = Endpoint.changeset(endpoint, attrs)
+    changeset = endpoint |> Endpoint.changeset(attrs) |> guard_declaration(endpoint, opts)
     # Skip the activity row when the update is a no-op (no field actually
     # changed). The toggle log keeps its own guard so an enable/disable
     # via a bare `%{enabled: x}` still attributes correctly.
@@ -1399,6 +1519,8 @@ defmodule PhoenixKitAI do
     |> broadcast_endpoint_change(:endpoint_updated)
     |> maybe_log_endpoint_update(has_changes, opts)
     |> maybe_log_endpoint_toggle(was_enabled, opts)
+    |> log_capabilities_declaration(endpoint, opts)
+    |> refresh_capabilities(catalogue_inputs_changed?(changeset))
     |> log_failed_endpoint_mutation("endpoint.updated", opts)
   end
 
@@ -1407,6 +1529,77 @@ defmodule PhoenixKitAI do
   end
 
   defp maybe_log_endpoint_update(result, _has_changes, _opts), do: result
+
+  # A saved endpoint whose model or provider is new to the capability cache
+  # has its catalogue read right away, not at the next 6-hourly refresh, so
+  # its snapshot row exists before a restart could need it.
+  defp refresh_capabilities({:ok, _} = result, true) do
+    Capabilities.refresh_after_change()
+    result
+  end
+
+  defp refresh_capabilities(result, _changed?), do: result
+
+  defp catalogue_inputs_changed?(changeset) do
+    Enum.any?(
+      [:model, :provider, :base_url, :integration_uuid],
+      &Map.has_key?(changeset.changes, &1)
+    )
+  end
+
+  # Declaring capabilities on an endpoint (`provider_settings["capabilities"]`)
+  # is logged on its own, with the flags, whenever the stored declaration
+  # changes — set, changed, or removed (a model change removes it).
+  defp log_capabilities_declaration({:ok, endpoint} = result, before, opts) do
+    old = capabilities_declaration(before)
+    new = capabilities_declaration(endpoint)
+
+    if old != new do
+      metadata =
+        case new do
+          nil -> %{"name" => endpoint.name, "model" => endpoint.model, "cleared" => true}
+          declaration -> Map.put(declaration, "name", endpoint.name)
+        end
+
+      log_activity("endpoint.capabilities_declared", "endpoint", endpoint.uuid, opts, metadata)
+    end
+
+    result
+  end
+
+  defp log_capabilities_declaration(result, _before, _opts), do: result
+
+  # While only verified models may be used (`Guard.verified_only?/0`), what
+  # an admin declares an endpoint's model can do decides which calls go
+  # through, so a new or changed declaration needs `ai.manage` (the `:scope`
+  # option; an Owner always). Keeping a declaration as it is, or removing
+  # one, needs nothing.
+  defp guard_declaration(changeset, before, opts) do
+    declared =
+      capabilities_declaration(%Endpoint{
+        provider_settings: Ecto.Changeset.get_field(changeset, :provider_settings)
+      })
+
+    if declared != nil and declared != capabilities_declaration(before) and
+         Guard.verified_only?() and not Guard.may_manage?(opts[:scope]) do
+      Ecto.Changeset.add_error(
+        changeset,
+        :provider_settings,
+        gettext(
+          "only a holder of ai.manage may declare capabilities while only verified models are allowed"
+        )
+      )
+    else
+      changeset
+    end
+  end
+
+  defp capabilities_declaration(%Endpoint{provider_settings: %{"capabilities" => declaration}})
+       when is_map(declaration) do
+    Map.take(declaration, ["model" | Enum.map(Capabilities.declarable(), &Atom.to_string/1)])
+  end
+
+  defp capabilities_declaration(_endpoint), do: nil
 
   @doc """
   Deletes an AI endpoint.
@@ -2285,9 +2478,22 @@ defmodule PhoenixKitAI do
   (the Translatables discovery pattern), first consumer being the
   projects work ledger's AI attribution. Best-effort per sink: a raising
   sink is logged and never breaks request logging.
+
+  A row of a call the guard refused before any HTTP (`metadata.refused`)
+  is not dispatched: nothing was spent, and a sink such as a work ledger
+  would book it as work all the same.
   """
   @spec dispatch_usage_sinks(Request.t()) :: :ok
   def dispatch_usage_sinks(%Request{} = request) do
+    if refused_row?(request), do: :ok, else: dispatch_to_sinks(request)
+  end
+
+  defp refused_row?(%Request{metadata: %{} = metadata}),
+    do: Map.get(metadata, :refused, Map.get(metadata, "refused")) == true
+
+  defp refused_row?(_request), do: false
+
+  defp dispatch_to_sinks(request) do
     PhoenixKit.ModuleRegistry.all_modules()
     |> Enum.filter(fn module ->
       Code.ensure_loaded?(module) and function_exported?(module, :handle_ai_usage, 1)
@@ -2341,6 +2547,7 @@ defmodule PhoenixKitAI do
       {:ok, request} ->
         emit_request_telemetry(request)
         dispatch_usage_sinks(request)
+        Guard.check_anomalies(request)
         {:ok, request}
 
       {:error, %Ecto.Changeset{} = changeset} = error ->
@@ -2476,19 +2683,22 @@ defmodule PhoenixKitAI do
                put_response_format(merged_opts, format, retry_format)
              )
            end) do
-      log_request(
-        endpoint,
-        messages,
-        response,
-        source,
-        stacktrace,
-        caller_context,
-        prompt_info
-      )
+      logged =
+        log_request(
+          endpoint,
+          messages,
+          response,
+          source,
+          stacktrace,
+          caller_context,
+          prompt_info
+        )
 
       # Parsed here, before the cache sees the result, so a prose answer to
       # a JSON request is never stored as a success.
-      attach_json(response, format != nil)
+      response
+      |> put_request_uuid("request_uuid", logged)
+      |> attach_json(format != nil)
     end
   end
 
@@ -2500,10 +2710,14 @@ defmodule PhoenixKitAI do
   defp put_response_format(opts, _requested, format),
     do: Keyword.put(opts, :response_format, format)
 
-  defp run_speak(endpoint, text, opts, {source, stacktrace, caller_context}) do
+  defp run_speak(endpoint, text, opts, trace) do
     with {:ok, result} <- PhoenixKitAI.Completion.text_to_speech(endpoint, text, opts) do
-      log_tts_request(endpoint, text, result, source, stacktrace, caller_context)
-      {:ok, Map.take(result, [:audio, :format, :timestamps])}
+      logged = log_tts_request(endpoint, text, result, trace)
+
+      {:ok,
+       result
+       |> Map.take([:audio, :format, :timestamps])
+       |> put_request_uuid(:request_uuid, logged)}
     end
   end
 
@@ -2511,45 +2725,49 @@ defmodule PhoenixKitAI do
     opts = log_unparsed_answer(opts, endpoint, prompt, [before, after_image], trace)
 
     with {:ok, result} <- PhoenixKitAI.Images.compare(endpoint, before, after_image, opts) do
-      logged = Map.put(result, :text, result.summary)
+      row =
+        log_image_op_request(
+          endpoint,
+          "vision",
+          prompt,
+          [before, after_image],
+          Map.put(result, :text, result.summary),
+          %{passed: result.passed},
+          trace
+        )
 
-      log_image_op_request(
-        endpoint,
-        "vision",
-        prompt,
-        [before, after_image],
-        logged,
-        %{passed: result.passed},
-        trace
-      )
-
-      {:ok, Map.drop(result, [:usage, :latency_ms])}
+      {:ok, result |> Map.drop([:usage, :latency_ms]) |> put_request_uuid(:request_uuid, row)}
     end
   end
 
-  defp run_embed(endpoint, input, merged_opts, {source, stacktrace, caller_context}) do
+  defp run_embed(endpoint, input, merged_opts, trace) do
     with {:ok, response} <- PhoenixKitAI.Completion.embeddings(endpoint, input, merged_opts) do
-      log_embedding_request(endpoint, input, response, source, stacktrace, caller_context)
-      {:ok, response}
+      logged = log_embedding_request(endpoint, input, response, trace)
+      {:ok, put_request_uuid(response, "request_uuid", logged)}
     end
   end
 
   defp run_generate_image(endpoint, prompt, opts, trace) do
     with {:ok, result} <- PhoenixKitAI.Completion.generate_image(endpoint, prompt, opts) do
-      log_image_op_request(endpoint, "image", prompt, [], result, %{}, trace)
+      logged = log_image_op_request(endpoint, "image", prompt, [], result, %{}, trace)
 
-      {:ok, result |> Map.put_new(:warnings, []) |> Map.take([:images, :model, :warnings])}
+      {:ok,
+       result
+       |> Map.put_new(:warnings, [])
+       |> Map.take([:images, :model, :warnings])
+       |> put_request_uuid(:request_uuid, logged)}
     end
   end
 
   defp run_edit_image(endpoint, prompt, images, opts, trace) do
     with {:ok, result} <- PhoenixKitAI.Completion.edit_image(endpoint, prompt, images, opts) do
-      log_image_op_request(endpoint, "image_edit", prompt, images, result, %{}, trace)
+      logged = log_image_op_request(endpoint, "image_edit", prompt, images, result, %{}, trace)
 
       {:ok,
        result
        |> Map.put_new(:warnings, [])
-       |> Map.take([:images, :text, :model, :warnings])}
+       |> Map.take([:images, :text, :model, :warnings])
+       |> put_request_uuid(:request_uuid, logged)}
     end
   end
 
@@ -2568,17 +2786,21 @@ defmodule PhoenixKitAI do
           warning_tags: Enum.map(result.warnings, &elem(&1, 0))
         }
 
-        log_image_op_request(
-          endpoint,
-          "image_edit",
-          result.prompt,
-          images,
-          result,
-          extra,
-          trace
-        )
+        logged =
+          log_image_op_request(
+            endpoint,
+            "image_edit",
+            result.prompt,
+            images,
+            result,
+            extra,
+            trace
+          )
 
-        {:ok, Map.take(result, [:images, :text, :prompt, :operations, :warnings, :model])}
+        {:ok,
+         result
+         |> Map.take([:images, :text, :prompt, :operations, :warnings, :model])
+         |> put_request_uuid(:request_uuid, logged)}
 
       {:error, _} = error ->
         error
@@ -2589,8 +2811,8 @@ defmodule PhoenixKitAI do
     opts = log_unparsed_answer(opts, endpoint, prompt, images, trace)
 
     with {:ok, result} <- PhoenixKitAI.Images.describe(endpoint, images, opts) do
-      log_image_op_request(endpoint, "vision", prompt, images, result, %{}, trace)
-      {:ok, Map.take(result, [:text, :json, :model])}
+      logged = log_image_op_request(endpoint, "vision", prompt, images, result, %{}, trace)
+      {:ok, result |> Map.take([:text, :json, :model]) |> put_request_uuid(:request_uuid, logged)}
     end
   end
 
@@ -2611,21 +2833,25 @@ defmodule PhoenixKitAI do
     with {:ok, result} <- PhoenixKitAI.Images.extract_text(endpoint, images, opts) do
       # Model-derived values are normalised before they reach the row: a
       # language tag is a tag or nothing, never free text.
-      log_image_op_request(
-        endpoint,
-        "vision",
-        result.prompt,
-        images,
-        result,
-        %{
-          language: language_tag(result.language),
-          confidence: if(is_number(result.confidence), do: result.confidence),
-          has_illegible_text: result.has_illegible_text == true
-        },
-        trace
-      )
+      logged =
+        log_image_op_request(
+          endpoint,
+          "vision",
+          result.prompt,
+          images,
+          result,
+          %{
+            language: language_tag(result.language),
+            confidence: if(is_number(result.confidence), do: result.confidence),
+            has_illegible_text: result.has_illegible_text == true
+          },
+          trace
+        )
 
-      {:ok, Map.drop(result, [:usage, :latency_ms, :prompt])}
+      {:ok,
+       result
+       |> Map.drop([:usage, :latency_ms, :prompt])
+       |> put_request_uuid(:request_uuid, logged)}
     end
   end
 
@@ -2654,7 +2880,7 @@ defmodule PhoenixKitAI do
   # fetch, and the zero-cost row a hit writes. Logging stays in the run_*
   # functions and the verbs' error branches.
   defp with_cache(verb, endpoint, opts, material, row, fun) do
-    model = opts[:model] || endpoint.model
+    model = sent_model(endpoint, opts, verb)
 
     key = fn ->
       material =
@@ -2672,42 +2898,92 @@ defmodule PhoenixKitAI do
     RequestCache.fetch(key, opts, fun, %{
       verb: verb,
       endpoint_uuid: endpoint.uuid,
-      on_hit: cached_row(endpoint, @cached_row_type[verb], model, row)
+      on_hit: cached_row(endpoint, verb, model, row)
     })
   end
 
+  # A thinking budget not below `max_tokens` is not sent (`Completion`);
+  # the row says why the call ran without thinking.
+  defp note_skipped_thinking(guard, endpoint, opts) do
+    if PhoenixKitAI.Completion.thinking_budget_skipped?(endpoint, opts),
+      do:
+        Map.update(
+          guard,
+          :guard_warnings,
+          ["thinking_budget_not_below_max_tokens"],
+          &(&1 ++ ["thinking_budget_not_below_max_tokens"])
+        ),
+      else: guard
+  end
+
+  # Where a verb's result carries the uuid of its usage row: the chat and
+  # embedding responses are provider maps with string keys, the rest are
+  # this module's atom-keyed maps.
+  defp request_uuid_key(verb) when verb in [:complete, :embed], do: "request_uuid"
+  defp request_uuid_key(_verb), do: :request_uuid
+
+  defp put_request_uuid(result, key, {:ok, %Request{uuid: uuid}}) when is_map(result),
+    do: Map.put(result, key, uuid)
+
+  defp put_request_uuid(result, _key, _logged), do: result
+
   # A cache hit is still a logical request the host made: a zero-cost row
-  # marked cached, with the same attribution and prompt link as a fresh
-  # one, keeps reports truthful without pretending a provider was called.
-  defp cached_row(endpoint, type, model, row) do
+  # marked cached, with the same attribution, prompt link and task as a
+  # fresh one, keeps reports truthful without pretending a provider was
+  # called. The answer handed back names this row, not the one the cached
+  # answer was first logged under — and names no row (`nil`) when this one
+  # could not be written, since the stored uuid is another call's, perhaps
+  # another user's.
+  defp cached_row(endpoint, verb, model, row) do
     prompt_info = row[:prompt_info] || %{}
 
-    fn _value ->
+    fn value ->
       metadata =
         %{cached: true, source: row.source, caller_context: row.caller_context}
-        |> maybe_put_attribution(prompt_info[:attribution])
+        |> maybe_put_attribution(prompt_info[:attribution] || row[:attribution])
         |> maybe_put_prompt_snapshot(prompt_info[:prompt_snapshot])
         |> maybe_put_unbound_placeholders(prompt_info[:unbound_placeholders])
+        |> Map.merge(row[:guard] || %{})
 
-      create_request(%{
-        endpoint_uuid: endpoint.uuid,
-        endpoint_name: endpoint.name,
-        prompt_uuid: prompt_info[:prompt_uuid],
-        prompt_name: prompt_info[:prompt_name],
-        model: model,
-        request_type: type,
-        input_tokens: 0,
-        output_tokens: 0,
-        total_tokens: 0,
-        cost_cents: 0,
-        latency_ms: 0,
-        status: "success",
-        user_uuid: row.caller_context[:user_uuid],
-        metadata: metadata
-      })
+      logged =
+        safe_create_request(%{
+          endpoint_uuid: endpoint.uuid,
+          endpoint_name: endpoint.name,
+          prompt_uuid: prompt_info[:prompt_uuid],
+          prompt_name: prompt_info[:prompt_name],
+          model: model,
+          request_type: @cached_row_type[verb],
+          input_tokens: 0,
+          output_tokens: 0,
+          total_tokens: 0,
+          cost_cents: 0,
+          latency_ms: 0,
+          status: "success",
+          user_uuid: row.caller_context[:user_uuid],
+          metadata: metadata
+        })
 
-      :ok
+      uuid =
+        case logged do
+          {:ok, %Request{uuid: uuid}} -> uuid
+          _ -> nil
+        end
+
+      {:replace, if(is_map(value), do: Map.put(value, request_uuid_key(verb), uuid), else: value)}
     end
+  end
+
+  # A hit's row must never fail the hit: a database error is logged and
+  # read as "no row".
+  defp safe_create_request(attrs) do
+    create_request(attrs)
+  rescue
+    error ->
+      Logger.warning(
+        "[PhoenixKitAI] cache hit usage row not written: #{inspect(error.__struct__)}"
+      )
+
+      {:error, :not_written}
   end
 
   @doc """
@@ -2750,6 +3026,11 @@ defmodule PhoenixKitAI do
   defp maybe_filter_by(query, :user_uuid, uuid) when is_binary(uuid) do
     where(query, [r], r.user_uuid == ^uuid)
   end
+
+  # `"refused"` is not a stored status: the rows the guard refused (status
+  # `"error"`, `metadata.refused`).
+  defp maybe_filter_by(query, :status, "refused"),
+    do: where(query, [r], fragment("(?->>'refused') = 'true'", r.metadata))
 
   defp maybe_filter_by(query, :status, status), do: where(query, [r], r.status == ^status)
   defp maybe_filter_by(query, :model, model), do: where(query, [r], r.model == ^model)
@@ -2816,7 +3097,7 @@ defmodule PhoenixKitAI do
     %{
       endpoints: repo().all(endpoints_query),
       models: repo().all(models_query),
-      statuses: Request.valid_statuses(),
+      statuses: Request.valid_statuses() ++ ["refused"],
       sources: repo().all(sources_query)
     }
   end
@@ -3017,12 +3298,23 @@ defmodule PhoenixKitAI do
           {:ok, map()} | {:error, term()}
   def complete(endpoint_uuid, messages, opts \\ []) do
     with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
-         {:ok, _} <- authorize(endpoint, opts) do
+         {:ok, admission} <-
+           authorize(endpoint, opts, :complete, Guard.implied_needs(:complete, opts, messages)) do
       # Capture caller info (source + stacktrace + context)
       {auto_source, stacktrace, caller_context} = capture_caller_info()
       # Allow manual override of source, but all debug info is always captured
       source = Keyword.get(opts, :source) || auto_source
       caller_context = Map.put(caller_context, :user_uuid, opts[:user_uuid])
+
+      # A hard requirement on OpenRouter: only providers that take every
+      # parameter, and the ones the model does not list left out.
+      {merged_opts, stripped} =
+        endpoint |> merge_endpoint_opts(opts) |> Guard.require_parameters(admission)
+
+      guard =
+        admission
+        |> Guard.row_metadata(stripped)
+        |> note_skipped_thinking(endpoint, merged_opts)
 
       # Extract prompt info if present (from ask_with_prompt, complete_with_system_prompt)
       # + the ATTRIBUTION payload (the projects work-ledger seam): an
@@ -3034,10 +3326,10 @@ defmodule PhoenixKitAI do
         prompt_snapshot: Keyword.get(opts, :prompt_snapshot),
         attribution: normalize_attribution(Keyword.get(opts, :attribution)),
         unbound_placeholders: Keyword.get(opts, :unbound_placeholders, []),
-        capture: Keyword.get(opts, :capture_request_content)
+        capture: Keyword.get(opts, :capture_request_content),
+        guard: guard
       }
 
-      merged_opts = merge_endpoint_opts(endpoint, opts)
       {suffix, format} = StructuredOutput.request(opts)
       messages = StructuredOutput.attach(messages, suffix)
 
@@ -3047,7 +3339,12 @@ defmodule PhoenixKitAI do
           endpoint,
           cache_opts_for(opts),
           fn -> {messages, cacheable(merged_opts), format} end,
-          %{source: source, caller_context: caller_context, prompt_info: prompt_info},
+          %{
+            source: source,
+            caller_context: caller_context,
+            prompt_info: prompt_info,
+            guard: guard
+          },
           fn ->
             run_complete(
               endpoint,
@@ -3095,8 +3392,8 @@ defmodule PhoenixKitAI do
   end
 
   # The request-shaping options only: what the caller is tracked by
-  # (source, attribution, idempotency, user, cache mode, content capture)
-  # must not change the cache key.
+  # (source, attribution, idempotency, user, cache mode, content capture,
+  # task) must not change the cache key.
   defp cacheable(opts) do
     opts
     |> Keyword.drop([
@@ -3110,7 +3407,9 @@ defmodule PhoenixKitAI do
       :prompt_name,
       :prompt_snapshot,
       :unbound_placeholders,
-      :verify
+      :verify,
+      :task,
+      :guard_admission
     ])
     |> Enum.sort()
   end
@@ -3234,7 +3533,7 @@ defmodule PhoenixKitAI do
           {:ok, map()} | {:error, term()}
   def embed(endpoint_uuid, input, opts \\ []) do
     with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
-         {:ok, _} <- authorize(endpoint, opts) do
+         {:ok, admission} <- authorize(endpoint, opts, :embed, []) do
       # Capture caller info (source + stacktrace + context)
       {auto_source, stacktrace, caller_context} = capture_caller_info()
       # Allow manual override of source, but all debug info is always captured
@@ -3242,6 +3541,7 @@ defmodule PhoenixKitAI do
       caller_context = Map.put(caller_context, :user_uuid, opts[:user_uuid])
 
       merged_opts = merge_embedding_opts(endpoint, opts)
+      guard = Guard.row_metadata(admission)
 
       result =
         with_cache(
@@ -3249,9 +3549,9 @@ defmodule PhoenixKitAI do
           endpoint,
           opts,
           fn -> {input, cacheable(merged_opts)} end,
-          %{source: source, caller_context: caller_context},
+          %{source: source, caller_context: caller_context, guard: guard},
           fn ->
-            run_embed(endpoint, input, merged_opts, {source, stacktrace, caller_context})
+            run_embed(endpoint, input, merged_opts, {source, stacktrace, caller_context, guard})
           end
         )
 
@@ -3260,7 +3560,12 @@ defmodule PhoenixKitAI do
           {:ok, response}
 
         {:error, reason} ->
-          log_failed_embedding_request(endpoint, reason, source, stacktrace, caller_context)
+          log_failed_embedding_request(
+            endpoint,
+            reason,
+            {source, stacktrace, caller_context, guard}
+          )
+
           {:error, reason}
       end
     end
@@ -3320,7 +3625,7 @@ defmodule PhoenixKitAI do
           | {:error, term()}
   def speak(endpoint_uuid, text, opts \\ []) when is_binary(text) do
     with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
-         {:ok, _} <- authorize(endpoint, opts) do
+         {:ok, admission} <- authorize(endpoint, opts, :speak, []) do
       # Capture caller info (source + stacktrace + context)
       {auto_source, stacktrace, caller_context} = capture_caller_info()
       # Allow manual override of source, but all debug info is always captured
@@ -3332,6 +3637,8 @@ defmodule PhoenixKitAI do
       # pass one. TTS has no temperature/dimensions analog, so this is
       # the only endpoint-default merge.
       opts = maybe_put_default_voice(endpoint, opts)
+      guard = Guard.row_metadata(admission)
+      trace = {source, stacktrace, caller_context, guard}
 
       result =
         with_cache(
@@ -3339,10 +3646,8 @@ defmodule PhoenixKitAI do
           endpoint,
           opts,
           fn -> {text, cacheable(opts)} end,
-          %{source: source, caller_context: caller_context},
-          fn ->
-            run_speak(endpoint, text, opts, {source, stacktrace, caller_context})
-          end
+          %{source: source, caller_context: caller_context, guard: guard},
+          fn -> run_speak(endpoint, text, opts, trace) end
         )
 
       case result do
@@ -3350,7 +3655,7 @@ defmodule PhoenixKitAI do
           {:ok, result}
 
         {:error, reason} ->
-          log_failed_tts_request(endpoint, text, reason, source, stacktrace, caller_context)
+          log_failed_tts_request(endpoint, text, reason, trace)
           {:error, reason}
       end
     end
@@ -3381,12 +3686,13 @@ defmodule PhoenixKitAI do
           {:ok, %{images: [%{url: String.t() | nil, data: binary() | nil}]}} | {:error, term()}
   def generate_image(endpoint_uuid, prompt, opts \\ []) when is_binary(prompt) do
     with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
-         {:ok, _} <- authorize(endpoint, opts) do
+         {:ok, admission} <-
+           authorize(endpoint, opts, :generate_image, Guard.implied_needs(:generate_image, opts)) do
       {auto_source, stacktrace, caller_context} = capture_caller_info()
       source = Keyword.get(opts, :source) || auto_source
       caller_context = Map.put(caller_context, :user_uuid, opts[:user_uuid])
 
-      trace = trace(source, stacktrace, caller_context, opts)
+      trace = trace(source, stacktrace, caller_context, opts, Guard.row_metadata(admission))
 
       result =
         with_cache(
@@ -3394,7 +3700,7 @@ defmodule PhoenixKitAI do
           endpoint,
           opts,
           fn -> {prompt, cacheable(opts)} end,
-          %{source: source, caller_context: caller_context},
+          image_row(trace),
           fn ->
             run_generate_image(endpoint, prompt, opts, trace)
           end
@@ -3435,12 +3741,13 @@ defmodule PhoenixKitAI do
   def edit_image(endpoint_uuid, prompt, images, opts \\ [])
       when is_binary(prompt) and is_list(images) do
     with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
-         {:ok, _} <- authorize(endpoint, opts) do
+         {:ok, admission} <-
+           authorize(endpoint, opts, :edit_image, Guard.implied_needs(:edit_image, opts)) do
       {auto_source, stacktrace, caller_context} = capture_caller_info()
       source = Keyword.get(opts, :source) || auto_source
       caller_context = Map.put(caller_context, :user_uuid, opts[:user_uuid])
 
-      trace = trace(source, stacktrace, caller_context, opts)
+      trace = trace(source, stacktrace, caller_context, opts, Guard.row_metadata(admission))
 
       result =
         with_cache(
@@ -3448,7 +3755,7 @@ defmodule PhoenixKitAI do
           endpoint,
           opts,
           fn -> {prompt, images, cacheable(opts)} end,
-          %{source: source, caller_context: caller_context},
+          image_row(trace),
           fn ->
             run_edit_image(endpoint, prompt, images, opts, trace)
           end
@@ -3491,18 +3798,25 @@ defmodule PhoenixKitAI do
           {:ok, map()} | {:error, term()}
   def process_image(endpoint_uuid, images, operations, opts \\ []) when is_list(images) do
     with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
-         {:ok, _} <- authorize(endpoint, opts, !Keyword.get(opts, :dry_run, false)) do
+         {:ok, admission} <-
+           authorize(
+             endpoint,
+             opts,
+             :process_image,
+             Guard.implied_needs(:process_image, opts),
+             !Keyword.get(opts, :dry_run, false)
+           ) do
       {auto_source, stacktrace, caller_context} = capture_caller_info()
       source = Keyword.get(opts, :source) || auto_source
       caller_context = Map.put(caller_context, :user_uuid, opts[:user_uuid])
       {verify, opts} = Keyword.pop(opts, :verify, false)
 
-      trace = trace(source, stacktrace, caller_context, opts)
+      trace = trace(source, stacktrace, caller_context, opts, Guard.row_metadata(admission))
 
       # A dry run touches no provider, so it neither reads nor fills the cache.
       run = fn -> run_process_image(endpoint, images, operations, opts, trace) end
       material = fn -> {images, operations, cacheable(opts)} end
-      row = %{source: source, caller_context: caller_context}
+      row = image_row(trace)
 
       result =
         if opts[:dry_run],
@@ -3584,7 +3898,8 @@ defmodule PhoenixKitAI do
       intent: intent,
       source: opts[:source],
       user_uuid: opts[:user_uuid],
-      capture_request_content: opts[:capture_request_content]
+      capture_request_content: opts[:capture_request_content],
+      task: opts[:task]
     ]
 
     case compare_images(checker, original, data, check_opts) do
@@ -3611,13 +3926,22 @@ defmodule PhoenixKitAI do
     images = List.wrap(images)
 
     with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
-         {:ok, _} <- authorize(endpoint, opts) do
+         {:ok, admission} <-
+           authorize(endpoint, opts, :describe_image, Guard.implied_needs(:describe_image, opts)) do
       {auto_source, stacktrace, caller_context} = capture_caller_info()
       source = Keyword.get(opts, :source) || auto_source
       caller_context = Map.put(caller_context, :user_uuid, opts[:user_uuid])
       prompt = opts[:prompt] || opts[:question] || PhoenixKitAI.Images.default_question()
+      {opts, stripped} = Guard.require_parameters(opts, admission)
 
-      trace = trace(source, stacktrace, caller_context, opts)
+      trace =
+        trace(
+          source,
+          stacktrace,
+          caller_context,
+          opts,
+          admission |> Guard.row_metadata(stripped) |> note_skipped_thinking(endpoint, opts)
+        )
 
       result =
         with_cache(
@@ -3625,7 +3949,7 @@ defmodule PhoenixKitAI do
           endpoint,
           opts,
           fn -> {images, cacheable(opts)} end,
-          %{source: source, caller_context: caller_context},
+          image_row(trace),
           fn ->
             run_describe_image(endpoint, images, opts, prompt, trace)
           end
@@ -3675,13 +3999,22 @@ defmodule PhoenixKitAI do
     images = List.wrap(images)
 
     with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
-         {:ok, _} <- authorize(endpoint, opts) do
+         {:ok, admission} <-
+           authorize(endpoint, opts, :extract_text, Guard.implied_needs(:extract_text, opts)) do
       {auto_source, stacktrace, caller_context} = capture_caller_info()
       source = Keyword.get(opts, :source) || auto_source
       caller_context = Map.put(caller_context, :user_uuid, opts[:user_uuid])
       prompt = "extract_text"
+      {opts, stripped} = Guard.require_parameters(opts, admission)
 
-      trace = trace(source, stacktrace, caller_context, opts)
+      trace =
+        trace(
+          source,
+          stacktrace,
+          caller_context,
+          opts,
+          admission |> Guard.row_metadata(stripped) |> note_skipped_thinking(endpoint, opts)
+        )
 
       result =
         with_cache(
@@ -3689,7 +4022,7 @@ defmodule PhoenixKitAI do
           endpoint,
           opts,
           fn -> {images, cacheable(opts)} end,
-          %{source: source, caller_context: caller_context},
+          image_row(trace),
           fn ->
             run_extract_text(endpoint, images, opts, prompt, trace)
           end
@@ -3720,13 +4053,17 @@ defmodule PhoenixKitAI do
           {:ok, map()} | {:error, term()}
   def compare_images(endpoint_uuid, before, after_image, opts \\ []) do
     with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
-         {:ok, _} <- authorize(endpoint, opts) do
+         {:ok, admission} <-
+           authorize(endpoint, opts, :compare_images, Guard.implied_needs(:compare_images, opts)) do
       {auto_source, stacktrace, caller_context} = capture_caller_info()
       source = Keyword.get(opts, :source) || auto_source
       caller_context = Map.put(caller_context, :user_uuid, opts[:user_uuid])
       prompt = "compare: " <> to_string(opts[:intent] || "an edit")
+      {opts, stripped} = Guard.require_parameters(opts, admission)
 
-      trace = trace(source, stacktrace, caller_context, opts)
+      trace =
+        trace(source, stacktrace, caller_context, opts, Guard.row_metadata(admission, stripped))
+
       images = [before, after_image]
 
       result =
@@ -3735,7 +4072,7 @@ defmodule PhoenixKitAI do
           endpoint,
           opts,
           fn -> {before, after_image, cacheable(opts)} end,
-          %{source: source, caller_context: caller_context},
+          image_row(trace),
           fn ->
             run_compare_images(endpoint, before, after_image, opts, prompt, trace)
           end
@@ -3790,7 +4127,9 @@ defmodule PhoenixKitAI do
   # What every image row records about the call itself: who asked (source,
   # stacktrace, caller context), when it started, the caller's idempotency
   # key if any, and — on failures — the model override that was in play.
-  defp trace(source, stacktrace, ctx, opts) do
+  # Also the call's attribution and the guard's fields for the row (`guard`,
+  # from `Guard.row_metadata/2`: the task, warnings, stripped parameters).
+  defp trace(source, stacktrace, ctx, opts, guard) do
     %{
       source: source,
       stacktrace: stacktrace,
@@ -3799,12 +4138,26 @@ defmodule PhoenixKitAI do
       idempotency_key: opts[:idempotency_key],
       model: opts[:model],
       user_uuid: opts[:user_uuid],
-      capture: opts[:capture_request_content]
+      capture: opts[:capture_request_content],
+      attribution: normalize_attribution(opts[:attribution]),
+      guard: guard
     }
   end
 
+  # What a cache hit of an image verb writes its row with.
+  defp image_row(trace),
+    do: %{
+      source: trace.source,
+      caller_context: trace.ctx,
+      attribution: trace.attribution,
+      guard: trace.guard
+    }
+
   defp trace_metadata(trace) do
-    meta = %{source: trace.source, stacktrace: trace.stacktrace, caller_context: trace.ctx}
+    meta =
+      %{source: trace.source, stacktrace: trace.stacktrace, caller_context: trace.ctx}
+      |> maybe_put_attribution(trace[:attribution])
+      |> Map.merge(trace[:guard] || %{})
 
     if trace[:idempotency_key],
       do: Map.put(meta, :idempotency_key, trace.idempotency_key),
@@ -3964,16 +4317,124 @@ defmodule PhoenixKitAI do
 
   # Private helpers for completion API
 
-  # Every provider-calling verb passes here: the endpoint must be usable
-  # and, when caps are set, the last 24 hours of spend must leave room.
+  # The verbs that send a call's `model:` instead of the endpoint's model.
+  @model_override_verbs [
+    :describe_image,
+    :extract_text,
+    :compare_images,
+    :generate_image,
+    :edit_image,
+    :process_image
+  ]
+
+  defp sent_model(endpoint, opts, verb) do
+    if verb in @model_override_verbs, do: opts[:model] || endpoint.model, else: endpoint.model
+  end
+
+  # Every provider-calling verb passes here, in this order: the endpoint
+  # must be usable; the user must not be blocked from the task's group
+  # (`GuardBlocks.check/2`, skipped for a call that holds an admission of
+  # `Guard.admit/4`, which checked it); the model must fit what the call
+  # and its task need
+  # (`Guard.check/4`, `implied` being what the call itself shows); the
+  # task's own limits (`TaskLimits.check/3`, skipped for a call that holds
+  # an admission of `Guard.admit/4` for its task and user); when caps are
+  # set, the last 24 hours of spend must leave room — a refusal there is
+  # also a guard event (`GuardEvents.budget_refused/4`). The request cache
+  # comes after, then HTTP.
+  #
   # `spends?` is false only for a `process_image/4` dry run, the one verb
   # that honours `dry_run:` — reading the option here let every other verb
-  # skip the cap and still call the provider.
-  defp authorize(endpoint, opts, spends? \\ true) do
-    with {:ok, endpoint} <- validate_endpoint(endpoint),
-         :ok <- if(spends?, do: Budget.check(endpoint, opts), else: :ok) do
-      {:ok, endpoint}
+  # skip the cap and still call the provider. A dry run still has its
+  # fitness checked; it skips the spend caps, the task's limits and its
+  # blocks.
+  #
+  # A refusal after the endpoint check is written as a usage row by
+  # `refuse/4`; an unusable endpoint is not (that is a configuration error,
+  # not a call that was turned away).
+  defp authorize(endpoint, opts, verb, implied, spends? \\ true) do
+    with {:ok, endpoint} <- validate_endpoint(endpoint) do
+      # The model checked (and named on a refusal row) is the one the verb
+      # sends: chat, embeddings and speech always send the endpoint's.
+      opts = if verb in @model_override_verbs, do: opts, else: Keyword.delete(opts, :model)
+
+      case admit(endpoint, opts, implied, spends?) do
+        {:ok, _admission} = admitted -> admitted
+        {:error, reason} -> refuse(endpoint, opts, verb, reason)
+      end
     end
+  end
+
+  defp admit(endpoint, opts, implied, spends?) do
+    task = Tasks.for_call(opts[:task])
+
+    with :ok <- if(spends?, do: blocks(task, opts), else: :ok),
+         {:ok, admission} <- Guard.check(endpoint, opts, task, implied),
+         :ok <- if(spends?, do: task_limits(task, opts), else: :ok),
+         :ok <- if(spends?, do: budget(endpoint, opts), else: :ok) do
+      {:ok, admission}
+    end
+  end
+
+  defp blocks(nil, _opts), do: :ok
+
+  defp blocks(task, opts) do
+    if Guard.admitted?(opts[:guard_admission], task.key, opts[:user_uuid]),
+      do: :ok,
+      else: GuardBlocks.check(task, opts[:user_uuid])
+  end
+
+  defp task_limits(nil, _opts), do: :ok
+
+  defp task_limits(task, opts) do
+    if Guard.admitted?(opts[:guard_admission], task.key, opts[:user_uuid]),
+      do: :ok,
+      else: TaskLimits.check(task, opts)
+  end
+
+  defp budget(endpoint, opts) do
+    with {:error, {:budget_exceeded, scope}} = refusal <- Budget.check(endpoint, opts) do
+      GuardEvents.budget_refused(scope, endpoint, opts)
+      refusal
+    end
+  end
+
+  # One row per refused call, before any HTTP: status "error", the reason,
+  # who asked (caller info, user, attribution) and the task, marked
+  # `refused: true` so usage sinks leave it out (`dispatch_usage_sinks/1`)
+  # and spend never counts it.
+  defp refuse(endpoint, opts, verb, reason) do
+    {auto_source, stacktrace, caller_context} = capture_caller_info()
+
+    metadata =
+      %{
+        refused: true,
+        error_reason: inspect(reason),
+        source: Keyword.get(opts, :source) || auto_source,
+        stacktrace: stacktrace,
+        caller_context: Map.put(caller_context, :user_uuid, opts[:user_uuid])
+      }
+      |> Map.merge(Guard.task_metadata(opts))
+      |> maybe_put_attribution(normalize_attribution(opts[:attribution]))
+
+    create_request(%{
+      endpoint_uuid: endpoint.uuid,
+      endpoint_name: endpoint.name,
+      prompt_uuid: opts[:prompt_uuid],
+      prompt_name: opts[:prompt_name],
+      model: opts[:model] || endpoint.model,
+      request_type: @cached_row_type[verb],
+      input_tokens: 0,
+      output_tokens: 0,
+      total_tokens: 0,
+      latency_ms: 0,
+      status: "error",
+      user_uuid: opts[:user_uuid],
+      error_message: error_reason_to_string(reason),
+      metadata: metadata
+    })
+
+    {:error, reason}
   end
 
   defp validate_endpoint(endpoint) do
@@ -4067,8 +4528,30 @@ defmodule PhoenixKitAI do
 
     # Filter out nil values and merge with user opts
     base_opts
+    |> Keyword.drop(caller_only_options(endpoint))
     |> Enum.reject(fn {_k, v} -> is_nil(v) end)
     |> Keyword.merge(opts)
+  end
+
+  # Anthropic's OpenAI-compatible layer answers 400 to a `temperature`,
+  # `top_p` or `top_k` its newer models do not take, and ignores the
+  # penalties and `seed`: the endpoint's stored sampling values (the
+  # schema's 0.7 default among them) are not sent there. A caller's own
+  # `temperature:` / `top_p:` / `top_k:` still is, except that `Completion`
+  # never sends `temperature` and `top_p` together, nor either of them to a
+  # model from Claude Opus 4.7 on.
+  defp caller_only_options(endpoint) do
+    if Completion.anthropic?(endpoint),
+      do: [
+        :temperature,
+        :top_p,
+        :top_k,
+        :frequency_penalty,
+        :presence_penalty,
+        :repetition_penalty,
+        :seed
+      ],
+      else: []
   end
 
   defp merge_embedding_opts(endpoint, opts) do
@@ -4205,6 +4688,7 @@ defmodule PhoenixKitAI do
       |> maybe_put_attribution(prompt_info[:attribution])
       |> maybe_put_prompt_snapshot(prompt_info[:prompt_snapshot])
       |> maybe_put_unbound_placeholders(prompt_info[:unbound_placeholders])
+      |> Map.merge(prompt_info[:guard] || %{})
 
     metadata =
       if capture_content do
@@ -4275,6 +4759,7 @@ defmodule PhoenixKitAI do
       # matters most.
       |> maybe_put_attribution(prompt_info[:attribution])
       |> maybe_put_unbound_placeholders(prompt_info[:unbound_placeholders])
+      |> Map.merge(prompt_info[:guard] || %{})
       |> maybe_add_content(:messages, capture_content, fn -> normalize_messages(messages) end)
 
     create_request(%{
@@ -4323,7 +4808,12 @@ defmodule PhoenixKitAI do
   # Messages as stored with the usage row: what was sent, tool fields included.
   defp normalize_messages(messages), do: Enum.map(messages, &Completion.normalize_message/1)
 
-  defp log_embedding_request(endpoint, input, response, source, stacktrace, caller_context) do
+  defp log_embedding_request(
+         endpoint,
+         input,
+         response,
+         {source, stacktrace, caller_context, guard}
+       ) do
     usage = Completion.extract_usage(response)
     input_count = if is_list(input), do: length(input), else: 1
 
@@ -4338,18 +4828,22 @@ defmodule PhoenixKitAI do
       latency_ms: response["latency_ms"],
       status: "success",
       user_uuid: caller_context[:user_uuid],
-      metadata: %{
-        input_count: input_count,
-        dimensions: endpoint.dimensions,
-        # Debug context (source tracking)
-        source: source,
-        stacktrace: stacktrace,
-        caller_context: caller_context
-      }
+      metadata:
+        Map.merge(
+          %{
+            input_count: input_count,
+            dimensions: endpoint.dimensions,
+            # Debug context (source tracking)
+            source: source,
+            stacktrace: stacktrace,
+            caller_context: caller_context
+          },
+          guard
+        )
     })
   end
 
-  defp log_failed_embedding_request(endpoint, reason, source, stacktrace, caller_context) do
+  defp log_failed_embedding_request(endpoint, reason, {source, stacktrace, caller_context, guard}) do
     create_request(%{
       endpoint_uuid: endpoint.uuid,
       endpoint_name: endpoint.name,
@@ -4358,13 +4852,17 @@ defmodule PhoenixKitAI do
       status: "error",
       user_uuid: caller_context[:user_uuid],
       error_message: error_reason_to_string(reason),
-      metadata: %{
-        error_reason: inspect(reason),
-        # Debug context (source tracking)
-        source: source,
-        stacktrace: stacktrace,
-        caller_context: caller_context
-      }
+      metadata:
+        Map.merge(
+          %{
+            error_reason: inspect(reason),
+            # Debug context (source tracking)
+            source: source,
+            stacktrace: stacktrace,
+            caller_context: caller_context
+          },
+          guard
+        )
     })
   end
 
@@ -4374,7 +4872,7 @@ defmodule PhoenixKitAI do
   # hand-maintained rate table (see TtsPricing) instead of staying unset, since no
   # TTS provider self-reports cost the way OpenRouter's chat completions do. The input
   # text is gated by `capture_request_content?/0` like chat/embedding.
-  defp log_tts_request(endpoint, text, result, source, stacktrace, caller_context) do
+  defp log_tts_request(endpoint, text, result, {source, stacktrace, caller_context, guard}) do
     capture_content = capture_request_content?()
     input_chars = String.length(text)
     audio_bytes = byte_size(result[:audio])
@@ -4399,7 +4897,10 @@ defmodule PhoenixKitAI do
       status: "success",
       user_uuid: caller_context[:user_uuid],
       cost_cents: TtsPricing.cost_nanodollars(endpoint.provider, input_chars, audio_bytes),
-      metadata: maybe_add_content(base_metadata, :input, capture_content, fn -> text end)
+      metadata:
+        base_metadata
+        |> Map.merge(guard)
+        |> maybe_add_content(:input, capture_content, fn -> text end)
     })
   end
 
@@ -4443,7 +4944,7 @@ defmodule PhoenixKitAI do
 
   defp voice_field_for(_), do: :voice
 
-  defp log_failed_tts_request(endpoint, text, reason, source, stacktrace, caller_context) do
+  defp log_failed_tts_request(endpoint, text, reason, {source, stacktrace, caller_context, guard}) do
     capture_content = capture_request_content?()
 
     base_metadata = %{
@@ -4463,7 +4964,10 @@ defmodule PhoenixKitAI do
       status: "error",
       user_uuid: caller_context[:user_uuid],
       error_message: error_reason_to_string(reason),
-      metadata: maybe_add_content(base_metadata, :input, capture_content, fn -> text end)
+      metadata:
+        base_metadata
+        |> Map.merge(guard)
+        |> maybe_add_content(:input, capture_content, fn -> text end)
     })
   end
 end

@@ -215,7 +215,7 @@ defmodule PhoenixKitAI.Web.EndpointFormCoverageTest do
         })
 
       assert {:error, {:live_redirect, %{to: to}}} = result
-      assert to == "/en/admin/ai"
+      assert to == PhoenixKitAI.Routes.ai_path()
 
       assert %PhoenixKitAI.Endpoint{temperature: 0.5, max_tokens: 100, top_k: 40} =
                saved = PhoenixKitAI.get_endpoint_by_name(name)
@@ -481,6 +481,31 @@ defmodule PhoenixKitAI.Web.EndpointFormCoverageTest do
       assert_receive {:fetched_url, host, path}, 1_000
       assert host == "api.mistral.ai", "expected mistral host, got #{inspect(host)}"
       assert path == "/v1/models", "expected /v1/models, got #{inspect(path)}"
+    end
+
+    test "a recommendation fetches models from its stored source's gateway", %{conn: conn} do
+      stub = stub_models()
+      connection = seed_openrouter_connection("gateway-recommendation")
+      source = fixture_endpoint(base_url: "https://gateway.example.com/v1")
+
+      query =
+        URI.encode_query(%{
+          source_endpoint_uuid: source.uuid,
+          integration_uuid: connection.uuid,
+          model: source.model,
+          name: "Recommended gateway model"
+        })
+
+      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/new?" <> query)
+      Req.Test.allow(stub, self(), view.pid)
+      load_models(view, &seed_openrouter_connection/2, connection)
+
+      assert_receive {:fetched_url, "gateway.example.com", "/v1/models"}
+
+      assert has_element?(
+               view,
+               "input[name='endpoint[base_url]'][value='https://gateway.example.com/v1']"
+             )
     end
 
     test "a model fetch on the edit form selects the endpoint's saved model", %{conn: conn} do

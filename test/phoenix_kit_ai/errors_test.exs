@@ -26,6 +26,39 @@ defmodule PhoenixKitAI.ErrorsTest do
     end
   end
 
+  describe "message/1 — task limits" do
+    test "{:task_limit_exceeded, scope, unit, period} names the limit and whose it is" do
+      assert Errors.message({:task_limit_exceeded, :task, :requests, :day}) ==
+               "This AI task has reached its daily request limit"
+
+      assert Errors.message({:task_limit_exceeded, :user, :money, :month}) ==
+               "You have reached your monthly spending limit in this AI task"
+    end
+
+    test "they are translated" do
+      for locale <- ["et", "ru"], scope <- [:task, :user] do
+        Gettext.with_locale(PhoenixKitAI.Gettext, locale, fn ->
+          text = Errors.message({:task_limit_exceeded, scope, :tokens, :day})
+          refute text =~ "limit", "#{locale}/#{scope} fell back to English"
+        end)
+      end
+    end
+  end
+
+  describe "message/1 — blocks" do
+    test "{:task_blocked, group} says the person is blocked, and names no reason" do
+      assert Errors.message({:task_blocked, "free_text"}) ==
+               "You are blocked from this AI task until an administrator lifts the block"
+
+      for locale <- ["et", "ru"] do
+        Gettext.with_locale(PhoenixKitAI.Gettext, locale, fn ->
+          refute Errors.message({:task_blocked, "free_text"}) =~ "blocked",
+                 "#{locale} fell back to English"
+        end)
+      end
+    end
+  end
+
   describe "message/1 — plain atoms" do
     # Pin the EXACT translated string for every atom in the public
     # error vocabulary. `assert is_binary/1` is the wrong bar — every

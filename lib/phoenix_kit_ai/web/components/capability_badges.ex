@@ -1,0 +1,89 @@
+defmodule PhoenixKitAI.Web.Components.CapabilityBadges do
+  @moduledoc """
+  The badges for what a model can do (images, documents, image generation,
+  tools, JSON schema) as its catalogue says: one per capability it has, a
+  grey one with "?" where nobody verified it (never styled like a missing
+  one, which has no badge), one "unknown" badge when nothing is known, and
+  Anthropic's lifecycle when the model is leaving. Shared by the endpoint
+  form's model grid and the task model picker.
+  """
+
+  use Phoenix.Component
+  use Gettext, backend: PhoenixKitAI.Gettext
+
+  alias PhoenixKitAI.Capabilities
+
+  attr(:capabilities, :any, default: nil)
+
+  attr(:context, :atom,
+    default: :endpoint,
+    values: [:endpoint, :catalogue],
+    doc:
+      "`:catalogue` for a model no endpoint has yet (recommendations): the hint on a \"?\" then only says it is not verified"
+  )
+
+  # What the catalogue says the model can do: a badge per capability it has
+  # (a grey one with "?" where nobody verified it), one "unknown" badge when
+  # nothing is known, and Anthropic's lifecycle when the model is leaving.
+  def badges(assigns) do
+    ~H"""
+    <%= if match?(%Capabilities{}, @capabilities) do %>
+      <%= if Enum.all?(Capabilities.declarable(), &(Map.fetch!(@capabilities, &1) == :unknown)) do %>
+        <span
+          data-capability="unknown"
+          class="badge badge-ghost badge-xs h-auto"
+          title={hint(@context)}
+        >
+          {gettext("Capabilities unknown")}
+        </span>
+      <% else %>
+        <%= for flag <- Capabilities.declarable(), Map.fetch!(@capabilities, flag) != :no do %>
+          <% known? = Map.fetch!(@capabilities, flag) == :yes %>
+          <span
+            data-capability={flag}
+            data-state={Map.fetch!(@capabilities, flag)}
+            class={[
+              "badge badge-xs h-auto",
+              if(known?, do: "badge-info badge-outline", else: "badge-ghost")
+            ]}
+            title={if(!known?, do: hint(@context))}
+          >
+            {label(flag)}{if(!known?, do: "?")}
+          </span>
+        <% end %>
+      <% end %>
+
+      <span
+        :if={@capabilities.lifecycle == :deprecated}
+        data-lifecycle="deprecated"
+        class="badge badge-warning badge-xs h-auto"
+      >
+        {gettext("Retiring")}
+      </span>
+      <span
+        :if={@capabilities.lifecycle == :retired}
+        data-lifecycle="retired"
+        class="badge badge-error badge-xs h-auto"
+      >
+        {gettext("Retired")}
+      </span>
+    <% end %>
+    """
+  end
+
+  @doc "The capability in words."
+  def label(:vision), do: gettext("Images")
+  def label(:file_input), do: gettext("Documents")
+  def label(:image_output), do: gettext("Image generation")
+  def label(:tools), do: gettext("Tools")
+  def label(:json_schema), do: gettext("JSON schema")
+
+  @doc "The hint on a capability nobody verified: where to mark it."
+  def unverified_hint, do: gettext("Not verified — mark it on the endpoint")
+
+  @doc "The hint on a capability nobody verified, for a model no endpoint has yet."
+  def catalogue_hint, do: gettext("Not verified")
+
+  defp hint(:catalogue), do: catalogue_hint()
+  defp hint(_context), do: unverified_hint()
+end

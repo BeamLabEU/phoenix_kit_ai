@@ -42,6 +42,7 @@ support_dir = Path.expand("support", __DIR__)
   {PhoenixKitAI.Test.Layouts, "test_layouts.ex"},
   {PhoenixKitAI.Test.Router, "test_router.ex"},
   {PhoenixKitAI.Test.Endpoint, "test_endpoint.ex"},
+  {PhoenixKitAI.Test.SchemaMigration, "schema_migration.ex"},
   {PhoenixKitAI.ActivityLogAssertions, "activity_log_assertions.ex"},
   {PhoenixKitAI.DataCase, "data_case.ex"},
   {PhoenixKitAI.LiveCase, "live_case.ex"}
@@ -123,7 +124,7 @@ repo_available =
       # `uuid-ossp` / `pgcrypto` extensions + `uuid_generate_v7()` function;
       # V57+ creates the AI tables; V107 adds the `integration_uuid` column
       # + UNIQUE index on `lower(name)` that this module's schema and tests
-      # depend on. No module-owned DDL.
+      # depend on.
       #
       # Standalone runs against Hex `phoenix_kit ~> 1.7` will fail at boot
       # with "column integration_uuid does not exist" if the published Hex
@@ -141,6 +142,18 @@ repo_available =
       # `schema_migrations` — see `dev_docs/migration_cleanup.md` for the
       # staleness story.
       PhoenixKit.Migration.ensure_current(TestRepo, log: false)
+
+      # Then this module's own chain (`PhoenixKitAI.Migrations`, the tables
+      # core does not create), through `Ecto.Migrator` as the host's
+      # generated migration runs it. Keyed on the chain version, so a bump
+      # re-applies; the chain is idempotent, so a re-run is a no-op.
+      Ecto.Migrator.run(
+        TestRepo,
+        [{PhoenixKitAI.Migrations.current_version(), PhoenixKitAI.Test.SchemaMigration}],
+        :up,
+        all: true,
+        log: false
+      )
 
       Ecto.Adapters.SQL.Sandbox.mode(TestRepo, :manual)
       true

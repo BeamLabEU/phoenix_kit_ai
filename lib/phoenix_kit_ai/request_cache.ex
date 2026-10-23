@@ -106,7 +106,8 @@ defmodule PhoenixKitAI.RequestCache do
   is not free). `fun` returns `{:ok, result} | {:error, _}`; only `{:ok, _}`
   is stored. `meta` is the telemetry metadata; its `:on_hit` entry, a
   one-arity function, runs on a hit with the stored value and is not
-  emitted.
+  emitted; when it returns `{:replace, value}`, that value is returned
+  instead of the stored one (the stored entry is unchanged).
   """
   @spec fetch(key() | (-> key()), keyword(), (-> {:ok, term()} | {:error, term()}), map()) ::
           {:ok, term()} | {:error, term()}
@@ -202,8 +203,11 @@ defmodule PhoenixKitAI.RequestCache do
     case get(key) do
       {:ok, value} ->
         emit(:hit, meta)
-        run_on_hit(meta[:on_hit], value)
-        {:ok, value}
+
+        case run_on_hit(meta[:on_hit], value) do
+          {:replace, replaced} -> {:ok, replaced}
+          _ -> {:ok, value}
+        end
 
       :miss ->
         emit(:miss, meta)
@@ -214,7 +218,6 @@ defmodule PhoenixKitAI.RequestCache do
   # A hit must never fail because its bookkeeping did.
   defp run_on_hit(on_hit, value) when is_function(on_hit, 1) do
     on_hit.(value)
-    :ok
   rescue
     error ->
       Logger.warning("[PhoenixKitAI] cache hit bookkeeping failed: #{Exception.message(error)}")

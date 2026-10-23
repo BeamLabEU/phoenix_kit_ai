@@ -13,8 +13,9 @@ is no hardcoded provider whitelist. Implements the `PhoenixKit.Module`
 behaviour for auto-discovery by the host application; it is a library, and the
 host supplies endpoint and router (`config/` exists only for tests).
 
-- **Depends on:** `phoenix_kit` `~> 2.38` (Hex; the floor is where
-  `PhoenixKit.Activity.log/3` and `PhoenixKitWeb.Actor` ship). No sibling
+- **Depends on:** `phoenix_kit` `~> 2.63` (Hex; the floor is where
+  `PhoenixKit.Module.oban_crons/0` ships, needed for guard-event pruning;
+  Activity and Actor also need at least 2.38). No sibling
   `phoenix_kit_*` deps. Non-kit deps: `phoenix_live_view` `~> 1.1`, `gettext` `~> 1.0`, `xai`
   `~> 0.2` (realtime voice only — `Xai.Realtime`; `gun`/`mint` are deliberately
   not added so cowlib's CVE surface stays out of the tree), `rustler`
@@ -23,16 +24,18 @@ host supplies endpoint and router (`config/` exists only for tests).
 - **Consumed by:** `phoenix_kit_catalogue`, `phoenix_kit_publishing`,
   `phoenix_kit_projects`, `phoenix_kit_restyle`, `phoenix_kit_ecommerce` — all
   through the `PhoenixKitAI` context module.
-- **Admin surface:** one parent tab `AI` at `ai` with four subtabs —
-  `ai/endpoints`, `ai/prompts`, `ai/playground`, `ai/usage`. Sub-routes for the
-  new/edit forms come from `route_module/0`.
+- **Admin surface:** one parent tab `AI` at `ai` with five subtabs —
+  `ai/endpoints`, `ai/prompts`, `ai/playground`, `ai/usage`, `ai/tasks`.
+  Sub-routes for the new/edit forms come from `route_module/0`.
 - **Module key** `"ai"`; settings prefix `ai_`.
 
 ## What this module does NOT do
 
-- **No DB migrations of its own.** Tables are created by core's versioned
-  chain. Adding a column is a core migration first, then schema + changeset
-  edits here.
+- **No migrations for core's tables.** `phoenix_kit_ai_endpoints`,
+  `_prompts` and `_requests` are created by core's versioned chain; adding a
+  column to one is a core migration first, then schema + changeset edits
+  here. The module's own chain (`PhoenixKitAI.Migrations`) holds only new
+  tables core does not know — see "Database & migrations".
 - **No per-completion Activity logging.** `PhoenixKit.Activity.log/3` runs on
   endpoint/prompt CRUD and enable/disable toggles, on both the success and
   failure branches, via the `log_failed_*_mutation/3` pipe-step helpers with
@@ -206,8 +209,9 @@ Repo-local aliases:
   the row is written without it (`user_uuid` nil, the submitted id kept in
   `metadata["unresolved_refs"]`, a warning logged) and counts toward the
   endpoint and global caps but never the per-user one. The same applies to
-  an `endpoint_uuid` or `prompt_uuid` that names no row. Cap the endpoint or
-  the site for visitors.
+  an `endpoint_uuid` or `prompt_uuid` that names no row. Task limits read a
+  `user_uuid:` that is not a uuid as no user: the task's own limits apply,
+  the per-user ones do not. Cap the endpoint or the site for visitors.
 - Spend caps read the usage table; concurrent callers overshoot by their
   in-flight calls, and a database error fails open. Treat a cap as a brake
   on a runaway day, not as a hard invoice ceiling.
@@ -245,6 +249,15 @@ lib/phoenix_kit_ai/
   providers/                     adapters: openrouter (unified /images), xai, openai (multipart), openai_compatible (chat parts), http (shared Req door)
   images.ex images/              generic image layer: operations → prompt, option fitting, describe/compare, model-capability cache
   openrouter_client.ex           generic across providers despite the name
+  capabilities.ex                what a model can do (catalogue + declared), ETS cache process
+  task_spec.ex tasks.ex          AI task declarations (`ai_tasks/0`), the registry, fitness for a task
+  recommendations.ex             models for a task grouped by capability (verified / possible / experimental) + models that worked (journal, 30 days)
+  guard.ex                       the call-time check: needs of a call, fitness, require_parameters; ai.manage; admit/4; off-purpose reports, self_flag?, anomaly rules
+  guard_blocks.ex guard_block.ex   blocks of a person in a task's block group: rights, the per-node cache; the V3 schema
+  task_limits.ex                 task limits: calendar windows, limits in force, counting from the journal, forgiving
+  guard_events.ex guard_watch.ex   guard events, dedupe, watchers, notifications; the model_unfit watch process
+  migrations.ex model_capability.ex   the module's own migration chain; capability snapshot schema
+  task_setting.ex task_user_limit.ex guard_event.ex   schemas of the chain's V2 tables
   errors.ex                      error atom -> gettext string
   ai_model.ex routes.ex          model struct; admin sub-routes
   gettext.ex                     PhoenixKitAI.Gettext backend
@@ -252,7 +265,7 @@ lib/phoenix_kit_ai/
   realtime/session.ex            one xAI realtime WebSocket per Playground LiveView
   translat*.ex translate_worker.ex   generic AI-translation pipeline
   components/ai_translate*       reusable translate button/glue components
-  web/                           admin LiveViews: Endpoints, EndpointForm, Prompts, PromptForm, Playground
+  web/                           admin LiveViews: Endpoints, EndpointForm, Prompts, PromptForm, Playground, Tasks
 ```
 
 Notes on the less obvious modules:
@@ -288,6 +301,11 @@ Notes on the less obvious modules:
 | `phoenix_kit_ai_endpoints` | `PhoenixKitAI.Endpoint` | provider credentials, model, generation params, `provider_settings` |
 | `phoenix_kit_ai_prompts` | `PhoenixKitAI.Prompt` | `{{Variable}}` templates |
 | `phoenix_kit_ai_requests` | `PhoenixKitAI.Request` | per-request usage log |
+| `phoenix_kit_ai_model_capabilities` | `PhoenixKitAI.ModelCapability` | capability snapshot of the endpoints' models (module chain) |
+| `phoenix_kit_ai_task_settings` | `PhoenixKitAI.TaskSetting` | a task's limits, warn percent (module chain V2) |
+| `phoenix_kit_ai_task_user_limits` | `PhoenixKitAI.TaskUserLimit` | a user's personal limits in a task (module chain V2) |
+| `phoenix_kit_ai_guard_events` | `PhoenixKitAI.GuardEvent` | what the guard noticed; `dedupe_key` unique where set (module chain V2) |
+| `phoenix_kit_ai_guard_blocks` | `PhoenixKitAI.GuardBlock` | a person blocked from a block group until lifted; one active per group and person (module chain V3) |
 
 ### PubSub topics
 
@@ -296,9 +314,17 @@ Notes on the less obvious modules:
 | `phoenix_kit:ai:endpoints` | `subscribe_endpoints/0` |
 | `phoenix_kit:ai:prompts` | `subscribe_prompts/0` |
 | `phoenix_kit:ai:requests` | `subscribe_requests/0` |
+| `phoenix_kit:ai:capabilities` | `Capabilities.subscribe/0` |
+| `phoenix_kit:ai:guard` | `TaskLimits.topic/0` (`GuardWatch` subscribes) |
 
 Every message is `{event, uuid}`; a subscriber that needs the record reads
-it by uuid.
+it by uuid. The capabilities topic carries
+`{:capabilities_refreshed, base_urls}` after a catalogue refresh that changed
+the cache, with the base URLs that changed. The guard topic carries
+`{:task_limits_changed, task_key}` after a change of a task's limits, so
+every node drops its cached limits of the task, and
+`{:guard_blocks_changed, block_group}` after a block or a lift, so every
+node drops its copy of the active blocks.
 
 ### Settings & permissions
 
@@ -314,7 +340,16 @@ read through the settings cache. Every provider-calling verb (not the
 realtime voice session) checks them first and returns
 `{:error, {:budget_exceeded, scope}}` once one is reached, cached answers
 included; only a `process_image/4` dry run skips the check (no other verb
-honours `dry_run:`).
+honours `dry_run:`). A refused call is written as a usage row (see
+"Feature notes").
+
+The call-time guard: `ai_guard_verified_models_only` (boolean, default
+`false`, switched on AI → Tasks) refuses a call whose model's capability
+for a requirement is unknown instead of letting it through; while it is on,
+a new or changed capability declaration on an endpoint needs `ai.manage`
+(`create_endpoint/2` / `update_endpoint/3` take `scope:`).
+`ai_guard_watchers` (JSON text of a list of user uuids, ≤ 1000 characters;
+empty = every Owner) is who gets the guard's `"ai_guard"` notifications.
 
 AI translation: `ai_translation_endpoint_uuid` / `ai_translation_prompt_uuid`
 pick the shared endpoint and prompt; `ai_translation_glossary_<target_lang>`
@@ -324,8 +359,18 @@ the prompt's `{{Glossary}}` slot, uncapped. A blank value cannot be stored,
 so `Settings.delete_setting/1` is how a language falls back to the shared
 key; `translate_fields/6`'s `glossary:` option overrides both (`nil` = none).
 
-Permissions: a single module permission `"ai"` from `permission_metadata/0`,
-checked with `Scope.has_module_access?/2`. No sub-permissions.
+Permissions: the module permission `"ai"` from `permission_metadata/0`,
+checked with `Scope.has_module_access?/2`, and one sub-permission,
+`"ai.manage"`: changing the task guard (limits, personal limits, forgiving,
+watchers, "only verified models", declaring capabilities while that is on,
+a task's self-flag mode, blocking and lifting), and seeing the reasons of a private task's flags and
+blocks.
+An Owner always may (`Guard.may_manage?/1`); core grants a new
+sub-permission to Admin once while Admin holds `ai`. Every context function
+that changes the guard takes the actor's scope and checks it; the Tasks
+page checks again per event, against the socket's scope and the scope as it
+is now (`PhoenixKitAI.Web.Access`: the session's through core's
+`SessionRef` where core has it, else the user's current row).
 
 ### Application env
 
@@ -342,6 +387,7 @@ checked with `Scope.has_module_access?/2`. No sub-permissions.
 | `:max_image_bytes` | `25_000_000` | Largest image accepted as input or fetched as output by the image verbs |
 | `:translatables` | `[]` | `[{resource_type, adapter_module}]` a host app registers for the AI-translation pipeline without being a kit module; configured entries win over module-declared ones |
 | `:request_cache` | `[]` | `ttl:` (seconds, default 86 400), `sweep:` (300), `max_entries:` (10 000), `max_value_bytes:` (8 000 000), `default:` (`true` caches every verb unless a call says `cache: false`); read per call by `PhoenixKitAI.RequestCache` |
+| `:task_registry_retry_ms` | `60_000` | How long a task registry built while a module's `ai_tasks/0` failed is kept before the next access builds it again |
 | `:allow_internal_image_urls` | `false` | Lift the image-fetch host policy (loopback / link-local / RFC 1918 / `.local`, resolved addresses included) — tests and air-gapped installs only; separate from the endpoint base-URL switch |
 
 ### Providers
@@ -379,6 +425,28 @@ provided the API exposes `<base_url>/chat/completions` and `/models`.
   LiveView process: validation is a supervised task, the `/models` fetch is
   `start_async(:model_fetch)`, and a result for a connection or model type
   the operator has left is dropped.
+- The chat model list keeps every model whose only output is text
+  (`output_modalities == ["text"]`, or the right side of `modality`), so
+  models that also take images are in it. Each card carries the model's
+  `PhoenixKitAI.Capabilities` as badges (images, documents, image
+  generation, tools, JSON schema; a grey "?" with a hint where nobody
+  verified it; an Anthropic model's lifecycle) and no price badge where the
+  listing names no price; where the catalogue says nothing, the
+  Current Model panel offers checkboxes that declare capabilities in
+  `provider_settings["capabilities"]` for that model id only (the changeset
+  drops a declaration naming another model; each change is an
+  `endpoint.capabilities_declared` activity). An Anthropic endpoint's list
+  comes from the native `/v1/models` (all pages, all lifecycle stages),
+  with the headers the core registry declares for `anthropic`
+  (`validation.extra_headers`; `anthropic-version` of this module when it
+  has none). DeepSeek's `/models` (input/output modalities, context window)
+  and Mistral's `/v1/models` (`capabilities.vision`, `function_calling`,
+  context length) are catalogues too; OpenAI, xAI and Z.ai list no
+  capabilities (`:unknown` unless declared). With "only verified models"
+  on, an `:unknown` need refuses the call — image generation included
+  (`generate_image` / `edit_image` / `process_image` need `:image_output`),
+  so on OpenAI / xAI / Z.ai endpoints mark "Image generation" (and the
+  other capabilities their tasks need) on the endpoint first.
 - The `base_url` guard resolves a name only when the URL is being changed,
   for two seconds at most, never for the provider's registry default and
   never from `change_endpoint/2` (a form's per-keystroke changeset); a name
@@ -441,10 +509,52 @@ provided the API exposes `<base_url>/chat/completions` and `/models`.
 
 ## Database & migrations
 
-None. Tables `phoenix_kit_ai_endpoints`, `phoenix_kit_ai_prompts` and
-`phoenix_kit_ai_requests` ship in core's versioned chain; `migration_module/0`
-is unset and this module owns no DDL. A schema change is a core migration
-first, then the schema and changeset edits here.
+Tables `phoenix_kit_ai_endpoints`, `phoenix_kit_ai_prompts` and
+`phoenix_kit_ai_requests` ship in core's versioned chain; a schema change to
+one of them is a core migration first, then the schema and changeset edits
+here. The module does not adopt them.
+
+`migration_module/0` returns `PhoenixKitAI.Migrations`, the module's own
+chain for tables core does not create (`mix phoenix_kit.update` runs it after
+core's). Version marker: `COMMENT ON TABLE phoenix_kit_ai_model_capabilities
+IS 'ai_schema:<N>'`. Every statement guards itself, so the chain re-runs
+cleanly; additive only. V1 creates `phoenix_kit_ai_model_capabilities`
+(unique `(base_url, model)`, flags `yes`/`no`/`unknown`), the snapshot
+`PhoenixKitAI.Capabilities` loads at start. V2 creates
+`phoenix_kit_ai_task_settings` (unique `task_key`),
+`phoenix_kit_ai_task_user_limits` (unique `(task_key, user_uuid)`, deleted
+with the user) and `phoenix_kit_ai_guard_events` (`kind` CHECK — a new kind
+is a new version; unique `dedupe_key WHERE dedupe_key IS NOT NULL`; user
+`CASCADE`, endpoint/request/actor `SET NULL`), and the index
+`phoenix_kit_ai_requests_task_inserted_at_index` on core's journal,
+`((metadata->>'task'), inserted_at)` with no status condition (core's
+schema repair reports extra columns of its tables, not extra indexes), and
+`file_input` / `image_output` flags on the snapshot (`unknown` until a
+later version fills them). V3 creates `phoenix_kit_ai_guard_blocks`
+(user `CASCADE`; origin event, blocker and lifter `SET NULL`; reason and
+lift note ≤ 500; one active block per group and person — unique
+`(block_group, user_uuid) WHERE lifted_at IS NULL`). Down to 2 drops it;
+down to 1 drops what V2 added; down to 0 also the snapshot, which the next
+refresh rebuilds.
+
+**Before V2 on a host with a large journal, measure it**
+(`SELECT count(*), pg_size_pretty(pg_total_relation_size('phoenix_kit_ai_requests'))`)
+and run the update in a quiet window: the index is built with a plain
+`CREATE INDEX`, which holds a SHARE lock on `phoenix_kit_ai_requests` — every
+AI call's usage row waits — until it is built. `CONCURRENTLY` is not
+possible in this chain: the wrapper `mix phoenix_kit.update` generates for a
+module's migration has no `@disable_ddl_transaction`, so the chain runs in
+the migration's transaction, where `CREATE INDEX CONCURRENTLY` is refused;
+running it on another connection from inside the migration would wait for
+that very transaction to end. It needs a change in core's generator (a
+module asking for a non-transactional wrapper), not here. A host that
+edits its committed wrapper to `@disable_ddl_transaction true` still gets
+the plain build: the chain does not switch to `CONCURRENTLY` on its own.
+
+Between new code and the migration (code on V2, database still on V1) the
+capability snapshot cannot be loaded — its new columns are missing — and
+`Capabilities` starts with an empty cache, logged, until its first refresh;
+nothing fails. Migrate before starting the new code (`upgrade.sh` does).
 
 Primary keys are UUIDv7 (`@primary_key {:uuid, UUIDv7, autogenerate: true}`),
 and every table-backed schema must `use PhoenixKit.SchemaPrefix` so its queries
@@ -470,7 +580,8 @@ Test database `phoenix_kit_ai_test`.
   report "0 failures" with most of the suite skipped. `:integration` is
   excluded only under the explicit `PK_AI_SKIP_DB=1` opt-out.
 - The schema is built by `PhoenixKit.Migration.ensure_current(TestRepo, log: false)`
-  — core's own chain, the same call a host makes. It re-applies newly shipped
+  — core's own chain, the same call a host makes — and then by this module's
+  chain through `Ecto.Migrator` and `PhoenixKitAI.Test.SchemaMigration`. It re-applies newly shipped
   migrations on every boot; the older `Ecto.Migrator.run(TestRepo, [{0, PhoenixKit.Migration}], …)`
   pattern silently stopped re-applying once `0` was recorded in
   `schema_migrations`, so never reintroduce it.
@@ -512,10 +623,163 @@ Test database `phoenix_kit_ai_test`.
 ## Feature notes
 
 - Every provider-calling verb goes through one gate and one wrapper:
-  `authorize/2` (endpoint usable, spend caps have room) and `with_cache/6`
+  `authorize/5` (endpoint usable; the user is not blocked from the task,
+  `PhoenixKitAI.GuardBlocks`; the model fits what the call and its
+  task need, `PhoenixKitAI.Guard`; the task's limits have room,
+  `PhoenixKitAI.TaskLimits`; spend caps have room) and `with_cache/6`
   (key, lookup, zero-cost hit row). A new verb joins both or it is not a
   verb — `dev_docs/guides/spend-caps-and-caching.md` holds the semantics
-  of caps, cache, structured output and telemetry.
+  of caps, cache, structured output and telemetry. A refusal past the
+  endpoint check (`{:task_blocked, group}`, `{:model_unfit, missing}`,
+  `{:model_unverified, unclear}`,
+  `{:task_limit_exceeded, scope, unit, period}`, `{:budget_exceeded,
+  scope}`) writes an error row through `refuse/4`,
+  marked `metadata.refused: true`; `dispatch_usage_sinks/1` skips those.
+- AI tasks: modules declare `%PhoenixKitAI.TaskSpec{}`s in `ai_tasks/0`
+  (duck-typed); `PhoenixKitAI.Tasks` keeps the registry, `fitness/2`,
+  `endpoint_options/1` and `check_selection/2`. The registry is rebuilt
+  only when the module set changes, or a minute after a build in which a
+  module's `ai_tasks/0` failed (raised, exited or threw) — not when code
+  is hot-reloaded: a changed `ai_tasks/0` with the same modules needs a
+  restart to show. Every verb takes `task:`; every row it writes
+  (success, error, refusal, cache hit, unparsed JSON) carries
+  `metadata.task`, and `:task` is not part of the cache key. A key no
+  module declares is logged once and the call goes on. This module
+  declares `ai.translation` and `ai.playground`.
+- Task limits (`PhoenixKitAI.TaskLimits`): scope `:task` (every call of
+  the task) and `:user` (one user in it) × money (micro-dollars) / requests
+  / tokens × calendar day / month in the site time zone. In force, cell by
+  cell: the user's personal limit, else the task's default for users, else
+  the declaration's `default_limits`; the task's own, else the
+  declaration's. Empty is none, `0` allows nothing. Counted from the
+  journal by `metadata->>'task'` (and `user_uuid`), `status = 'success'`
+  only — a cache hit is one request and no money or tokens, a refusal never
+  counts; money only where the provider reports a cost. Checked in
+  `authorize/5` after the model check and before `Budget`; a reached limit
+  is `{:error, {:task_limit_exceeded, scope, unit, period}}` with a refusal
+  row. Forgiving restarts one scope and period's count from that moment
+  (kept only as a `limit_forgiven` event). `Guard.admit/4` checks the
+  limits once for a piece of work (an assistant's turn) and gives a token
+  for `guard_admission:`; calls with it skip the limits (not the model
+  check, not `Budget`), only for the same task and user and until it
+  expires. Tokens live in the request cache's flags table, on one node.
+  A call reads the task's settings and personal limits from a per-node
+  cache in the same table (dropped on every change through `TaskLimits`,
+  here directly and on the other nodes through the guard topic; all of it
+  when `GuardWatch` starts; each entry read again after 60 s, which bounds
+  a lost broadcast and a change made inside the caller's transaction): a
+  task without limits costs about one load a minute; the usage is read only
+  when a limit is in force.
+- Guard signals (`PhoenixKitAI.GuardEvents`): `limit_warning` (at the
+  task's warn percent, default 80: a user's limit tells the user in the
+  app, the task's the watchers), `limit_reached` (the user and the
+  watchers; a `Budget` refusal too, scope `budget:<scope>`, once per local
+  day), `limit_forgiven`, `model_unfit` (`PhoenixKitAI.GuardWatch`: a
+  task's endpoint that was fit and is not after a catalogue refresh or an
+  endpoint save, once a day per task and endpoint). Once per window is a
+  unique `dedupe_key` inserted with `ON CONFLICT DO NOTHING`; only an
+  insert that went through signals. Watchers: `ai_guard_watchers` (else
+  every Owner) and the task's `watchers` callback, never the user; type
+  `"ai_guard"`. Activity: `guard.<kind>` with the event as `resource_uuid`
+  (never `target_uuid`). Texts carry no reasons and nothing of a call. A key
+  that was inserted is also kept on the node until its window ends, so a
+  limit past its threshold costs no further INSERT. `GuardWatch` emits
+  `[:phoenix_kit_ai, :guard_watch, :look]` after each look. Events older
+  than 180 days are deleted daily by `GuardEventsPruneWorker`, which the
+  module schedules through `oban_crons/0` (written into the host's crontab
+  by `mix phoenix_kit.install` / `update`); it runs in core's `default`
+  queue, so the host lists no queue for it.
+- Off-purpose use (`PhoenixKitAI.Guard`): the consumer flags, the guard
+  never edits a prompt or a schema. `self_flag?/1` (the task's guard mode,
+  else the declaration's `self_flag`) before building the prompt; the mode
+  is set to `off` or `self_flag` on the Tasks page
+  (`TaskLimits.set_guard_mode/3`, `ai.manage`; the classifier modes come
+  with the classifier);
+  `self_flag_instruction/1` is English text with the purpose (an admin's
+  override when set), "refuse politely and flag", "judge only the user's
+  own message" and "no quote in the reason"; `report_off_purpose/4` writes
+  one `off_purpose` event per turn (`%{turn_ref: …}`) or call (the row's
+  request uuid), reason ≤ 500, a no-op (`:off`) while the task does not
+  self-flag, and tells the watchers once a day per person and task
+  (`off_purpose_signal`, no reason). Anomaly rules of a declaration
+  (`sources`, `max_calls_per_hour` per person, `max_tokens_per_call`) are
+  checked after each journal row (`check_anomalies/1`, not for refusals;
+  a task without rules costs nothing; the hourly count is skipped once its
+  rule was signalled that day) and signalled once a day per rule
+  (`anomaly`); they never block.
+- Blocks (`PhoenixKitAI.GuardBlocks`): set by a person — no automatic
+  block. A block lands on the task's `block_group` (else its key);
+  `ai.playground` and an assistant's chat share `free_text`. Checked in
+  `authorize/5` first after the endpoint (not for a dry run, not for a call
+  with an admission of `Guard.admit/4`, which checks it), refusing with
+  `{:error, {:task_blocked, group}}` and a refusal row — the group, never
+  the reason. Set: `ai.manage` or an Owner; only an Owner blocks an Owner.
+  Lift: an Owner (their own too, with a record), else `ai.manage`, or
+  `agent.manage` for a `free_text` block (checked by string), never one's
+  own and never an Owner's. `blocked` / `unblocked` events, watchers (but
+  the actor) and the person told, Activity by the event — no reason or
+  note. Active blocks are cached per node like the limits (one query a
+  minute; dropped on block and lift, here and through the guard topic).
+  A private group (any of its tasks `private`) shows its reasons only to
+  `ai.manage` and Owners (`Guard.reasons_visible?/2`, `GuardEvents.flags/3`;
+  `GuardBlocks.active/2` gives the state without the reason or note,
+  `active/3` with them for a viewer allowed to see them). Reasons and notes
+  are cut to 500 code points (what the CHECK counts), never inside a
+  grapheme.
+- Recommendations (`PhoenixKitAI.Recommendations`, live data only — no list
+  of "best models", no `recommended:` in declarations): `ranked/2` takes
+  the catalogue the capability cache holds for the base URLs the endpoints
+  use and groups the models by capability first: `verified` (`:fit` for
+  every need), `possible` (nothing `:no`, something `:unknown`, named in the
+  row's `unverified`) and `experimental` (an id with `preview`/`beta`/`exp`,
+  a `:free` variant or a free price, an alias, or no price in OpenRouter's
+  catalogue — at most one free row). The needs are the task's, its images /
+  documents / image generation ones replaced by the filters (the task's own
+  by default; `refilter/2` regroups without the journal). Models must
+  answer in text unless image generation is needed; retired ones are
+  dropped, deprecated marked. Inside a group the rows are ranked by
+  `typical_tokens × catalogue prices` (else the journal's median tokens over
+  30 days, else the input price alone — `estimate: :rough`). Anthropic,
+  DeepSeek and Mistral list no prices: unpriced, after the priced rows, one
+  place kept; never mapped to an OpenRouter model by name. `cheapest/2`
+  is every fit model by price, whatever it looks like. The
+  cache therefore keeps each model's `name`, `prompt_price`,
+  `completion_price` and `text_output` (not in the DB snapshot: after a
+  restart they are empty until the first refresh). `worked/2` is one
+  aggregate over `phoenix_kit_ai_requests` by `metadata->>'task'`, without
+  `metadata.refused` rows. The UI is `Web.Components.TaskModelPicker`
+  (`picker/1` for a consumer's form field, `recommendations/1` for the
+  panel alone, as on AI → Tasks); the panel is the live component
+  `Web.Components.RecommendationsPanel` (its filters are its own state,
+  kept over the page's re-renders); its create link needs the `ai`
+  permission in the `scope` attr and opens the new-endpoint form with
+  `?name=&model=&integration_uuid=` prefilled — never saved by the link.
+- Every verb's result names its usage row: `"request_uuid"` in the chat and
+  embedding responses, `:request_uuid` in the other verbs' maps; a cache
+  hit names the row it wrote, not the first one.
+- Anthropic (`api.anthropic.com`, its OpenAI-compatible layer): the
+  endpoint's stored `temperature`/`top_p`/`top_k`/penalties/`seed` are
+  not sent, a caller's own sampling values are (never `temperature` with
+  `top_p`, and neither to a model from Claude Opus 4.7 on, decided from the
+  model id — `Completion.anthropic_sampling?/1`; an id it cannot read
+  counts as newer), and the OpenRouter-shaped reasoning options become `thinking`
+  only in a form the model's catalogue lists
+  (`capabilities.thinking.types.<type>.supported`): a token budget as
+  `enabled` + `budget_tokens`, else `adaptive`; with neither listed (or
+  the catalogue not read yet) no `thinking` is sent, as before. Anthropic's
+  documented catalogue rows show only `enabled` and `adaptive`, so
+  `reasoning_enabled: false` (`disabled`) is expected to send nothing
+  until a catalogue lists it — check one live `/v1/models` answer.
+- On OpenRouter a call with a hard `:tools`/`:json_schema` need sends
+  `provider.require_parameters` — only when the model's parameter list is
+  in the capability cache (not before the first catalogue read after a
+  restart, not for a model the catalogue lacks) — and leaves out the
+  parameters that list lacks (`metadata.stripped_params`, logged once per
+  endpoint and parameter); `max_tokens`, `tools` and `response_format` are
+  never left out. OpenRouter's "no provider for these parameters" answer
+  is `{:no_provider_for_params, params}` (the endpoint's parameters only).
+- A refused row is `status: "error"` with `metadata.refused`; the Usage tab
+  marks it "Refused" and its status filter has a `refused` choice.
 - Structured output (`schema:` / `json: true`) is parsed *inside* the
   cached closure, so a prose answer to a JSON request is logged with its
   usage but never stored as a success.
@@ -593,10 +857,8 @@ folder with no `FOLLOW_UP.md` means "not triaged yet"; a stub file is what
   (spend caps are too coarse against a scrape); one `%Result{}` struct
   across verbs instead of provider-shaped maps; streaming chat/TTS with
   cancellation and an async (Oban) mode for slow verbs; provider-neutral
-  tool calling; endpoint capability flags (chat / json_schema / vision /
-  embed / tts) that fail fast before HTTP — needs core columns; pre- and
-  post-dispatch policy hooks for tenancy and redaction; usage rows for the
-  realtime voice session.
+  tool calling; pre- and post-dispatch policy hooks for tenancy and
+  redaction; usage rows for the realtime voice session.
 - Image layer follow-ups, in rough order of value:
   async execution (an Oban worker with progress and cancellation for
   batch jobs); retries with backoff and idempotent replay on top of the

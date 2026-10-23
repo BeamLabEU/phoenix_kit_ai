@@ -139,6 +139,49 @@ defmodule PhoenixKitAI.Errors do
   def message({:budget_exceeded, :user_calls}),
     do: gettext("You have made as many AI requests as allowed for the last 24 hours")
 
+  def message({:task_limit_exceeded, :task, unit, period}) do
+    gettext("This AI task has reached its %{name}",
+      name: PhoenixKitAI.GuardEvents.limit_name(unit, period)
+    )
+  end
+
+  def message({:task_limit_exceeded, :user, unit, period}) do
+    gettext("You have reached your %{name} in this AI task",
+      name: PhoenixKitAI.GuardEvents.limit_name(unit, period)
+    )
+  end
+
+  # The group only: the block's reason is not for the blocked person, and a
+  # refusal is a journal row every holder of `ai` reads.
+  def message({:task_blocked, _group}),
+    do: gettext("You are blocked from this AI task until an administrator lifts the block")
+
+  def message({:model_unfit, missing}) when is_list(missing) do
+    gettext("The endpoint's model cannot do what this task needs: %{needs}",
+      needs: PhoenixKitAI.Tasks.need_labels(missing)
+    )
+  end
+
+  def message({:model_unverified, unclear}) when is_list(unclear) do
+    gettext(
+      "It is not known whether the endpoint's model can do what this task needs (%{needs}). Mark the model's capabilities on the endpoint first.",
+      needs: PhoenixKitAI.Tasks.need_labels(unclear)
+    )
+  end
+
+  def message({:no_provider_for_params, []}) do
+    gettext(
+      "No provider of this model accepts all the request's parameters. Remove the ones it does not support from the endpoint."
+    )
+  end
+
+  def message({:no_provider_for_params, params}) when is_list(params) do
+    gettext(
+      "No provider of this model accepts all the request's parameters (%{params}). Remove the ones it does not support from the endpoint.",
+      params: Enum.join(params, ", ")
+    )
+  end
+
   def message({:capabilities_unavailable, _reason}),
     do: gettext("The provider's model list could not be fetched")
 

@@ -81,6 +81,21 @@ defmodule PhoenixKitAI.TranslateWorkerFailureClassificationTest do
       assert TranslateWorker.classify_reason({:ai_error, {:connection_error, :closed}}) ==
                {"ai_error", "connection_error"}
     end
+
+    test "ai_error names a refusal made before the provider was called, by its tag only" do
+      assert TranslateWorker.classify_reason(
+               {:ai_error, {:task_limit_exceeded, :user, :money, :month}}
+             ) == {"ai_error", "task_limit_exceeded"}
+
+      assert TranslateWorker.classify_reason({:ai_error, {:budget_exceeded, :global}}) ==
+               {"ai_error", "budget_exceeded"}
+
+      assert TranslateWorker.classify_reason({:ai_error, {:model_unfit, [:vision]}}) ==
+               {"ai_error", "model_unfit"}
+
+      assert TranslateWorker.classify_reason({:ai_error, {:model_unverified, [:json_schema]}}) ==
+               {"ai_error", "model_unverified"}
+    end
   end
 
   describe "classify_reason/1 — unrecognised shapes" do

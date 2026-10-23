@@ -21,6 +21,83 @@ defmodule PhoenixKitAI.Web.EndpointFormTest do
     end
   end
 
+  describe "new with a model to start from" do
+    test "keeps the recommendation's custom base URL", %{conn: conn} do
+      connection = seed_openrouter_connection("prefill-proxy")
+      base_url = "https://gateway.example.com/v1"
+      source = fixture_endpoint(base_url: base_url, integration_uuid: connection.uuid)
+
+      query =
+        URI.encode_query(%{
+          "name" => "Proxy model",
+          "model" => "vendor/model",
+          "integration_uuid" => connection.uuid,
+          "source_endpoint_uuid" => source.uuid
+        })
+
+      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/new?" <> query)
+      assert has_element?(view, "input[name='endpoint[base_url]'][value='#{base_url}']")
+      assert :sys.get_state(view.pid).socket.assigns.form[:base_url].value == base_url
+
+      view |> form("#ai-endpoint-form") |> render_submit()
+
+      assert %{base_url: ^base_url, model: "vendor/model"} =
+               PhoenixKitAI.get_endpoint_by_name("Proxy model")
+    end
+
+    test "does not trust a URL passed directly in a recommendation link", %{conn: conn} do
+      query =
+        URI.encode_query(%{"base_url" => "http://127.0.0.1/v1", "source_endpoint_uuid" => "bad"})
+
+      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/new?" <> query)
+      refute has_element?(view, "input[value='http://127.0.0.1/v1']")
+    end
+
+    test "prefills the name, the model and the integration, and saves nothing", %{conn: conn} do
+      connection = seed_openrouter_connection("prefill-#{System.unique_integer([:positive])}")
+      {_, before} = PhoenixKitAI.list_endpoints()
+
+      query =
+        URI.encode_query(%{
+          "model" => "google/gemini-flash",
+          "name" => "Gemini Flash",
+          "integration_uuid" => connection.uuid
+        })
+
+      {:ok, view, html} = live(conn, "/en/admin/ai/endpoints/new?" <> query)
+
+      assert html =~ ~s(value="Gemini Flash")
+      assert html =~ ~s(value="google/gemini-flash")
+      assert has_element?(view, "[phx-value-uuid='#{connection.uuid}'].ring-2")
+
+      assert {_, ^before} = PhoenixKitAI.list_endpoints()
+    end
+
+    test "ignores an integration that does not exist", %{conn: conn} do
+      query =
+        URI.encode_query(%{
+          "name" => "Gemini Flash",
+          "model" => "google/gemini-flash",
+          "integration_uuid" => "01234567-89ab-7def-8000-000000000000"
+        })
+
+      {:ok, view, html} = live(conn, "/en/admin/ai/endpoints/new?" <> query)
+      assert html =~ ~s(value="Gemini Flash")
+      refute html =~ "01234567-89ab-7def-8000-000000000000"
+      refute has_element?(view, "[phx-value-uuid].ring-2")
+    end
+
+    test "an edit page ignores the prefill parameters", %{conn: conn} do
+      endpoint = fixture_endpoint(name: "Stays", model: "anthropic/claude-3-haiku")
+
+      {:ok, _view, html} =
+        live(conn, "/en/admin/ai/endpoints/#{endpoint.uuid}/edit?model=other/thing&name=Other")
+
+      assert html =~ ~s(value="Stays")
+      refute html =~ "other/thing"
+    end
+  end
+
   describe "edit" do
     test "renders the edit form with phx-disable-with on the submit button",
          %{conn: conn} do

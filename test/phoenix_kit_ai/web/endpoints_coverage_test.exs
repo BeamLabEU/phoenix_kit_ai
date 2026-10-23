@@ -34,7 +34,7 @@ defmodule PhoenixKitAI.Web.EndpointsCoverageTest do
 
       render_hook(view, "sort", %{"by" => "usage"})
 
-      assert_patch(view, "/en/admin/ai/endpoints?sort=usage&dir=asc")
+      assert_patch(view, PhoenixKitAI.Routes.ai_path() <> "/endpoints?sort=usage&dir=asc")
     end
 
     test "sort by a different field defaults to :desc", %{conn: conn} do
@@ -43,14 +43,14 @@ defmodule PhoenixKitAI.Web.EndpointsCoverageTest do
 
       render_hook(view, "sort", %{"by" => "cost"})
 
-      assert_patch(view, "/en/admin/ai/endpoints?sort=cost&dir=desc")
+      assert_patch(view, PhoenixKitAI.Routes.ai_path() <> "/endpoints?sort=cost&dir=desc")
     end
 
     test "goto_page with valid number patches URL", %{conn: conn} do
       _ep = fixture_endpoint()
       {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints?sort=name&dir=asc")
       render_hook(view, "goto_page", %{"page" => "2"})
-      assert_patch(view, "/en/admin/ai/endpoints?sort=name&dir=asc&page=2")
+      assert_patch(view, PhoenixKitAI.Routes.ai_path() <> "/endpoints?sort=name&dir=asc&page=2")
     end
 
     test "goto_page with garbage stays put (no patch)", %{conn: conn} do
@@ -60,7 +60,7 @@ defmodule PhoenixKitAI.Web.EndpointsCoverageTest do
 
       # The next patch the view makes is this one — the two above made none.
       render_hook(view, "goto_page", %{"page" => "3"})
-      assert_patch(view, "/en/admin/ai/endpoints?sort=name&dir=asc&page=3")
+      assert_patch(view, PhoenixKitAI.Routes.ai_path() <> "/endpoints?sort=name&dir=asc&page=3")
     end
 
     test "a sort event naming no known field keeps the current field", %{conn: conn} do
@@ -85,7 +85,7 @@ defmodule PhoenixKitAI.Web.EndpointsCoverageTest do
       # Clicking the default field's header flips the direction, which it
       # only does when that field is the current one.
       render_hook(view, "sort", %{"by" => "inserted_at"})
-      assert_patch(view, "/en/admin/ai/endpoints?sort=inserted_at&dir=asc")
+      assert_patch(view, PhoenixKitAI.Routes.ai_path() <> "/endpoints?sort=inserted_at&dir=asc")
     end
 
     test "a non-numeric or empty page param shows the first page", %{conn: conn} do

@@ -138,16 +138,17 @@ defmodule PhoenixKitAI.OpenRouterClientCoverageTest do
                OpenRouterClient.fetch_models("sk-x")
     end
 
-    test ":text filter excludes non-text->text modality" do
+    test ":text filter keeps text-out models, image input included, and drops image output" do
       stub_response(200, %{
         "data" => [
           %{"id" => "v/m", "architecture" => %{"modality" => "text+image->text"}},
-          %{"id" => "t/m", "architecture" => %{"modality" => "text->text"}}
+          %{"id" => "t/m", "architecture" => %{"modality" => "text->text"}},
+          %{"id" => "i/m", "architecture" => %{"modality" => "text+image->text+image"}}
         ]
       })
 
       {:ok, models} = OpenRouterClient.fetch_models("sk-x", model_type: :text)
-      assert Enum.map(models, & &1.id) == ["t/m"]
+      assert Enum.map(models, & &1.id) == ["v/m", "t/m"]
     end
 
     test ":vision filter accepts text+image->text" do

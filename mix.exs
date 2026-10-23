@@ -142,7 +142,9 @@ defmodule PhoenixKitAI.MixProject do
       # 2.38+ required: `PhoenixKit.Activity.log/3` and `PhoenixKitWeb.Actor`
       # carry every activity entry and the acting user — an older core raises
       # UndefinedFunctionError on each endpoint/prompt mutation.
-      pk_dep(:phoenix_kit, "~> 2.38"),
+      # 2.63+ required: `oban_crons/0` schedules guard-event pruning through
+      # the module registry. Earlier cores never install that cron.
+      pk_dep(:phoenix_kit, "~> 2.63"),
 
       # LiveView is needed for the admin pages.
       {:phoenix_live_view, "~> 1.1"},

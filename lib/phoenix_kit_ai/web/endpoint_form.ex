@@ -17,9 +17,13 @@ defmodule PhoenixKitAI.Web.EndpointForm do
   alias PhoenixKit.Utils.Routes
   alias PhoenixKitAI, as: AI
   alias PhoenixKitAI.AIModel
+  alias PhoenixKitAI.Capabilities
   alias PhoenixKitAI.Endpoint
+  alias PhoenixKitAI.Guard
   alias PhoenixKitAI.OpenRouterClient
+  alias PhoenixKitAI.Web.Access
   alias PhoenixKitAI.Web.AuthHelpers
+  alias PhoenixKitAI.Web.Components.CapabilityBadges
   alias PhoenixKitAI.Web.MessageShape
 
   # ===========================================
@@ -130,7 +134,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
       |> assign(:completion_price, format_price(pricing["completion"]))
 
     ~H"""
-    <div class="relative">
+    <div class="relative" data-model-card={@model.id}>
       <button
         type="button"
         phx-click="select_model"
@@ -179,6 +183,8 @@ defmodule PhoenixKitAI.Web.EndpointForm do
             <span :if={@completion_price} class="badge badge-warning badge-outline badge-xs h-auto">
               {@completion_price}/M out
             </span>
+
+            <CapabilityBadges.badges capabilities={Map.get(@model, :capabilities)} />
           </div>
         </div>
       </button>
@@ -202,6 +208,65 @@ defmodule PhoenixKitAI.Web.EndpointForm do
       </button>
     </div>
     """
+  end
+
+  @doc false
+  # What the "Current Model" panel shows about the current model's
+  # capabilities: which ones the admin may declare (those the catalogue does
+  # not know), what is declared — from the form while it carries a
+  # declaration for this model, else from the endpoint — and which
+  # declarations the catalogue contradicts.
+  def capability_panel(model_id, selected_model, form, endpoint, provider)
+      when is_binary(model_id) and model_id != "" do
+    catalogue =
+      case selected_model do
+        %AIModel{capabilities: %Capabilities{} = caps} ->
+          caps
+
+        _ ->
+          %{base_url: form[:base_url].value, provider: provider}
+          |> Capabilities.resolved_base_url()
+          |> Capabilities.lookup(model_id)
+      end
+
+    stored =
+      Capabilities.declared(%{
+        model: model_id,
+        provider_settings: (endpoint && endpoint.provider_settings) || %{}
+      })
+
+    # A box the form submitted unticked overrides a stored `:yes`.
+    declared =
+      stored
+      |> Map.merge(form_declaration(form, model_id))
+      |> Map.reject(fn {_flag, value} -> value == :unknown end)
+
+    open =
+      Enum.filter(Capabilities.declarable(), fn flag ->
+        catalogue == :unknown or Map.fetch!(catalogue, flag) == :unknown
+      end)
+
+    %{open: open, declared: declared, conflicts: Capabilities.conflicts(catalogue, declared)}
+  end
+
+  def capability_panel(_model_id, _selected_model, _form, _endpoint, _provider),
+    do: %{open: [], declared: %{}, conflicts: []}
+
+  # The checkboxes as the form last submitted them, when they were for this
+  # model (the hidden `model` input says which): ticked `:yes`, unticked
+  # `:unknown`.
+  defp form_declaration(form, model_id) do
+    case get_in(form.params || %{}, ["provider_settings", "capabilities"]) do
+      %{"model" => ^model_id} = submitted ->
+        for flag <- Capabilities.declarable(),
+            value = submitted[Atom.to_string(flag)],
+            value != nil,
+            into: %{},
+            do: {flag, if(value == "true", do: :yes, else: :unknown)}
+
+      _ ->
+        %{}
+    end
   end
 
   defp resolve_current_value(assigns, field, field_str) do
@@ -247,7 +312,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
   # ===========================================
 
   @impl true
-  def mount(_params, _session, socket) do
+  def mount(_params, session, socket) do
     # No DB queries in mount/3 — they run twice. The `enabled?` check,
     # integration listing, and endpoint load all happen in
     # `handle_params/3`.
@@ -255,6 +320,8 @@ defmodule PhoenixKitAI.Web.EndpointForm do
 
     socket =
       socket
+      |> Access.assign_session(session)
+      |> assign(:may_declare, true)
       |> assign(:project_title, nil)
       |> assign(:current_path, Routes.path("/admin/ai"))
       |> assign(:provider_connections, [])
@@ -287,24 +354,32 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     {:ok, socket}
   end
 
-  defp load_endpoint(socket, nil) do
-    # New endpoint: nothing is pre-selected. The picker reflects the
-    # endpoint's actual state (no integration yet), so the operator
-    # explicitly picks one. Auto-selecting a single available connection
-    # would mask "no integration set" with "an integration is set" and
-    # confuse anyone scanning the form to verify wiring.
+  defp load_endpoint(socket, nil, params) do
+    # New endpoint: nothing is pre-selected unless the page was opened from a
+    # recommendation (`prefill/2`): then the name, the model and the
+    # operator's integration are filled in for the person to look over —
+    # nothing is saved. Otherwise, auto-selecting a single available
+    # connection would mask "no integration set" with "an integration is
+    # set" and confuse anyone scanning the form to verify wiring.
+    {attrs, connection, source} = prefill(params, socket.assigns.provider_connections)
+    active = connection && connection.uuid
+    connected = !!active && Integrations.connected?(active)
+
     socket
     |> assign(:page_crumbs, [endpoints_crumb()])
     |> assign(:page_title, gettext("New endpoint"))
     |> assign(:page_subtitle, new_endpoint_subtitle())
     |> assign(:endpoint, nil)
-    |> assign(:form, to_form(AI.change_endpoint(%Endpoint{})))
-    |> assign(:active_connection, nil)
-    |> assign(:selected_uuids, [])
-    |> assign(:integration_connected, false)
+    |> assign(:model_source_endpoint, source)
+    |> assign(:form, to_form(AI.change_endpoint(%Endpoint{}, attrs)))
+    |> assign(:active_connection, active)
+    |> assign(:selected_uuids, List.wrap(active))
+    |> assign(:integration_connected, connected)
+    |> assign(:current_provider, attrs["provider"] || socket.assigns.current_provider)
+    |> maybe_fetch_models_on_load(connected)
   end
 
-  defp load_endpoint(socket, id) do
+  defp load_endpoint(socket, id, _params) do
     case AI.get_endpoint(id) do
       nil ->
         socket
@@ -333,6 +408,42 @@ defmodule PhoenixKitAI.Web.EndpointForm do
         |> assign(:current_provider, endpoint.provider)
         |> assign(:model_type, model_type_for(endpoint.model))
         |> maybe_fetch_models_on_load(connected)
+    end
+  end
+
+  # Resolve a recommendation's URL from a stored endpoint, never a query-string
+  # URL: a connected integration can start a credentialed model fetch at load.
+  defp prefill(params, connections) do
+    source = prefill_source(params["source_endpoint_uuid"])
+    connection = Enum.find(connections, &(&1.uuid == params["integration_uuid"]))
+
+    provider =
+      cond do
+        connection -> connection.data["provider"]
+        source && is_binary(source.provider) -> Endpoint.base_provider(source.provider)
+        true -> params["provider"]
+      end
+
+    provider = Enum.find(Endpoint.valid_providers(), &(&1 == provider))
+
+    attrs =
+      %{
+        "name" => params["name"],
+        "model" => params["model"],
+        "base_url" => source && source.base_url,
+        "integration_uuid" => connection && connection.uuid,
+        "provider" => provider
+      }
+      |> Enum.filter(fn {_key, value} -> is_binary(value) and value != "" end)
+      |> Map.new()
+
+    {attrs, connection, source}
+  end
+
+  defp prefill_source(value) do
+    case Ecto.UUID.cast(value) do
+      {:ok, uuid} -> AI.get_endpoint(uuid)
+      :error -> nil
     end
   end
 
@@ -417,9 +528,12 @@ defmodule PhoenixKitAI.Web.EndpointForm do
         |> assign(:project_title, Settings.get_project_title())
         |> assign(:site_url, Settings.get_setting("site_url"))
         |> assign(:provider_connections, connections)
-        |> load_endpoint(params["id"])
+        |> load_endpoint(params["id"], params)
         |> refresh_provider_options(connections)
         |> assign(:loaded_id, params["id"])
+        # While only verified models are allowed, declaring capabilities
+        # needs ai.manage (`PhoenixKitAI.update_endpoint/3` checks it again).
+        |> assign(:may_declare, not Guard.verified_only?() or Access.may_manage?(socket))
 
       {:noreply, socket}
     else
@@ -751,6 +865,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
         "aspect_ratio" => get_in(params, ["provider_settings", "aspect_ratio"]) || "",
         "resolution" => get_in(params, ["provider_settings", "resolution"]) || ""
       })
+      |> put_declared_capabilities(params)
 
     params = Map.put(params, "provider_settings", provider_settings)
 
@@ -778,6 +893,30 @@ defmodule PhoenixKitAI.Web.EndpointForm do
       |> parse_string_list("stop")
 
     save_endpoint(socket, params)
+  end
+
+  # The declaration checkboxes submit "true"/"false" per capability plus the
+  # model they were shown for. Ticked ones are stored as "yes"; none ticked
+  # removes the declaration. Not rendered (the catalogue knows the model) —
+  # nothing submitted, the stored declaration is left to the changeset, which
+  # drops it if the model changed.
+  defp put_declared_capabilities(settings, params) do
+    case get_in(params, ["provider_settings", "capabilities"]) do
+      %{"model" => model} = submitted when is_binary(model) and model != "" ->
+        flags =
+          for flag <- Capabilities.declarable(),
+              key = Atom.to_string(flag),
+              submitted[key] == "true",
+              into: %{},
+              do: {key, "yes"}
+
+        if flags == %{},
+          do: Map.delete(settings, "capabilities"),
+          else: Map.put(settings, "capabilities", Map.put(flags, "model", model))
+
+      _ ->
+        settings
+    end
   end
 
   defp maybe_handle_provider_change(params, socket) do
@@ -1018,7 +1157,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
   end
 
   defp save_endpoint(socket, params) do
-    opts = actor_opts(socket)
+    opts = actor_opts(socket) ++ [scope: Access.session_scope(socket)]
 
     result =
       if socket.assigns.endpoint do
@@ -1608,18 +1747,17 @@ defmodule PhoenixKitAI.Web.EndpointForm do
 
   # Resolves the base URL the model fetcher should hit.
   #
-  # Reuses the saved `endpoint.base_url` ONLY when the form's currently
-  # selected provider matches the endpoint's saved provider. Otherwise
+  # Reuses the saved endpoint's (or recommendation source's) base URL only
+  # when the selected provider matches the endpoint's saved provider. Otherwise
   # the operator switched providers in edit mode and the saved URL is
   # for a different host — falling back to it would silently misroute
   # the model fetch (e.g. fetch from openrouter.ai while the active
   # integration is a Mistral key). Falls through to the schema default
   # for the form-side provider, then to OpenRouter's URL as a last
-  # resort. The new-endpoint flow has no saved endpoint, so it always
-  # takes the second branch.
+  # resort. A new form without a recommendation takes the second branch.
   defp current_models_base_url(socket) do
     current_provider = socket.assigns[:current_provider]
-    endpoint = socket.assigns[:endpoint]
+    endpoint = socket.assigns[:endpoint] || socket.assigns[:model_source_endpoint]
     endpoint_url = endpoint && endpoint.base_url
 
     cond do

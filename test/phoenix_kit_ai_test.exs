@@ -106,7 +106,7 @@ defmodule PhoenixKitAITest do
     test "returns a list of Tab structs" do
       tabs = PhoenixKitAI.admin_tabs()
       assert is_list(tabs)
-      assert length(tabs) == 5
+      assert length(tabs) == 6
     end
 
     test "parent tab has required fields" do
@@ -192,11 +192,13 @@ defmodule PhoenixKitAITest do
   end
 
   describe "children/0" do
-    test "starts the realtime session DynamicSupervisor and the request cache" do
+    test "starts the realtime session DynamicSupervisor, the request cache, the capability cache and the guard's watch" do
       assert [
                {DynamicSupervisor,
                 name: PhoenixKitAI.Realtime.Supervisor, strategy: :one_for_one},
-               PhoenixKitAI.RequestCache
+               PhoenixKitAI.RequestCache,
+               PhoenixKitAI.Capabilities,
+               PhoenixKitAI.GuardWatch
              ] = PhoenixKitAI.children()
     end
   end

@@ -45,6 +45,7 @@ defmodule PhoenixKitAI.Routes do
       )
 
       live("/admin/ai/usage", PhoenixKitAI.Web.Endpoints, :usage, as: :ai_usage_localized)
+      live("/admin/ai/tasks", PhoenixKitAI.Web.Tasks, :index, as: :ai_tasks_localized)
     end
   end
 
@@ -67,6 +68,7 @@ defmodule PhoenixKitAI.Routes do
 
       live("/admin/ai/playground", PhoenixKitAI.Web.Playground, :index, as: :ai_playground)
       live("/admin/ai/usage", PhoenixKitAI.Web.Endpoints, :usage, as: :ai_usage)
+      live("/admin/ai/tasks", PhoenixKitAI.Web.Tasks, :index, as: :ai_tasks)
     end
   end
 

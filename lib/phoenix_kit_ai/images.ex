@@ -611,14 +611,30 @@ defmodule PhoenixKitAI.Images do
 
   # ── Vision ─────────────────────────────────────────────────────────────
 
+  # What a vision call passes on to the chat request: sampling, the call's
+  # own reasoning options, and the guard's `require_parameters` flag.
+  @vision_options [
+    :temperature,
+    :max_tokens,
+    :top_p,
+    :seed,
+    :reasoning_enabled,
+    :reasoning_effort,
+    :reasoning_max_tokens,
+    :reasoning_exclude,
+    :require_parameters
+  ]
+
   @doc """
   Asks a vision-capable chat endpoint about `images`.
 
   Options: `:prompt` (default "Describe this image in detail."),
   `:system`, `:schema` (JSON Schema map → the answer is requested and
   parsed as that object), `:json` (true → any JSON object), `:model`,
-  and the chat sampling options (`:temperature`, `:max_tokens`, `:top_p`,
-  `:seed`).
+  the chat sampling options (`:temperature`, `:max_tokens`, `:top_p`,
+  `:seed`) and the call's own reasoning options (`:reasoning_enabled`,
+  `:reasoning_effort`, `:reasoning_max_tokens`, `:reasoning_exclude` —
+  the endpoint's stored reasoning settings are not applied to vision).
 
   Returns `{:ok, %{text, json, usage, latency_ms, model}}`; `json` is nil
   unless requested. A JSON answer that does not parse is
@@ -651,7 +667,7 @@ defmodule PhoenixKitAI.Images do
 
       vision_opts =
         opts
-        |> Keyword.take([:temperature, :max_tokens, :top_p, :seed])
+        |> Keyword.take(@vision_options)
         |> Map.new()
         |> Map.put(:response_format, response_format)
 
@@ -990,7 +1006,7 @@ defmodule PhoenixKitAI.Images do
 
     describe_opts =
       opts
-      |> Keyword.take([:model, :temperature, :max_tokens, :on_no_json])
+      |> Keyword.take([:model, :temperature, :max_tokens, :on_no_json, :require_parameters])
       |> Keyword.merge(prompt: prompt, schema: @compare_schema, schema_name: "edit_check")
 
     case describe(endpoint, [before, after_image], describe_opts) do
