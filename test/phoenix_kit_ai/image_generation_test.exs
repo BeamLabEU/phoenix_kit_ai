@@ -203,7 +203,7 @@ defmodule PhoenixKitAI.ImageGenerationTest do
       assert is_integer(row.latency_ms)
       assert row.input_tokens == 0
       assert row.output_tokens == 0
-      assert is_nil(row.cost_nanodollars)
+      assert is_nil(row.cost)
 
       assert row.metadata["input_chars"] == String.length("a cat on a skateboard")
       assert row.metadata["output_image_count"] == 1

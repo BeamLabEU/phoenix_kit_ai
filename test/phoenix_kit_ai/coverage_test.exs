@@ -187,21 +187,21 @@ defmodule PhoenixKitAI.CoverageTest do
         request_fixture(%{
           endpoint_uuid: ep_low.uuid,
           total_tokens: 10,
-          cost_nanodollars: 5
+          cost: Decimal.new("0.000000005")
         })
 
       r_high1 =
         request_fixture(%{
           endpoint_uuid: ep_high.uuid,
           total_tokens: 100,
-          cost_nanodollars: 50
+          cost: Decimal.new("0.00000005")
         })
 
       r_high2 =
         request_fixture(%{
           endpoint_uuid: ep_high.uuid,
           total_tokens: 200,
-          cost_nanodollars: 100
+          cost: Decimal.new("0.0000001")
         })
 
       # `Request.timestamps(type: :utc_datetime)` is second-precision, so
@@ -288,14 +288,15 @@ defmodule PhoenixKitAI.CoverageTest do
         request_fixture(%{
           endpoint_uuid: ep.uuid,
           total_tokens: 100,
-          cost_nanodollars: 25
+          cost: Decimal.new("0.000000025")
         })
 
       stats = PhoenixKitAI.get_endpoint_usage_stats()
       assert is_map(stats[ep.uuid])
       assert stats[ep.uuid].request_count >= 1
       assert stats[ep.uuid].total_tokens >= 100
-      assert stats[ep.uuid].total_cost_nanodollars == 25
+      # dollars, the sum as it is: 25 billionths, not 25 of anything else
+      assert Decimal.equal?(stats[ep.uuid].total_cost, Decimal.new("0.000000025"))
     end
 
     test "count_endpoints + count_enabled_endpoints" do
@@ -700,7 +701,7 @@ defmodule PhoenixKitAI.CoverageTest do
           model: "model-A",
           status: "success",
           total_tokens: 100,
-          cost_nanodollars: 50,
+          cost: Decimal.new("0.00000005"),
           metadata: %{"source" => "MyApp"}
         })
 
@@ -777,7 +778,7 @@ defmodule PhoenixKitAI.CoverageTest do
             :model,
             :total_tokens,
             :latency_ms,
-            :cost_nanodollars,
+            :cost,
             :status,
             :endpoint_name
           ] do
@@ -836,7 +837,7 @@ defmodule PhoenixKitAI.CoverageTest do
           status: "success",
           total_tokens: 50,
           latency_ms: 200,
-          cost_nanodollars: 10
+          cost: Decimal.new("0.00000001")
         })
 
       _ =

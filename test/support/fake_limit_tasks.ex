@@ -7,7 +7,8 @@ defmodule PhoenixKitAI.Test.FakeLimitTasks do
   `test.limited` has declared default limits and a `watchers` callback that
   answers the `:fake_limit_watchers` app env (a list of user uuids) and
   reports the user it was asked about to the `:fake_limit_watchers_pid`.
-  `test.unlimited` declares nothing. `test.vision` needs images, for the
+  `test.unlimited` declares nothing. `test.legacy_money` declares a money
+  default as the released versions did (integer millionths), which refuses. `test.vision` needs images, for the
   `model_unfit` events. The endpoints of `test.limited` and `test.vision` are
   the `:fake_limit_endpoints` app env.
   """
@@ -27,6 +28,12 @@ defmodule PhoenixKitAI.Test.FakeLimitTasks do
         endpoints: {__MODULE__, :endpoints, []}
       },
       %TaskSpec{key: "test.unlimited", label: "Unlimited task"},
+      # A money default in the released shape (integer millionths: $20).
+      %TaskSpec{
+        key: "test.legacy_money",
+        label: "Legacy money task",
+        default_limits: %{task: %{money: %{month: 20_000_000}}}
+      },
       %TaskSpec{
         key: "test.vision",
         label: "Vision task",

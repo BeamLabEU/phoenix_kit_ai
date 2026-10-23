@@ -50,6 +50,28 @@ defmodule PhoenixKitAI.Migrations do
       already include `off_purpose`, `off_purpose_signal`, `anomaly`,
       `blocked` and `unblocked`.
 
+  ## V4: money in dollars
+
+  Core's V223 turned the journal's `cost_cents` (millionths of a dollar) into
+  `cost`, dollars. V4 does the same for what this module stores, so every
+  amount is dollars (`PhoenixKitAI.Money`). It is data, not shape, and it
+  converts by shape, so a re-run converts nothing twice:
+
+    * the spend caps `ai_daily_budget`, `ai_daily_budget_per_endpoint` and
+      `ai_daily_budget_per_user` (core's `phoenix_kit_settings`, digits = millionths)
+      are copied to `ai_daily_cap`, `ai_daily_cap_per_endpoint` and
+      `ai_daily_cap_per_user` as dollar strings (`"5.00"`), only where the new
+      key does not exist yet; the old keys are left as they were;
+    * a money cell of a task's limits (`phoenix_kit_ai_task_settings.limits`,
+      `phoenix_kit_ai_task_user_limits.limits`) that is a JSON number or a
+      digits-only string becomes a dollar string;
+    * an endpoint's manual price (`phoenix_kit_ai_endpoints.provider_settings
+      -> 'pricing'`) whose halves are numbers becomes dollar strings per 1M.
+
+  It needs core's V223 first (the `cost` column) and stops otherwise. Down to 3
+  turns the task limits and prices back into integer millionths and deletes the
+  new cap keys (the old ones still hold the released values).
+
   ## Version marker
 
   `COMMENT ON TABLE phoenix_kit_ai_model_capabilities IS 'ai_schema:<N>'`.
@@ -66,7 +88,7 @@ defmodule PhoenixKitAI.Migrations do
 
   alias PhoenixKit.Migrations.Postgres.Helpers
 
-  @current_version 3
+  @current_version 4
   @default_prefix "public"
   @marker_prefix "ai_schema:"
   @version_table "phoenix_kit_ai_model_capabilities"
@@ -183,6 +205,7 @@ defmodule PhoenixKitAI.Migrations do
   defp version_up(1, prefix), do: v1_statements(prefix)
   defp version_up(2, prefix), do: v2_statements(prefix)
   defp version_up(3, prefix), do: v3_statements(prefix)
+  defp version_up(4, prefix), do: v4_statements(prefix)
 
   defp version_down(1, prefix),
     do: [
@@ -193,6 +216,8 @@ defmodule PhoenixKitAI.Migrations do
 
   defp version_down(3, prefix),
     do: ["DROP TABLE IF EXISTS #{Helpers.qualify_table("phoenix_kit_ai_guard_blocks", prefix)}"]
+
+  defp version_down(4, prefix), do: v4_down_statements(prefix)
 
   # ── V1 ────────────────────────────────────────────────────────────────
 
@@ -390,6 +415,208 @@ defmodule PhoenixKitAI.Migrations do
   end
 
   defp sql_list(values), do: Enum.map_join(values, ", ", &"'#{&1}'")
+
+  # ── V4 ────────────────────────────────────────────────────────────────
+
+  @cap_keys [
+    {"ai_daily_budget", "ai_daily_cap"},
+    {"ai_daily_budget_per_endpoint", "ai_daily_cap_per_endpoint"},
+    {"ai_daily_budget_per_user", "ai_daily_cap_per_user"}
+  ]
+
+  defp v4_statements(prefix) do
+    settings = Helpers.qualify_table("phoenix_kit_settings", prefix)
+    task_settings = Helpers.qualify_table("phoenix_kit_ai_task_settings", prefix)
+    user_limits = Helpers.qualify_table("phoenix_kit_ai_task_user_limits", prefix)
+    endpoints = Helpers.qualify_table("phoenix_kit_ai_endpoints", prefix)
+
+    [
+      """
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = '#{prefix}' AND table_name = 'phoenix_kit_ai_requests'
+            AND column_name = 'cost'
+        ) THEN
+          RAISE EXCEPTION 'phoenix_kit_ai V4 needs core''s V223 (phoenix_kit_ai_requests.cost); run core''s migrations first';
+        END IF;
+      END
+      $$
+      """
+    ] ++
+      Enum.map(@cap_keys, fn {old, new} ->
+        # The released parser read the leading digits of the trimmed value.
+        """
+        INSERT INTO #{settings} (key, value, module, date_added, date_updated)
+        SELECT '#{new}', #{dollars_sql("substring(trim(value) from '^[0-9]+')::numeric / 1000000")},
+               'ai', now(), now()
+        FROM #{settings}
+        WHERE key = '#{old}' AND trim(value) ~ '^[0-9]+'
+        ON CONFLICT (key) DO NOTHING
+        """
+      end) ++
+      [
+        """
+        DO $$
+        DECLARE
+          r record;
+          scope text;
+          period text;
+          cell jsonb;
+          converted jsonb;
+        BEGIN
+          FOR r IN SELECT uuid, limits FROM #{task_settings}
+                   WHERE jsonb_typeof(limits) = 'object' LOOP
+            converted := r.limits;
+            FOR scope IN SELECT jsonb_object_keys(r.limits) LOOP
+              IF jsonb_typeof(r.limits -> scope -> 'money') = 'object' THEN
+                FOR period IN SELECT jsonb_object_keys(r.limits -> scope -> 'money') LOOP
+                  cell := r.limits -> scope -> 'money' -> period;
+                  IF #{legacy_cell_sql("cell")} THEN
+                    converted := jsonb_set(converted, ARRAY[scope, 'money', period],
+                      to_jsonb(#{dollars_sql(cell_numeric_sql("cell") <> " / 1000000")}));
+                  END IF;
+                END LOOP;
+              END IF;
+            END LOOP;
+            IF converted IS DISTINCT FROM r.limits THEN
+              UPDATE #{task_settings} SET limits = converted WHERE uuid = r.uuid;
+            END IF;
+          END LOOP;
+
+          FOR r IN SELECT uuid, limits FROM #{user_limits}
+                   WHERE jsonb_typeof(limits -> 'money') = 'object' LOOP
+            converted := r.limits;
+            FOR period IN SELECT jsonb_object_keys(r.limits -> 'money') LOOP
+              cell := r.limits -> 'money' -> period;
+              IF #{legacy_cell_sql("cell")} THEN
+                converted := jsonb_set(converted, ARRAY['money', period],
+                  to_jsonb(#{dollars_sql(cell_numeric_sql("cell") <> " / 1000000")}));
+              END IF;
+            END LOOP;
+            IF converted IS DISTINCT FROM r.limits THEN
+              UPDATE #{user_limits} SET limits = converted WHERE uuid = r.uuid;
+            END IF;
+          END LOOP;
+
+          FOR r IN SELECT uuid, provider_settings FROM #{endpoints}
+                   WHERE jsonb_typeof(provider_settings -> 'pricing') = 'object' LOOP
+            converted := r.provider_settings;
+            FOR period IN SELECT unnest(ARRAY['input', 'output']) LOOP
+              cell := r.provider_settings -> 'pricing' -> period;
+              IF jsonb_typeof(cell) = 'number' THEN
+                converted := jsonb_set(converted, ARRAY['pricing', period],
+                  to_jsonb(#{dollars_sql("(cell::text)::numeric / 1000000")}));
+              END IF;
+            END LOOP;
+            IF converted IS DISTINCT FROM r.provider_settings THEN
+              UPDATE #{endpoints} SET provider_settings = converted WHERE uuid = r.uuid;
+            END IF;
+          END LOOP;
+        END
+        $$
+        """
+      ]
+  end
+
+  defp v4_down_statements(prefix) do
+    settings = Helpers.qualify_table("phoenix_kit_settings", prefix)
+    task_settings = Helpers.qualify_table("phoenix_kit_ai_task_settings", prefix)
+    user_limits = Helpers.qualify_table("phoenix_kit_ai_task_user_limits", prefix)
+    endpoints = Helpers.qualify_table("phoenix_kit_ai_endpoints", prefix)
+    new_keys = Enum.map_join(@cap_keys, ", ", fn {_old, new} -> "'#{new}'" end)
+
+    [
+      "DELETE FROM #{settings} WHERE key IN (#{new_keys})",
+      """
+      DO $$
+      DECLARE
+        r record;
+        scope text;
+        period text;
+        cell jsonb;
+        converted jsonb;
+      BEGIN
+        FOR r IN SELECT uuid, limits FROM #{task_settings}
+                 WHERE jsonb_typeof(limits) = 'object' LOOP
+          converted := r.limits;
+          FOR scope IN SELECT jsonb_object_keys(r.limits) LOOP
+            IF jsonb_typeof(r.limits -> scope -> 'money') = 'object' THEN
+              FOR period IN SELECT jsonb_object_keys(r.limits -> scope -> 'money') LOOP
+                cell := r.limits -> scope -> 'money' -> period;
+                IF #{dollar_cell_sql("cell")} THEN
+                  converted := jsonb_set(converted, ARRAY[scope, 'money', period],
+                    to_jsonb(round((cell #>> '{}')::numeric * 1000000)::bigint));
+                END IF;
+              END LOOP;
+            END IF;
+          END LOOP;
+          IF converted IS DISTINCT FROM r.limits THEN
+            UPDATE #{task_settings} SET limits = converted WHERE uuid = r.uuid;
+          END IF;
+        END LOOP;
+
+        FOR r IN SELECT uuid, limits FROM #{user_limits}
+                 WHERE jsonb_typeof(limits -> 'money') = 'object' LOOP
+          converted := r.limits;
+          FOR period IN SELECT jsonb_object_keys(r.limits -> 'money') LOOP
+            cell := r.limits -> 'money' -> period;
+            IF #{dollar_cell_sql("cell")} THEN
+              converted := jsonb_set(converted, ARRAY['money', period],
+                to_jsonb(round((cell #>> '{}')::numeric * 1000000)::bigint));
+            END IF;
+          END LOOP;
+          IF converted IS DISTINCT FROM r.limits THEN
+            UPDATE #{user_limits} SET limits = converted WHERE uuid = r.uuid;
+          END IF;
+        END LOOP;
+
+        FOR r IN SELECT uuid, provider_settings FROM #{endpoints}
+                 WHERE jsonb_typeof(provider_settings -> 'pricing') = 'object' LOOP
+          converted := r.provider_settings;
+          FOR period IN SELECT unnest(ARRAY['input', 'output']) LOOP
+            cell := r.provider_settings -> 'pricing' -> period;
+            IF #{dollar_cell_sql("cell")} THEN
+              converted := jsonb_set(converted, ARRAY['pricing', period],
+                to_jsonb(round((cell #>> '{}')::numeric * 1000000)::bigint));
+            END IF;
+          END LOOP;
+          IF converted IS DISTINCT FROM r.provider_settings THEN
+            UPDATE #{endpoints} SET provider_settings = converted WHERE uuid = r.uuid;
+          END IF;
+        END LOOP;
+      END
+      $$
+      """
+    ]
+  end
+
+  # A money cell in the released shape: a JSON number, or a string of digits
+  # only (`PhoenixKitAI.Money.legacy_amount?/1`).
+  defp legacy_cell_sql(cell) do
+    "(jsonb_typeof(#{cell}) = 'number' OR " <>
+      "(jsonb_typeof(#{cell}) = 'string' AND trim(#{cell} #>> '{}') ~ '^[0-9]+$'))"
+  end
+
+  # A money cell written by this version: a string holding a decimal number.
+  defp dollar_cell_sql(cell) do
+    "(jsonb_typeof(#{cell}) = 'string' AND trim(#{cell} #>> '{}') ~ '^[0-9]*[.][0-9]+$')"
+  end
+
+  defp cell_numeric_sql(cell), do: "trim(#{cell} #>> '{}')::numeric"
+
+  # A numeric expression as a dollar string with at least two places and no
+  # trailing zeros beyond them: 5 → '5.00', 0.25 → '0.25', 0.0000004 →
+  # '0.0000004' (the shape of `PhoenixKitAI.Money.to_json/1`).
+  defp dollars_sql(expr) do
+    trimmed = "rtrim(rtrim((#{expr})::text, '0'), '.')"
+
+    "(CASE WHEN (#{expr}) = 0 THEN '0.00' " <>
+      "WHEN position('.' in #{trimmed}) = 0 THEN #{trimmed} || '.00' " <>
+      "WHEN length(split_part(#{trimmed}, '.', 2)) = 1 THEN #{trimmed} || '0' " <>
+      "ELSE #{trimmed} END)"
+  end
 
   defp marker_statement(prefix, version) do
     "COMMENT ON TABLE #{Helpers.qualify_table(@version_table, prefix)} IS '#{@marker_prefix}#{version}'"

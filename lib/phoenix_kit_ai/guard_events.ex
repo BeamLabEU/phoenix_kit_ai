@@ -682,26 +682,13 @@ defmodule PhoenixKitAI.GuardEvents do
   def limit_name(:tokens, :month), do: gettext("monthly token limit")
 
   @doc "An amount of a unit for display: dollars for money, a count otherwise."
-  @spec format_amount(TaskLimits.unit(), non_neg_integer()) :: String.t()
-  def format_amount(:money, micro), do: "$" <> format_usd(micro)
+  @spec format_amount(TaskLimits.unit(), TaskLimits.amount()) :: String.t()
+  def format_amount(:money, dollars), do: "$" <> format_usd(dollars)
   def format_amount(_unit, amount), do: Integer.to_string(amount)
 
-  @doc "Micro-dollars as dollars with at least two decimals: `1_500_000` is `\"1.50\"`."
-  @spec format_usd(integer()) :: String.t()
-  def format_usd(micro) when is_integer(micro) do
-    text =
-      micro
-      |> Decimal.new()
-      |> Decimal.div(1_000_000)
-      |> Decimal.normalize()
-      |> Decimal.to_string(:normal)
-
-    case String.split(text, ".") do
-      [whole] -> whole <> ".00"
-      [whole, <<_::binary-size(1)>> = fraction] -> "#{whole}.#{fraction}0"
-      _ -> text
-    end
-  end
+  @doc ~S|Dollars with at least two decimals: `Decimal.new("1.5")` is `"1.50"`.|
+  @spec format_usd(Decimal.t()) :: String.t()
+  def format_usd(%Decimal{} = dollars), do: PhoenixKitAI.Money.to_json(dollars)
 
   defp numbers(status),
     do: [

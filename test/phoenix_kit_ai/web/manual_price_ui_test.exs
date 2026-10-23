@@ -71,7 +71,7 @@ defmodule PhoenixKitAI.Web.ManualPriceUITest do
 
     test "without ai.manage the price is shown, cannot be edited, and a save keeps it",
          %{conn: conn} do
-      endpoint = unpriced_endpoint(%{"pricing" => %{"input" => 600_000, "output" => 2_200_000}})
+      endpoint = unpriced_endpoint(%{"pricing" => %{"input" => "0.60", "output" => "2.20"}})
 
       :ok = ModuleRegistry.register(PhoenixKitAI)
       on_exit(fn -> ModuleRegistry.unregister(PhoenixKitAI) end)
@@ -92,7 +92,7 @@ defmodule PhoenixKitAI.Web.ManualPriceUITest do
       |> form("#ai-endpoint-form", endpoint: %{name: "Renamed #{endpoint.name}"})
       |> render_submit()
 
-      assert %{"input" => 600_000} =
+      assert %{"input" => "0.60"} =
                PhoenixKitAI.get_endpoint!(endpoint.uuid).provider_settings["pricing"]
     end
 
@@ -111,7 +111,7 @@ defmodule PhoenixKitAI.Web.ManualPriceUITest do
              )
     end
 
-    test "stores the dollars as whole micro-dollars per 1M tokens", %{conn: conn} do
+    test "stores the dollars per 1M tokens as dollar strings", %{conn: conn} do
       endpoint = unpriced_endpoint()
       {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/#{endpoint.uuid}/edit")
 
@@ -119,13 +119,13 @@ defmodule PhoenixKitAI.Web.ManualPriceUITest do
 
       assert PhoenixKitAI.get_endpoint!(endpoint.uuid).provider_settings["pricing"] == %{
                "model" => "glm-4.6",
-               "input" => 600_000,
-               "output" => 2_200_000
+               "input" => "0.60",
+               "output" => "2.20"
              }
     end
 
     test "shows the stored price in dollars", %{conn: conn} do
-      endpoint = unpriced_endpoint(%{"pricing" => %{"input" => 600_000, "output" => 2_200_000}})
+      endpoint = unpriced_endpoint(%{"pricing" => %{"input" => "0.60", "output" => "2.20"}})
       {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/#{endpoint.uuid}/edit")
 
       assert has_element?(view, "#{@price} input[name$='[input]'][value='0.6']")
@@ -185,7 +185,7 @@ defmodule PhoenixKitAI.Web.ManualPriceUITest do
         priced_fixture(
           model: "v/priced",
           integration_uuid: integration_uuid,
-          provider_settings: %{"pricing" => %{"input" => 600_000, "output" => 2_200_000}}
+          provider_settings: %{"pricing" => %{"input" => "0.60", "output" => "2.20"}}
         )
 
       # The catalogue is read with this endpoint's key.
@@ -210,7 +210,7 @@ defmodule PhoenixKitAI.Web.ManualPriceUITest do
     end
 
     test "emptied fields remove the price", %{conn: conn} do
-      endpoint = unpriced_endpoint(%{"pricing" => %{"input" => 600_000, "output" => 2_200_000}})
+      endpoint = unpriced_endpoint(%{"pricing" => %{"input" => "0.60", "output" => "2.20"}})
       {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/#{endpoint.uuid}/edit")
 
       save(view, endpoint, %{"input" => "", "output" => ""})
@@ -259,7 +259,7 @@ defmodule PhoenixKitAI.Web.ManualPriceUITest do
         model: "glm-4.6",
         status: "success",
         request_type: "chat",
-        cost_nanodollars: 1_700_000,
+        cost: Decimal.new("0.0017"),
         metadata: %{"cost_source" => "manual"},
         inserted_at: now,
         updated_at: now
@@ -277,7 +277,7 @@ defmodule PhoenixKitAI.Web.ManualPriceUITest do
         model: "claude-sonnet-5-5",
         status: "success",
         request_type: "chat",
-        cost_nanodollars: 7_000_000,
+        cost: Decimal.new("0.007"),
         metadata: %{"cost_source" => "table"},
         inserted_at: now,
         updated_at: now
@@ -304,7 +304,9 @@ defmodule PhoenixKitAI.Web.ManualPriceUITest do
           kind: :plain,
           provider: "zai",
           integration_uuid: nil,
-          manual_prices: %{"glm-4.6" => %{"input" => 600_000, "output" => 2_200_000}},
+          manual_prices: %{
+            "glm-4.6" => %{"input" => Decimal.new("0.60"), "output" => Decimal.new("2.20")}
+          },
           models: [{"glm-4.6", %Capabilities{}}, {"glm-4.5", %Capabilities{}}]
         }
       ]
@@ -340,7 +342,7 @@ defmodule PhoenixKitAI.Web.ManualPriceUITest do
       # $2 and $10 per 1M: 10 000 in, 1 000 out.
       assert_in_delta row.price_per_call, 10_000 * 2.0e-6 + 1_000 * 10.0e-6, 1.0e-12
 
-      manual = %{"claude-sonnet-5-5" => %{"input" => 1_000_000, "output" => 1_000_000}}
+      manual = %{"claude-sonnet-5-5" => %{"input" => Decimal.new(1), "output" => Decimal.new(1)}}
 
       [row] =
         Recommendations.ranked("test.sized", catalogue: [source.(manual)], limit: 10).possible
@@ -357,7 +359,7 @@ defmodule PhoenixKitAI.Web.ManualPriceUITest do
         model: "glm-4.6",
         status: "success",
         request_type: "chat",
-        cost_nanodollars: 1_700_000,
+        cost: Decimal.new("0.0017"),
         metadata: %{"task" => "test.sized", "cost_source" => "manual"},
         inserted_at: now,
         updated_at: now

@@ -1,8 +1,7 @@
 defmodule PhoenixKitAI.TtsPricing do
   @moduledoc """
-  Estimated per-request cost for a completed TTS request, in nanodollars
-  (billionths of a dollar — the unit of `Request.cost_nanodollars`, as for
-  chat/embeddings).
+  Estimated per-request cost for a completed TTS request, in US dollars
+  (`Request.cost`, a `Decimal`, as for chat/embeddings).
 
   No TTS provider self-reports cost the way OpenRouter's chat completions do (there's
   no `usage` object at all in an `/audio/speech` or xAI `/tts` response) — so unlike
@@ -33,18 +32,16 @@ defmodule PhoenixKitAI.TtsPricing do
   as approximate wherever it's displayed.
   """
 
-  alias PhoenixKitAI.Endpoint
+  alias PhoenixKitAI.{Endpoint, Money}
 
-  # nanodollars/char = (dollars per 1M chars) * 1_000: a char costs rate/1M dollars,
-  # and a dollar is 1_000_000_000 nanodollars.
-  @per_char_nanodollars_by_provider %{
-    "mistral" => 16_000,
-    "xai" => 15_000
+  # Dollars per 1M characters.
+  @per_million_chars_by_provider %{
+    "mistral" => "16",
+    "xai" => "15"
   }
 
-  # Blended input+output estimate — see moduledoc. 1_000_000_000 nanodollars = $1, so
-  # $0.015/min = 15_000_000 nanodollars/min.
-  @openai_nanodollars_per_minute 15_000_000
+  # Blended input+output estimate, dollars per minute of audio — see moduledoc.
+  @openai_per_minute "0.015"
 
   # This package's own TTS output is always MP3 (the only `response_format` any
   # caller currently requests) at 128kbps — used only to back out a duration
@@ -54,27 +51,38 @@ defmodule PhoenixKitAI.TtsPricing do
   @assumed_mp3_bitrate_bps 128_000
 
   @doc """
-  Estimated cost in nanodollars for a completed TTS request, or `nil` if `provider`
-  isn't in the rate table — same as no cost being available today, not a new failure
-  mode. `input_chars` and `audio_bytes` are exactly what `PhoenixKitAI.speak/3` already
-  records in the request's metadata.
+  Estimated cost in dollars for a completed TTS request, rounded to the `cost`
+  column's 10 places, or `nil` if `provider` isn't in the rate table — same as
+  no cost being available today, not a new failure mode. `input_chars` and
+  `audio_bytes` are exactly what `PhoenixKitAI.speak/3` already records in the
+  request's metadata.
   """
-  @spec cost_nanodollars(String.t(), non_neg_integer(), non_neg_integer()) ::
-          non_neg_integer() | nil
-  def cost_nanodollars(provider, input_chars, audio_bytes)
+  @spec cost(String.t(), non_neg_integer(), non_neg_integer()) :: Decimal.t() | nil
+  def cost(provider, input_chars, audio_bytes)
       when is_binary(provider) and is_integer(input_chars) and is_integer(audio_bytes) do
-    case Map.get(@per_char_nanodollars_by_provider, Endpoint.base_provider(provider)) do
-      nil -> openai_cost_nanodollars(provider, audio_bytes)
-      rate -> round(input_chars * rate)
+    case Map.get(@per_million_chars_by_provider, Endpoint.base_provider(provider)) do
+      nil ->
+        openai_cost(provider, audio_bytes)
+
+      rate ->
+        rate
+        |> Decimal.new()
+        |> Decimal.mult(input_chars)
+        |> Decimal.div(1_000_000)
+        |> Money.round_cost()
     end
   end
 
-  def cost_nanodollars(_provider, _input_chars, _audio_bytes), do: nil
+  def cost(_provider, _input_chars, _audio_bytes), do: nil
 
-  defp openai_cost_nanodollars(provider, audio_bytes) do
+  # minutes = bytes × 8 / bits per second / 60
+  defp openai_cost(provider, audio_bytes) do
     if Endpoint.base_provider(provider) == "openai" do
-      duration_minutes = audio_bytes * 8 / @assumed_mp3_bitrate_bps / 60
-      round(duration_minutes * @openai_nanodollars_per_minute)
+      @openai_per_minute
+      |> Decimal.new()
+      |> Decimal.mult(audio_bytes * 8)
+      |> Decimal.div(@assumed_mp3_bitrate_bps * 60)
+      |> Money.round_cost()
     end
   end
 end

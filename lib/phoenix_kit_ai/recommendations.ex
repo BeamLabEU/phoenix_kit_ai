@@ -184,7 +184,7 @@ defmodule PhoenixKitAI.Recommendations do
   calls first, ten at most, one row per model and operator: `%{model,
   provider, calls, avg_cost, error_share, avg_latency_ms, cost_reported?,
   notes}`. `provider` is the endpoint's provider key, `nil` when the
-  endpoint is gone. `avg_cost` is in the units of `cost_nanodollars`
+  endpoint is gone. `avg_cost` is US dollars, a `Decimal`
   (`Request.format_cost/1` shows it) and `nil` when no call reported a
   cost; `error_share` is 0.0–1.0. Refusals and cache hits are not calls.
   """
@@ -342,10 +342,10 @@ defmodule PhoenixKitAI.Recommendations do
         provider: fragment("split_part(?, ':', 1)", e.provider),
         calls: count(r.uuid),
         errors: filter(count(r.uuid), r.status != "success"),
-        cost_rows: count(r.cost_nanodollars),
+        cost_rows: count(r.cost),
         manual_rows: filter(count(r.uuid), fragment("?->>'cost_source' = 'manual'", r.metadata)),
         table_rows: filter(count(r.uuid), fragment("?->>'cost_source' = 'table'", r.metadata)),
-        avg_cost: avg(r.cost_nanodollars),
+        avg_cost: avg(r.cost),
         avg_latency_ms: avg(r.latency_ms)
       }
     )
@@ -376,7 +376,7 @@ defmodule PhoenixKitAI.Recommendations do
       model: row.model,
       provider: row.provider,
       calls: row.calls,
-      avg_cost: to_float(row.avg_cost),
+      avg_cost: row.avg_cost,
       error_share: row.errors / row.calls,
       avg_latency_ms: to_float(row.avg_latency_ms),
       cost_reported?: row.cost_rows > 0,
@@ -502,7 +502,8 @@ defmodule PhoenixKitAI.Recommendations do
   defp extra_price(source, id, %Capabilities{prompt_price: nil} = caps) do
     case source |> Map.get(:manual_prices, %{}) |> Map.get(id) do
       %{"input" => input, "output" => output} ->
-        {%{caps | prompt_price: input * 1.0e-12, completion_price: output * 1.0e-12}, :manual}
+        # dollars per 1M tokens → dollars per token, a float, for ranking only
+        {%{caps | prompt_price: per_token(input), completion_price: per_token(output)}, :manual}
 
       _ ->
         table_price(source.kind, id, caps)
@@ -510,6 +511,9 @@ defmodule PhoenixKitAI.Recommendations do
   end
 
   defp extra_price(_source, _id, caps), do: {caps, nil}
+
+  defp per_token(%Decimal{} = per_million),
+    do: per_million |> Decimal.div(1_000_000) |> Decimal.to_float()
 
   defp table_price(:anthropic, id, caps) do
     case AnthropicPricing.per_token(id) do

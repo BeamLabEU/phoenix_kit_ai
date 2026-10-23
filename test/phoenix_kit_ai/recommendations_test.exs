@@ -73,7 +73,7 @@ defmodule PhoenixKitAI.RecommendationsTest do
           output_tokens: 100,
           total_tokens: 1_100,
           latency_ms: 500,
-          cost_nanodollars: 10_000_000,
+          cost: Decimal.new("0.01"),
           metadata: Map.put(metadata, "task", task),
           inserted_at: inserted_at,
           updated_at: inserted_at
@@ -444,22 +444,23 @@ defmodule PhoenixKitAI.RecommendationsTest do
 
   describe "worked/2" do
     test "aggregates the task's journal by model: calls, average cost, error share, latency" do
-      request("test.photo", "v/a", cost_nanodollars: 20_000_000, latency_ms: 400)
-      request("test.photo", "v/a", cost_nanodollars: 40_000_000, latency_ms: 600)
-      request("test.photo", "v/a", cost_nanodollars: nil, latency_ms: 800, status: "error")
+      request("test.photo", "v/a", cost: Decimal.new("0.02"), latency_ms: 400)
+      request("test.photo", "v/a", cost: Decimal.new("0.04"), latency_ms: 600)
+      request("test.photo", "v/a", cost: nil, latency_ms: 800, status: "error")
 
       request("test.photo", "v/a",
-        cost_nanodollars: 30_000_000,
+        cost: Decimal.new("0.03"),
         latency_ms: 200,
         status: "timeout"
       )
 
-      request("test.photo", "v/b", cost_nanodollars: 5_000_000, latency_ms: 100)
+      request("test.photo", "v/b", cost: Decimal.new("0.005"), latency_ms: 100)
 
       assert [a, b] = Recommendations.worked("test.photo")
 
       assert %{model: "v/a", calls: 4, error_share: 0.5, cost_reported?: true} = a
-      assert_in_delta a.avg_cost, 30_000_000.0, 0.001
+      # dollars, the average of the three reported costs
+      assert Decimal.equal?(a.avg_cost, Decimal.new("0.03"))
       assert_in_delta a.avg_latency_ms, 500.0, 0.001
 
       assert %{model: "v/b", calls: 1, error_share: +0.0} = b
@@ -472,7 +473,7 @@ defmodule PhoenixKitAI.RecommendationsTest do
       for _ <- 1..5 do
         request("test.photo", "v/a",
           status: "error",
-          cost_nanodollars: nil,
+          cost: nil,
           latency_ms: nil,
           input_tokens: 0,
           output_tokens: 0,
@@ -487,10 +488,10 @@ defmodule PhoenixKitAI.RecommendationsTest do
     end
 
     test "counts only the task, only 30 days, and says when no cost was reported" do
-      request("test.photo", "v/a", cost_nanodollars: nil)
+      request("test.photo", "v/a", cost: nil)
       request("test.other", "v/a")
       request("test.photo", "v/a", days_ago: 31)
-      request("test.photo", "v/a", days_ago: 29, cost_nanodollars: nil)
+      request("test.photo", "v/a", days_ago: 29, cost: nil)
 
       assert [%{calls: 2, avg_cost: nil, cost_reported?: false}] =
                Recommendations.worked("test.photo")
@@ -507,18 +508,18 @@ defmodule PhoenixKitAI.RecommendationsTest do
     end
 
     test "cache hits are not calls: they do not count and do not pull the averages down" do
-      request("test.photo", "v/a", cost_nanodollars: 40_000_000, latency_ms: 800)
+      request("test.photo", "v/a", cost: Decimal.new("0.04"), latency_ms: 800)
 
       for _ <- 1..4 do
         request("test.photo", "v/a",
-          cost_nanodollars: 0,
+          cost: Decimal.new(0),
           latency_ms: 0,
           metadata: %{"cached" => true}
         )
       end
 
       assert [%{calls: 1, error_share: +0.0} = row] = Recommendations.worked("test.photo")
-      assert_in_delta row.avg_cost, 40_000_000.0, 0.001
+      assert Decimal.equal?(row.avg_cost, Decimal.new("0.04"))
       assert_in_delta row.avg_latency_ms, 800.0, 0.001
     end
 

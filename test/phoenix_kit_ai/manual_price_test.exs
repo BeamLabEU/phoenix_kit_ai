@@ -1,9 +1,9 @@
 defmodule PhoenixKitAI.ManualPriceTest do
   @moduledoc """
   A price entered by hand on an endpoint whose provider gives none:
-  `provider_settings["pricing"]`, whole micro-dollars per 1M input and
-  output tokens. A call whose provider reports no `usage.cost` gets its
-  `cost_nanodollars` from it, marked `cost_source: "manual"`; a
+  `provider_settings["pricing"]`, US dollars per 1M input and output tokens
+  as decimal strings. A call whose provider reports no `usage.cost` gets its
+  `cost` from it, marked `cost_source: "manual"`; a
   reported cost wins; no price leaves the cost unknown as before. A change
   of the price is in the Activity log. Provider calls are `Req.Test` stubs.
   """
@@ -16,7 +16,7 @@ defmodule PhoenixKitAI.ManualPriceTest do
   alias PhoenixKitAI.Test.Repo, as: TestRepo
 
   # $0.60 per 1M input tokens, $2.20 per 1M output tokens.
-  @pricing %{"input" => 600_000, "output" => 2_200_000}
+  @pricing %{"input" => "0.60", "output" => "2.20"}
 
   setup do
     PhoenixKitAI.RequestCache.clear()
@@ -66,6 +66,11 @@ defmodule PhoenixKitAI.ManualPriceTest do
     end)
   end
 
+  defp dollars?(%Decimal{} = value, expected), do: Decimal.equal?(value, Decimal.new(expected))
+  defp dollars?(_value, _expected), do: false
+
+  defp price(input, output), do: %{"input" => Decimal.new(input), "output" => Decimal.new(output)}
+
   defp last_row(endpoint) do
     TestRepo.one!(
       from(r in Request,
@@ -77,15 +82,16 @@ defmodule PhoenixKitAI.ManualPriceTest do
   end
 
   describe "cost/3" do
-    test "is nanodollars: tokens times micro-dollars per 1M, over a thousand, rounded" do
+    test "is dollars: tokens times dollars per 1M, over a million, not rounded" do
+      pricing = price("0.60", "2.20")
       # 1000 × 0.60 $/1M + 500 × 2.20 $/1M = $0.0006 + $0.0011 = $0.0017.
-      assert ManualPrice.cost(@pricing, 1_000, 500) == 1_700_000
-      # (600 000 + 2 200 000) / 1 000 = 2 800: one token of each is not $0.
-      assert ManualPrice.cost(@pricing, 1, 1) == 2_800
-      # 7 tokens at $0.02 per 1M = 140 n$; 3 at $0.0003 per 1M = 0.9 → 1.
-      assert ManualPrice.cost(%{"input" => 20_000, "output" => 0}, 7, 0) == 140
-      assert ManualPrice.cost(%{"input" => 300, "output" => 0}, 3, 0) == 1
-      assert ManualPrice.cost(@pricing, 0, 0) == 0
+      assert dollars?(ManualPrice.cost(pricing, 1_000, 500), "0.0017")
+      # One token of each is not $0.
+      assert dollars?(ManualPrice.cost(pricing, 1, 1), "0.0000028")
+      # 3 tokens at $0.0003 per 1M: $0.0000000009, kept to the last digit here
+      # (a call's total is rounded once, by CallCost).
+      assert dollars?(ManualPrice.cost(price("0.0003", "0"), 3, 0), "0.0000000009")
+      assert dollars?(ManualPrice.cost(pricing, 0, 0), "0")
     end
 
     test "is nil without a price" do
@@ -93,30 +99,17 @@ defmodule PhoenixKitAI.ManualPriceTest do
     end
   end
 
-  describe "Money units" do
-    test "a journal sum in nanodollars meets a micro-dollar amount rounded half up" do
-      assert Money.nano_to_micro(nil) == nil
-      assert Money.nano_to_micro(0) == 0
-      assert Money.nano_to_micro(499) == 0
-      assert Money.nano_to_micro(500) == 1
-      assert Money.nano_to_micro(1_700_000) == 1_700
-      assert Money.nano_to_micro(-1_500) == -2
-    end
-
-    test "a reported cost in dollars is nanodollars in one step" do
-      # a short embedding: $0.00000004 would be 0 as micro-dollars
-      assert Money.dollars_to_nano(0.00000004) == 40
-      assert Money.dollars_to_nano(0.0017) == 1_700_000
-      assert Money.dollars_to_nano(2.5) == 2_500_000_000
-      assert Money.dollars_to_nano(0) == 0
-    end
-  end
-
   describe "Money.parse_dollars/1" do
-    test "reads dollars into micro-dollars, refusing NaN, infinity and negatives" do
-      assert Money.parse_dollars("0.60") == {:ok, 600_000}
-      assert Money.parse_dollars("2.2") == {:ok, 2_200_000}
-      assert Money.parse_dollars("0") == {:ok, 0}
+    test "reads dollars, refusing NaN, infinity and negatives" do
+      assert {:ok, d} = Money.parse_dollars("0.60")
+      assert dollars?(d, "0.6")
+      assert {:ok, d} = Money.parse_dollars("2.2")
+      assert dollars?(d, "2.2")
+      assert {:ok, d} = Money.parse_dollars("0")
+      assert dollars?(d, "0")
+      # a price below a millionth is a price now, not 0
+      assert {:ok, d} = Money.parse_dollars("0.0000004")
+      assert dollars?(d, "0.0000004")
 
       for bad <- ["NaN", "nan", "inf", "Infinity", "-1", "abc", "1e400x"] do
         assert Money.parse_dollars(bad) == :error, bad
@@ -132,7 +125,7 @@ defmodule PhoenixKitAI.ManualPriceTest do
       assert {:ok, _} = PhoenixKitAI.ask(endpoint.uuid, "q")
 
       row = last_row(endpoint)
-      assert row.cost_nanodollars == 1_700_000
+      assert dollars?(row.cost, "0.0017")
       assert row.metadata["cost_source"] == "manual"
     end
 
@@ -149,7 +142,7 @@ defmodule PhoenixKitAI.ManualPriceTest do
       assert {:ok, _} = PhoenixKitAI.ask(endpoint.uuid, "q")
 
       row = last_row(endpoint)
-      assert row.cost_nanodollars == 10_000_000
+      assert dollars?(row.cost, "0.01")
       assert row.metadata["cost_source"] == "provider"
     end
 
@@ -160,7 +153,7 @@ defmodule PhoenixKitAI.ManualPriceTest do
       assert {:ok, _} = PhoenixKitAI.ask(endpoint.uuid, "q")
 
       row = last_row(endpoint)
-      assert row.cost_nanodollars == nil
+      assert row.cost == nil
       refute Map.has_key?(row.metadata, "cost_source")
     end
 
@@ -171,8 +164,17 @@ defmodule PhoenixKitAI.ManualPriceTest do
   end
 
   describe "the stored price" do
-    test "must be whole non-negative micro-dollars" do
-      for bad <- [%{"input" => 0.6}, %{"input" => -1}, %{"output" => "2.2"}, "cheap"] do
+    test "must be two non-negative dollar strings" do
+      # A number (a float would read back as one; an integer is the released
+      # millionths) is refused, as is a negative, half a price, or garbage.
+      for bad <- [
+            %{"input" => 0.6, "output" => "2.2"},
+            %{"input" => 600_000, "output" => 2_200_000},
+            %{"input" => "-1", "output" => "2.2"},
+            %{"input" => "x", "output" => "2.2"},
+            %{"output" => "2.2"},
+            "cheap"
+          ] do
         assert {:error, changeset} =
                  PhoenixKitAI.create_endpoint(
                    %{
@@ -195,17 +197,17 @@ defmodule PhoenixKitAI.ManualPriceTest do
       {:ok, _} =
         PhoenixKitAI.update_endpoint(
           endpoint,
-          %{provider_settings: %{"pricing" => %{"input" => 700_000, "output" => 2_200_000}}},
+          %{provider_settings: %{"pricing" => %{"input" => "0.7", "output" => "2.20"}}},
           scope: owner()
         )
 
       assert_activity_logged("endpoint.pricing_changed",
         resource_uuid: endpoint.uuid,
         metadata_has: %{
-          "input_before" => 600_000,
-          "input_after" => 700_000,
-          "output_before" => 2_200_000,
-          "output_after" => 2_200_000
+          "input_before" => "0.60",
+          "input_after" => "0.70",
+          "output_before" => "2.20",
+          "output_after" => "2.20"
         }
       )
     end
@@ -217,7 +219,7 @@ defmodule PhoenixKitAI.ManualPriceTest do
       # The creation's entry has no price before; an update's would.
       refute_activity_logged("endpoint.pricing_changed",
         resource_uuid: endpoint.uuid,
-        metadata_has: %{"input_before" => 600_000}
+        metadata_has: %{"input_before" => "0.60"}
       )
     end
   end
@@ -238,7 +240,7 @@ defmodule PhoenixKitAI.ManualPriceTest do
 
       stub_chat(%{"prompt_tokens" => 1_000, "completion_tokens" => 500, "total_tokens" => 1_500})
       assert {:ok, _} = PhoenixKitAI.ask(endpoint.uuid, "q")
-      assert last_row(endpoint).cost_nanodollars == nil
+      assert last_row(endpoint).cost == nil
     end
 
     test "a price naming another model is dropped" do
@@ -261,7 +263,7 @@ defmodule PhoenixKitAI.ManualPriceTest do
 
   describe "both halves of the price" do
     test "are required: half a price is refused" do
-      for half <- [%{"input" => 600_000}, %{"output" => 2_200_000}] do
+      for half <- [%{"input" => "0.60"}, %{"output" => "2.20"}] do
         assert {:error, changeset} =
                  PhoenixKitAI.create_endpoint(
                    %{
@@ -283,7 +285,7 @@ defmodule PhoenixKitAI.ManualPriceTest do
         model: "glm-4.6",
         provider: "zai",
         base_url: nil,
-        provider_settings: %{"pricing" => %{"model" => "glm-4.6", "input" => 600_000}}
+        provider_settings: %{"pricing" => %{"model" => "glm-4.6", "input" => "0.60"}}
       }
 
       assert ManualPrice.get(half) == nil
@@ -293,10 +295,9 @@ defmodule PhoenixKitAI.ManualPriceTest do
 
   describe "the upper bound" do
     test "is $10 000 per 1M tokens" do
-      ok = %{"input" => 10_000_000_000, "output" => 10_000_000_000}
+      ok = %{"input" => "10000", "output" => "10000.00"}
 
-      assert %{"input" => 10_000_000_000} =
-               endpoint(%{"pricing" => ok}).provider_settings["pricing"]
+      assert %{"input" => "10000"} = endpoint(%{"pricing" => ok}).provider_settings["pricing"]
 
       assert {:error, changeset} =
                PhoenixKitAI.create_endpoint(
@@ -304,7 +305,7 @@ defmodule PhoenixKitAI.ManualPriceTest do
                    name: "Dear #{System.unique_integer([:positive])}",
                    provider: "zai",
                    model: "glm-4.6",
-                   provider_settings: %{"pricing" => %{ok | "input" => 10_000_000_001}}
+                   provider_settings: %{"pricing" => %{ok | "input" => "10000.000001"}}
                  },
                  scope: owner()
                )
@@ -327,8 +328,8 @@ defmodule PhoenixKitAI.ManualPriceTest do
       assert {:ok, _} = PhoenixKitAI.embed(endpoint.uuid, "text")
 
       row = last_row(endpoint)
-      # 1 000 × 600 000 µ$ per 1M = 600 µ$.
-      assert row.cost_nanodollars == 600_000
+      # 1 000 × $0.60 per 1M = $0.0006.
+      assert dollars?(row.cost, "0.0006")
       assert row.metadata["cost_source"] == "manual"
     end
 
@@ -344,22 +345,55 @@ defmodule PhoenixKitAI.ManualPriceTest do
           from(r in Request,
             where: r.endpoint_uuid == ^endpoint.uuid,
             order_by: r.inserted_at,
-            select: {r.cost_nanodollars, fragment("?->>'cached'", r.metadata)}
+            select: {r.cost, fragment("?->>'cached'", r.metadata)}
           )
         )
 
-      assert {1_700_000, nil} in costs
-      assert {0, "true"} in costs
+      assert Enum.any?(costs, fn {cost, cached} -> cached == nil and dollars?(cost, "0.0017") end)
+      assert Enum.any?(costs, fn {cost, cached} -> cached == "true" and dollars?(cost, "0") end)
     end
 
     test "the daily budget counts it" do
       endpoint = endpoint(%{"pricing" => @pricing})
-      {:ok, _} = PhoenixKitAI.Budget.set_limit(:endpoint, 1_000)
+      # $0.001: the first call ($0.0017) reaches it
+      {:ok, _} = PhoenixKitAI.Budget.set_limit(:endpoint, "0.001")
       on_exit(fn -> PhoenixKitAI.Budget.set_limit(:endpoint, 0) end)
       stub_chat(%{"prompt_tokens" => 1_000, "completion_tokens" => 500, "total_tokens" => 1_500})
 
       assert {:ok, _} = PhoenixKitAI.ask(endpoint.uuid, "first")
       assert {:error, {:budget_exceeded, :endpoint}} = PhoenixKitAI.ask(endpoint.uuid, "second")
+    end
+  end
+
+  describe "a price still in the released millionths" do
+    test "refuses the endpoint's calls before the provider, and is no price" do
+      endpoint = endpoint(%{"pricing" => @pricing})
+
+      # As the released versions stored it (whole micro-dollars per 1M); the
+      # changeset refuses that shape, so it is written straight to the table.
+      legacy = %{"model" => "glm-4.6", "input" => 600_000, "output" => 2_200_000}
+
+      {1, _} =
+        TestRepo.update_all(
+          from(e in PhoenixKitAI.Endpoint, where: e.uuid == ^endpoint.uuid),
+          set: [provider_settings: %{"pricing" => legacy}]
+        )
+
+      PhoenixKitAI.Cache.clear()
+      stale = PhoenixKitAI.get_endpoint(endpoint.uuid)
+      assert ManualPrice.legacy?(stale)
+      assert ManualPrice.get(stale) == nil
+
+      test_pid = self()
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        send(test_pid, :provider_called)
+        Req.Test.json(conn, %{"choices" => [%{"message" => %{"content" => "x"}}]})
+      end)
+
+      assert {:error, :money_migration_required} = PhoenixKitAI.ask(endpoint.uuid, "q")
+      refute_received :provider_called
+      assert PhoenixKitAI.Errors.message(:money_migration_required) =~ "update"
     end
   end
 

@@ -41,7 +41,7 @@
               Map.get(@endpoint_stats, endpoint.uuid, %{
                 request_count: 0,
                 total_tokens: 0,
-                total_cost_nanodollars: 0
+                total_cost: Decimal.new(0)
               }) %>
             <% integration = Map.get(@integrations_by_uuid, endpoint.integration_uuid) %>
             <% integration_status = integration && integration.data["status"] %>
@@ -152,7 +152,7 @@
                   </div>
                   <div class="flex items-center gap-1 text-base-content/70" title={gettext("Total cost")}>
                     <.icon name="hero-currency-dollar" class="w-4 h-4" />
-                    <span>{PhoenixKitAI.Request.format_cost(stats.total_cost_nanodollars)}</span>
+                    <span>{PhoenixKitAI.Request.format_cost(stats.total_cost)}</span>
                   </div>
                   <div class="flex items-center gap-1 text-base-content/70" title={gettext("Last used")}>
                     <.icon name="hero-clock" class="w-4 h-4" />
@@ -247,7 +247,7 @@
                     Map.get(@endpoint_stats, endpoint.uuid, %{
                       request_count: 0,
                       total_tokens: 0,
-                      total_cost_nanodollars: 0
+                      total_cost: Decimal.new(0)
                     }) %>
                   <% integration = Map.get(@integrations_by_uuid, endpoint.integration_uuid) %>
                   <% integration_status = integration && integration.data["status"] %>
@@ -317,7 +317,7 @@
                       {PhoenixKitAI.Request.format_tokens(stats.total_tokens)}
                     </.table_default_cell>
                     <.table_default_cell class="text-right">
-                      {PhoenixKitAI.Request.format_cost(stats.total_cost_nanodollars)}
+                      {PhoenixKitAI.Request.format_cost(stats.total_cost)}
                     </.table_default_cell>
                     <.table_default_cell>
                       <%= if stats[:last_used_at] do %>
@@ -623,7 +623,7 @@
                       {gettext("Latency")}
                     </.sort_header_cell>
                     <.sort_header_cell
-                      field={:cost_nanodollars}
+                      field={:cost}
                       sort={sort}
                       event="usage_sort"
                       class="hidden sm:table-cell"
@@ -681,7 +681,7 @@
                         {PhoenixKitAI.Request.format_latency(request.latency_ms)}
                       </.table_default_cell>
                       <.table_default_cell class="hidden sm:table-cell text-sm">
-                        {PhoenixKitAI.Request.format_cost(request.cost_nanodollars)}
+                        {PhoenixKitAI.Request.format_cost(request.cost)}
                         <.cost_source_badge source={PhoenixKitAI.CallCost.source(request)} />
                       </.table_default_cell>
                       <.table_default_cell>
@@ -791,7 +791,7 @@
           <div>
             <div class="text-xs text-base-content/70">{gettext("Cost")}</div>
             <div class="text-sm">
-              {PhoenixKitAI.Request.format_cost(@selected_request.cost_nanodollars)}
+              {PhoenixKitAI.Request.format_cost(@selected_request.cost)}
               <.cost_source_badge source={PhoenixKitAI.CallCost.source(@selected_request)} />
             </div>
           </div>

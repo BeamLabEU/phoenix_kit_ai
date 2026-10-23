@@ -206,14 +206,18 @@ defmodule PhoenixKitAI.CompletionTest do
                prompt_tokens: 10,
                completion_tokens: 5,
                total_tokens: 15,
-               cost_nanodollars: 100_000
+               cost: cost
              } = Completion.extract_usage(response)
+
+      assert Decimal.equal?(cost, Decimal.new("0.0001"))
     end
 
     test "keeps the cost of a call far below a millionth of a dollar" do
       # a 2-token embedding, as OpenRouter reports it; millionths stored this as 0
-      assert %{cost_nanodollars: 40} =
+      assert %{cost: cost} =
                Completion.extract_usage(%{"usage" => %{"prompt_tokens" => 2, "cost" => 4.0e-8}})
+
+      assert Decimal.equal?(cost, Decimal.new("0.00000004"))
     end
 
     test "falls back to zeros when usage is absent" do
@@ -221,7 +225,7 @@ defmodule PhoenixKitAI.CompletionTest do
                prompt_tokens: 0,
                completion_tokens: 0,
                total_tokens: 0,
-               cost_nanodollars: nil
+               cost: nil
              } = Completion.extract_usage(%{})
     end
 
@@ -235,7 +239,8 @@ defmodule PhoenixKitAI.CompletionTest do
         }
       }
 
-      assert %{cost_nanodollars: 1_000} = Completion.extract_usage(response)
+      assert %{cost: cost} = Completion.extract_usage(response)
+      assert Decimal.equal?(cost, Decimal.new("0.000001"))
     end
   end
 end

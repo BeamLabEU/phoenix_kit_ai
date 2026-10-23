@@ -263,7 +263,7 @@ defmodule PhoenixKitAI.GuardTest do
       assert row.request_type == "chat"
       assert row.user_uuid == user
       assert row.error_message =~ "images"
-      assert row.cost_nanodollars == nil
+      assert row.cost == nil
 
       assert %{
                "refused" => true,
@@ -345,7 +345,7 @@ defmodule PhoenixKitAI.GuardTest do
     test "a spend-cap refusal writes a refused row too, which no sink receives" do
       stub(Map.put(text_answer("ok"), "usage", %{"cost" => 1.0}))
       ep = endpoint()
-      {:ok, _} = Budget.set_limit(:global, 1_000_000)
+      {:ok, _} = Budget.set_limit(:global, "1.00")
 
       assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "spend it", task: "test.plain")
       flush_sink()

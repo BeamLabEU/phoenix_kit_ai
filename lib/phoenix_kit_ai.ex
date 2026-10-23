@@ -128,6 +128,7 @@ defmodule PhoenixKitAI do
   alias PhoenixKitAI.GuardEvents
   alias PhoenixKitAI.Images.{ImageModel, ImageModels, Operations}
   alias PhoenixKitAI.ManualPrice
+  alias PhoenixKitAI.Money
   alias PhoenixKitAI.ProviderError
   alias PhoenixKitAI.Request
   alias PhoenixKitAI.TaskLimits
@@ -1321,7 +1322,7 @@ defmodule PhoenixKitAI do
         group_by: r.endpoint_uuid,
         select: %{
           endpoint_uuid: r.endpoint_uuid,
-          total: type(coalesce(sum(r.cost_nanodollars), 0), :integer)
+          total: coalesce(sum(r.cost), 0)
         }
       )
 
@@ -1361,8 +1362,8 @@ defmodule PhoenixKitAI do
   @doc """
   Returns usage statistics for each endpoint.
 
-  Returns a map of endpoint_uuid => %{request_count, total_tokens,
-  total_cost_nanodollars, last_used_at}
+  Returns a map of endpoint_uuid => %{request_count, total_tokens, total_cost,
+  last_used_at}; `total_cost` is US dollars, a `Decimal`.
   """
   @spec get_endpoint_usage_stats() :: %{optional(String.t()) => map()}
   def get_endpoint_usage_stats do
@@ -1375,7 +1376,7 @@ defmodule PhoenixKitAI do
           %{
             request_count: count(),
             total_tokens: coalesce(sum(r.total_tokens), 0),
-            total_cost_nanodollars: type(coalesce(sum(r.cost_nanodollars), 0), :integer),
+            total_cost: coalesce(sum(r.cost), 0),
             last_used_at: max(r.inserted_at)
           }
         }
@@ -1632,10 +1633,10 @@ defmodule PhoenixKitAI do
   defp log_capabilities_declaration(result, _before, _opts), do: result
 
   # A manual price (`PhoenixKitAI.ManualPrice`) set, changed or removed is
-  # logged with the price before and after, in micro-dollars per 1M tokens.
+  # logged with the price before and after, dollar strings per 1M tokens.
   defp log_pricing_change({:ok, endpoint} = result, before, opts) do
-    old = ManualPrice.get(before) || %{}
-    new = ManualPrice.get(endpoint) || %{}
+    old = before |> ManualPrice.get() |> price_strings()
+    new = endpoint |> ManualPrice.get() |> price_strings()
 
     if old != new do
       log_activity("endpoint.pricing_changed", "endpoint", endpoint.uuid, opts, %{
@@ -1652,6 +1653,11 @@ defmodule PhoenixKitAI do
   end
 
   defp log_pricing_change(result, _before, _opts), do: result
+
+  defp price_strings(nil), do: %{}
+
+  defp price_strings(pricing),
+    do: Map.new(pricing, fn {half, dollars} -> {half, Money.to_json(dollars)} end)
 
   # While only verified models may be used (`Guard.verified_only?/0`), what
   # an admin declares an endpoint's model can do decides which calls go
@@ -1699,7 +1705,21 @@ defmodule PhoenixKitAI do
     end
   end
 
-  defp stored_pricing(%{"pricing" => %{} = pricing}), do: pricing
+  # The halves in one spelling ("0.6" and "0.60" are the same price), so a
+  # re-save of the same price is not a change.
+  defp stored_pricing(%{"pricing" => %{} = pricing}) do
+    Map.new(pricing, fn
+      {half, value} when half in ["input", "output"] ->
+        case Money.to_decimal(value) do
+          {:ok, dollars} when is_binary(value) -> {half, Money.to_json(dollars)}
+          _ -> {half, value}
+        end
+
+      other ->
+        other
+    end)
+  end
+
   defp stored_pricing(_settings), do: nil
 
   defp capabilities_declaration(%Endpoint{provider_settings: %{"capabilities" => declaration}})
@@ -2513,7 +2533,7 @@ defmodule PhoenixKitAI do
               :model,
               :total_tokens,
               :latency_ms,
-              :cost_nanodollars,
+              :cost,
               :status,
               :endpoint_name
             ] do
@@ -2788,7 +2808,8 @@ defmodule PhoenixKitAI do
       %{
         input_tokens: request.input_tokens || 0,
         output_tokens: request.output_tokens || 0,
-        cost_nanodollars: request.cost_nanodollars || 0,
+        # dollars; a measurement must be a number, so a float here only
+        cost: if(request.cost, do: Decimal.to_float(request.cost), else: 0.0),
         latency_ms: request.latency_ms || 0
       },
       %{
@@ -3116,7 +3137,7 @@ defmodule PhoenixKitAI do
           input_tokens: 0,
           output_tokens: 0,
           total_tokens: 0,
-          cost_nanodollars: 0,
+          cost: Decimal.new(0),
           latency_ms: 0,
           status: "success",
           user_uuid: row.caller_context[:user_uuid],
@@ -3286,11 +3307,8 @@ defmodule PhoenixKitAI do
 
     total_requests = repo().aggregate(base_query, :count)
     total_tokens = repo().aggregate(base_query, :sum, :total_tokens) || 0
-    # SUM over the bigint column is numeric; cast so callers get an integer, not a Decimal
-    total_cost =
-      repo().one(
-        from(r in base_query, select: type(coalesce(sum(r.cost_nanodollars), 0), :integer))
-      )
+    # dollars, a Decimal (the sum of a numeric column)
+    total_cost = repo().one(from(r in base_query, select: coalesce(sum(r.cost), 0)))
 
     avg_latency = repo().aggregate(base_query, :avg, :latency_ms)
 
@@ -3307,7 +3325,7 @@ defmodule PhoenixKitAI do
     %{
       total_requests: total_requests,
       total_tokens: total_tokens,
-      total_cost_nanodollars: total_cost,
+      total_cost: total_cost,
       success_count: success_count,
       error_count: total_requests - success_count,
       success_rate: success_rate,
@@ -4406,7 +4424,7 @@ defmodule PhoenixKitAI do
       input_tokens: usage[:prompt_tokens] || 0,
       output_tokens: usage[:completion_tokens] || 0,
       total_tokens: usage[:total_tokens] || 0,
-      cost_nanodollars: cost,
+      cost: cost,
       latency_ms: result[:latency_ms],
       status: "success",
       user_uuid: trace[:user_uuid],
@@ -4424,14 +4442,14 @@ defmodule PhoenixKitAI do
     CallCost.for_call(
       %{endpoint | model: trace[:model] || endpoint.model},
       result[:model],
-      usage[:cost_nanodollars],
+      usage[:cost],
       usage[:prompt_tokens],
       usage[:completion_tokens]
     )
   end
 
   defp image_op_cost(_type, _endpoint, _result, usage, _trace),
-    do: {usage[:cost_nanodollars], %{}}
+    do: {Money.round_cost(usage[:cost]), %{}}
 
   defp log_failed_image_op_request(endpoint, type, prompt, images, reason, trace) do
     capture_content = capture_request_content?(trace[:capture])
@@ -4648,13 +4666,24 @@ defmodule PhoenixKitAI do
   defp admit(endpoint, opts, implied, spends?) do
     task = Tasks.for_call(opts[:task])
 
-    with :ok <- if(spends?, do: blocks(task, opts), else: :ok),
+    with :ok <- money_ready(endpoint),
+         :ok <- if(spends?, do: blocks(task, opts), else: :ok),
          {:ok, admission} <- Guard.check(endpoint, opts, task, implied),
          :ok <- check_fallbacks(endpoint, opts, task, implied),
          :ok <- if(spends?, do: task_limits(task, opts), else: :ok),
          :ok <- if(spends?, do: budget(endpoint, opts), else: :ok) do
       {:ok, admission}
     end
+  end
+
+  # Money is dollars from core's V223 and this module's V4 on: before both
+  # have run (the `cost` column missing, or an endpoint's manual price still
+  # in millionths), no call is made — a cap or a price read in the wrong unit
+  # would be off by a million.
+  defp money_ready(endpoint) do
+    if Money.ready?() and not ManualPrice.legacy?(endpoint),
+      do: :ok,
+      else: {:error, :money_migration_required}
   end
 
   defp blocks(nil, _opts), do: :ok
@@ -5007,7 +5036,7 @@ defmodule PhoenixKitAI do
       input_tokens: usage.prompt_tokens,
       output_tokens: usage.completion_tokens,
       total_tokens: usage.total_tokens,
-      cost_nanodollars: cost,
+      cost: cost,
       latency_ms: response["latency_ms"],
       status: "success",
       user_uuid: caller_context[:user_uuid],
@@ -5142,7 +5171,7 @@ defmodule PhoenixKitAI do
       request_type: "embedding",
       input_tokens: usage.prompt_tokens,
       total_tokens: usage.total_tokens,
-      cost_nanodollars: cost,
+      cost: cost,
       latency_ms: response["latency_ms"],
       status: "success",
       user_uuid: caller_context[:user_uuid],
@@ -5168,7 +5197,7 @@ defmodule PhoenixKitAI do
     CallCost.for_call(
       endpoint,
       response["model"],
-      usage.cost_nanodollars,
+      usage.cost,
       usage.prompt_tokens,
       output_tokens
     )
@@ -5203,7 +5232,7 @@ defmodule PhoenixKitAI do
 
   # TTS responses carry no token usage — billing is per-character (or per-token with
   # no usage object to read back, for OpenAI) — so input_tokens/output_tokens/
-  # total_tokens stay unset, same as before. cost_nanodollars is now estimated from a
+  # total_tokens stay unset, same as before. cost is now estimated from a
   # hand-maintained rate table (see TtsPricing) instead of staying unset, since no
   # TTS provider self-reports cost the way OpenRouter's chat completions do. The input
   # text is gated by `capture_request_content?/0` like chat/embedding.
@@ -5231,7 +5260,7 @@ defmodule PhoenixKitAI do
       latency_ms: result[:latency_ms],
       status: "success",
       user_uuid: caller_context[:user_uuid],
-      cost_nanodollars: TtsPricing.cost_nanodollars(endpoint.provider, input_chars, audio_bytes),
+      cost: TtsPricing.cost(endpoint.provider, input_chars, audio_bytes),
       metadata:
         base_metadata
         |> Map.merge(guard)

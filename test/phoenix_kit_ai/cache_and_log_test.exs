@@ -204,7 +204,8 @@ defmodule PhoenixKitAI.CacheAndLogTest do
       assert {:ok, _} = PhoenixKitAI.complete(ep.uuid, msgs())
       RequestLog.flush()
 
-      assert [%{request_type: "chat", cost_nanodollars: 250_000_000}] = rows(ep)
+      assert [%{request_type: "chat", cost: cost}] = rows(ep)
+      assert Decimal.equal?(cost, Decimal.new("0.25"))
       assert_receive {:row, _}
     end
 

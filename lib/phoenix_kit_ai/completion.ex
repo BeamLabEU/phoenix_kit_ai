@@ -797,25 +797,32 @@ defmodule PhoenixKitAI.Completion do
   Extracts usage information from a response.
 
   Returns a map with token counts and cost (if available from OpenRouter).
-  `cost_nanodollars` is the reported cost in billionths of a dollar
-  (`1_000_000_000` = $1), so a cheap call keeps its cost: a short embedding at
-  $0.00000004 is `40`, not `0`.
+  `cost` is what the provider reported, in US dollars, as a `Decimal` — a
+  JSON float read through its shortest decimal form, so `3.0e-5` is exactly
+  `0.00003` and a short embedding at $0.00000004 keeps its cost. Not rounded
+  here: `PhoenixKitAI.CallCost` rounds a call's cost once.
   """
   def extract_usage(%{"usage" => usage}) when is_map(usage) do
     %{
       prompt_tokens: usage["prompt_tokens"] || 0,
       completion_tokens: usage["completion_tokens"] || 0,
       total_tokens: usage["total_tokens"] || 0,
-      cost_nanodollars: parse_cost(usage["cost"] || usage["total_cost"])
+      cost: parse_cost(usage["cost"] || usage["total_cost"])
     }
   end
 
   def extract_usage(_response) do
-    %{prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, cost_nanodollars: nil}
+    %{prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, cost: nil}
   end
 
-  # dollars -> nanodollars in one step: $0.00003 becomes 30_000
-  defp parse_cost(cost) when is_number(cost), do: PhoenixKitAI.Money.dollars_to_nano(cost)
+  # A cost the provider sent: a number (or a decimal string), never negative.
+  defp parse_cost(cost) when is_number(cost) or is_binary(cost) do
+    case PhoenixKitAI.Money.to_decimal(cost) do
+      {:ok, decimal} -> if Decimal.negative?(decimal), do: nil, else: decimal
+      :error -> nil
+    end
+  end
+
   defp parse_cost(_), do: nil
 
   @doc false

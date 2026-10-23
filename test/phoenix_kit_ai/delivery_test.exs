@@ -236,7 +236,7 @@ defmodule PhoenixKitAI.DeliveryTest do
       assert_receive {:body, %{"usage" => %{"include" => true}}}
 
       [row] = TestRepo.all(from(r in Request, where: r.endpoint_uuid == ^ep.uuid))
-      assert row.cost_nanodollars == 250_000_000
+      assert Decimal.equal?(row.cost, Decimal.new("0.25"))
     end
 
     test "an OpenRouter endpoint on a named connection gets both", %{counter: c} do

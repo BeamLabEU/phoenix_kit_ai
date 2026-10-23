@@ -214,10 +214,10 @@ defmodule PhoenixKitAI.MigrationsTest do
 
   describe "the chain as built at boot" do
     test "is at the current version, with its table" do
-      assert Migrations.current_version() == 3
-      assert marker() == "ai_schema:3"
+      assert Migrations.current_version() == 4
+      assert marker() == "ai_schema:4"
       assert existing_tables() == @tables
-      assert Migrations.migrated_version_runtime() == 3
+      assert Migrations.migrated_version_runtime() == 4
     end
 
     test "the base URL and model pair is unique; the flags take yes, no or unknown only" do
@@ -237,7 +237,7 @@ defmodule PhoenixKitAI.MigrationsTest do
       run(Migrations.up_statements("public"))
       run(Migrations.up_statements("public"))
 
-      assert marker() == "ai_schema:3"
+      assert marker() == "ai_schema:4"
       assert existing_tables() == @tables
     end
 
@@ -249,7 +249,7 @@ defmodule PhoenixKitAI.MigrationsTest do
 
       run(Migrations.up_statements("public"))
       assert existing_tables() == @tables
-      assert marker() == "ai_schema:3"
+      assert marker() == "ai_schema:4"
 
       # Built here, from the statements as they are now — not the schema a
       # persistent test database kept from an earlier V1.
@@ -268,8 +268,8 @@ defmodule PhoenixKitAI.MigrationsTest do
     end
 
     test "a version the chain does not have is refused in both directions" do
-      assert_raise ArgumentError, fn -> Migrations.up_statements("public", 4) end
-      assert_raise ArgumentError, fn -> Migrations.down_statements("public", 4) end
+      assert_raise ArgumentError, fn -> Migrations.up_statements("public", 5) end
+      assert_raise ArgumentError, fn -> Migrations.down_statements("public", 5) end
     end
 
     test "an invalid prefix is refused" do
@@ -347,7 +347,7 @@ defmodule PhoenixKitAI.MigrationsTest do
 
       run(Migrations.up_statements("public"))
       assert existing_tables() == @tables
-      assert marker() == "ai_schema:3"
+      assert marker() == "ai_schema:4"
       assert_v2_structure()
     end
   end
@@ -404,8 +404,183 @@ defmodule PhoenixKitAI.MigrationsTest do
 
       run(Migrations.up_statements("public"))
       assert existing_tables() == @tables
-      assert marker() == "ai_schema:3"
+      assert marker() == "ai_schema:4"
       assert_v3_structure()
+    end
+  end
+
+  describe "V4: money in dollars" do
+    @cap_keys ~w(ai_daily_cap ai_daily_cap_per_endpoint ai_daily_cap_per_user)
+
+    defp put_setting(key, value) do
+      query(
+        "INSERT INTO public.phoenix_kit_settings (key, value, module) VALUES ($1, $2, 'ai') " <>
+          "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+        [key, value]
+      )
+    end
+
+    defp setting(key) do
+      case query("SELECT value FROM public.phoenix_kit_settings WHERE key = $1", [key]) do
+        [[value]] -> value
+        [] -> nil
+      end
+    end
+
+    defp clear_caps do
+      query("DELETE FROM public.phoenix_kit_settings WHERE key = ANY($1)", [
+        @cap_keys ++ ~w(ai_daily_budget ai_daily_budget_per_endpoint ai_daily_budget_per_user)
+      ])
+    end
+
+    defp limits(table, uuid) do
+      [[limits]] = query("SELECT limits FROM public.#{table} WHERE uuid = $1", [dump(uuid)])
+      limits
+    end
+
+    defp pricing(endpoint_uuid) do
+      [[settings]] =
+        query("SELECT provider_settings FROM public.phoenix_kit_ai_endpoints WHERE uuid = $1", [
+          dump(endpoint_uuid)
+        ])
+
+      settings["pricing"]
+    end
+
+    # The released shapes: caps as digit strings in millionths, money cells and
+    # prices as JSON numbers in millionths.
+    defp seed_released do
+      clear_caps()
+      put_setting("ai_daily_budget", "5000000")
+      put_setting("ai_daily_budget_per_endpoint", " 250000 ")
+      put_setting("ai_daily_budget_per_user", "0")
+
+      setting =
+        Repo.insert!(%PhoenixKitAI.TaskSetting{
+          task_key: "test.v4.#{System.unique_integer([:positive])}",
+          limits: %{
+            "task" => %{
+              "money" => %{"day" => 1_500_000, "month" => "2500000"},
+              "requests" => %{"day" => 5}
+            },
+            "user" => %{"money" => %{"day" => "2.50"}}
+          }
+        })
+
+      personal =
+        Repo.insert!(%PhoenixKitAI.TaskUserLimit{
+          task_key: setting.task_key,
+          user_uuid: user_uuid(),
+          limits: %{
+            "money" => %{"month" => 20_000_000, "day" => "0.75"},
+            "tokens" => %{"day" => 100}
+          }
+        })
+
+      endpoint = endpoint_uuid()
+
+      query(
+        "UPDATE public.phoenix_kit_ai_endpoints SET provider_settings = $1 WHERE uuid = $2",
+        [
+          %{"pricing" => %{"model" => "a/b", "input" => 600_000, "output" => 2_200_000}},
+          dump(endpoint)
+        ]
+      )
+
+      %{setting: setting.uuid, personal: personal.uuid, endpoint: endpoint}
+    end
+
+    defp assert_converted(%{setting: setting, personal: personal, endpoint: endpoint}) do
+      assert setting("ai_daily_cap") == "5.00"
+      assert setting("ai_daily_cap_per_endpoint") == "0.25"
+      assert setting("ai_daily_cap_per_user") == "0.00"
+      # the released keys are left as they were
+      assert setting("ai_daily_budget") == "5000000"
+      assert setting("ai_daily_budget_per_endpoint") == " 250000 "
+
+      assert limits("phoenix_kit_ai_task_settings", setting) == %{
+               "task" => %{
+                 "money" => %{"day" => "1.50", "month" => "2.50"},
+                 "requests" => %{"day" => 5}
+               },
+               "user" => %{"money" => %{"day" => "2.50"}}
+             }
+
+      assert limits("phoenix_kit_ai_task_user_limits", personal) == %{
+               "money" => %{"month" => "20.00", "day" => "0.75"},
+               "tokens" => %{"day" => 100}
+             }
+
+      assert pricing(endpoint) == %{"model" => "a/b", "input" => "0.60", "output" => "2.20"}
+    end
+
+    test "converts the released millionths to dollar strings; a re-run converts nothing twice" do
+      seeded = seed_released()
+
+      run(Migrations.up_statements("public"))
+      assert_converted(seeded)
+      assert marker() == "ai_schema:4"
+
+      run(Migrations.up_statements("public"))
+      assert_converted(seeded)
+    end
+
+    test "a cap the new key already holds is kept; a garbage old cap is not copied" do
+      clear_caps()
+      put_setting("ai_daily_budget", "5000000")
+      put_setting("ai_daily_cap", "7.50")
+      put_setting("ai_daily_budget_per_endpoint", "lots")
+
+      run(Migrations.up_statements("public"))
+
+      assert setting("ai_daily_cap") == "7.50"
+      assert setting("ai_daily_cap_per_endpoint") == nil
+      assert setting("ai_daily_cap_per_user") == nil
+    end
+
+    test "the converted values read as the same money in the module" do
+      seeded = seed_released()
+      run(Migrations.up_statements("public"))
+      PhoenixKit.Cache.clear(:settings)
+
+      assert Decimal.equal?(PhoenixKitAI.Budget.limit(:global), 5)
+      assert Decimal.equal?(PhoenixKitAI.Budget.limit(:endpoint), Decimal.new("0.25"))
+
+      assert %{task: %{money: %{day: day}}} =
+               PhoenixKitAI.TaskLimits.normalize_scoped(
+                 limits("phoenix_kit_ai_task_settings", seeded.setting)
+               )
+
+      assert Decimal.equal?(day, Decimal.new("1.5"))
+    end
+
+    test "down to 3 turns them back into millionths and deletes the new keys; up again" do
+      seeded = seed_released()
+      run(Migrations.up_statements("public"))
+
+      run(Migrations.down_statements("public", 3))
+      assert marker() == "ai_schema:3"
+      for key <- @cap_keys, do: assert(setting(key) == nil)
+      assert setting("ai_daily_budget") == "5000000"
+
+      assert %{
+               "task" => %{"money" => %{"day" => 1_500_000, "month" => 2_500_000}},
+               "user" => %{"money" => %{"day" => 2_500_000}}
+             } = limits("phoenix_kit_ai_task_settings", seeded.setting)
+
+      assert %{"money" => %{"month" => 20_000_000, "day" => 750_000}} =
+               limits("phoenix_kit_ai_task_user_limits", seeded.personal)
+
+      assert %{"input" => 600_000, "output" => 2_200_000} = pricing(seeded.endpoint)
+
+      run(Migrations.up_statements("public"))
+      assert marker() == "ai_schema:4"
+      assert setting("ai_daily_cap") == "5.00"
+
+      assert %{"task" => %{"money" => %{"day" => "1.50"}}} =
+               limits("phoenix_kit_ai_task_settings", seeded.setting)
+
+      assert %{"input" => "0.60", "output" => "2.20"} = pricing(seeded.endpoint)
     end
   end
 
@@ -425,7 +600,7 @@ defmodule PhoenixKitAI.MigrationsTest do
 
       assert :ok = Ecto.Migrator.up(Repo, version, SchemaMigration, @migrator_opts)
       assert existing_tables() == @tables
-      assert Migrations.migrated_version_runtime() == 3
+      assert Migrations.migrated_version_runtime() == 4
       assert_structure()
       assert_v2_structure()
       assert_v3_structure()

@@ -146,6 +146,15 @@ defmodule PhoenixKitAI.Errors do
   def message({:budget_exceeded, :user_calls}),
     do: gettext("You have made as many AI requests as allowed for the last 24 hours")
 
+  def message({:budget_unmigrated, _scope}),
+    do: gettext("AI spending limits need an update before AI requests can run again")
+
+  def message({:task_limit_unmigrated, _task}),
+    do: gettext("This task's spending limit needs an update before it can run again")
+
+  def message(:money_migration_required),
+    do: gettext("AI requests are paused until the latest database update has run")
+
   def message({:task_limit_exceeded, :task, unit, period}) do
     gettext("This AI task has reached its %{name}",
       name: PhoenixKitAI.GuardEvents.limit_name(unit, period)

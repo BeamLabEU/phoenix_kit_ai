@@ -249,7 +249,7 @@ defmodule PhoenixKitAI.Endpoint do
   end
 
   # A manual price (`provider_settings["pricing"]`, `PhoenixKitAI.ManualPrice`)
-  # is both halves in whole micro-dollars per 1M tokens — never a float —
+  # is both halves in dollars per 1M tokens as decimal strings — never a float —
   # for one model: given without a model it is stamped with the endpoint's;
   # naming another model (the model changed) it is dropped, as a stale
   # capability declaration is.
@@ -263,7 +263,7 @@ defmodule PhoenixKitAI.Endpoint do
             add_error(
               changeset,
               :provider_settings,
-              "price must be both halves, whole micro-dollars per 1M tokens up to $10 000"
+              "price must be both halves, dollars per 1M tokens up to $10 000"
             )
 
           Map.get(pricing, "model", model) != model ->

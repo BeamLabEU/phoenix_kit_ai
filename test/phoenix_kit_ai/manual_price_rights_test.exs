@@ -14,7 +14,7 @@ defmodule PhoenixKitAI.ManualPriceRightsTest do
   alias PhoenixKit.Users.Auth.Scope
   alias PhoenixKit.Users.{Permissions, Roles}
 
-  @pricing %{"input" => 600_000, "output" => 2_200_000}
+  @pricing %{"input" => "0.60", "output" => "2.20"}
 
   setup do
     PhoenixKitAI.enable_system()
@@ -71,7 +71,7 @@ defmodule PhoenixKitAI.ManualPriceRightsTest do
     endpoint = priced(owner)
     without = scope_with(["ai"])
 
-    for settings <- [%{"pricing" => %{@pricing | "input" => 1}}, %{}] do
+    for settings <- [%{"pricing" => %{@pricing | "input" => "1.00"}}, %{}] do
       assert {:error, changeset} =
                PhoenixKitAI.update_endpoint(endpoint, %{provider_settings: settings},
                  scope: without

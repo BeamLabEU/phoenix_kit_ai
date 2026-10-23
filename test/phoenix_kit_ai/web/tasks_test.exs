@@ -82,7 +82,7 @@ defmodule PhoenixKitAI.Web.TasksTest do
           status: status,
           request_type: "chat",
           latency_ms: 700,
-          cost_nanodollars: 2_000_000,
+          cost: Decimal.new("0.002"),
           metadata: %{"task" => "test.photo"},
           inserted_at: now,
           updated_at: now

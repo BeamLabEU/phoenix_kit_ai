@@ -168,7 +168,7 @@ Repo-local aliases:
   a catch-all `handle_info/2` logs `PhoenixKitAI.Web.MessageShape.describe/1`,
   never `inspect(msg)`; a translation failure is logged and broadcast as
   `TranslateWorker.classify_reason/1`'s pair, never the raw reason.
-- **Costs** are stored in nanodollars.
+- **Money** is US dollars as a `Decimal` everywhere (`PhoenixKitAI.Money`).
 - **Error returns** are atoms or `{atom, detail}` tuples, rendered through
   `PhoenixKitAI.Errors.message/1`.
 - No soft-delete sentinel: endpoints and prompts are hard-deleted.
@@ -201,18 +201,20 @@ Repo-local aliases:
   `phx-mounted` and it bubbles to the container hook, which binds in
   `mounted()` and unbinds in `destroyed()`. A `document.addEventListener` in
   `mounted()` would instead leak one live handler per navigation.
-- Money has two units (`PhoenixKitAI.Money`): a call's cost is
-  **nanodollars** (`cost_nanodollars`, core's V223; `1_000_000_000` = $1), every
-  amount someone sets — spend caps, task limits and their declared defaults,
-  prices per 1M tokens — is **micro-dollars** (`1_000_000` = $1). A journal sum
-  meets a set amount only through `Money.nano_to_micro/1`; never compare a raw
-  sum with a cap or limit. This module needs a core with V223: on an older core
-  every usage row fails on the missing column.
+- Money is US dollars as a `Decimal`, stored as it is: a call's `cost`
+  (core's V223, `numeric(20,10)`), the spend caps, task limits and their declared
+  defaults, prices per 1M tokens. Never scale it into integers, and never write
+  it into a JSON map as a number (it reads back as a float): `Money.to_json/1`.
+  An integer where an amount is expected is refused (`Money.amount/1`) — the
+  released versions stored integer millionths of a dollar, and reading one as
+  dollars loosens a cap a million times. A float is refused too. This module
+  needs core's V223 and its own V4: until both have run every call is refused
+  with `:money_migration_required`, `{:budget_unmigrated, scope}` or
+  `{:task_limit_unmigrated, task}`.
 - A chat or embedding row's cost comes from `PhoenixKitAI.CallCost`, the
   first source with a price: the provider's `usage.cost` > the operator's
   catalogue price (OpenRouter `pricing`) > the endpoint's manual price
-  (`provider_settings["pricing"]`, whole µ$ per 1M tokens; a call's cost from
-  it is nanodollars) > Anthropic's
+  (`provider_settings["pricing"]`, dollars per 1M tokens as decimal strings) > Anthropic's
   built-in rates (`AnthropicPricing`, from BeamLabEU/phoenix_kit_ai#47,
   overridable by `config :phoenix_kit_ai, :anthropic_prices`). The row's
   `metadata.cost_source` says which (`provider` / `catalogue` / `manual` /
@@ -369,9 +371,11 @@ Settings: `ai_enabled` (boolean, default `false`) is the module toggle;
 `ai_legacy_api_key_migration_completed_at` is the idempotency marker for
 `migrate_legacy/0`; `ai_translation_sweep_last_run_<sweep_key>` holds each
 translation sweep's last outcome, written by `PhoenixKitAI.TranslationSweep`.
-Spend caps (`PhoenixKitAI.Budget`): `ai_daily_budget`,
-`ai_daily_budget_per_endpoint`, `ai_daily_budget_per_user` — micro-dollars per
-trailing 24 hours, `0` = no cap — plus `ai_daily_calls_per_user` (a count of
+Spend caps (`PhoenixKitAI.Budget`): `ai_daily_cap`,
+`ai_daily_cap_per_endpoint`, `ai_daily_cap_per_user` — dollar strings per
+trailing 24 hours, `0` = no cap (the released `ai_daily_budget*` keys held
+millionths; V4 copies them over and a scope with only its old key refuses
+calls) — plus `ai_daily_calls_per_user` (a count of
 successful calls per user, scope `:user_calls`), and `ai_budget_warn_percent` (default 80),
 read through the settings cache. Every provider-calling verb (not the
 realtime voice session) checks them first and returns
@@ -517,8 +521,8 @@ provided the API exposes `<base_url>/chat/completions` and `/models`.
   `metadata.answered_model` (`Request.other_model/2`: a provider prefix on one side,
   letter case or a dated snapshot of the asked model is the same model).
 - **Usage accounting**: OpenRouter chat calls send `usage: {include: true}` so the
-  response carries `usage.cost` (stored as nanodollars, so even a $0.00000004
-  call keeps its cost); other providers don't get it.
+  response carries `usage.cost` (stored in dollars as it came, so even a
+  $0.00000004 call keeps its cost); other providers don't get it.
 - **Delivery options** — `retry:`, `timeout:`, `concurrency:`, `log_cache_hit:` — change
   how a call is made, not what is asked, so they are dropped from the cache key.
 - **Endpoints by name**: `get_endpoint_by_name/1` / `resolve_endpoint_by_name/1`
@@ -714,7 +718,7 @@ Test database `phoenix_kit_ai_test`.
   module declares is logged once and the call goes on. This module
   declares `ai.translation` and `ai.playground`.
 - Task limits (`PhoenixKitAI.TaskLimits`): scope `:task` (every call of
-  the task) and `:user` (one user in it) × money (micro-dollars) / requests
+  the task) and `:user` (one user in it) × money (dollars) / requests
   / tokens × calendar day / month in the site time zone. In force, cell by
   cell: the user's personal limit, else the task's default for users, else
   the declaration's `default_limits`; the task's own, else the

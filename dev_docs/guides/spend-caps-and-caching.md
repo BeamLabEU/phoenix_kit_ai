@@ -7,31 +7,34 @@ what they deliberately do not. The code is `PhoenixKitAI.Budget`,
 
 ## Units
 
-`cost_nanodollars` on a usage row holds billionths of a dollar
-(`1_000_000_000` = $1), so a call cheaper than a millionth of a dollar
-keeps its cost. Every budget setting and every number `Budget` returns is
-in **micro-dollars** (`1_000_000` = $1): `set_limit(:global, 5_000_000)` is
-a five-dollar cap. A cap meets the journal only through
-`PhoenixKitAI.Money.nano_to_micro/1`, applied to the sum, so a thousand
-calls of 600 nanodollars count as 600 micro-dollars even though each would
-round to 0 on its own. Task limits and prices per 1M tokens are micro-dollars
-too (`PhoenixKitAI.Money`). Before core's V223 the column was `cost_cents`
-and held millionths of a dollar; the migration multiplied the stored costs
-by 1 000 and left the caps as they were.
+Everything is **US dollars**, as a `Decimal` (`PhoenixKitAI.Money`): a usage
+row's `cost` (`numeric(20,10)`), every cap, every number `Budget` returns,
+task limits and prices per 1M tokens. `set_limit(:global, "5")` is a
+five-dollar cap; the sum of `cost` is compared with it as it is, so a
+thousand calls of $0.0000006 count as $0.0006. No amount is ever scaled
+into an integer, and an integer given as an amount is refused
+(`{:error, :ambiguous_amount}`): releases before this one stored millionths
+of a dollar (`cost_cents`, `ai_daily_budget = "5000000"` for $5). Core's V223
+converts the column, this module's V4 the settings (into new keys), the task
+limits and the prices; until both have run, calls are refused rather than
+counted in the wrong unit.
 
 ## Spend caps (`PhoenixKitAI.Budget`)
 
 | setting | scope |
 |---|---|
-| `ai_daily_budget` | every call the module makes |
-| `ai_daily_budget_per_endpoint` | one endpoint |
-| `ai_daily_budget_per_user` | one `user_uuid:` |
+| `ai_daily_cap` | every call the module makes |
+| `ai_daily_cap_per_endpoint` | one endpoint |
+| `ai_daily_cap_per_user` | one `user_uuid:` |
 | `ai_budget_warn_percent` | warn once per crossing (default 80) |
 
-`0` means no cap. `Budget.set_limit/2` writes them under the `"ai"`
+Dollar strings; `0` or blank means no cap. A scope whose new key is missing
+while its released `ai_daily_budget*` key still holds a cap refuses every
+call with `{:error, {:budget_unmigrated, scope}}` until V4 has copied it.
+`Budget.set_limit/2` writes them under the `"ai"`
 settings module; there is no admin form yet.
 
-What a check costs: one cached batch read of the four settings (the
+What a check costs: one cached batch read of the cap settings (the
 settings cache is invalidated on every write, so a new cap applies at
 once) and, per scope that has a cap, one aggregate over the last 24 hours
 of success rows. With no caps set the requests table is not touched.
@@ -117,7 +120,7 @@ model, material}`:
   on every uncached call is not free.
 
 A hit returns the stored result, calls no provider, and writes a
-**zero-cost usage row** (`cost_nanodollars: 0`, tokens 0, `metadata.cached:
+**zero-cost usage row** (`cost: 0`, tokens 0, `metadata.cached:
 true`) with the hitter's `user_uuid`, `source`, attribution, prompt link
 and prompt snapshot — the same shape a fresh row has, minus the cost. It
 does not count against a cap because it cost nothing. Only `{:ok, _}`
@@ -165,9 +168,9 @@ row.
 
 | event | measurements | metadata |
 |---|---|---|
-| `[:phoenix_kit_ai, :request]` | `input_tokens`, `output_tokens`, `cost_nanodollars`, `latency_ms` | `request_type`, `status`, `endpoint_uuid`, `model`, `user_uuid`, `source`, `cached` |
+| `[:phoenix_kit_ai, :request]` | `input_tokens`, `output_tokens`, `cost` (dollars, a float), `latency_ms` | `request_type`, `status`, `endpoint_uuid`, `model`, `user_uuid`, `source`, `cached` |
 | `[:phoenix_kit_ai, :image, :request]` | `latency_ms`, `input_bytes`, `output_bytes`, `input_images`, `output_images` | `type`, `outcome`, `provider`, `model`, `endpoint_uuid`, `operations`, `warnings`, `error`, `source` |
-| `[:phoenix_kit_ai, :budget, :warning]` | `spent`, `limit` | `scope`, `endpoint_uuid`, `user_uuid` |
+| `[:phoenix_kit_ai, :budget, :warning]` | `spent`, `limit` (dollars as floats; a count for `:user_calls`) | `scope`, `endpoint_uuid`, `user_uuid` |
 | `[:phoenix_kit_ai, :cache, :hit \| :miss \| :refresh]` | `count` | `verb`, `endpoint_uuid` |
 
 `[:phoenix_kit_ai, :request]` fires from `create_request/1`, so it covers

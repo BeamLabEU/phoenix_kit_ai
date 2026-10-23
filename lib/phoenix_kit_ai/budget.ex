@@ -3,16 +3,23 @@ defmodule PhoenixKitAI.Budget do
   Spend caps over the trailing 24 hours, checked before every provider call.
 
   Usage rows already carry cost, endpoint and user; a cap is a sum over
-  the trailing day plus a refusal. Three scopes, each a module setting in
-  micro-dollars (millionths of a dollar; `1_000_000` = $1) where `0` means
-  no cap. The journal's `cost_nanodollars` are summed and the sum turned into
-  micro-dollars before it meets a cap (`PhoenixKitAI.Money`):
+  the trailing day plus a refusal. Three scopes, each a module setting in US
+  dollars (a decimal string, `"5"` or `"0.10"`) where `0` or blank means no
+  cap; the usage rows' `cost` is summed and compared as it is:
 
   | setting | scope |
   |---|---|
-  | `ai_daily_budget` | every call the module makes |
-  | `ai_daily_budget_per_endpoint` | calls on one endpoint |
-  | `ai_daily_budget_per_user` | calls attributed to a `user_uuid:` |
+  | `ai_daily_cap` | every call the module makes |
+  | `ai_daily_cap_per_endpoint` | calls on one endpoint |
+  | `ai_daily_cap_per_user` | calls attributed to a `user_uuid:` |
+
+  The released versions kept these caps under `ai_daily_budget*` in integer
+  millionths of a dollar (`"5000000"` was $5). The module's migration chain
+  copies them to the keys above in dollars and leaves the old keys alone. A
+  scope whose old key is still set while its new key is missing (the migration
+  has not run) refuses every call with `{:error, {:budget_unmigrated, scope}}`
+  rather than read millionths as dollars, which would loosen the cap a million
+  times over.
 
   Beside the money, `ai_daily_calls_per_user` caps how many calls one user
   may make in the same trailing day (a count, `0` = no cap; scope
@@ -29,9 +36,9 @@ defmodule PhoenixKitAI.Budget do
   call still runs, but a `Logger.warning` and a
   `[:phoenix_kit_ai, :budget, :warning]` telemetry event fire once per
   crossing per scope (the flag clears when spend drops back under the
-  line). Its `spent` / `limit` measurements are in the scope's unit:
-  micro-dollars, or a call count for `:user_calls` — check the `scope`
-  metadata before adding them up.
+  line). Its `spent` / `limit` measurements are in the scope's unit: dollars
+  (floats — a measurement must be a number), or a call count for
+  `:user_calls` — check the `scope` metadata before adding them up.
 
   Once a cap is reached every verb returns `{:error, {:budget_exceeded,
   scope}}` without a provider call — cached answers included: a cap is a
@@ -56,49 +63,75 @@ defmodule PhoenixKitAI.Budget do
   alias PhoenixKitAI.{Endpoint, Money, Request}
 
   @scopes [:global, :endpoint, :user, :user_calls]
+  @money_scopes [:global, :endpoint, :user]
   @user_scopes [:user, :user_calls]
   @settings %{
+    global: "ai_daily_cap",
+    endpoint: "ai_daily_cap_per_endpoint",
+    user: "ai_daily_cap_per_user",
+    user_calls: "ai_daily_calls_per_user"
+  }
+  # The released versions' money caps, integer millionths of a dollar.
+  @legacy_settings %{
     global: "ai_daily_budget",
     endpoint: "ai_daily_budget_per_endpoint",
-    user: "ai_daily_budget_per_user",
-    user_calls: "ai_daily_calls_per_user"
+    user: "ai_daily_budget_per_user"
   }
   @warn_setting "ai_budget_warn_percent"
   @default_warn_percent 80
   @window_seconds 24 * 60 * 60
 
   @type scope :: :global | :endpoint | :user | :user_calls
+  @typedoc "Dollars (a `Decimal`) for a money scope, a call count for `:user_calls`."
+  @type amount :: Decimal.t() | non_neg_integer()
   @type status :: %{
           scope: scope(),
-          spent: non_neg_integer(),
-          limit: non_neg_integer(),
-          remaining: integer()
+          spent: amount(),
+          limit: amount(),
+          remaining: Decimal.t() | integer()
         }
 
   @doc "The setting key for a scope's cap."
   @spec setting(scope()) :: String.t()
   def setting(scope) when scope in @scopes, do: Map.fetch!(@settings, scope)
 
+  @doc "The settings keys the released versions kept the money caps under (millionths)."
+  @spec legacy_settings() :: %{scope() => String.t()}
+  def legacy_settings, do: @legacy_settings
+
   @doc """
   `:ok` when every configured cap has room, `{:error, {:budget_exceeded,
-  scope}}` for the first scope that is reached. Emits the warning for
-  scopes past the warn percent; `status/2` does not.
+  scope}}` for the first scope that is reached, `{:error, {:budget_unmigrated,
+  scope}}` for a cap still in the released versions' settings only. Emits the
+  warning for scopes past the warn percent; `status/2` does not.
   """
-  @spec check(Endpoint.t(), keyword()) :: :ok | {:error, {:budget_exceeded, scope()}}
+  @spec check(Endpoint.t(), keyword()) ::
+          :ok | {:error, {:budget_exceeded | :budget_unmigrated, scope()}}
   def check(%Endpoint{} = endpoint, opts) do
-    entries = status(endpoint, opts)
-    Enum.each(entries, &maybe_warn(&1, endpoint, opts[:user_uuid]))
+    limits = limits()
 
-    case Enum.find(entries, &(&1.remaining <= 0)) do
-      %{scope: scope} -> {:error, {:budget_exceeded, scope}}
-      nil -> :ok
+    case Enum.find(@money_scopes, &(limits[&1] == :unmigrated)) do
+      nil ->
+        entries = status(endpoint, opts, limits)
+        Enum.each(entries, &maybe_warn(&1, endpoint, opts[:user_uuid]))
+
+        case Enum.find(entries, &reached?/1) do
+          %{scope: scope} -> {:error, {:budget_exceeded, scope}}
+          nil -> :ok
+        end
+
+      scope ->
+        log_unmigrated(scope)
+        {:error, {:budget_unmigrated, scope}}
     end
   end
 
   @doc """
   Spent / limit / remaining for every scope that has a cap (the user scope
   only when `user_uuid:` is given), with no side effects — hosts show it,
-  `check/2` acts on it. Takes an endpoint struct or uuid.
+  `check/2` acts on it. Takes an endpoint struct or uuid. Money is dollars
+  (`Decimal`), `:user_calls` a count. A scope still in the released versions'
+  settings only is left out (`check/2` refuses on it).
   """
   @spec status(Endpoint.t() | String.t(), keyword()) :: [status()]
   def status(endpoint_uuid, opts) when is_binary(endpoint_uuid) do
@@ -108,42 +141,65 @@ defmodule PhoenixKitAI.Budget do
     end
   end
 
-  def status(%Endpoint{} = endpoint, opts) do
+  def status(%Endpoint{} = endpoint, opts), do: status(endpoint, opts, limits())
+
+  defp status(endpoint, opts, limits) do
     user_uuid = opts[:user_uuid]
-    limits = limits()
 
     for scope <- @scopes,
         limit = limits[scope],
-        limit > 0,
+        positive?(limit),
         scope not in @user_scopes or is_binary(user_uuid) do
       spent = spent(scope, endpoint, user_uuid)
-      %{scope: scope, spent: spent, limit: limit, remaining: limit - spent}
+      %{scope: scope, spent: spent, limit: limit, remaining: subtract(limit, spent)}
     end
   end
 
-  @doc "The cap for a scope: micro-dollars, or a call count for `:user_calls` (`0` = none)."
-  @spec limit(scope()) :: non_neg_integer()
-  def limit(scope) when scope in @scopes, do: limits()[scope]
+  @doc """
+  The cap for a scope: dollars (`Decimal`) for a money scope, a call count for
+  `:user_calls`; `0` = none (also for a cap not migrated yet).
+  """
+  @spec limit(scope()) :: amount()
+  def limit(scope) when scope in @scopes do
+    case limits()[scope] do
+      :unmigrated -> Decimal.new(0)
+      limit -> limit
+    end
+  end
 
   @doc "The warn threshold as a percentage of a cap (default 80)."
   @spec warn_percent() :: pos_integer()
   def warn_percent do
-    case parse(settings()[@warn_setting]) do
+    case count(settings()[@warn_setting]) do
       0 -> @default_warn_percent
       percent -> percent
     end
   end
 
-  @doc "Sets a scope's cap (micro-dollars, or a call count for `:user_calls`; `0` removes it)."
-  @spec set_limit(scope(), non_neg_integer()) :: {:ok, term()} | {:error, term()}
-  def set_limit(scope, amount)
-      when scope in @scopes and is_integer(amount) and amount >= 0 do
-    PhoenixKit.Settings.update_setting_with_module(
-      setting(scope),
-      Integer.to_string(amount),
-      "ai"
-    )
+  @doc """
+  Sets a scope's cap: dollars for a money scope — a `Decimal` or a dollar
+  string (`"5"`, `"0.10"`) — or a call count for `:user_calls`; `0` removes
+  it. A money cap given as any other integer or as a float is refused with
+  `{:error, :ambiguous_amount}`: the released API took integer millionths of a
+  dollar, and `set_limit(:global, 5_000_000)` must not become a $5,000,000 cap.
+  """
+  @spec set_limit(scope(), Decimal.t() | String.t() | non_neg_integer()) ::
+          {:ok, term()} | {:error, term()}
+  def set_limit(:user_calls, amount) when is_integer(amount) and amount >= 0,
+    do: write(:user_calls, Integer.to_string(amount))
+
+  def set_limit(scope, amount) when scope in @money_scopes do
+    case Money.amount(amount) do
+      {:ok, dollars} -> write(scope, Money.to_json(dollars))
+      {:error, :ambiguous_amount} = error -> error
+      :error -> {:error, :invalid_amount}
+    end
   end
+
+  def set_limit(_scope, _amount), do: {:error, :invalid_amount}
+
+  defp write(scope, value),
+    do: PhoenixKit.Settings.update_setting_with_module(setting(scope), value, "ai")
 
   @doc false
   # Forgets every "already warned" flag (tests).
@@ -155,10 +211,10 @@ defmodule PhoenixKitAI.Budget do
     ArgumentError -> :ok
   end
 
-  # One cached batch read for the four settings; the settings cache is
+  # One cached batch read for the settings; the settings cache is
   # invalidated on every write, so `set_limit/2` takes effect at once.
   defp settings do
-    keys = Map.values(@settings) ++ [@warn_setting]
+    keys = Map.values(@settings) ++ Map.values(@legacy_settings) ++ [@warn_setting]
     PhoenixKit.Settings.get_settings_cached(keys, %{})
   rescue
     _ -> %{}
@@ -166,24 +222,73 @@ defmodule PhoenixKitAI.Budget do
     :exit, _ -> %{}
   end
 
+  # scope => dollars (`Decimal`) | count | `:unmigrated`
   defp limits do
     values = settings()
-    Map.new(@settings, fn {scope, key} -> {scope, parse(values[key])} end)
+
+    Map.new(@scopes, fn
+      :user_calls ->
+        {:user_calls, count(values[@settings.user_calls])}
+
+      scope ->
+        {scope, money_limit(values[@settings[scope]], values[@legacy_settings[scope]])}
+    end)
   end
 
-  defp parse(value) when is_integer(value) and value >= 0, do: value
+  # The new key decides when it is there; only when it is missing does an old
+  # key that still holds a cap mean the migration has not run.
+  defp money_limit(value, legacy) when value in [nil, ""] do
+    if Money.legacy_amount?(legacy), do: :unmigrated, else: Decimal.new(0)
+  end
 
-  defp parse(value) when is_binary(value) do
+  defp money_limit(value, _legacy) do
+    case Money.to_decimal(value) do
+      {:ok, dollars} -> if Decimal.negative?(dollars), do: Decimal.new(0), else: dollars
+      :error -> Decimal.new(0)
+    end
+  end
+
+  defp count(value) when is_integer(value) and value >= 0, do: value
+
+  defp count(value) when is_binary(value) do
     case Integer.parse(String.trim(value)) do
       {int, _} when int >= 0 -> int
       _ -> 0
     end
   end
 
-  defp parse(_other), do: 0
+  defp count(_other), do: 0
 
-  # Nanodollars spent in the trailing window (a nil cost counts as zero), or
-  # for :user_calls the number of calls.
+  defp positive?(%Decimal{} = amount), do: Decimal.compare(amount, 0) == :gt
+  defp positive?(amount) when is_integer(amount), do: amount > 0
+  defp positive?(_), do: false
+
+  defp subtract(%Decimal{} = limit, spent), do: Decimal.sub(limit, spent)
+  defp subtract(limit, spent), do: limit - spent
+
+  defp reached?(%{remaining: %Decimal{} = remaining}), do: Decimal.compare(remaining, 0) != :gt
+  defp reached?(%{remaining: remaining}), do: remaining <= 0
+
+  # Once per node, not on every refused call.
+  defp log_unmigrated(scope) do
+    key = {__MODULE__, :unmigrated, scope}
+    table = PhoenixKitAI.RequestCache.flags_table()
+
+    unless :ets.member(table, key) do
+      :ets.insert(table, {key, true})
+
+      Logger.error(
+        "[PhoenixKitAI] the #{scope} spend cap is still in #{@legacy_settings[scope]} " <>
+          "(millionths of a dollar) and not in #{@settings[scope]} (dollars): every AI call " <>
+          "is refused until `mix phoenix_kit.update` has run the module's migrations"
+      )
+    end
+  rescue
+    _ -> :ok
+  end
+
+  # Dollars spent in the trailing window (a nil cost counts as zero), or for
+  # :user_calls the number of calls.
   defp spent(scope, endpoint, user_uuid) do
     since = DateTime.add(DateTime.utc_now(), -@window_seconds, :second)
 
@@ -191,9 +296,9 @@ defmodule PhoenixKitAI.Budget do
       do: calls(since, user_uuid),
       else: money(scope, since, endpoint, user_uuid)
   rescue
-    _ -> 0
+    _ -> if scope == :user_calls, do: 0, else: Decimal.new(0)
   catch
-    :exit, _ -> 0
+    :exit, _ -> if scope == :user_calls, do: 0, else: Decimal.new(0)
   end
 
   # Successful calls only, like the money sum: a failed call costs nothing
@@ -215,7 +320,7 @@ defmodule PhoenixKitAI.Budget do
     query =
       from(r in Request,
         where: r.inserted_at >= ^since and r.status == "success",
-        select: coalesce(sum(r.cost_nanodollars), 0)
+        select: coalesce(sum(r.cost), 0)
       )
 
     query =
@@ -225,16 +330,7 @@ defmodule PhoenixKitAI.Budget do
         :user -> where(query, [r], r.user_uuid == ^user_uuid)
       end
 
-    # `sum(bigint)` is a numeric on Postgres, read as a Decimal.
-    nanodollars =
-      case PhoenixKit.RepoHelper.repo().one(query) do
-        %Decimal{} = decimal -> decimal |> Decimal.round(0) |> Decimal.to_integer()
-        value when is_integer(value) -> value
-        value when is_float(value) -> round(value)
-        _ -> 0
-      end
-
-    Money.nano_to_micro(nanodollars)
+    query |> PhoenixKit.RepoHelper.repo().one() |> Money.sum()
   end
 
   # Warn once per crossing: the flag is an ETS row per scope key and clears
@@ -242,22 +338,21 @@ defmodule PhoenixKitAI.Budget do
   defp maybe_warn(%{spent: spent, limit: limit, scope: scope}, endpoint, user_uuid) do
     table = PhoenixKitAI.RequestCache.flags_table()
     key = {__MODULE__, scope, scope_id(scope, endpoint, user_uuid)}
-    over? = spent * 100 >= limit * warn_percent()
+    percent = percent_of(spent, limit)
+    over? = percent >= warn_percent()
     warned? = :ets.member(table, key)
 
     cond do
       over? and not warned? ->
         :ets.insert(table, {key, true})
 
-        unit = if scope == :user_calls, do: "calls", else: "micro-dollars"
-
         Logger.warning(
-          "[PhoenixKitAI] budget #{scope} at #{div(spent * 100, max(limit, 1))}% (#{spent} of #{limit} #{unit} in 24h)"
+          "[PhoenixKitAI] budget #{scope} at #{percent}% (#{show(spent)} of #{show(limit)} in 24h)"
         )
 
         :telemetry.execute(
           [:phoenix_kit_ai, :budget, :warning],
-          %{spent: spent, limit: limit},
+          %{spent: measure(spent), limit: measure(limit)},
           %{scope: scope, endpoint_uuid: endpoint.uuid, user_uuid: user_uuid}
         )
 
@@ -270,6 +365,23 @@ defmodule PhoenixKitAI.Budget do
   rescue
     _ -> :ok
   end
+
+  # The whole percent of a cap spent, rounded down.
+  defp percent_of(%Decimal{} = spent, limit) do
+    spent
+    |> Decimal.mult(100)
+    |> Decimal.div(limit)
+    |> Decimal.round(0, :floor)
+    |> Decimal.to_integer()
+  end
+
+  defp percent_of(spent, limit), do: div(spent * 100, max(limit, 1))
+
+  defp show(%Decimal{} = dollars), do: "$" <> Decimal.to_string(dollars, :normal)
+  defp show(calls), do: "#{calls} calls"
+
+  defp measure(%Decimal{} = dollars), do: Decimal.to_float(dollars)
+  defp measure(calls), do: calls
 
   defp scope_id(:global, _endpoint, _user), do: :all
   defp scope_id(:endpoint, endpoint, _user), do: endpoint.uuid

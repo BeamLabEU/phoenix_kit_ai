@@ -1,7 +1,7 @@
 defmodule PhoenixKitAI.CallCostTest do
   @moduledoc """
-  The cost of a call (`PhoenixKitAI.CallCost`), in nanodollars — the
-  unit of `cost_nanodollars` — from the first source that has a price, in this
+  The cost of a call (`PhoenixKitAI.CallCost`), in US dollars — the unit of
+  `Request.cost` — from the first source that has a price, in this
   order: the provider's `usage.cost`, the operator's catalogue price, the
   endpoint's manual price, Anthropic's built-in rate table. The model is
   the one the answer names; a model no source prices falls back to the
@@ -20,7 +20,7 @@ defmodule PhoenixKitAI.CallCostTest do
 
   @anthropic "https://api.anthropic.com/v1"
   # $1 and $1 per 1M tokens.
-  @manual %{"input" => 1_000_000, "output" => 1_000_000}
+  @manual %{"input" => "1", "output" => "1.00"}
 
   setup do
     PhoenixKitAI.RequestCache.clear()
@@ -98,36 +98,52 @@ defmodule PhoenixKitAI.CallCostTest do
     endpoint
   end
 
+  # `{cost, metadata}` with the cost equal to `dollars` (a string), or nil.
+  defp costs?({%Decimal{} = cost, meta}, dollars, meta_expected),
+    do: Decimal.equal?(cost, Decimal.new(dollars)) and meta == meta_expected
+
+  defp costs?(_result, _dollars, _meta), do: false
+
+  defp dollars?(%Decimal{} = value, expected), do: Decimal.equal?(value, Decimal.new(expected))
+  defp dollars?(_value, _expected), do: false
+
   describe "for_call/5, the order of the sources" do
     test "the provider's reported cost comes first" do
       ep = endpoint(provider_settings: %{"pricing" => @manual})
 
-      assert CallCost.for_call(ep, "claude-sonnet-5-5", 12_345, 1_000, 500) ==
-               {12_345, %{cost_source: "provider"}}
+      reported = Decimal.new("0.000012345")
+
+      assert ep
+             |> CallCost.for_call("claude-sonnet-5-5", reported, 1_000, 500)
+             |> costs?("0.000012345", %{cost_source: "provider"})
     end
 
     test "then the operator's catalogue price, over a manual price" do
       ep = openrouter_cache()
 
-      # 10 000 × 100 000 + 1 000 × 400 000 µ$ per 1M = $0.0014 = 1 400 000 n$.
-      assert CallCost.for_call(ep, "vendor/priced", nil, 10_000, 1_000) ==
-               {1_400_000, %{cost_source: "catalogue"}}
+      # The catalogue's price is per TOKEN: 10 000 × $0.0000001 + 1 000 × $0.0000004
+      # = $0.0014 (read as per 1M it would be a million times less).
+      assert ep
+             |> CallCost.for_call("vendor/priced", nil, 10_000, 1_000)
+             |> costs?("0.0014", %{cost_source: "catalogue"})
     end
 
     test "then the manual price, over the built-in table" do
       ep = endpoint(provider_settings: %{"pricing" => @manual})
 
-      # 1 000 × 1 000 000 + 500 × 1 000 000 µ$ per 1M = $0.0015 = 1 500 000 n$.
-      assert CallCost.for_call(ep, "claude-sonnet-5-5", nil, 1_000, 500) ==
-               {1_500_000, %{cost_source: "manual"}}
+      # The manual price is per 1M tokens: 1 500 × $1 / 1M = $0.0015.
+      assert ep
+             |> CallCost.for_call("claude-sonnet-5-5", nil, 1_000, 500)
+             |> costs?("0.0015", %{cost_source: "manual"})
     end
 
-    test "then Anthropic's table, in nanodollars" do
+    test "then Anthropic's table, per 1M tokens" do
       ep = endpoint(%{})
 
-      # $2 and $10 per 1M: 1 000 in, 500 out = $0.007 = 7 000 000 n$.
-      assert CallCost.for_call(ep, "claude-sonnet-5-5", nil, 1_000, 500) ==
-               {7_000_000, %{cost_source: "table"}}
+      # $2 and $10 per 1M: 1 000 in, 500 out = $0.007.
+      assert ep
+             |> CallCost.for_call("claude-sonnet-5-5", nil, 1_000, 500)
+             |> costs?("0.007", %{cost_source: "table"})
     end
 
     test "nothing for a call without tokens, unless the provider reported a cost" do
@@ -136,8 +152,9 @@ defmodule PhoenixKitAI.CallCostTest do
       assert CallCost.for_call(ep, "claude-sonnet-5-5", nil, 0, 0) == {nil, %{}}
       assert CallCost.for_call(ep, "claude-sonnet-5-5", nil, nil, nil) == {nil, %{}}
 
-      assert CallCost.for_call(ep, "claude-sonnet-5-5", 0, 0, 0) ==
-               {0, %{cost_source: "provider"}}
+      assert ep
+             |> CallCost.for_call("claude-sonnet-5-5", Decimal.new(0), 0, 0)
+             |> costs?("0", %{cost_source: "provider"})
     end
 
     test "nothing when no source prices the model" do
@@ -146,22 +163,46 @@ defmodule PhoenixKitAI.CallCostTest do
     end
   end
 
+  describe "for_call/5, the two price bases" do
+    test "the same call is priced per token by the catalogue, per 1M by the others" do
+      # 1 000 in, 500 out everywhere; a factor of a million lost on either
+      # base would give a different answer than the one below.
+      catalogue = openrouter_cache()
+
+      assert catalogue
+             |> CallCost.for_call("vendor/priced", nil, 1_000, 500)
+             |> costs?("0.0003", %{cost_source: "catalogue"})
+
+      assert endpoint(provider_settings: %{"pricing" => %{"input" => "0.1", "output" => "0.4"}})
+             |> CallCost.for_call("claude-sonnet-5-5", nil, 1_000, 500)
+             |> costs?("0.0003", %{cost_source: "manual"})
+
+      assert endpoint(%{})
+             |> CallCost.for_call("claude-sonnet-5-5", nil, 1_000, 500)
+             |> costs?("0.007", %{cost_source: "table"})
+    end
+  end
+
   describe "for_call/5, the model" do
     test "is the one the answer names when a source prices it" do
       ep = endpoint(%{})
 
       # Claude Opus 4.6: $5 and $25 per 1M.
-      assert CallCost.for_call(ep, "claude-opus-4-6", nil, 1_000, 500) ==
-               {17_500_000, %{cost_source: "table"}}
+      assert ep
+             |> CallCost.for_call("claude-opus-4-6", nil, 1_000, 500)
+             |> costs?("0.0175", %{cost_source: "table"})
     end
 
     test "falls back to the endpoint's when no source prices the answer's" do
       ep = endpoint(%{})
 
-      assert CallCost.for_call(ep, "claude-unpriced-9", nil, 1_000, 500) ==
-               {7_000_000, %{cost_source: "table"}}
+      assert ep
+             |> CallCost.for_call("claude-unpriced-9", nil, 1_000, 500)
+             |> costs?("0.007", %{cost_source: "table"})
 
-      assert CallCost.for_call(ep, nil, nil, 1_000, 500) == {7_000_000, %{cost_source: "table"}}
+      assert ep
+             |> CallCost.for_call(nil, nil, 1_000, 500)
+             |> costs?("0.007", %{cost_source: "table"})
     end
   end
 
@@ -211,8 +252,8 @@ defmodule PhoenixKitAI.CallCostTest do
 
       assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "hi")
 
-      assert %Request{cost_nanodollars: 7_000_000, metadata: %{"cost_source" => "table"}} =
-               row(ep)
+      assert %Request{cost: cost, metadata: %{"cost_source" => "table"}} = row(ep)
+      assert dollars?(cost, "0.007")
     end
 
     test "an answer naming a model without a price is priced by the endpoint's model" do
@@ -221,8 +262,8 @@ defmodule PhoenixKitAI.CallCostTest do
 
       assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "hi")
 
-      assert %Request{cost_nanodollars: 7_000_000, metadata: %{"cost_source" => "table"}} =
-               row(ep)
+      assert %Request{cost: cost, metadata: %{"cost_source" => "table"}} = row(ep)
+      assert dollars?(cost, "0.007")
     end
 
     test "an answer without usage, or with an empty one, has no cost, not a priced $0" do
@@ -243,7 +284,7 @@ defmodule PhoenixKitAI.CallCostTest do
 
         assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "hi")
 
-        assert %Request{cost_nanodollars: nil, metadata: metadata} = row(ep)
+        assert %Request{cost: nil, metadata: metadata} = row(ep)
         refute Map.has_key?(metadata, "cost_source")
       end
     end
@@ -259,8 +300,39 @@ defmodule PhoenixKitAI.CallCostTest do
 
       assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "hi")
 
-      assert %Request{cost_nanodollars: 10_000_000, metadata: %{"cost_source" => "provider"}} =
-               row(ep)
+      assert %Request{cost: cost, metadata: %{"cost_source" => "provider"}} = row(ep)
+      assert dollars?(cost, "0.01")
+    end
+
+    test "a reported float cost is stored as the decimal the provider wrote" do
+      for {float, dollars} <- [{3.0e-5, "0.00003"}, {4.0e-8, "0.00000004"}, {0.1, "0.1"}] do
+        ep = endpoint(%{})
+
+        stub_answer("claude-sonnet-5-5", %{
+          "prompt_tokens" => 1,
+          "completion_tokens" => 1,
+          "cost" => float
+        })
+
+        assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "hi #{float}")
+        # exactly, not 0 (as millionths would make 4.0e-8) and not a binary tail
+        assert %Request{cost: cost} = row(ep)
+        assert Decimal.equal?(cost, Decimal.new(dollars)), "#{float} → #{inspect(cost)}"
+      end
+    end
+
+    test "a provider's cost past the column's 10 places is rounded once, half up" do
+      ep = endpoint(%{})
+
+      stub_answer("claude-sonnet-5-5", %{
+        "prompt_tokens" => 1,
+        "completion_tokens" => 1,
+        "cost" => 1.5e-10
+      })
+
+      assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "hi")
+      assert %Request{cost: cost} = row(ep)
+      assert dollars?(cost, "0.0000000002")
     end
   end
 end
