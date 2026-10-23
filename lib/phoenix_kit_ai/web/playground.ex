@@ -660,7 +660,7 @@ defmodule PhoenixKitAI.Web.Playground do
       case AI.ask(endpoint_uuid, rendered_content, opts) do
         {:ok, response} ->
           AI.increment_prompt_usage(prompt.uuid)
-          {:ok, extract_text(response), Completion.extract_usage(response)}
+          {:ok, extract_text(response), response_usage(response)}
 
         {:error, reason} ->
           {:error, reason}
@@ -680,12 +680,33 @@ defmodule PhoenixKitAI.Web.Playground do
 
     case AI.ask(endpoint_uuid, message, opts) do
       {:ok, response} ->
-        {:ok, extract_text(response), Completion.extract_usage(response)}
+        {:ok, extract_text(response), response_usage(response)}
 
       {:error, reason} ->
         {:error, reason}
     end
   end
+
+  # The provider's `usage.cost` is one source of a call's cost (OpenRouter's).
+  # The others — a catalogue price, one entered on the endpoint, Anthropic's
+  # built-in rates — are only in the usage row the call wrote
+  # (`PhoenixKitAI.CallCost`), so that row is read when the answer has none.
+  # No row or no price: no cost, as for an answer without one.
+  defp response_usage(response) do
+    case Completion.extract_usage(response) do
+      %{cost_cents: nil} = usage -> %{usage | cost_cents: logged_cost(response["request_uuid"])}
+      usage -> usage
+    end
+  end
+
+  defp logged_cost(uuid) when is_binary(uuid) do
+    case AI.get_request(uuid) do
+      %{cost_cents: cost} -> cost
+      _ -> nil
+    end
+  end
+
+  defp logged_cost(_uuid), do: nil
 
   defp maybe_add_system(opts, nil), do: opts
   defp maybe_add_system(opts, system), do: Keyword.put(opts, :system, system)
