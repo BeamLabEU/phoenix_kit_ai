@@ -126,6 +126,7 @@ defmodule PhoenixKitAI do
   alias PhoenixKitAI.GuardBlocks
   alias PhoenixKitAI.GuardEvents
   alias PhoenixKitAI.Images.{ImageModel, ImageModels, Operations}
+  alias PhoenixKitAI.ManualPrice
   alias PhoenixKitAI.Request
   alias PhoenixKitAI.TaskLimits
   alias PhoenixKitAI.Tasks
@@ -1492,6 +1493,7 @@ defmodule PhoenixKitAI do
     |> broadcast_endpoint_change(:endpoint_created)
     |> log_endpoint_activity("endpoint.created", opts)
     |> log_capabilities_declaration(%Endpoint{}, opts)
+    |> log_pricing_change(%Endpoint{}, opts)
     |> refresh_capabilities(true)
     |> log_failed_endpoint_mutation("endpoint.created", opts)
   end
@@ -1520,6 +1522,7 @@ defmodule PhoenixKitAI do
     |> maybe_log_endpoint_update(has_changes, opts)
     |> maybe_log_endpoint_toggle(was_enabled, opts)
     |> log_capabilities_declaration(endpoint, opts)
+    |> log_pricing_change(endpoint, opts)
     |> refresh_capabilities(catalogue_inputs_changed?(changeset))
     |> log_failed_endpoint_mutation("endpoint.updated", opts)
   end
@@ -1568,6 +1571,28 @@ defmodule PhoenixKitAI do
   end
 
   defp log_capabilities_declaration(result, _before, _opts), do: result
+
+  # A manual price (`PhoenixKitAI.ManualPrice`) set, changed or removed is
+  # logged with the price before and after, in micro-dollars per 1M tokens.
+  defp log_pricing_change({:ok, endpoint} = result, before, opts) do
+    old = ManualPrice.get(before) || %{}
+    new = ManualPrice.get(endpoint) || %{}
+
+    if old != new do
+      log_activity("endpoint.pricing_changed", "endpoint", endpoint.uuid, opts, %{
+        "name" => endpoint.name,
+        "model" => endpoint.model,
+        "input_before" => old["input"],
+        "input_after" => new["input"],
+        "output_before" => old["output"],
+        "output_after" => new["output"]
+      })
+    end
+
+    result
+  end
+
+  defp log_pricing_change(result, _before, _opts), do: result
 
   # While only verified models may be used (`Guard.verified_only?/0`), what
   # an admin declares an endpoint's model can do decides which calls go
@@ -4711,6 +4736,15 @@ defmodule PhoenixKitAI do
         Map.put(base_metadata, :content_redacted, true)
       end
 
+    # No reported cost: the endpoint's manual price, if it has one.
+    {cost, cost_metadata} =
+      ManualPrice.for_call(
+        endpoint,
+        usage.cost_cents,
+        usage.prompt_tokens,
+        usage.completion_tokens
+      )
+
     create_request(%{
       endpoint_uuid: endpoint.uuid,
       endpoint_name: endpoint.name,
@@ -4721,11 +4755,11 @@ defmodule PhoenixKitAI do
       input_tokens: usage.prompt_tokens,
       output_tokens: usage.completion_tokens,
       total_tokens: usage.total_tokens,
-      cost_cents: usage.cost_cents,
+      cost_cents: cost,
       latency_ms: response["latency_ms"],
       status: "success",
       user_uuid: caller_context[:user_uuid],
-      metadata: metadata
+      metadata: Map.merge(metadata, cost_metadata)
     })
   end
 
@@ -4817,6 +4851,9 @@ defmodule PhoenixKitAI do
     usage = Completion.extract_usage(response)
     input_count = if is_list(input), do: length(input), else: 1
 
+    {cost, cost_metadata} =
+      ManualPrice.for_call(endpoint, usage.cost_cents, usage.prompt_tokens, 0)
+
     create_request(%{
       endpoint_uuid: endpoint.uuid,
       endpoint_name: endpoint.name,
@@ -4824,7 +4861,7 @@ defmodule PhoenixKitAI do
       request_type: "embedding",
       input_tokens: usage.prompt_tokens,
       total_tokens: usage.total_tokens,
-      cost_cents: usage.cost_cents,
+      cost_cents: cost,
       latency_ms: response["latency_ms"],
       status: "success",
       user_uuid: caller_context[:user_uuid],
@@ -4838,7 +4875,7 @@ defmodule PhoenixKitAI do
             stacktrace: stacktrace,
             caller_context: caller_context
           },
-          guard
+          Map.merge(guard, cost_metadata)
         )
     })
   end

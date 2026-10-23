@@ -244,7 +244,27 @@ defmodule PhoenixKitAI.Endpoint do
     |> validate_base_url(Keyword.get(opts, :resolve_base_url, true))
     |> maybe_clear_legacy_api_key()
     |> drop_stale_capabilities()
+    |> validate_pricing()
     |> unique_constraint(:name)
+  end
+
+  # A manual price (`provider_settings["pricing"]`, `PhoenixKitAI.ManualPrice`)
+  # is whole non-negative micro-dollars per 1M tokens — never a float.
+  defp validate_pricing(changeset) do
+    case get_field(changeset, :provider_settings) do
+      %{"pricing" => pricing} ->
+        if PhoenixKitAI.ManualPrice.validate(pricing) == :ok,
+          do: changeset,
+          else:
+            add_error(
+              changeset,
+              :provider_settings,
+              "price must be whole micro-dollars per 1M tokens"
+            )
+
+      _ ->
+        changeset
+    end
   end
 
   # Capabilities declared in `provider_settings["capabilities"]` describe

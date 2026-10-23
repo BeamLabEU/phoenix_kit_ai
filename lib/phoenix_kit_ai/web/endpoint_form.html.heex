@@ -550,6 +550,57 @@
                   )}
                 </span>
               </div>
+
+              <%!-- A price entered by hand, offered only while the catalogue
+                   gives the model none: a call whose provider reports no
+                   cost is then counted from its tokens. --%>
+              <div
+                :if={
+                  has_model &&
+                    !PhoenixKitAI.Web.EndpointForm.catalogue_priced?(
+                      @selected_model,
+                      current_model_id,
+                      @form,
+                      @current_provider
+                    )
+                }
+                id="endpoint-manual-price"
+                class="rounded-lg border border-base-300 p-3 mt-3"
+              >
+                <div class="text-sm font-medium">{gettext("Price entered by hand")}</div>
+                <p class="text-xs text-base-content/60 mt-1">
+                  {gettext(
+                    "The provider does not give this model's price, so the cost of its calls is not counted. Enter the price per 1M tokens in dollars and each call's cost is counted from its tokens; a cost the provider reports is used instead."
+                  )}
+                </p>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
+                  <label class="fieldset">
+                    <span class="fieldset-legend text-sm">{gettext("Input, $ per 1M tokens")}</span>
+                    <input
+                      type="text"
+                      inputmode="decimal"
+                      name="endpoint[provider_settings][pricing][input]"
+                      value={PhoenixKitAI.Web.EndpointForm.price_value(@form, @endpoint, "input")}
+                      class={["input input-sm", @pricing_error && "input-error"]}
+                      placeholder="0.60"
+                    />
+                  </label>
+                  <label class="fieldset">
+                    <span class="fieldset-legend text-sm">{gettext("Output, $ per 1M tokens")}</span>
+                    <input
+                      type="text"
+                      inputmode="decimal"
+                      name="endpoint[provider_settings][pricing][output]"
+                      value={PhoenixKitAI.Web.EndpointForm.price_value(@form, @endpoint, "output")}
+                      class={["input input-sm", @pricing_error && "input-error"]}
+                      placeholder="2.20"
+                    />
+                  </label>
+                </div>
+                <p :if={@pricing_error} id="endpoint-manual-price-error" class="text-error text-sm mt-1">
+                  {@pricing_error}
+                </p>
+              </div>
             </div>
 
             <%!-- Model browse area. When a model is hoisted above as

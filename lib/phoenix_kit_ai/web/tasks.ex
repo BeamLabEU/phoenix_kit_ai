@@ -36,14 +36,12 @@ defmodule PhoenixKitAI.Web.Tasks do
   alias PhoenixKit.Users.Auth
   alias PhoenixKit.Users.Auth.User
   alias PhoenixKitAI.{Capabilities, Guard, GuardBlocks, GuardEvents, Recommendations}
-  alias PhoenixKitAI.{TaskLimits, Tasks}
+  alias PhoenixKitAI.{Money, TaskLimits, Tasks}
   alias PhoenixKitAI.TaskSpec
   alias PhoenixKitAI.Web.Access
   alias PhoenixKitAI.Web.Components.CapabilityBadges
   alias PhoenixKitAI.Web.Components.TaskModelPicker
   alias PhoenixKitAI.Web.MessageShape
-
-  @max_dollars Decimal.new(1_000_000_000)
 
   @impl true
   def mount(_params, session, socket) do
@@ -554,18 +552,12 @@ defmodule PhoenixKitAI.Web.Tasks do
   defp form_value(nil), do: ""
   defp form_value(_value), do: :invalid
 
-  # Dollars, finite, from 0 to $1 000 000 000; a positive amount that would
-  # round to 0 micro-dollars is refused (0 allows nothing).
+  # Dollars, finite, from 0 to $1 000 000 000 (`PhoenixKitAI.Money`); 0
+  # allows nothing.
   defp amount("money", value) when is_binary(value) do
-    with {decimal, ""} <- Decimal.parse(value),
-         false <- Decimal.nan?(decimal) or Decimal.inf?(decimal),
-         false <- Decimal.negative?(decimal),
-         false <- Decimal.gt?(decimal, @max_dollars),
-         micro = decimal |> Decimal.mult(1_000_000) |> Decimal.round(0) |> Decimal.to_integer(),
-         false <- micro == 0 and not Decimal.eq?(decimal, 0) do
-      micro
-    else
-      _ -> :error
+    case Money.parse_dollars(value) do
+      {:ok, micro} -> micro
+      :error -> :error
     end
   end
 

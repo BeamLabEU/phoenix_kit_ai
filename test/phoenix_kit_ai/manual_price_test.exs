@@ -1,0 +1,184 @@
+defmodule PhoenixKitAI.ManualPriceTest do
+  @moduledoc """
+  A price entered by hand on an endpoint whose provider gives none:
+  `provider_settings["pricing"]`, whole micro-dollars per 1M input and
+  output tokens. A call whose provider reports no `usage.cost` gets its
+  `cost_cents` (micro-dollars) from it, marked `cost_source: "manual"`; a
+  reported cost wins; no price leaves the cost unknown as before. A change
+  of the price is in the Activity log. Provider calls are `Req.Test` stubs.
+  """
+
+  use PhoenixKitAI.DataCase, async: false
+
+  alias PhoenixKitAI.{ManualPrice, Money, Request, TaskLimits}
+  alias PhoenixKitAI.Test.Repo, as: TestRepo
+
+  # $0.60 per 1M input tokens, $2.20 per 1M output tokens.
+  @pricing %{"input" => 600_000, "output" => 2_200_000}
+
+  setup do
+    PhoenixKitAI.RequestCache.clear()
+
+    Application.put_env(:phoenix_kit_ai, :req_options,
+      plug: {Req.Test, __MODULE__},
+      retry: false
+    )
+
+    on_exit(fn -> Application.delete_env(:phoenix_kit_ai, :req_options) end)
+    :ok
+  end
+
+  defp endpoint(provider_settings) do
+    {:ok, endpoint} =
+      PhoenixKitAI.create_endpoint(%{
+        name: "Priced #{System.unique_integer([:positive])}",
+        provider: "zai",
+        base_url: "https://api.z.ai/api/paas/v4",
+        model: "glm-4.6",
+        api_key: "zai-test-key",
+        provider_settings: provider_settings
+      })
+
+    endpoint
+  end
+
+  defp stub_chat(usage) do
+    Req.Test.stub(__MODULE__, fn conn ->
+      Req.Test.json(conn, %{
+        "choices" => [%{"message" => %{"role" => "assistant", "content" => "42"}}],
+        "usage" => usage
+      })
+    end)
+  end
+
+  defp last_row(endpoint) do
+    TestRepo.one!(
+      from(r in Request,
+        where: r.endpoint_uuid == ^endpoint.uuid,
+        order_by: [desc: r.inserted_at],
+        limit: 1
+      )
+    )
+  end
+
+  describe "cost/3" do
+    test "is micro-dollars: tokens times micro-dollars per 1M, over a million, rounded" do
+      # 1000 × 0.60 $/1M + 500 × 2.20 $/1M = $0.0006 + $0.0011 = $0.0017.
+      assert ManualPrice.cost(@pricing, 1_000, 500) == 1_700
+      # (600 000 + 2 200 000) / 1 000 000 = 2.8 → 3.
+      assert ManualPrice.cost(@pricing, 1, 1) == 3
+      assert ManualPrice.cost(@pricing, 0, 0) == 0
+    end
+
+    test "is nil without a price the tokens need" do
+      assert ManualPrice.cost(nil, 1_000, 500) == nil
+      assert ManualPrice.cost(%{"input" => 600_000}, 1_000, 500) == nil
+      # An input-only price prices a call without output (an embedding).
+      assert ManualPrice.cost(%{"input" => 600_000}, 1_000, 0) == 600
+    end
+  end
+
+  describe "Money.parse_dollars/1" do
+    test "reads dollars into micro-dollars, refusing NaN, infinity and negatives" do
+      assert Money.parse_dollars("0.60") == {:ok, 600_000}
+      assert Money.parse_dollars("2.2") == {:ok, 2_200_000}
+      assert Money.parse_dollars("0") == {:ok, 0}
+
+      for bad <- ["NaN", "nan", "inf", "Infinity", "-1", "abc", "1e400x"] do
+        assert Money.parse_dollars(bad) == :error, bad
+      end
+    end
+  end
+
+  describe "a call's cost" do
+    test "comes from the manual price when the provider reports none" do
+      endpoint = endpoint(%{"pricing" => @pricing})
+      stub_chat(%{"prompt_tokens" => 1_000, "completion_tokens" => 500, "total_tokens" => 1_500})
+
+      assert {:ok, _} = PhoenixKitAI.ask(endpoint.uuid, "q")
+
+      row = last_row(endpoint)
+      assert row.cost_cents == 1_700
+      assert row.metadata["cost_source"] == "manual"
+    end
+
+    test "is the provider's usage.cost when it reports one" do
+      endpoint = endpoint(%{"pricing" => @pricing})
+
+      stub_chat(%{
+        "prompt_tokens" => 1_000,
+        "completion_tokens" => 500,
+        "total_tokens" => 1_500,
+        "cost" => 0.01
+      })
+
+      assert {:ok, _} = PhoenixKitAI.ask(endpoint.uuid, "q")
+
+      row = last_row(endpoint)
+      assert row.cost_cents == 10_000
+      refute Map.has_key?(row.metadata, "cost_source")
+    end
+
+    test "stays unknown without a price, as before" do
+      endpoint = endpoint(%{})
+      stub_chat(%{"prompt_tokens" => 1_000, "completion_tokens" => 500, "total_tokens" => 1_500})
+
+      assert {:ok, _} = PhoenixKitAI.ask(endpoint.uuid, "q")
+
+      row = last_row(endpoint)
+      assert row.cost_cents == nil
+      refute Map.has_key?(row.metadata, "cost_source")
+    end
+
+    test "counts for the money limits once a price is set" do
+      refute TaskLimits.money_counted?(endpoint(%{}))
+      assert TaskLimits.money_counted?(endpoint(%{"pricing" => @pricing}))
+    end
+  end
+
+  describe "the stored price" do
+    test "must be whole non-negative micro-dollars" do
+      for bad <- [%{"input" => 0.6}, %{"input" => -1}, %{"output" => "2.2"}, "cheap"] do
+        assert {:error, changeset} =
+                 PhoenixKitAI.create_endpoint(%{
+                   name: "Bad #{System.unique_integer([:positive])}",
+                   provider: "zai",
+                   model: "glm-4.6",
+                   provider_settings: %{"pricing" => bad}
+                 })
+
+        assert changeset.errors[:provider_settings], inspect(bad)
+      end
+    end
+
+    test "a change is in the Activity log with the price before and after" do
+      endpoint = endpoint(%{"pricing" => @pricing})
+
+      {:ok, _} =
+        PhoenixKitAI.update_endpoint(endpoint, %{
+          provider_settings: %{"pricing" => %{"input" => 700_000, "output" => 2_200_000}}
+        })
+
+      assert_activity_logged("endpoint.pricing_changed",
+        resource_uuid: endpoint.uuid,
+        metadata_has: %{
+          "input_before" => 600_000,
+          "input_after" => 700_000,
+          "output_before" => 2_200_000,
+          "output_after" => 2_200_000
+        }
+      )
+    end
+
+    test "an update that leaves the price as it is logs no price change" do
+      endpoint = endpoint(%{"pricing" => @pricing})
+      {:ok, _} = PhoenixKitAI.update_endpoint(endpoint, %{name: "Renamed #{endpoint.uuid}"})
+
+      # The creation's entry has no price before; an update's would.
+      refute_activity_logged("endpoint.pricing_changed",
+        resource_uuid: endpoint.uuid,
+        metadata_has: %{"input_before" => 600_000}
+      )
+    end
+  end
+end

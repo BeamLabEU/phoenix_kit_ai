@@ -20,6 +20,8 @@ defmodule PhoenixKitAI.Web.EndpointForm do
   alias PhoenixKitAI.Capabilities
   alias PhoenixKitAI.Endpoint
   alias PhoenixKitAI.Guard
+  alias PhoenixKitAI.ManualPrice
+  alias PhoenixKitAI.Money
   alias PhoenixKitAI.OpenRouterClient
   alias PhoenixKitAI.Web.Access
   alias PhoenixKitAI.Web.AuthHelpers
@@ -447,6 +449,46 @@ defmodule PhoenixKitAI.Web.EndpointForm do
   # The checkboxes as the form last submitted them, when they were for this
   # model (the hidden `model` input says which): ticked `:yes`, unticked
   # `:unknown`.
+  @doc false
+  # Whether the catalogue gives the model a price — the model list's row, or
+  # the capability cache. Without one the form offers the manual price.
+  def catalogue_priced?(selected_model, model_id, form, provider) do
+    listed? =
+      match?(%AIModel{}, selected_model) and
+        format_price((selected_model.pricing || %{})["prompt"]) != nil
+
+    listed? or
+      match?(
+        %Capabilities{prompt_price: price} when is_number(price),
+        %{base_url: form[:base_url].value, provider: provider}
+        |> Capabilities.resolved_base_url()
+        |> Capabilities.lookup(model_id)
+      )
+  end
+
+  @doc false
+  # A manual price field's value: what was typed, else the stored price in
+  # dollars ("0.6"), else empty.
+  def price_value(form, endpoint, key) do
+    case get_in(form.params || %{}, ["provider_settings", "pricing", key]) do
+      value when is_binary(value) ->
+        value
+
+      _ ->
+        case ManualPrice.get(endpoint) do
+          %{^key => micro} ->
+            micro
+            |> Decimal.new()
+            |> Decimal.div(1_000_000)
+            |> Decimal.normalize()
+            |> Decimal.to_string(:normal)
+
+          _ ->
+            ""
+        end
+    end
+  end
+
   defp form_declaration(form, model_id) do
     case get_in(form.params || %{}, ["provider_settings", "capabilities"]) do
       %{"model" => ^model_id} = submitted ->
@@ -514,6 +556,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
       socket
       |> Access.assign_session(session)
       |> assign(:may_declare, true)
+      |> assign(:pricing_error, nil)
       |> assign(:project_title, nil)
       |> assign(:current_path, Routes.path("/admin/ai"))
       |> assign(:provider_connections, [])
@@ -1069,6 +1112,56 @@ defmodule PhoenixKitAI.Web.EndpointForm do
 
   @impl true
   def handle_event("save", %{"endpoint" => params}, socket) do
+    case submitted_pricing(params) do
+      :error ->
+        # The typed values stay in the fields; nothing is saved.
+        {:noreply,
+         socket
+         |> assign(:pricing_error, pricing_error())
+         |> assign(
+           :form,
+           to_form(AI.change_endpoint(socket.assigns.endpoint || %Endpoint{}, params))
+         )}
+
+      pricing ->
+        save_with_pricing(params, pricing, assign(socket, :pricing_error, nil))
+    end
+  end
+
+  # The manual price fields as submitted, read with the module's money
+  # parser: `%{"input" => µ$, "output" => µ$}` without the empty ones (`%{}`
+  # removes the price), `:error` when one is not a price, `:not_submitted`
+  # when the form did not show them (the stored price is left as it is).
+  defp submitted_pricing(params) do
+    case get_in(params, ["provider_settings", "pricing"]) do
+      %{} = submitted ->
+        Enum.reduce_while(["input", "output"], %{}, &put_parsed_price(&2, &1, submitted[&1]))
+
+      _ ->
+        :not_submitted
+    end
+  end
+
+  defp put_parsed_price(acc, key, value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> {:cont, acc}
+      dollars -> put_micro(acc, key, Money.parse_dollars(dollars))
+    end
+  end
+
+  defp put_parsed_price(acc, _key, _missing), do: {:cont, acc}
+
+  defp put_micro(acc, key, {:ok, micro}), do: {:cont, Map.put(acc, key, micro)}
+  defp put_micro(_acc, _key, :error), do: {:halt, :error}
+
+  defp put_pricing(settings, :not_submitted), do: settings
+  defp put_pricing(settings, pricing) when pricing == %{}, do: Map.delete(settings, "pricing")
+  defp put_pricing(settings, pricing), do: Map.put(settings, "pricing", pricing)
+
+  defp pricing_error,
+    do: gettext("Enter a price in dollars, for example 0.60 — a number from 0 up.")
+
+  defp save_with_pricing(params, pricing, socket) do
     # Merge submitted provider_settings into the endpoint's existing
     # settings so we don't wipe keys the form doesn't render (current or
     # future). For a brand-new endpoint the existing map is empty.
@@ -1090,6 +1183,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
         "resolution" => get_in(params, ["provider_settings", "resolution"]) || ""
       })
       |> put_declared_capabilities(params)
+      |> put_pricing(pricing)
 
     params = Map.put(params, "provider_settings", provider_settings)
 

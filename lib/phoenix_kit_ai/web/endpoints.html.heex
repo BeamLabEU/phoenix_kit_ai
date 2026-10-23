@@ -673,6 +673,14 @@
                       </.table_default_cell>
                       <.table_default_cell class="hidden sm:table-cell text-sm">
                         {PhoenixKitAI.Request.format_cost(request.cost_cents)}
+                        <span
+                          :if={PhoenixKitAI.ManualPrice.manual_cost?(request)}
+                          data-cost-source="manual"
+                          class="badge badge-ghost badge-xs h-auto ml-1"
+                          title={gettext("Counted from the price entered by hand on the endpoint")}
+                        >
+                          {gettext("entered by hand")}
+                        </span>
                       </.table_default_cell>
                       <.table_default_cell>
                         <.status_badge
@@ -782,6 +790,14 @@
             <div class="text-xs text-base-content/70">{gettext("Cost")}</div>
             <div class="text-sm">
               {PhoenixKitAI.Request.format_cost(@selected_request.cost_cents)}
+              <span
+                :if={PhoenixKitAI.ManualPrice.manual_cost?(@selected_request)}
+                data-cost-source="manual"
+                class="badge badge-ghost badge-xs h-auto ml-1"
+                title={gettext("Counted from the price entered by hand on the endpoint")}
+              >
+                {gettext("entered by hand")}
+              </span>
             </div>
           </div>
         </div>
