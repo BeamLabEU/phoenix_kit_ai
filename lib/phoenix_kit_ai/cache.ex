@@ -46,7 +46,11 @@ defmodule PhoenixKitAI.Cache do
   @doc "Drop one endpoint (on this node; other nodes follow the broadcast)."
   @spec invalidate_endpoint(String.t()) :: :ok
   def invalidate_endpoint(uuid) when is_binary(uuid) do
-    if table?(), do: :ets.delete(@table, {:endpoint, uuid})
+    if table?() do
+      bump({:endpoint, uuid})
+      :ets.delete(@table, {:endpoint, uuid})
+    end
+
     :ok
   end
 
@@ -55,14 +59,23 @@ defmodule PhoenixKitAI.Cache do
   @doc "Drop every cached credential."
   @spec invalidate_credentials() :: :ok
   def invalidate_credentials do
-    if table?(), do: :ets.match_delete(@table, {{:credentials, :_}, :_, :_})
+    if table?() do
+      bump(:credentials)
+      :ets.match_delete(@table, {{:credentials, :_}, :_, :_})
+    end
+
     :ok
   end
 
   @doc "Drop everything (tests, or after an out-of-band change)."
   @spec clear() :: :ok
   def clear do
-    if table?(), do: :ets.delete_all_objects(@table)
+    if table?() do
+      bump(:all)
+      :ets.match_delete(@table, {{:endpoint, :_}, :_, :_})
+      :ets.match_delete(@table, {{:credentials, :_}, :_, :_})
+    end
+
     :ok
   end
 
@@ -75,18 +88,39 @@ defmodule PhoenixKitAI.Cache do
     now = System.monotonic_time(:second)
 
     case :ets.lookup(@table, key) do
-      [{^key, value, expires}] when expires > now -> value
-      _ -> store(key, fun.(), now + ttl)
+      [{^key, value, expires}] when expires > now ->
+        value
+
+      _ ->
+        generation = generation(key)
+        store(key, fun.(), now + ttl, generation)
     end
   end
 
-  # only successes are kept: an error is looked up again next time
-  defp store(key, {:ok, _} = ok, expires) do
-    :ets.insert(@table, {key, ok, expires})
+  # Only successes are kept: an error is looked up again next time. Nor is a
+  # value kept when an invalidation came while it was being looked up: it may
+  # be the row from before the change, and would stay for the whole TTL.
+  defp store(key, {:ok, _} = ok, expires, generation) do
+    if generation(key) == generation, do: :ets.insert(@table, {key, ok, expires})
     ok
   end
 
-  defp store(_key, other, _expires), do: other
+  defp store(_key, other, _expires, _generation), do: other
+
+  # A counter per entry (and one for every credential, one for everything)
+  # that each invalidation bumps.
+  defp generation({:endpoint, _uuid} = key), do: {counter(key), counter(:all)}
+  defp generation({:credentials, _key}), do: {counter(:credentials), counter(:all)}
+
+  defp counter(name) do
+    case :ets.lookup(@table, {:generation, name}) do
+      [{_key, n}] -> n
+      [] -> 0
+    end
+  end
+
+  defp bump(name),
+    do: :ets.update_counter(@table, {:generation, name}, 1, {{:generation, name}, 0})
 
   defp ttl(key) do
     case Application.get_env(:phoenix_kit_ai, key, @default_ttl) do

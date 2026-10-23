@@ -1062,7 +1062,8 @@ defmodule PhoenixKitAI.Completion do
   #   * `max_attempts` (3, the first try included), `base_delay` (1000 ms, doubled
   #     each attempt, ±20 % jitter), `max_delay` (30 s);
   #   * retried: HTTP 408, 429, 500, 502, 503, 504 and transport errors other than a
-  #     timeout; `retry_timeouts: true` retries a timeout too (the provider may have
+  #     timeout — never a 429 that is about money (`ProviderError`);
+  #     `retry_timeouts: true` retries a timeout too (the provider may have
   #     done — and billed — the work a timed-out call never saw);
   #   * a `Retry-After` header (seconds) is honoured up to `max_delay`.
   #
@@ -1106,7 +1107,13 @@ defmodule PhoenixKitAI.Completion do
     end
   end
 
-  defp retryable?({:ok, %{status_code: status}}, _policy), do: status in @retry_statuses
+  # Money sent as a 429 (`ProviderError.class/2`: an exhausted quota or
+  # balance) is never worth a retry: the answer would not change.
+  defp retryable?({:ok, %{status_code: status, body: body}}, _policy) do
+    status in @retry_statuses and
+      ProviderError.class(status, ProviderError.parse(body)) != :insufficient_credits
+  end
+
   defp retryable?({:error, :timeout}, policy), do: policy[:retry_timeouts] == true
   defp retryable?({:error, _transport}, _policy), do: true
 

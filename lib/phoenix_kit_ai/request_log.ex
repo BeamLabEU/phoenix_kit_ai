@@ -22,7 +22,9 @@ defmodule PhoenixKitAI.RequestLog do
   module's supervisor tree (`PhoenixKitAI.children/0`) rows are written
   synchronously.
   """
-  use GenServer
+  # Rows still queued at shutdown are written in `terminate/2`, one insert each,
+  # so the supervisor gives it longer than the default five seconds.
+  use GenServer, shutdown: 30_000
   require Logger
 
   @default_max_queue 10_000

@@ -152,6 +152,28 @@ defmodule PhoenixKitAI.CacheAndLogTest do
                Cache.credentials("k", fn -> {:ok, %{"api_key" => "b"}} end)
     end
 
+    test "a value looked up while an invalidation came is not kept" do
+      assert {:ok, :old} =
+               Cache.credentials("k3", fn ->
+                 # the change lands while the old value is being read
+                 Cache.invalidate_credentials()
+                 {:ok, :old}
+               end)
+
+      assert {:ok, :new} = Cache.credentials("k3", fn -> {:ok, :new} end)
+
+      Application.put_env(:phoenix_kit_ai, :endpoint_cache_ttl, 300)
+      on_exit(fn -> Application.put_env(:phoenix_kit_ai, :endpoint_cache_ttl, 0) end)
+
+      assert {:ok, :old_ep} =
+               Cache.endpoint("ep-race", fn ->
+                 Cache.invalidate_endpoint("ep-race")
+                 {:ok, :old_ep}
+               end)
+
+      assert {:ok, :new_ep} = Cache.endpoint("ep-race", fn -> {:ok, :new_ep} end)
+    end
+
     test "errors are not cached" do
       assert {:error, :nope} = Cache.credentials("k2", fn -> {:error, :nope} end)
       assert {:ok, %{}} = Cache.credentials("k2", fn -> {:ok, %{}} end)
@@ -186,6 +208,25 @@ defmodule PhoenixKitAI.CacheAndLogTest do
       assert_receive {:row, _}
     end
 
+    test "the answer's request_uuid names the row written later", %{endpoint: ep} do
+      assert {:ok, %{"request_uuid" => uuid}} = PhoenixKitAI.complete(ep.uuid, msgs())
+      assert is_binary(uuid)
+      RequestLog.flush()
+      assert [%Request{uuid: ^uuid}] = rows(ep)
+    end
+
+    test "a row that would not insert is not queued: it fails now and names no row",
+         %{endpoint: ep} do
+      attrs = %{endpoint_uuid: ep.uuid, model: "m", request_type: "chat", input_tokens: -1}
+      assert {:error, %Ecto.Changeset{}} = PhoenixKitAI.log_usage(attrs)
+
+      assert {:ok, %Request{uuid: uuid}} =
+               PhoenixKitAI.log_usage(%{attrs | input_tokens: 1})
+
+      RequestLog.flush()
+      assert [%Request{uuid: ^uuid}] = rows(ep)
+    end
+
     test "create_request/1 itself stays synchronous", %{endpoint: ep} do
       assert {:ok, %Request{}} =
                PhoenixKitAI.create_request(%{
@@ -210,9 +251,16 @@ defmodule PhoenixKitAI.CacheAndLogTest do
       assert length(rows(ep)) == 2
     end
 
-    test "log_cache_hit: false writes none for the hit", %{endpoint: ep} do
-      assert {:ok, _} = PhoenixKitAI.complete(ep.uuid, msgs(), cache: true)
-      assert {:ok, _} = PhoenixKitAI.complete(ep.uuid, msgs(), cache: true, log_cache_hit: false)
+    test "log_cache_hit: false writes none for the hit, and the answer names no row",
+         %{endpoint: ep} do
+      assert {:ok, %{"request_uuid" => fresh}} =
+               PhoenixKitAI.complete(ep.uuid, msgs(), cache: true)
+
+      assert is_binary(fresh)
+
+      assert {:ok, %{"request_uuid" => nil}} =
+               PhoenixKitAI.complete(ep.uuid, msgs(), cache: true, log_cache_hit: false)
+
       assert length(rows(ep)) == 1
     end
 

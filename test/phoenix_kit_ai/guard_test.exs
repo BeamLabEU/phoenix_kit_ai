@@ -520,6 +520,44 @@ defmodule PhoenixKitAI.GuardTest do
       assert [%{model: "vendor/text-only", metadata: %{"refused" => true}}] = rows(vision)
     end
 
+    test "every fallback in models: is checked too; one that does not fit refuses the call" do
+      stub()
+      vision = endpoint("vendor/vision")
+      start_catalogue()
+      part = %{"type" => "image_url", "image_url" => %{"url" => @image_url}}
+
+      assert {:error, {:model_unfit, [:vision]}} =
+               PhoenixKitAI.complete(vision.uuid, image_message(part),
+                 models: ["vendor/text-only"]
+               )
+
+      refute_received {:post, _, _}
+
+      assert {:ok, _} =
+               PhoenixKitAI.complete(vision.uuid, image_message(part), models: ["vendor/vision"])
+
+      assert_received {:post, _, %{"models" => ["vendor/vision"]}}
+    end
+
+    test "a model: that names no model is no override" do
+      stub()
+      text = endpoint("vendor/text-only")
+      start_catalogue()
+
+      for bad <- ["", 123, nil] do
+        assert {:ok, %{"request_uuid" => uuid}} =
+                 PhoenixKitAI.complete(text.uuid, [%{role: "user", content: "hi"}],
+                   model: bad,
+                   models: [bad, ""]
+                 )
+
+        assert_received {:post, _, body}
+        assert body["model"] == "vendor/text-only"
+        refute Map.has_key?(body, "models")
+        assert PhoenixKitAI.get_request(uuid).model == "vendor/text-only"
+      end
+    end
+
     test ":json is soft: a model without JSON gets the call and the row a warning" do
       stub(text_answer(~s({"a": 1})))
       ep = endpoint("vendor/text-only")

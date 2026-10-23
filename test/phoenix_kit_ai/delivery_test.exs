@@ -107,6 +107,21 @@ defmodule PhoenixKitAI.DeliveryTest do
       assert calls(c) == 2
     end
 
+    test "a 429 about money is not retried", %{endpoint: ep, counter: c} do
+      Req.Test.stub(__MODULE__, fn conn ->
+        :counters.add(c, 1, 1)
+
+        conn
+        |> Plug.Conn.put_status(429)
+        |> Req.Test.json(%{"error" => %{"type" => "insufficient_quota", "message" => "quota"}})
+      end)
+
+      assert {:error, :insufficient_credits} =
+               PhoenixKitAI.complete(ep.uuid, msgs(), retry: [base_delay: 1])
+
+      assert calls(c) == 1
+    end
+
     test "a 400 is not retried", %{endpoint: ep, counter: c} do
       stub_sequence(c, [400])
       assert {:error, _} = PhoenixKitAI.complete(ep.uuid, msgs(), retry: [base_delay: 1])

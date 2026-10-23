@@ -518,6 +518,9 @@ defmodule PhoenixKitAI.TranslateWorker do
   # a timeout is transient, so retry rather than discard.
   def retryable?({:ai_error, :timeout}), do: true
   def retryable?({:ai_error, :rate_limited}), do: true
+  # `PhoenixKitAI.Limiter`: too many calls in flight here, not a bad request.
+  def retryable?({:ai_error, :concurrency_limit_timeout}), do: true
+  def retryable?({:ai_error, :concurrency_queue_full}), do: true
   def retryable?({:ai_error, {:connection_error, _}}), do: true
   def retryable?({:ai_error, {:exit, _}}), do: true
 

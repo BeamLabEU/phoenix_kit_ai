@@ -121,7 +121,7 @@ defmodule PhoenixKitAI.Budget do
     end
   end
 
-  @doc "The cap for a scope: nanodollars, or a call count for `:user_calls` (`0` = none)."
+  @doc "The cap for a scope: micro-dollars, or a call count for `:user_calls` (`0` = none)."
   @spec limit(scope()) :: non_neg_integer()
   def limit(scope) when scope in @scopes, do: limits()[scope]
 
@@ -134,7 +134,7 @@ defmodule PhoenixKitAI.Budget do
     end
   end
 
-  @doc "Sets a scope's cap (nanodollars, or a call count for `:user_calls`; `0` removes it)."
+  @doc "Sets a scope's cap (micro-dollars, or a call count for `:user_calls`; `0` removes it)."
   @spec set_limit(scope(), non_neg_integer()) :: {:ok, term()} | {:error, term()}
   def set_limit(scope, amount)
       when scope in @scopes and is_integer(amount) and amount >= 0 do

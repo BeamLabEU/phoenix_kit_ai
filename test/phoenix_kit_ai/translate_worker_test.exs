@@ -33,6 +33,8 @@ defmodule PhoenixKitAI.TranslateWorkerTest do
       assert TranslateWorker.retryable?({:ai_error, :request_timeout})
       assert TranslateWorker.retryable?({:ai_error, :timeout})
       assert TranslateWorker.retryable?({:ai_error, :rate_limited})
+      assert TranslateWorker.retryable?({:ai_error, :concurrency_limit_timeout})
+      assert TranslateWorker.retryable?({:ai_error, :concurrency_queue_full})
       assert TranslateWorker.retryable?({:ai_error, {:connection_error, :closed}})
       assert TranslateWorker.retryable?({:ai_error, {:exit, :timeout}})
     end

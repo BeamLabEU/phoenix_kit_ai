@@ -2636,7 +2636,9 @@ defmodule PhoenixKitAI do
   # public and returns the row.
   @spec log_usage(map()) :: {:ok, Request.t()} | {:error, term()}
   def log_usage(attrs) do
-    if PhoenixKitAI.RequestLog.async?() do
+    # A row that would not insert is written now instead, where
+    # `create_request/1` logs why and the answer names no row.
+    if PhoenixKitAI.RequestLog.async?() and Request.changeset(%Request{}, attrs).valid? do
       uuid = UUIDv7.generate()
       :ok = PhoenixKitAI.RequestLog.enqueue({uuid, attrs})
       {:ok, %Request{uuid: uuid}}
@@ -3415,7 +3417,8 @@ defmodule PhoenixKitAI do
     guard checks, the cache keys and the usage row names and prices.
   - `:models` - OpenRouter only: fallback models tried in order when the
     first is down, rate-limited or refuses (OpenRouter's model routing); the
-    model that answered is recorded as the row's `answered_model`.
+    model that answered is recorded as the row's `answered_model`. Each is
+    checked by the guard like `:model`; one that does not fit refuses the call.
 
   ## Delivery options
 
@@ -3425,8 +3428,9 @@ defmodule PhoenixKitAI do
   - `:timeout` - receive/connect timeout in ms (default the app env
     `:timeout`, else 120 000).
   - `:retry` - `true` or `[max_attempts:, base_delay:, max_delay:,
-    retry_timeouts:]` retries HTTP 408/429/5xx and transport errors with
-    exponential backoff, honouring `Retry-After`. Off unless asked for (or
+    retry_timeouts:]` retries HTTP 408, 429 (not one about money: an
+    exhausted balance or quota), 500, 502, 503, 504 and transport errors with
+    exponential backoff, honouring `Retry-After` up to `max_delay`. Off unless asked for (or
     set in the app env `:retry`).
   - `:concurrency` - `[limit:, key:, wait:, max_waiting:, notify:]` or
     `false`; see `PhoenixKitAI.Limiter`.
@@ -3479,6 +3483,8 @@ defmodule PhoenixKitAI do
   @spec complete(String.t() | Endpoint.t(), list(map()), keyword()) ::
           {:ok, map()} | {:error, term()}
   def complete(endpoint_uuid, messages, opts \\ []) do
+    opts = call_model_opts(opts)
+
     with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
          {:ok, admission} <-
            authorize(endpoint, opts, :complete, Guard.implied_needs(:complete, opts, messages)) do
@@ -3721,6 +3727,9 @@ defmodule PhoenixKitAI do
   @spec embed(String.t() | Endpoint.t(), String.t() | list(String.t()), keyword()) ::
           {:ok, map()} | {:error, term()}
   def embed(endpoint_uuid, input, opts \\ []) do
+    # `models:` is an OpenRouter chat option; an embedding never sends it
+    opts = opts |> call_model_opts() |> Keyword.delete(:models)
+
     with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
          {:ok, admission} <- authorize(endpoint, opts, :embed, []) do
       # A call's `model:` is the model sent, checked, cached and logged.
@@ -4544,6 +4553,41 @@ defmodule PhoenixKitAI do
     :process_image
   ]
 
+  # A `model:` that names no model (empty, not a string) is no override, and
+  # `models:` keeps only names: either would otherwise reach the provider
+  # while the guard, the cache and the row went by another model.
+  defp call_model_opts(opts) do
+    opts =
+      case opts[:model] do
+        model when is_binary(model) and model != "" -> opts
+        _ -> Keyword.delete(opts, :model)
+      end
+
+    case opts[:models] do
+      models when is_list(models) ->
+        Keyword.put(opts, :models, Enum.filter(models, &(is_binary(&1) and &1 != "")))
+
+      _ ->
+        Keyword.delete(opts, :models)
+    end
+  end
+
+  # Every OpenRouter fallback in `models:` may answer the call, so each is
+  # checked as the call's own model is; the first that does not fit refuses
+  # the call.
+  defp check_fallbacks(endpoint, opts, task, implied) do
+    sent = opts[:model] || endpoint.model
+
+    (opts[:models] || [])
+    |> Enum.reject(&(&1 == sent))
+    |> Enum.find_value(:ok, fn model ->
+      case Guard.check(endpoint, Keyword.put(opts, :model, model), task, implied) do
+        {:ok, _admission} -> nil
+        {:error, _reason} = refused -> refused
+      end
+    end)
+  end
+
   # Chat and embeddings send a call's `model:` instead of the endpoint's; the
   # endpoint then stands for that model everywhere after the guard (the
   # request body's provider rules, the cache key, the usage row, the price).
@@ -4598,6 +4642,7 @@ defmodule PhoenixKitAI do
 
     with :ok <- if(spends?, do: blocks(task, opts), else: :ok),
          {:ok, admission} <- Guard.check(endpoint, opts, task, implied),
+         :ok <- check_fallbacks(endpoint, opts, task, implied),
          :ok <- if(spends?, do: task_limits(task, opts), else: :ok),
          :ok <- if(spends?, do: budget(endpoint, opts), else: :ok) do
       {:ok, admission}

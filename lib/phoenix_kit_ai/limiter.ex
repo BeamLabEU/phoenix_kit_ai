@@ -132,7 +132,10 @@ defmodule PhoenixKitAI.Limiter do
       max_waiting = Keyword.get(settings, :max_waiting, @default_max_waiting)
       notify = Keyword.get(settings, :notify)
 
-      case GenServer.call(__MODULE__, {:acquire, self(), key, limit, max_waiting}) do
+      case acquire(key, limit, max_waiting) do
+        :unlimited ->
+          fun.()
+
         {:go, ref} ->
           hold(ref, fun)
 
@@ -166,8 +169,7 @@ defmodule PhoenixKitAI.Limiter do
         await(ref, key, notify, deadline, fun)
     after
       remaining ->
-        # a go message may race with the cancel — the server frees the slot either way
-        GenServer.cast(__MODULE__, {:cancel, ref})
+        cancel(ref)
 
         :telemetry.execute([:phoenix_kit_ai, :limiter, :rejected], %{count: 1}, %{
           key: key,
@@ -175,6 +177,36 @@ defmodule PhoenixKitAI.Limiter do
         })
 
         {:error, :concurrency_limit_timeout}
+    end
+  end
+
+  # The limiter gone between `whereis/1` and the call (a restart): the call
+  # runs unlimited, as it does without the limiter at all.
+  defp acquire(key, limit, max_waiting) do
+    GenServer.call(__MODULE__, {:acquire, self(), key, limit, max_waiting})
+  catch
+    :exit, _ -> :unlimited
+  end
+
+  # The cancel is a call, so every message the server sent for `ref` before it
+  # dropped it (a go that raced the timeout, a position) is already in this
+  # mailbox when it returns, and is taken out: a caller is often a long-lived
+  # LiveView or job process, whose `handle_info/2` should never see them. A go
+  # that raced is a slot the server frees again with the cancel.
+  defp cancel(ref) do
+    GenServer.call(__MODULE__, {:cancel, ref})
+  catch
+    :exit, _ -> :ok
+  after
+    flush(ref)
+  end
+
+  defp flush(ref) do
+    receive do
+      {:phoenix_kit_ai_limiter_go, ^ref} -> flush(ref)
+      {:phoenix_kit_ai_limiter_position, ^ref, _position} -> flush(ref)
+    after
+      0 -> :ok
     end
   end
 
@@ -196,16 +228,12 @@ defmodule PhoenixKitAI.Limiter do
 
   @impl true
   def handle_call({:acquire, pid, key, limit, max_waiting}, _from, st) do
-    k =
-      Map.get(st.keys, key, %{
-        running: MapSet.new(),
-        waiting: :queue.new(),
-        nwaiting: 0,
-        limit: limit
-      })
+    fresh = %{running: MapSet.new(), waiting: :queue.new(), nwaiting: 0, limit: limit}
 
-    # the latest limit for a key wins (a config change takes effect on the next call)
-    k = %{k | limit: limit}
+    # The latest limit for a key wins (a config change takes effect on the next
+    # call). A raised limit first admits the calls already waiting, in order.
+    st = admit(st, key, %{Map.get(st.keys, key, fresh) | limit: limit})
+    k = Map.get(st.keys, key, fresh)
     ref = make_ref()
 
     cond do
@@ -227,6 +255,8 @@ defmodule PhoenixKitAI.Limiter do
     end
   end
 
+  def handle_call({:cancel, ref}, _from, st), do: {:reply, :ok, drop(st, ref)}
+
   def handle_call({:stats, key}, _from, st) do
     case Map.get(st.keys, key) do
       nil -> {:reply, %{running: 0, waiting: 0}, st}
@@ -236,7 +266,6 @@ defmodule PhoenixKitAI.Limiter do
 
   @impl true
   def handle_cast({:release, ref}, st), do: {:noreply, drop(st, ref)}
-  def handle_cast({:cancel, ref}, st), do: {:noreply, drop(st, ref)}
 
   @impl true
   def handle_info({:DOWN, mon, :process, _pid, _reason}, st) do
