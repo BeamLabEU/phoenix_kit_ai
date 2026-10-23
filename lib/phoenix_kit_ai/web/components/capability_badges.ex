@@ -183,6 +183,18 @@ defmodule PhoenixKitAI.Web.Components.CapabilityBadges do
         )
     }
 
+  # A capability this module has no words for yet: say so in general terms
+  # rather than fail the page that shows it.
+  def explain(flag),
+    do: %{
+      what: gettext("%{capability}: something the model has to be able to do.", capability: flag),
+      needed_by: gettext("Needed by the tasks that declare it."),
+      check:
+        gettext(
+          "How to tell: the model card at the operator or on OpenRouter; or send a test request."
+        )
+    }
+
   @doc "`explain/1` as one line, for a `title`."
   @spec explain_text(atom()) :: String.t()
   def explain_text(flag) do

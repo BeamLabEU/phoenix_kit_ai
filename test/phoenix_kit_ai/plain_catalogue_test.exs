@@ -190,6 +190,31 @@ defmodule PhoenixKitAI.PlainCatalogueTest do
       assert Enum.map(recs.possible, & &1.model) == ["v/priced", "mistral-unpriced", "glm-a"]
     end
 
+    test "leave out a plain list's models that do not chat, image models unless images are made" do
+      ids =
+        ~w(gpt-4o text-embedding-3-small tts-1 gpt-4o-mini-tts whisper-1 omni-moderation-latest
+           dall-e-3 gpt-image-1)
+
+      catalogue = [
+        %{
+          base_url: "https://api.openai.com/v1",
+          kind: :plain,
+          integration_uuid: nil,
+          provider: "openai",
+          models: Enum.map(ids, &{&1, %Capabilities{}})
+        }
+      ]
+
+      listed = fn key ->
+        Recommendations.ranked(key, catalogue: catalogue, limit: 20).possible
+        |> Enum.map(& &1.model)
+        |> Enum.sort()
+      end
+
+      assert listed.("test.plain") == ["gpt-4o"]
+      assert listed.("test.drawing") == ~w(dall-e-3 gpt-4o gpt-image-1)
+    end
+
     test "for_tasks/2 still asks the journal twice in all" do
       catalogue = [
         %{

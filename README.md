@@ -224,8 +224,12 @@ PhoenixKitAI.ask(endpoint_uuid, "…", task: "my_module.photo_count", user_uuid:
   guard_admission: token)
 ```
 
-Money is in micro-dollars and counts only where the provider reports a
-call's cost (OpenRouter); an empty limit is none, `0` allows nothing. Only
+Money is in micro-dollars and counts where a call has a cost: the
+provider's own (OpenRouter), else a catalogue price, the endpoint's manual
+price (`provider_settings["pricing"]`, set by a holder of `ai.manage`) or
+the built-in Anthropic list price — `PhoenixKitAI.reports_cost?/1` says
+whether an endpoint has one, and the usage row's `metadata.cost_source`
+which one counted; an empty limit is none, `0` allows nothing. Only
 successful calls count — a cached answer is one request — and a refusal is
 an error row like the model check's. At the warn percent (default 80) and
 when a limit is reached, the user and the watchers (`ai_guard_watchers`,

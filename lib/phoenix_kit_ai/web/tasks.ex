@@ -455,7 +455,7 @@ defmodule PhoenixKitAI.Web.Tasks do
           }
         end),
       reached: Enum.map(reached, &Map.put(&1, :email, emails[&1.user_uuid] || &1.user_uuid)),
-      money_uncounted: for(e <- endpoints, !TaskLimits.money_counted?(e), do: e.name)
+      money_uncounted: for(e <- endpoints, !TaskLimits.money_counted?(e, spec.needs), do: e.name)
     }
   end
 
@@ -867,7 +867,7 @@ defmodule PhoenixKitAI.Web.Tasks do
       </p>
       <p :if={@view.money_uncounted != []} class="text-xs text-warning" data-money-uncounted>
         {gettext(
-          "Money is not counted for chat calls on %{endpoints}: the provider does not report what a call cost. Requests and tokens still apply.",
+          "Money is not counted for this task's calls on %{endpoints}: nothing prices them (the provider reports no cost, and no catalogue, manual or list price applies). Requests and tokens still apply.",
           endpoints: Enum.join(@view.money_uncounted, ", ")
         )}
       </p>

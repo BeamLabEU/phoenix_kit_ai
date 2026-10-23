@@ -63,6 +63,19 @@ defmodule PhoenixKitAI.Web.CapabilityExplanationsTest do
       end
     end
 
+    test "covers every need, declarable capability and filter" do
+      assert PhoenixKitAI.TaskSpec.needs() -- CapabilityBadges.explained() == []
+      assert Capabilities.declarable() -- CapabilityBadges.explained() == []
+      assert PhoenixKitAI.Recommendations.filterable() -- CapabilityBadges.explained() == []
+    end
+
+    test "says something general for a capability it does not know, without failing" do
+      %{what: what, needed_by: needed_by, check: check} = CapabilityBadges.explain(:teleport)
+      assert what =~ "teleport"
+      assert is_binary(needed_by) and is_binary(check)
+      assert CapabilityBadges.explain_text(:teleport) =~ what
+    end
+
     test "names no host project" do
       for flag <- @flags, part <- Map.values(CapabilityBadges.explain(flag)) do
         refute part =~ ~r/\bandi\b/i

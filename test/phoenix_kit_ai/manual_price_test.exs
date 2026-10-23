@@ -290,4 +290,77 @@ defmodule PhoenixKitAI.ManualPriceTest do
       assert changeset.errors[:provider_settings]
     end
   end
+
+  describe "where the manual cost goes" do
+    test "an embedding is priced by its input tokens, marked manual" do
+      endpoint = endpoint(%{"pricing" => @pricing})
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        Req.Test.json(conn, %{
+          "data" => [%{"embedding" => [0.1]}],
+          "usage" => %{"prompt_tokens" => 1_000, "total_tokens" => 1_000}
+        })
+      end)
+
+      assert {:ok, _} = PhoenixKitAI.embed(endpoint.uuid, "text")
+
+      row = last_row(endpoint)
+      # 1 000 × 600 000 µ$ per 1M = 600 µ$.
+      assert row.cost_cents == 600
+      assert row.metadata["cost_source"] == "manual"
+    end
+
+    test "a cached answer stays free" do
+      endpoint = endpoint(%{"pricing" => @pricing})
+      stub_chat(%{"prompt_tokens" => 1_000, "completion_tokens" => 500, "total_tokens" => 1_500})
+
+      assert {:ok, _} = PhoenixKitAI.ask(endpoint.uuid, "same", cache: true)
+      assert {:ok, _} = PhoenixKitAI.ask(endpoint.uuid, "same", cache: true)
+
+      costs =
+        TestRepo.all(
+          from(r in Request,
+            where: r.endpoint_uuid == ^endpoint.uuid,
+            order_by: r.inserted_at,
+            select: {r.cost_cents, fragment("?->>'cached'", r.metadata)}
+          )
+        )
+
+      assert {1_700, nil} in costs
+      assert {0, "true"} in costs
+    end
+
+    test "the daily budget counts it" do
+      endpoint = endpoint(%{"pricing" => @pricing})
+      {:ok, _} = PhoenixKitAI.Budget.set_limit(:endpoint, 1_000)
+      on_exit(fn -> PhoenixKitAI.Budget.set_limit(:endpoint, 0) end)
+      stub_chat(%{"prompt_tokens" => 1_000, "completion_tokens" => 500, "total_tokens" => 1_500})
+
+      assert {:ok, _} = PhoenixKitAI.ask(endpoint.uuid, "first")
+      assert {:error, {:budget_exceeded, :endpoint}} = PhoenixKitAI.ask(endpoint.uuid, "second")
+    end
+  end
+
+  describe "money_counted?/2 for a task's needs" do
+    test "a manual price counts for chat, not for a task that reads or makes images" do
+      priced = endpoint(%{"pricing" => @pricing})
+
+      assert TaskLimits.money_counted?(priced, [])
+      assert TaskLimits.money_counted?(priced, [:json_schema])
+      refute TaskLimits.money_counted?(priced, [:vision])
+      refute TaskLimits.money_counted?(priced, [:image_output])
+    end
+
+    test "a provider that reports a call's cost counts for every task" do
+      {:ok, openrouter} =
+        PhoenixKitAI.create_endpoint(%{
+          name: "OR #{System.unique_integer([:positive])}",
+          provider: "openrouter",
+          model: "vendor/model",
+          api_key: "sk-or-test"
+        })
+
+      assert TaskLimits.money_counted?(openrouter, [:vision])
+    end
+  end
 end

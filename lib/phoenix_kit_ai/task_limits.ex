@@ -41,9 +41,11 @@ defmodule PhoenixKitAI.TaskLimits do
   call costs nothing and a refusal is an error row, so neither counts. Money
   is the `cost_cents` sum, tokens the `total_tokens` sum, requests the rows —
   so a cached answer (a zero-cost success row) counts as one request and no
-  money or tokens. Money is only what the provider reports: an endpoint that
-  does not report a call's cost (`money_counted?/1`) adds nothing to it, and
-  there requests and tokens are what limits a task.
+  money or tokens. Money is what a row's cost says (`PhoenixKitAI.CallCost`:
+  the provider's own cost, else a catalogue, the endpoint's manual or the
+  built-in Anthropic price, `metadata.cost_source`): an endpoint none of
+  them prices (`money_counted?/2`) adds nothing to it, and there requests
+  and tokens are what limits a task.
 
   ## The check
 
@@ -238,17 +240,25 @@ defmodule PhoenixKitAI.TaskLimits do
   end
 
   @doc """
-  Whether a chat call's money counts on `endpoint`: some source prices its
-  calls (`PhoenixKitAI.reports_cost?/1` — the provider's own cost, a
-  catalogue, manual or built-in price). Speech is priced by
-  `PhoenixKitAI.TtsPricing` on other providers too; an endpoint does not say
-  which kind it is, so this answers for chat.
+  Whether the money of a task's calls counts on `endpoint`. For chat (the
+  default, `needs` without images): some source prices its calls
+  (`PhoenixKitAI.reports_cost?/1` — the provider's own cost, a catalogue,
+  manual or built-in price). A task that reads or makes images (`:vision`,
+  `:image_output` among `needs`) may call the image verbs, which only the
+  provider's own cost prices (OpenRouter): a manual or built-in price does
+  not count there. Speech is priced by `PhoenixKitAI.TtsPricing` on other
+  providers too; an endpoint does not say which kind it is.
   """
-  @spec money_counted?(Endpoint.t()) :: boolean()
-  def money_counted?(%Endpoint{provider: provider} = endpoint) when is_binary(provider),
-    do: PhoenixKitAI.reports_cost?(endpoint)
+  @spec money_counted?(Endpoint.t(), [TaskSpec.need()]) :: boolean()
+  def money_counted?(endpoint, needs \\ [])
 
-  def money_counted?(_endpoint), do: false
+  def money_counted?(%Endpoint{provider: provider} = endpoint, needs) when is_binary(provider) do
+    if Enum.any?([:vision, :image_output], &(&1 in needs)),
+      do: Endpoint.base_provider(provider) == "openrouter",
+      else: PhoenixKitAI.reports_cost?(endpoint)
+  end
+
+  def money_counted?(_endpoint, _needs), do: false
 
   # ── the per-node cache (see the moduledoc) ──
 

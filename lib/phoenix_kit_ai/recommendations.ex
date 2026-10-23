@@ -228,6 +228,7 @@ defmodule PhoenixKitAI.Recommendations do
       for source <- sources,
           {id, %Capabilities{} = caps} <- source.models,
           listed?(caps, needs),
+          plain_listed?(source, id, needs),
           group = group(source.kind, Tasks.assess(caps, needs)),
           group != nil do
         {group,
@@ -265,6 +266,21 @@ defmodule PhoenixKitAI.Recommendations do
   # what the task needs; retired ones never.
   defp listed?(caps, needs),
     do: (caps.text_output != false or :image_output in needs) and caps.lifecycle != :retired
+
+  # A plain list says nothing about a model, so its ids are the only hint:
+  # an id naming embeddings, speech, transcription or moderation is not a
+  # chat model and is never listed; one naming images (`image`, `dall-e`)
+  # only when the task makes images. A heuristic by name (OpenAI's ids, and
+  # any other plain list's alike), deliberately narrow.
+  @not_chat ~r/(embedding|(^|-)tts(-|$)|whisper|moderation)/i
+  @image_model ~r/(image|dall-e)/i
+
+  defp plain_listed?(%{kind: :plain}, id, needs) do
+    not Regex.match?(@not_chat, id) and
+      (:image_output in needs or not Regex.match?(@image_model, id))
+  end
+
+  defp plain_listed?(_source, _id, _needs), do: true
 
   defp experimental?(%{model: id} = row) do
     alias?(id) or String.contains?(id, ":free") or Regex.match?(@experimental_id, id) or
