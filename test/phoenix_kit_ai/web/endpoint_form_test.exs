@@ -350,12 +350,11 @@ defmodule PhoenixKitAI.Web.EndpointFormTest do
       assert assigns.integration_connected == false
     end
 
-    test "new endpoint with exactly one connection still leaves picker empty",
+    test "new endpoint whose only connection has no credentials leaves picker empty",
          %{conn: conn} do
-      # The picker mirrors the endpoint's actual stored state. A new
-      # endpoint has no integration pinned, so the picker shows nothing
-      # selected — even when only one connection exists. Auto-selecting
-      # would mask "no integration set" with "an integration is set".
+      # Only a usable connection (one with credentials) is picked on its
+      # own — see EndpointFormConnectionTest. A connection without a key
+      # is left for the person to pick.
       seed_openrouter_connection("auto-#{System.unique_integer([:positive])}")
 
       {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/new")

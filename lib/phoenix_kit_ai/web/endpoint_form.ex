@@ -210,6 +210,174 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     """
   end
 
+  attr(:id, :string, required: true)
+  attr(:connections, :list, required: true)
+  attr(:selected, :list, default: [])
+  attr(:provider, :string, default: nil)
+  attr(:on_select, :string, required: true)
+  attr(:empty_url, :string, default: nil)
+
+  @doc """
+  Renders the provider's connections as toggle cards: `aria-pressed` and a
+  radio mark say which one the endpoint uses, and the status badge
+  ("Connected", "Auth failed", …) is shown apart from that, so a connected
+  card no longer reads as a picked one. Clicking a card sends `on_select`
+  with `"uuid"` and `"action"` (`"select"`, or `"deselect"` for the picked
+  card). A selected uuid that is not among the provider's connections is
+  shown as a deleted integration.
+  """
+  def connection_picker(assigns) do
+    connections = Enum.filter(assigns.connections, &(&1.data["provider"] == assigns.provider))
+    uuids = MapSet.new(connections, & &1.uuid)
+    selected = Enum.reject(assigns.selected, &is_nil/1)
+
+    assigns =
+      assigns
+      |> assign(:cards, Enum.map(connections, &{&1, &1.uuid in selected}))
+      |> assign(:deleted, Enum.reject(selected, &MapSet.member?(uuids, &1)))
+
+    ~H"""
+    <div id={@id}>
+      <div :if={length(@cards) > 6} class="mb-3">
+        <input
+          type="text"
+          id={"#{@id}-search"}
+          phx-hook="IntegrationPickerSearch"
+          data-picker-id={@id}
+          placeholder={gettext("Search integrations...")}
+          class="input input-sm w-full"
+        />
+      </div>
+
+      <div :if={@cards != []} class="grid grid-cols-1 gap-2">
+        <button
+          :for={{conn, selected} <- @cards}
+          type="button"
+          phx-click={@on_select}
+          phx-value-uuid={conn.uuid}
+          phx-value-action={if selected, do: "deselect", else: "select"}
+          data-connection={conn.uuid}
+          data-search-text={connection_search_text(conn)}
+          aria-pressed={to_string(selected)}
+          class={[
+            "card border text-left transition-all cursor-pointer",
+            "[&.phx-click-loading]:opacity-60 [&.phx-click-loading]:pointer-events-none",
+            if(selected,
+              do: "border-primary bg-primary/5 ring-2 ring-primary/20",
+              else: "border-base-300 bg-base-100 hover:border-primary/50 hover:shadow-md"
+            )
+          ]}
+        >
+          <div class="card-body p-3">
+            <div class="flex items-center gap-3">
+              <span
+                data-selection-mark
+                data-selected={selected}
+                aria-hidden="true"
+                class={[
+                  "w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0",
+                  if(selected, do: "border-primary", else: "border-base-content/30")
+                ]}
+              >
+                <span :if={selected} class="w-2 h-2 rounded-full bg-primary"></span>
+              </span>
+
+              <div class="flex-1 min-w-0">
+                <span class="font-medium truncate block">{conn.name}</span>
+                <p
+                  :if={connection_subtitle(conn) not in [nil, ""]}
+                  class="text-xs text-base-content/60 truncate"
+                >
+                  {connection_subtitle(conn)}
+                </p>
+                <p :if={conn[:date_added]} class="text-xs text-base-content/40">
+                  {gettext("Created")} <.time_ago datetime={conn.date_added} class="text-xs" />
+                </p>
+              </div>
+
+              <span class="hidden [.phx-click-loading_&]:inline-flex">
+                <span class="loading loading-spinner loading-xs"></span>
+              </span>
+              <% {status_label, status_class} = connection_status(conn.data) %>
+              <span
+                class={["badge badge-xs shrink-0 [.phx-click-loading_&]:hidden", status_class]}
+                title={conn.data["validation_status"]}
+              >
+                {status_label}
+              </span>
+            </div>
+          </div>
+        </button>
+      </div>
+
+      <div :for={_uuid <- @deleted} class="card bg-error/5 border border-error/30 mt-2">
+        <div class="card-body p-3">
+          <div class="flex items-center gap-3">
+            <.icon name="hero-exclamation-triangle" class="w-4 h-4 text-error shrink-0" />
+            <div class="flex-1 min-w-0">
+              <span class="font-medium text-error">{gettext("Integration deleted")}</span>
+              <p class="text-xs text-base-content/50">
+                {gettext(
+                  "The selected integration no longer exists. Please choose a different one."
+                )}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div :if={@cards == [] and @deleted == []} class="text-center py-8 text-base-content/50">
+        <.icon name="hero-link" class="w-10 h-10 mx-auto mb-2 opacity-40" />
+        <p class="text-sm">{gettext("No integrations configured.")}</p>
+        <a :if={@empty_url} href={@empty_url} class="link link-primary text-sm">
+          {gettext("Add one in Settings → Integrations")}
+        </a>
+      </div>
+    </div>
+    """
+  end
+
+  # The connection's status as a badge — what the last check said, which is
+  # not whether the endpoint uses it.
+  defp connection_status(data) do
+    case data["status"] do
+      "connected" -> {gettext("Connected"), "badge-success"}
+      "error" -> {gettext("Auth failed"), "badge-error"}
+      "configured" -> {gettext("Not tested"), "badge-warning"}
+      _ -> {gettext("Not connected"), "badge-ghost"}
+    end
+  end
+
+  # The OAuth account, else the credential's first 8 and last 4 characters
+  # (all masked when shorter than 14), else nothing.
+  defp connection_subtitle(conn) do
+    case conn.data["external_account_id"] do
+      account when is_binary(account) and account != "" ->
+        account
+
+      _ ->
+        ~w(api_key bot_token access_key)
+        |> Enum.map(&conn.data[&1])
+        |> Enum.find(&(is_binary(&1) and &1 != ""))
+        |> mask_credential()
+    end
+  end
+
+  defp mask_credential(nil), do: nil
+
+  defp mask_credential(value) do
+    if String.length(value) < 14,
+      do: "•••",
+      else: String.slice(value, 0, 8) <> "…" <> String.slice(value, -4..-1//1)
+  end
+
+  defp connection_search_text(conn) do
+    [conn.name, conn.data["external_account_id"], conn.data["provider"]]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join(" ")
+    |> String.downcase()
+  end
+
   @doc false
   # What the "Current Model" panel shows about the current model's
   # capabilities: which ones the admin may declare (those the catalogue does
@@ -355,15 +523,25 @@ defmodule PhoenixKitAI.Web.EndpointForm do
   end
 
   defp load_endpoint(socket, nil, params) do
-    # New endpoint: nothing is pre-selected unless the page was opened from a
-    # recommendation (`prefill/2`): then the name, the model and the
-    # operator's integration are filled in for the person to look over —
-    # nothing is saved. Otherwise, auto-selecting a single available
-    # connection would mask "no integration set" with "an integration is
-    # set" and confuse anyone scanning the form to verify wiring.
-    {attrs, connection, source} = prefill(params, socket.assigns.provider_connections)
+    # New endpoint. Opened from a recommendation (`prefill/2`), the name, the
+    # model and the operator's integration are filled in for the person to
+    # look over — nothing is saved. Otherwise the form starts on a provider
+    # the dropdown offers, with that provider's connection picked when it
+    # has exactly one usable one; with several, the person picks.
+    connections = socket.assigns.provider_connections
+    {attrs, prefilled, source} = prefill(params, connections)
+
+    provider =
+      attrs["provider"] || new_endpoint_provider(socket.assigns.current_provider, connections)
+
+    connection = prefilled || sole_usable_connection(connections, provider)
     active = connection && connection.uuid
     connected = !!active && Integrations.connected?(active)
+
+    attrs =
+      attrs
+      |> Map.put("provider", provider)
+      |> then(&if(active, do: Map.put(&1, "integration_uuid", active), else: &1))
 
     socket
     |> assign(:page_crumbs, [endpoints_crumb()])
@@ -375,7 +553,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     |> assign(:active_connection, active)
     |> assign(:selected_uuids, List.wrap(active))
     |> assign(:integration_connected, connected)
-    |> assign(:current_provider, attrs["provider"] || socket.assigns.current_provider)
+    |> assign(:current_provider, provider)
     |> maybe_fetch_models_on_load(connected)
   end
 
@@ -408,6 +586,28 @@ defmodule PhoenixKitAI.Web.EndpointForm do
         |> assign(:current_provider, endpoint.provider)
         |> assign(:model_type, model_type_for(endpoint.model))
         |> maybe_fetch_models_on_load(connected)
+    end
+  end
+
+  # The provider a new endpoint starts on: the current one when the
+  # dropdown offers it, else the dropdown's first. Otherwise the dropdown
+  # would show a provider the form is not on, and choosing it would be no
+  # change.
+  defp new_endpoint_provider(current, connections) do
+    case Enum.map(provider_options_for(connections, nil), &elem(&1, 1)) do
+      [] -> current
+      keys -> if current in keys, do: current, else: hd(keys)
+    end
+  end
+
+  # The provider's only connection with credentials, or nil when it has
+  # none or several.
+  defp sole_usable_connection(connections, provider) do
+    connections
+    |> Enum.filter(&(&1.data["provider"] == provider and Integrations.connected?(&1.uuid)))
+    |> case do
+      [connection] -> connection
+      _ -> nil
     end
   end
 
@@ -945,11 +1145,14 @@ defmodule PhoenixKitAI.Web.EndpointForm do
         |> Map.put("aspect_ratio", "")
         |> Map.put("resolution", "")
 
+      connection = provider_change_connection(socket, new_provider)
+
       params =
         params
         |> Map.put("base_url", "")
         |> Map.put("model", "")
         |> Map.put("provider_settings", provider_settings)
+        |> then(&if(connection, do: Map.put(&1, "integration_uuid", connection.uuid), else: &1))
 
       socket =
         socket
@@ -966,11 +1169,34 @@ defmodule PhoenixKitAI.Web.EndpointForm do
         |> stop_model_fetch_indicators()
         |> assign(:models_error, nil)
         |> maybe_reset_tts_model_type(new_provider)
+        |> pick_connection(connection)
 
       {params, socket}
     else
       {params, socket}
     end
+  end
+
+  # The connection to pick for a provider just chosen: its only usable one.
+  # On an edited endpoint, only when that is the stored connection or none
+  # is stored — the stored choice is not replaced by another.
+  defp provider_change_connection(socket, provider) do
+    stored = socket.assigns.endpoint && socket.assigns.endpoint.integration_uuid
+
+    case sole_usable_connection(socket.assigns.provider_connections, provider) do
+      %{uuid: uuid} = connection when is_nil(stored) or stored == uuid -> connection
+      _ -> nil
+    end
+  end
+
+  defp pick_connection(socket, nil), do: socket
+
+  defp pick_connection(socket, %{uuid: uuid}) do
+    socket
+    |> assign(:active_connection, uuid)
+    |> assign(:selected_uuids, [uuid])
+    |> assign(:integration_connected, true)
+    |> maybe_fetch_models_on_load(true)
   end
 
   # Switching to a provider whose current `model_type` isn't offered for
@@ -1307,8 +1533,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     # Only fetch for the picker's actual selection. Falling back to
     # "any openrouter:default connection" silently misled operators
     # whose integration was named anything other than "default" (and
-    # contradicted the picker's "reflect state, never auto-pick"
-    # policy).
+    # fetched for a connection the picker did not show as picked).
     active_key = socket.assigns[:active_connection]
 
     if connection_api_key(active_key) do
@@ -1869,9 +2094,15 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     }
   end
 
+  # The OpenAI-compatible parameters offered for a model whose provider
+  # lists none for it (a `/models` that returns plain ids).
+  @standard_parameters ~w(temperature max_tokens top_p stop)
+
   @doc """
   Returns parameters supported by the model, filtered to ones we have UI for.
-  Groups them by :basic and :advanced.
+  Groups them by :basic and :advanced. A model whose `supported_parameters`
+  is empty or missing gets the standard OpenAI-compatible ones —
+  temperature, max tokens, top p and stop sequences.
   """
   def get_supported_params(nil) do
     # No model selected - show all parameters
@@ -1879,17 +2110,21 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     group_parameters(Map.keys(definitions), definitions)
   end
 
-  def get_supported_params(%AIModel{} = model) do
-    definitions = parameter_definitions()
-    supported_keys = Enum.filter(model.supported_parameters, &Map.has_key?(definitions, &1))
-    group_parameters(supported_keys, definitions)
-  end
+  def get_supported_params(%AIModel{} = model), do: supported_params(model.supported_parameters)
 
-  def get_supported_params(model) when is_map(model) do
-    supported = model["supported_parameters"] || []
+  def get_supported_params(model) when is_map(model),
+    do: supported_params(model["supported_parameters"])
+
+  defp supported_params(supported) do
     definitions = parameter_definitions()
-    supported_keys = Enum.filter(supported, &Map.has_key?(definitions, &1))
-    group_parameters(supported_keys, definitions)
+
+    keys =
+      case supported do
+        [_ | _] -> Enum.filter(supported, &Map.has_key?(definitions, &1))
+        _ -> @standard_parameters
+      end
+
+    group_parameters(keys, definitions)
   end
 
   defp group_parameters(keys, definitions) do

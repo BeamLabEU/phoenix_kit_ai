@@ -67,12 +67,11 @@
             <.input field={@form[:base_url]} type="url" label={gettext("Base URL")} />
 
             <div class="mt-4">
-              <.integration_picker
+              <.connection_picker
                 id="endpoint-provider-picker"
                 connections={@provider_connections}
                 selected={@selected_uuids}
                 provider={@current_provider}
-                compact={true}
                 on_select="select_provider_connection"
                 empty_url={PhoenixKit.Utils.Routes.path("/admin/settings/integrations/new")}
               />
@@ -718,8 +717,12 @@
                 <div class="alert alert-info py-2 mt-2">
                   <.icon name="hero-information-circle" class="w-4 h-4" />
                   <span class="text-sm">
-                    {gettext("Context: %{tokens} tokens",
-                      tokens: PhoenixKitAI.Web.EndpointForm.format_number(@selected_model.context_length))}
+                    <%= if @selected_model.context_length do %>
+                      {gettext("Context: %{tokens} tokens",
+                        tokens: PhoenixKitAI.Web.EndpointForm.format_number(@selected_model.context_length))}
+                    <% else %>
+                      {gettext("Context: unknown")}
+                    <% end %>
                     <%= if @selected_model.max_completion_tokens do %>
                       • {gettext("Max output: %{tokens} tokens",
                         tokens: PhoenixKitAI.Web.EndpointForm.format_number(@selected_model.max_completion_tokens))}
