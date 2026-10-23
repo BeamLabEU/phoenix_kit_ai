@@ -33,7 +33,7 @@ msgstr "AI Translation"
 msgid "AI module is not enabled"
 msgstr "AI module is not enabled"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:1001
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:1015
 #, elixir-autogen, elixir-format
 msgid "API Response (raw)"
 msgstr "API Response (raw)"
@@ -170,7 +170,7 @@ msgid "Clear model"
 msgstr "Clear model"
 
 #: lib/phoenix_kit_ai/components/ai_translate.ex:122
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:1022
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:1036
 #, elixir-autogen, elixir-format
 msgid "Close"
 msgstr "Close"
@@ -234,7 +234,7 @@ msgstr "Copy"
 
 #: lib/phoenix_kit_ai/web/endpoints.ex:64
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:227
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:783
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:792
 #, elixir-autogen, elixir-format
 msgid "Cost"
 msgstr "Cost"
@@ -324,7 +324,7 @@ msgstr "Current Model"
 msgid "Current tab only (%{lang})"
 msgstr "Current tab only (%{lang})"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:1012
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:1026
 #, elixir-autogen, elixir-format
 msgid "Database Record"
 msgstr "Database Record"
@@ -489,7 +489,7 @@ msgid "Enabled"
 msgstr "Enabled"
 
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:596
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:794
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:803
 #: lib/phoenix_kit_ai/web/playground.html.heex:13
 #, elixir-autogen, elixir-format
 msgid "Endpoint"
@@ -716,7 +716,7 @@ msgid "Last Used"
 msgstr "Last Used"
 
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:623
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:777
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:786
 #, elixir-autogen, elixir-format
 msgid "Latency"
 msgstr "Latency"
@@ -732,7 +732,7 @@ msgstr "Leave blank to inherit."
 msgid "Legacy API key (recovery)"
 msgstr "Legacy API key (recovery)"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:730
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:739
 #, elixir-autogen, elixir-format
 msgid "Load More"
 msgstr "Load More"
@@ -778,7 +778,7 @@ msgstr "Missing variables:"
 #: lib/phoenix_kit_ai/web/endpoints.ex:61
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:218
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:607
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:813
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:822
 #, elixir-autogen, elixir-format
 msgid "Model"
 msgstr "Model"
@@ -986,7 +986,7 @@ msgid "Price"
 msgstr "Price"
 
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:599
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:798
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:807
 #, elixir-autogen, elixir-format
 msgid "Prompt"
 msgstr "Prompt"
@@ -1077,12 +1077,12 @@ msgstr "Reasoning (\"thinking\") models are slower and may return unstructured o
 msgid "Recent Requests"
 msgstr "Recent Requests"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:754
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:763
 #, elixir-autogen, elixir-format
 msgid "Request Details"
 msgstr "Request Details"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:988
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:1002
 #, elixir-autogen, elixir-format
 msgid "Request Payload (sent to API)"
 msgstr "Request Payload (sent to API)"
@@ -1114,7 +1114,7 @@ msgstr "Requests / Tokens (all time)"
 msgid "Requests / Tokens today"
 msgstr "Requests / Tokens today"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:878
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:892
 #: lib/phoenix_kit_ai/web/playground.html.heex:467
 #, elixir-autogen, elixir-format
 msgid "Response"
@@ -1232,7 +1232,7 @@ msgid "Something went wrong. Please try again."
 msgstr "Something went wrong. Please try again."
 
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:637
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:931
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:945
 #, elixir-autogen, elixir-format
 msgid "Source"
 msgstr "Source"
@@ -1260,7 +1260,7 @@ msgstr "Starting…"
 #: lib/phoenix_kit_ai/web/endpoints.ex:60
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:214
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:634
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:763
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:772
 #: lib/phoenix_kit_ai/web/prompts.html.heex:139
 #, elixir-autogen, elixir-format
 msgid "Status"
@@ -1514,7 +1514,7 @@ msgstr "Update your AI endpoint configuration"
 msgid "Updating…"
 msgstr "Updating…"
 
-#: lib/phoenix_kit_ai.ex:1115
+#: lib/phoenix_kit_ai.ex:1116
 #: lib/phoenix_kit_ai/web/endpoints.ex:76
 #: lib/phoenix_kit_ai/web/prompts.ex:41
 #, elixir-autogen, elixir-format
@@ -1567,8 +1567,8 @@ msgstr "Variable Syntax"
 msgid "Variables"
 msgstr "Variables"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:711
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:715
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:720
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:724
 #, elixir-autogen, elixir-format
 msgid "View"
 msgstr "View"
@@ -1593,7 +1593,7 @@ msgstr "Waiting for response..."
 msgid "X-Title"
 msgstr "X-Title"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:881
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:895
 #, elixir-autogen, elixir-format
 msgid "assistant"
 msgstr "assistant"
@@ -1603,7 +1603,7 @@ msgstr "assistant"
 msgid "auto-generated-slug"
 msgstr "auto-generated-slug"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:905
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:919
 #, elixir-autogen, elixir-format
 msgid "chain of thought"
 msgstr "chain of thought"
@@ -1782,7 +1782,7 @@ msgid_plural "tokens"
 msgstr[0] "token"
 msgstr[1] "tokens"
 
-#: lib/phoenix_kit_ai.ex:1111
+#: lib/phoenix_kit_ai.ex:1112
 #: lib/phoenix_kit_ai/web/endpoint_form.ex:629
 #: lib/phoenix_kit_ai/web/endpoints.ex:106
 #: lib/phoenix_kit_ai/web/playground.ex:52
@@ -1793,21 +1793,21 @@ msgstr[1] "tokens"
 msgid "AI"
 msgstr "AI"
 
-#: lib/phoenix_kit_ai.ex:1112
+#: lib/phoenix_kit_ai.ex:1113
 #: lib/phoenix_kit_ai/web/endpoint_form.ex:765
 #: lib/phoenix_kit_ai/web/endpoints.ex:80
 #, elixir-autogen, elixir-format
 msgid "Endpoints"
 msgstr "Endpoints"
 
-#: lib/phoenix_kit_ai.ex:1114
-#: lib/phoenix_kit_ai.ex:1149
+#: lib/phoenix_kit_ai.ex:1115
+#: lib/phoenix_kit_ai.ex:1150
 #: lib/phoenix_kit_ai/web/playground.ex:55
 #, elixir-autogen, elixir-format
 msgid "Playground"
 msgstr "Playground"
 
-#: lib/phoenix_kit_ai.ex:1113
+#: lib/phoenix_kit_ai.ex:1114
 #: lib/phoenix_kit_ai/web/prompt_form.ex:81
 #: lib/phoenix_kit_ai/web/prompts.ex:65
 #, elixir-autogen, elixir-format
@@ -2073,7 +2073,7 @@ msgstr "Enhance the photo"
 msgid "Free-form instruction"
 msgstr "Free-form instruction"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:727
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:736
 #: lib/phoenix_kit_ai/web/playground.html.heex:330
 #, elixir-autogen, elixir-format
 msgid "Loading…"
@@ -2211,67 +2211,67 @@ msgstr "New prompt"
 msgid "Advanced Parameters"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:941
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:955
 #, elixir-autogen, elixir-format
 msgid "Caller Context"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:851
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:865
 #, elixir-autogen, elixir-format
 msgid "Error Message"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:759
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:768
 #, elixir-autogen, elixir-format
 msgid "ID"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:821
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:835
 #, elixir-autogen, elixir-format
 msgid "Input Tokens"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:959
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:973
 #, elixir-autogen, elixir-format
 msgid "Memory"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:950
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:964
 #, elixir-autogen, elixir-format
 msgid "Node"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:827
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:841
 #, elixir-autogen, elixir-format
 msgid "Output Tokens"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:954
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:968
 #, elixir-autogen, elixir-format
 msgid "PID"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:919
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:933
 #, elixir-autogen, elixir-format
 msgid "Parameters"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:945
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:959
 #, elixir-autogen, elixir-format
 msgid "Request ID"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:861
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:875
 #, elixir-autogen, elixir-format
 msgid "Request Messages"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:842
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:856
 #, elixir-autogen, elixir-format
 msgid "Timestamp"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:833
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:847
 #, elixir-autogen, elixir-format
 msgid "Total Tokens"
 msgstr ""
@@ -2293,7 +2293,7 @@ msgid_plural "%{name} (%{count} models)"
 msgstr[0] ""
 msgstr[1] ""
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:897
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:911
 #, elixir-autogen, elixir-format
 msgid "Reasoning (%{count} character)"
 msgid_plural "Reasoning (%{count} characters)"
@@ -2305,7 +2305,7 @@ msgstr[1] ""
 msgid "Speaking…"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:971
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:985
 #, elixir-autogen, elixir-format
 msgid "Stacktrace (%{count} frame)"
 msgid_plural "Stacktrace (%{count} frames)"
@@ -2539,7 +2539,7 @@ msgstr "Refresh catalogues"
 msgid "Some model catalogues could not be read"
 msgstr "Some model catalogues could not be read"
 
-#: lib/phoenix_kit_ai.ex:1116
+#: lib/phoenix_kit_ai.ex:1117
 #: lib/phoenix_kit_ai/web/tasks.ex:66
 #, elixir-autogen, elixir-format
 msgid "Tasks"
@@ -2550,7 +2550,7 @@ msgstr "Tasks"
 msgid "The endpoint's model cannot do what this task needs: %{needs}"
 msgstr "The endpoint's model cannot do what this task needs: %{needs}"
 
-#: lib/phoenix_kit_ai.ex:1137
+#: lib/phoenix_kit_ai.ex:1138
 #, elixir-autogen, elixir-format
 msgid "Translation"
 msgstr "Translation"
@@ -2581,23 +2581,23 @@ msgid "No provider of this model accepts all the request's parameters. Remove th
 msgstr "No provider of this model accepts all the request's parameters. Remove the ones it does not support from the endpoint."
 
 #: lib/phoenix_kit_ai/request.ex:227
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:690
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:773
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:699
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:782
 #, elixir-autogen, elixir-format
 msgid "Refused"
 msgstr "Refused"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:688
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:697
 #, elixir-autogen, elixir-format
 msgid "Refused before reaching the provider"
 msgstr "Refused before reaching the provider"
 
-#: lib/phoenix_kit_ai.ex:1152
+#: lib/phoenix_kit_ai.ex:1153
 #, elixir-autogen, elixir-format
 msgid "Let an administrator try endpoints and prompts by hand."
 msgstr "Let an administrator try endpoints and prompts by hand."
 
-#: lib/phoenix_kit_ai.ex:1140
+#: lib/phoenix_kit_ai.ex:1141
 #, elixir-autogen, elixir-format
 msgid "Translate the text fields of a record from one language into another, keeping the field structure."
 msgstr "Translate the text fields of a record from one language into another, keeping the field structure."
@@ -2728,7 +2728,7 @@ msgstr "A limit must be a whole number, or dollars for money"
 msgid "A user"
 msgstr "A user"
 
-#: lib/phoenix_kit_ai.ex:985
+#: lib/phoenix_kit_ai.ex:986
 #, elixir-autogen, elixir-format
 msgid "AI task guard"
 msgstr "AI task guard"
@@ -2791,7 +2791,7 @@ msgstr "Limits and use:"
 msgid "Limits saved"
 msgstr "Limits saved"
 
-#: lib/phoenix_kit_ai.ex:1117
+#: lib/phoenix_kit_ai.ex:1118
 #, elixir-autogen, elixir-format
 msgid "Manage the AI task guard"
 msgstr "Manage the AI task guard"
@@ -3010,7 +3010,7 @@ msgstr "one user's calls"
 msgid "one user's spending"
 msgstr "one user's spending"
 
-#: lib/phoenix_kit_ai.ex:1632
+#: lib/phoenix_kit_ai.ex:1656
 #, elixir-autogen, elixir-format
 msgid "only a holder of ai.manage may declare capabilities while only verified models are allowed"
 msgstr "only a holder of ai.manage may declare capabilities while only verified models are allowed"
@@ -3100,7 +3100,7 @@ msgstr "%{email} is blocked from the AI task %{task}."
 msgid "%{email} is no longer blocked from the AI task %{task}."
 msgstr "%{email} is no longer blocked from the AI task %{task}."
 
-#: lib/phoenix_kit_ai.ex:987
+#: lib/phoenix_kit_ai.ex:988
 #, elixir-autogen, elixir-format
 msgid "An AI task is near or at a limit, a spending cap refused a call, a task's model no longer fits it, a request was flagged as off-purpose, a task is used unusually, or a person was blocked or unblocked"
 msgstr "An AI task is near or at a limit, a spending cap refused a call, a task's model no longer fits it, a request was flagged as off-purpose, a task is used unusually, or a person was blocked or unblocked"
@@ -3132,7 +3132,7 @@ msgstr "Blocked now:"
 msgid "By"
 msgstr "By"
 
-#: lib/phoenix_kit_ai.ex:1118
+#: lib/phoenix_kit_ai.ex:1119
 #, elixir-autogen, elixir-format
 msgid "Change the limits of AI tasks, who is told about them and which models may be used; block a person from a task; see why a private task's request was flagged"
 msgstr "Change the limits of AI tasks, who is told about them and which models may be used; block a person from a task; see why a private task's request was flagged"
@@ -3653,7 +3653,7 @@ msgstr "The catalogue gives this model a price, which is used first: this price 
 msgid "Setting a price needs the “Manage the AI task guard” permission: it decides what the money limits count."
 msgstr "Setting a price needs the “Manage the AI task guard” permission: it decides what the money limits count."
 
-#: lib/phoenix_kit_ai.ex:1655
+#: lib/phoenix_kit_ai.ex:1679
 #, elixir-autogen, elixir-format
 msgid "only a holder of ai.manage may set or change a manual price"
 msgstr "only a holder of ai.manage may set or change a manual price"
@@ -3677,3 +3677,9 @@ msgstr "Money is not counted for this task's calls on %{endpoints}: nothing pric
 #, elixir-autogen, elixir-format
 msgid "Needed by the tasks that declare it."
 msgstr "Needed by the tasks that declare it."
+
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:670
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:826
+#, elixir-autogen, elixir-format
+msgid "answered by %{model}"
+msgstr "answered by %{model}"

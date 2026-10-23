@@ -292,6 +292,20 @@ defmodule PhoenixKitAI.Request do
   end
 
   @doc """
+  The model the provider says answered (`metadata.answered_model`), where it
+  is not the one asked for; `nil` otherwise.
+  """
+  @spec answered_model(t()) :: String.t() | nil
+  def answered_model(%__MODULE__{model: model, metadata: %{} = metadata}) do
+    case metadata["answered_model"] || metadata[:answered_model] do
+      answered when is_binary(answered) and answered != "" and answered != model -> answered
+      _ -> nil
+    end
+  end
+
+  def answered_model(_request), do: nil
+
+  @doc """
   Extracts the model name without provider prefix.
   """
   def short_model_name(nil), do: "-"

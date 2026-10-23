@@ -664,6 +664,15 @@
                       </.table_default_cell>
                       <.table_default_cell class="hidden xl:table-cell text-sm font-mono">
                         {PhoenixKitAI.Request.short_model_name(request.model)}
+                        <%= if answered = PhoenixKitAI.Request.answered_model(request) do %>
+                          <span
+                            data-answered-model={request.uuid}
+                            title={gettext("answered by %{model}", model: answered)}
+                            class="block text-xs text-base-content/60"
+                          >
+                            → {PhoenixKitAI.Request.short_model_name(answered)}
+                          </span>
+                        <% end %>
                       </.table_default_cell>
                       <.table_default_cell class="hidden md:table-cell text-sm">
                         {PhoenixKitAI.Request.format_tokens(request.total_tokens)}
@@ -812,6 +821,11 @@
           <div>
             <div class="text-xs text-base-content/70">{gettext("Model")}</div>
             <div class="text-sm font-mono">{@selected_request.model}</div>
+            <%= if answered = PhoenixKitAI.Request.answered_model(@selected_request) do %>
+              <div id="ai-request-answered-model" class="text-xs font-mono text-base-content/70">
+                → {gettext("answered by %{model}", model: answered)}
+              </div>
+            <% end %>
           </div>
         </div>
 
