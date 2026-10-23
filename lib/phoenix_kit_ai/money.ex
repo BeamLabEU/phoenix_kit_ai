@@ -54,10 +54,6 @@ defmodule PhoenixKitAI.Money do
 
   def nano_to_micro(nano) when is_integer(nano), do: -nano_to_micro(-nano)
 
-  @doc "Micro-dollars as nanodollars."
-  @spec micro_to_nano(integer()) :: integer()
-  def micro_to_nano(micro) when is_integer(micro), do: micro * @nano_per_micro
-
   @doc "Dollars (a provider's reported cost) as whole nanodollars, rounded."
   @spec dollars_to_nano(number()) :: integer()
   def dollars_to_nano(dollars) when is_number(dollars), do: round(dollars * 1_000_000_000)

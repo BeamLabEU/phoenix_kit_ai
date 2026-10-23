@@ -295,6 +295,7 @@ defmodule PhoenixKitAI.CoverageTest do
       assert is_map(stats[ep.uuid])
       assert stats[ep.uuid].request_count >= 1
       assert stats[ep.uuid].total_tokens >= 100
+      assert stats[ep.uuid].total_cost_nanodollars == 25
     end
 
     test "count_endpoints + count_enabled_endpoints" do

@@ -212,6 +212,20 @@ defmodule PhoenixKitAI.LimiterTest do
       assert Limiter.run(@ep, [], fn -> :free end) == :free
     end
 
+    # A limiter too busy to answer within GenServer.call's 5 s runs the call
+    # unlimited; the acquire it answers late must not keep a slot for a
+    # caller that never learns of it (a LiveView or a job lives on).
+    @tag timeout: 20_000
+    test "an acquire answered too late keeps no slot for the caller" do
+      Application.put_env(:phoenix_kit_ai, :concurrency, %{"provider:openrouter" => 1})
+      :sys.suspend(Limiter)
+      # run here, in the test process, so the caller outlives the call
+      assert Limiter.run(@ep, [], fn -> :unlimited_run end) == :unlimited_run
+      :sys.resume(Limiter)
+      assert %{running: 0, waiting: 0} = Limiter.stats("provider:openrouter")
+      assert Limiter.run(@ep, [concurrency: [wait: 100]], fn -> :free end) == :free
+    end
+
     test "the slot is released when the function raises" do
       Application.put_env(:phoenix_kit_ai, :concurrency, %{"provider:openrouter" => 1})
       assert_raise RuntimeError, fn -> Limiter.run(@ep, [], fn -> raise "boom" end) end

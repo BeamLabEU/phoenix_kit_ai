@@ -3,7 +3,7 @@
 How the cross-cutting controls on every verb work, what they promise and
 what they deliberately do not. The code is `PhoenixKitAI.Budget`,
 `PhoenixKitAI.RequestCache`, `PhoenixKitAI.StructuredOutput` and the
-`with_cache/6` + `cached_row/4` pair in `PhoenixKitAI`.
+`with_cache/6` + `cached_row/5` pair in `PhoenixKitAI`.
 
 ## Units
 

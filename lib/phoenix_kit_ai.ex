@@ -1361,7 +1361,8 @@ defmodule PhoenixKitAI do
   @doc """
   Returns usage statistics for each endpoint.
 
-  Returns a map of endpoint_uuid => %{request_count, total_tokens, total_cost, last_used_at}
+  Returns a map of endpoint_uuid => %{request_count, total_tokens,
+  total_cost_nanodollars, last_used_at}
   """
   @spec get_endpoint_usage_stats() :: %{optional(String.t()) => map()}
   def get_endpoint_usage_stats do
@@ -1374,7 +1375,7 @@ defmodule PhoenixKitAI do
           %{
             request_count: count(),
             total_tokens: coalesce(sum(r.total_tokens), 0),
-            total_cost: type(coalesce(sum(r.cost_nanodollars), 0), :integer),
+            total_cost_nanodollars: type(coalesce(sum(r.cost_nanodollars), 0), :integer),
             last_used_at: max(r.inserted_at)
           }
         }
@@ -3486,6 +3487,7 @@ defmodule PhoenixKitAI do
     opts = call_model_opts(opts)
 
     with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
+         opts = fallbacks_for(endpoint, opts),
          {:ok, admission} <-
            authorize(endpoint, opts, :complete, Guard.implied_needs(:complete, opts, messages)) do
       # A call's `model:` is the model sent, checked, cached and logged.
@@ -4570,6 +4572,12 @@ defmodule PhoenixKitAI do
       _ ->
         Keyword.delete(opts, :models)
     end
+  end
+
+  # `models:` is OpenRouter's model routing; no other provider is sent it, so
+  # elsewhere it is dropped before the guard checks it or the cache keys on it.
+  defp fallbacks_for(endpoint, opts) do
+    if Endpoint.openrouter?(endpoint), do: opts, else: Keyword.delete(opts, :models)
   end
 
   # Every OpenRouter fallback in `models:` may answer the call, so each is

@@ -101,7 +101,6 @@ defmodule PhoenixKitAI.ManualPriceTest do
       assert Money.nano_to_micro(500) == 1
       assert Money.nano_to_micro(1_700_000) == 1_700
       assert Money.nano_to_micro(-1_500) == -2
-      assert Money.micro_to_nano(1_700) == 1_700_000
     end
 
     test "a reported cost in dollars is nanodollars in one step" do

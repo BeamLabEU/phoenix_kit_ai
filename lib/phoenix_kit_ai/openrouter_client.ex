@@ -620,6 +620,8 @@ defmodule PhoenixKitAI.OpenRouterClient do
           )
 
         if count > 0 do
+          # a cached copy still says `integration_uuid: nil`
+          PhoenixKitAI.Cache.invalidate_endpoint(endpoint.uuid)
           log_lazy_promotion(endpoint, integration_uuid)
         end
       rescue

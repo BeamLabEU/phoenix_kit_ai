@@ -539,6 +539,31 @@ defmodule PhoenixKitAI.GuardTest do
       assert_received {:post, _, %{"models" => ["vendor/vision"]}}
     end
 
+    test "models: on an endpoint that is not OpenRouter is not sent, so not checked" do
+      stub()
+
+      ep =
+        endpoint("mistral-vision-model", %{"vision" => "yes"}, %{
+          provider: "mistral",
+          base_url: "https://api.mistral.ai/v1"
+        })
+
+      start_catalogue()
+      part = %{"type" => "image_url", "image_url" => %{"url" => @image_url}}
+      # the fallback's vision is unknown to Mistral's catalogue: checked, it refuses
+      {:ok, _} = PhoenixKit.Settings.update_boolean_setting(Guard.verified_only_setting(), true)
+
+      try do
+        assert {:ok, _} =
+                 PhoenixKitAI.complete(ep.uuid, image_message(part), models: ["vendor/other"])
+
+        assert_received {:post, _, body}
+        refute Map.has_key?(body, "models")
+      after
+        PhoenixKit.Settings.update_boolean_setting(Guard.verified_only_setting(), false)
+      end
+    end
+
     test "a model: that names no model is no override" do
       stub()
       text = endpoint("vendor/text-only")

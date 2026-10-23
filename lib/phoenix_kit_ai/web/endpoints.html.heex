@@ -41,7 +41,7 @@
               Map.get(@endpoint_stats, endpoint.uuid, %{
                 request_count: 0,
                 total_tokens: 0,
-                total_cost: 0
+                total_cost_nanodollars: 0
               }) %>
             <% integration = Map.get(@integrations_by_uuid, endpoint.integration_uuid) %>
             <% integration_status = integration && integration.data["status"] %>
@@ -152,7 +152,7 @@
                   </div>
                   <div class="flex items-center gap-1 text-base-content/70" title={gettext("Total cost")}>
                     <.icon name="hero-currency-dollar" class="w-4 h-4" />
-                    <span>{PhoenixKitAI.Request.format_cost(stats.total_cost)}</span>
+                    <span>{PhoenixKitAI.Request.format_cost(stats.total_cost_nanodollars)}</span>
                   </div>
                   <div class="flex items-center gap-1 text-base-content/70" title={gettext("Last used")}>
                     <.icon name="hero-clock" class="w-4 h-4" />
@@ -247,7 +247,7 @@
                     Map.get(@endpoint_stats, endpoint.uuid, %{
                       request_count: 0,
                       total_tokens: 0,
-                      total_cost: 0
+                      total_cost_nanodollars: 0
                     }) %>
                   <% integration = Map.get(@integrations_by_uuid, endpoint.integration_uuid) %>
                   <% integration_status = integration && integration.data["status"] %>
@@ -317,7 +317,7 @@
                       {PhoenixKitAI.Request.format_tokens(stats.total_tokens)}
                     </.table_default_cell>
                     <.table_default_cell class="text-right">
-                      {PhoenixKitAI.Request.format_cost(stats.total_cost)}
+                      {PhoenixKitAI.Request.format_cost(stats.total_cost_nanodollars)}
                     </.table_default_cell>
                     <.table_default_cell>
                       <%= if stats[:last_used_at] do %>

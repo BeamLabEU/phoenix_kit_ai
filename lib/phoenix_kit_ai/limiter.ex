@@ -141,7 +141,7 @@ defmodule PhoenixKitAI.Limiter do
       max_waiting = Keyword.get(settings, :max_waiting, @default_max_waiting)
       notify = Keyword.get(settings, :notify)
 
-      case acquire(key, limit, max_waiting) do
+      case acquire(key, limit, max_waiting, is_pid(notify)) do
         :unlimited ->
           fun.()
 
@@ -189,12 +189,22 @@ defmodule PhoenixKitAI.Limiter do
     end
   end
 
-  # The limiter gone between `whereis/1` and the call (a restart): the call
-  # runs unlimited, as it does without the limiter at all.
-  defp acquire(key, limit, max_waiting) do
-    GenServer.call(__MODULE__, {:acquire, self(), key, limit, max_waiting})
-  catch
-    :exit, _ -> :unlimited
+  # The limiter gone between `whereis/1` and the call (a restart), or too
+  # busy to answer in time: the call runs unlimited, as it does without the
+  # limiter at all. The ref is made here so a late acquire can be taken back:
+  # the cancel is sent after the acquire from the same process, so the server
+  # reads it second and frees the slot (or place) it would otherwise keep for
+  # this caller until it dies.
+  defp acquire(key, limit, max_waiting, track?) do
+    ref = make_ref()
+
+    try do
+      GenServer.call(__MODULE__, {:acquire, self(), ref, key, limit, max_waiting, track?})
+    catch
+      :exit, _ ->
+        GenServer.cast(__MODULE__, {:cancel, ref})
+        :unlimited
+    end
   end
 
   # The cancel is a call, so every message the server sent for `ref` before it
@@ -236,14 +246,13 @@ defmodule PhoenixKitAI.Limiter do
   def init(_), do: {:ok, %{keys: %{}, refs: %{}}}
 
   @impl true
-  def handle_call({:acquire, pid, key, limit, max_waiting}, _from, st) do
+  def handle_call({:acquire, pid, ref, key, limit, max_waiting, track?}, _from, st) do
     fresh = %{running: MapSet.new(), waiting: :queue.new(), nwaiting: 0, limit: limit}
 
     # The latest limit for a key wins (a config change takes effect on the next
     # call). A raised limit first admits the calls already waiting, in order.
     st = admit(st, key, %{Map.get(st.keys, key, fresh) | limit: limit})
     k = Map.get(st.keys, key, fresh)
-    ref = make_ref()
 
     cond do
       MapSet.size(k.running) < k.limit and k.nwaiting == 0 ->
@@ -256,7 +265,7 @@ defmodule PhoenixKitAI.Limiter do
 
       true ->
         mon = Process.monitor(pid)
-        k = %{k | waiting: :queue.in({ref, pid}, k.waiting), nwaiting: k.nwaiting + 1}
+        k = %{k | waiting: :queue.in({ref, pid, track?}, k.waiting), nwaiting: k.nwaiting + 1}
         st = put_key(st, key, k)
 
         {:reply, {:queued, ref, k.nwaiting},
@@ -275,6 +284,7 @@ defmodule PhoenixKitAI.Limiter do
 
   @impl true
   def handle_cast({:release, ref}, st), do: {:noreply, drop(st, ref)}
+  def handle_cast({:cancel, ref}, st), do: {:noreply, drop(st, ref)}
 
   @impl true
   def handle_info({:DOWN, mon, :process, _pid, _reason}, st) do
@@ -300,14 +310,14 @@ defmodule PhoenixKitAI.Limiter do
   defp remove_ref(k, ref, :running), do: %{k | running: MapSet.delete(k.running, ref)}
 
   defp remove_ref(k, ref, :waiting) do
-    kept = :queue.filter(fn {r, _} -> r != ref end, k.waiting)
+    kept = :queue.filter(fn {r, _, _} -> r != ref end, k.waiting)
     %{k | waiting: kept, nwaiting: :queue.len(kept)}
   end
 
   defp admit(st, key, k) do
     if MapSet.size(k.running) < k.limit do
       case :queue.out(k.waiting) do
-        {{:value, {ref, pid}}, rest} ->
+        {{:value, {ref, pid, _track?}}, rest} ->
           send(pid, {:phoenix_kit_ai_limiter_go, ref})
           {key_, mon, _} = Map.fetch!(st.refs, ref)
           st = %{st | refs: Map.put(st.refs, ref, {key_, mon, :running})}
@@ -327,12 +337,15 @@ defmodule PhoenixKitAI.Limiter do
     end
   end
 
+  # Places in line go only to the waiters that asked (`notify:`): the others
+  # would get a message per waiter on every change of the line for nothing.
   defp finish(st, key, k) do
     k.waiting
     |> :queue.to_list()
     |> Enum.with_index(1)
-    |> Enum.each(fn {{ref, pid}, pos} ->
-      send(pid, {:phoenix_kit_ai_limiter_position, ref, pos})
+    |> Enum.each(fn
+      {{ref, pid, true}, pos} -> send(pid, {:phoenix_kit_ai_limiter_position, ref, pos})
+      _ -> :ok
     end)
 
     put_key(st, key, k)

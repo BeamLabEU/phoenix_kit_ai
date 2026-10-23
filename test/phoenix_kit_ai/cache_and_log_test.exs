@@ -228,13 +228,16 @@ defmodule PhoenixKitAI.CacheAndLogTest do
     end
 
     test "create_request/1 itself stays synchronous", %{endpoint: ep} do
-      assert {:ok, %Request{}} =
+      # the describe's mode is :async; the row must be there with no flush
+      assert {:ok, %Request{uuid: uuid}} =
                PhoenixKitAI.create_request(%{
                  endpoint_uuid: ep.uuid,
                  model: "m",
                  request_type: "chat",
                  status: "success"
                })
+
+      assert [%Request{uuid: ^uuid}] = rows(ep)
     end
 
     test ":sync (the default) writes before the call returns", %{endpoint: ep} do

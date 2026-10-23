@@ -498,6 +498,16 @@ defmodule PhoenixKitAI.Endpoint do
   end
 
   @doc """
+  Whether an endpoint (or anything with a `provider`) is on OpenRouter: the
+  bare key or a named OpenRouter connection (`"openrouter:work"`).
+  """
+  @spec openrouter?(map()) :: boolean()
+  def openrouter?(%{provider: provider}) when is_binary(provider),
+    do: base_provider(provider) == "openrouter"
+
+  def openrouter?(_endpoint), do: false
+
+  @doc """
   Checks if the endpoint has been validated recently (within the last 24 hours).
   """
   def recently_validated?(%__MODULE__{last_validated_at: nil}), do: false

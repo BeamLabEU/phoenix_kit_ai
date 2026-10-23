@@ -1035,7 +1035,7 @@ defmodule PhoenixKitAI.Completion do
   # "Model routing"). The call's model stays first. Other providers have no such
   # parameter, so `models:` is not sent to them.
   defp maybe_add_fallback_models(body, endpoint, model, [_ | _] = models) do
-    if openrouter?(endpoint),
+    if Endpoint.openrouter?(endpoint),
       do: Map.put(body, "models", Enum.uniq([model | models])),
       else: body
   end
@@ -1045,15 +1045,9 @@ defmodule PhoenixKitAI.Completion do
   # OpenRouter reports the call's cost in `usage.cost` when asked
   # (`usage: {include: true}`) — without it chat rows were logged with no cost.
   defp maybe_include_usage(body, endpoint) do
-    if openrouter?(endpoint), do: Map.put(body, "usage", %{"include" => true}), else: body
-  end
-
-  # `"openrouter"` or a named OpenRouter connection (`"openrouter:work"`).
-  defp openrouter?(endpoint) do
-    case Map.get(endpoint, :provider) do
-      provider when is_binary(provider) -> Endpoint.base_provider(provider) == "openrouter"
-      _ -> false
-    end
+    if Endpoint.openrouter?(endpoint),
+      do: Map.put(body, "usage", %{"include" => true}),
+      else: body
   end
 
   defp maybe_add(map, _key, nil), do: map
