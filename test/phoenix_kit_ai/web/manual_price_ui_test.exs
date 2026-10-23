@@ -10,6 +10,9 @@ defmodule PhoenixKitAI.Web.ManualPriceUITest do
   use PhoenixKitAI.LiveCase
 
   alias PhoenixKit.ModuleRegistry
+  alias PhoenixKit.Test.Fixtures
+  alias PhoenixKit.Users.Auth.Scope
+  alias PhoenixKit.Users.{Permissions, Roles}
   alias PhoenixKitAI.{Capabilities, Recommendations, Request}
   alias PhoenixKitAI.Test.FakeAITasks
   alias PhoenixKitAI.Test.Repo, as: TestRepo
@@ -22,13 +25,32 @@ defmodule PhoenixKitAI.Web.ManualPriceUITest do
     %{uuid: integration_uuid} =
       seed_mistral_connection("price-#{System.unique_integer([:positive])}")
 
-    fixture_endpoint(
+    priced_fixture(
       provider: "mistral",
       base_url: "https://api.mistral.ai/v1",
       model: "glm-4.6",
       integration_uuid: integration_uuid,
       provider_settings: provider_settings
     )
+  end
+
+  # An endpoint created by the Owner: a manual price needs ai.manage.
+  defp priced_fixture(attrs) do
+    {:ok, endpoint} =
+      PhoenixKitAI.create_endpoint(
+        Map.merge(
+          %{
+            name: "Priced #{System.unique_integer([:positive])}",
+            provider: "openrouter",
+            model: "anthropic/claude-3-haiku",
+            api_key: "sk-or-v1-test-key"
+          },
+          Map.new(attrs)
+        ),
+        scope: Process.get(:owner_scope)
+      )
+
+    endpoint
   end
 
   defp save(view, endpoint, pricing) do
@@ -40,6 +62,40 @@ defmodule PhoenixKitAI.Web.ManualPriceUITest do
   end
 
   describe "the endpoint form" do
+    # The first user registered is the Owner, who may set a price.
+    setup %{conn: conn} do
+      owner = Scope.for_user(Fixtures.user_fixture())
+      Process.put(:owner_scope, owner)
+      {:ok, conn: put_test_scope(conn, owner)}
+    end
+
+    test "without ai.manage the price is shown, cannot be edited, and a save keeps it",
+         %{conn: conn} do
+      endpoint = unpriced_endpoint(%{"pricing" => %{"input" => 600_000, "output" => 2_200_000}})
+
+      :ok = ModuleRegistry.register(PhoenixKitAI)
+      on_exit(fn -> ModuleRegistry.unregister(PhoenixKitAI) end)
+      user = Fixtures.user_fixture()
+      {:ok, role} = Roles.create_role(%{name: "Role #{System.unique_integer([:positive])}"})
+      {:ok, _} = Roles.assign_role(user, role.name)
+      :ok = Permissions.set_permissions(role.uuid, ["ai"])
+
+      {:ok, view, _html} =
+        conn
+        |> put_test_scope(Scope.for_user(user))
+        |> live("/en/admin/ai/endpoints/#{endpoint.uuid}/edit")
+
+      assert has_element?(view, "#endpoint-manual-price-locked", "0.6")
+      refute has_element?(view, "#{@price} input[name$='[input]']")
+
+      view
+      |> form("#ai-endpoint-form", endpoint: %{name: "Renamed #{endpoint.name}"})
+      |> render_submit()
+
+      assert %{"input" => 600_000} =
+               PhoenixKitAI.get_endpoint!(endpoint.uuid).provider_settings["pricing"]
+    end
+
     test "offers the two price fields for a model the catalogue gives no price", %{conn: conn} do
       endpoint = unpriced_endpoint()
       {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/#{endpoint.uuid}/edit")
@@ -126,7 +182,7 @@ defmodule PhoenixKitAI.Web.ManualPriceUITest do
         )
 
       endpoint =
-        fixture_endpoint(
+        priced_fixture(
           model: "v/priced",
           integration_uuid: integration_uuid,
           provider_settings: %{"pricing" => %{"input" => 600_000, "output" => 2_200_000}}

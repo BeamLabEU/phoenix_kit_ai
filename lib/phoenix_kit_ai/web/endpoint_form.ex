@@ -602,6 +602,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
       socket
       |> Access.assign_session(session)
       |> assign(:may_declare, true)
+      |> assign(:may_price, false)
       |> assign(:pricing_error, nil)
       |> assign(:project_title, nil)
       |> assign(:current_path, Routes.path("/admin/ai"))
@@ -847,6 +848,9 @@ defmodule PhoenixKitAI.Web.EndpointForm do
         # While only verified models are allowed, declaring capabilities
         # needs ai.manage (`PhoenixKitAI.update_endpoint/3` checks it again).
         |> assign(:may_declare, not Guard.verified_only?() or Access.may_manage?(socket))
+        # A manual price steers the money limits: it needs ai.manage
+        # (`PhoenixKitAI.update_endpoint/3` checks it again).
+        |> assign(:may_price, Access.may_manage?(socket))
 
       {:noreply, socket}
     else

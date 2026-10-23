@@ -585,7 +585,20 @@
                     "The catalogue gives this model a price, which is used first: this price is not used. Empty both fields to remove it."
                   )}
                 </p>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
+                <%!-- Without ai.manage the price is shown and nothing is
+                     submitted, so a save keeps it as it is. --%>
+                <div :if={!@may_price} id="endpoint-manual-price-locked" class="mt-2 text-sm">
+                  <div :if={stored_price}>
+                    {gettext("Input, $ per 1M tokens")}: {PhoenixKitAI.Web.EndpointForm.price_value(@form, @endpoint, "input", current_model_id)} ·
+                    {gettext("Output, $ per 1M tokens")}: {PhoenixKitAI.Web.EndpointForm.price_value(@form, @endpoint, "output", current_model_id)}
+                  </div>
+                  <p class="text-xs text-base-content/60 mt-1">
+                    {gettext(
+                      "Setting a price needs the “Manage the AI task guard” permission: it decides what the money limits count."
+                    )}
+                  </p>
+                </div>
+                <div :if={@may_price} class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
                   <label class="fieldset">
                     <span class="fieldset-legend text-sm">{gettext("Input, $ per 1M tokens")}</span>
                     <input

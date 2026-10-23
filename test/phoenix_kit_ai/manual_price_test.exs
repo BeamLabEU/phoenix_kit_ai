@@ -10,6 +10,8 @@ defmodule PhoenixKitAI.ManualPriceTest do
 
   use PhoenixKitAI.DataCase, async: false
 
+  alias PhoenixKit.Test.Fixtures
+  alias PhoenixKit.Users.Auth.Scope
   alias PhoenixKitAI.{ManualPrice, Money, Request, TaskLimits}
   alias PhoenixKitAI.Test.Repo, as: TestRepo
 
@@ -25,19 +27,32 @@ defmodule PhoenixKitAI.ManualPriceTest do
     )
 
     on_exit(fn -> Application.delete_env(:phoenix_kit_ai, :req_options) end)
+
+    # Setting a manual price needs ai.manage: the first user registered is
+    # the Owner, whose scope the helpers pass.
+    Process.put(
+      :owner_scope,
+      Scope.for_user(Fixtures.user_fixture())
+    )
+
     :ok
   end
 
+  defp owner, do: Process.get(:owner_scope)
+
   defp endpoint(provider_settings) do
     {:ok, endpoint} =
-      PhoenixKitAI.create_endpoint(%{
-        name: "Priced #{System.unique_integer([:positive])}",
-        provider: "zai",
-        base_url: "https://api.z.ai/api/paas/v4",
-        model: "glm-4.6",
-        api_key: "zai-test-key",
-        provider_settings: provider_settings
-      })
+      PhoenixKitAI.create_endpoint(
+        %{
+          name: "Priced #{System.unique_integer([:positive])}",
+          provider: "zai",
+          base_url: "https://api.z.ai/api/paas/v4",
+          model: "glm-4.6",
+          api_key: "zai-test-key",
+          provider_settings: provider_settings
+        },
+        scope: owner()
+      )
 
     endpoint
   end
@@ -137,14 +152,18 @@ defmodule PhoenixKitAI.ManualPriceTest do
     test "must be whole non-negative micro-dollars" do
       for bad <- [%{"input" => 0.6}, %{"input" => -1}, %{"output" => "2.2"}, "cheap"] do
         assert {:error, changeset} =
-                 PhoenixKitAI.create_endpoint(%{
-                   name: "Bad #{System.unique_integer([:positive])}",
-                   provider: "zai",
-                   model: "glm-4.6",
-                   provider_settings: %{"pricing" => bad}
-                 })
+                 PhoenixKitAI.create_endpoint(
+                   %{
+                     name: "Bad #{System.unique_integer([:positive])}",
+                     provider: "zai",
+                     model: "glm-4.6",
+                     provider_settings: %{"pricing" => bad}
+                   },
+                   scope: owner()
+                 )
 
-        assert changeset.errors[:provider_settings], inspect(bad)
+        assert {message, _} = changeset.errors[:provider_settings], inspect(bad)
+        refute message =~ "ai.manage"
       end
     end
 
@@ -152,9 +171,11 @@ defmodule PhoenixKitAI.ManualPriceTest do
       endpoint = endpoint(%{"pricing" => @pricing})
 
       {:ok, _} =
-        PhoenixKitAI.update_endpoint(endpoint, %{
-          provider_settings: %{"pricing" => %{"input" => 700_000, "output" => 2_200_000}}
-        })
+        PhoenixKitAI.update_endpoint(
+          endpoint,
+          %{provider_settings: %{"pricing" => %{"input" => 700_000, "output" => 2_200_000}}},
+          scope: owner()
+        )
 
       assert_activity_logged("endpoint.pricing_changed",
         resource_uuid: endpoint.uuid,
@@ -220,14 +241,18 @@ defmodule PhoenixKitAI.ManualPriceTest do
     test "are required: half a price is refused" do
       for half <- [%{"input" => 600_000}, %{"output" => 2_200_000}] do
         assert {:error, changeset} =
-                 PhoenixKitAI.create_endpoint(%{
-                   name: "Half #{System.unique_integer([:positive])}",
-                   provider: "zai",
-                   model: "glm-4.6",
-                   provider_settings: %{"pricing" => half}
-                 })
+                 PhoenixKitAI.create_endpoint(
+                   %{
+                     name: "Half #{System.unique_integer([:positive])}",
+                     provider: "zai",
+                     model: "glm-4.6",
+                     provider_settings: %{"pricing" => half}
+                   },
+                   scope: owner()
+                 )
 
-        assert changeset.errors[:provider_settings], inspect(half)
+        assert {message, _} = changeset.errors[:provider_settings], inspect(half)
+        refute message =~ "ai.manage"
       end
     end
 
@@ -252,12 +277,15 @@ defmodule PhoenixKitAI.ManualPriceTest do
                endpoint(%{"pricing" => ok}).provider_settings["pricing"]
 
       assert {:error, changeset} =
-               PhoenixKitAI.create_endpoint(%{
-                 name: "Dear #{System.unique_integer([:positive])}",
-                 provider: "zai",
-                 model: "glm-4.6",
-                 provider_settings: %{"pricing" => %{ok | "input" => 10_000_000_001}}
-               })
+               PhoenixKitAI.create_endpoint(
+                 %{
+                   name: "Dear #{System.unique_integer([:positive])}",
+                   provider: "zai",
+                   model: "glm-4.6",
+                   provider_settings: %{"pricing" => %{ok | "input" => 10_000_000_001}}
+                 },
+                 scope: owner()
+               )
 
       assert changeset.errors[:provider_settings]
     end

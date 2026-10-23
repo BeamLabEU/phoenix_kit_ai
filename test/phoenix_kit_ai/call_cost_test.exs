@@ -13,6 +13,8 @@ defmodule PhoenixKitAI.CallCostTest do
 
   @moduletag :capture_log
 
+  alias PhoenixKit.Test.Fixtures
+  alias PhoenixKit.Users.Auth.Scope
   alias PhoenixKitAI.{CallCost, Capabilities, Request, TaskLimits}
   alias PhoenixKitAI.Test.Repo, as: TestRepo
 
@@ -33,6 +35,13 @@ defmodule PhoenixKitAI.CallCostTest do
       Application.delete_env(:phoenix_kit_ai, :anthropic_prices)
     end)
 
+    # Setting a manual price needs ai.manage: the first user registered is
+    # the Owner, whose scope the helpers pass.
+    Process.put(
+      :owner_scope,
+      Scope.for_user(Fixtures.user_fixture())
+    )
+
     :ok
   end
 
@@ -48,7 +57,8 @@ defmodule PhoenixKitAI.CallCostTest do
             api_key: "sk-ant-test"
           },
           Map.new(attrs)
-        )
+        ),
+        scope: Process.get(:owner_scope)
       )
 
     endpoint

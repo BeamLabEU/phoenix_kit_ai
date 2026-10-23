@@ -1501,6 +1501,7 @@ defmodule PhoenixKitAI do
     %Endpoint{}
     |> Endpoint.changeset(attrs)
     |> guard_declaration(%Endpoint{}, opts)
+    |> guard_pricing(%Endpoint{}, opts)
     |> repo().insert(log: false)
     |> broadcast_endpoint_change(:endpoint_created)
     |> log_endpoint_activity("endpoint.created", opts)
@@ -1521,7 +1522,13 @@ defmodule PhoenixKitAI do
           {:ok, Endpoint.t()} | {:error, Ecto.Changeset.t()}
   def update_endpoint(%Endpoint{} = endpoint, attrs, opts \\ []) do
     was_enabled = endpoint.enabled
-    changeset = endpoint |> Endpoint.changeset(attrs) |> guard_declaration(endpoint, opts)
+
+    changeset =
+      endpoint
+      |> Endpoint.changeset(attrs)
+      |> guard_declaration(endpoint, opts)
+      |> guard_pricing(endpoint, opts)
+
     # Skip the activity row when the update is a no-op (no field actually
     # changed). The toggle log keeps its own guard so an enable/disable
     # via a bare `%{enabled: x}` still attributes correctly.
@@ -1630,6 +1637,30 @@ defmodule PhoenixKitAI do
       changeset
     end
   end
+
+  # A manual price steers the money limits (`PhoenixKitAI.ManualPrice`), so
+  # setting, changing or removing one needs `ai.manage` (the `:scope`
+  # option; an Owner always). A price dropped because the model changed
+  # needs nothing: it no longer applies.
+  defp guard_pricing(changeset, before, opts) do
+    new = changeset |> Ecto.Changeset.get_field(:provider_settings) |> stored_pricing()
+    old = stored_pricing(before.provider_settings)
+    model = Ecto.Changeset.get_field(changeset, :model)
+    dropped_stale? = new == nil and old != nil and old["model"] != model
+
+    if new != old and not dropped_stale? and not Guard.may_manage?(opts[:scope]) do
+      Ecto.Changeset.add_error(
+        changeset,
+        :provider_settings,
+        gettext("only a holder of ai.manage may set or change a manual price")
+      )
+    else
+      changeset
+    end
+  end
+
+  defp stored_pricing(%{"pricing" => %{} = pricing}), do: pricing
+  defp stored_pricing(_settings), do: nil
 
   defp capabilities_declaration(%Endpoint{provider_settings: %{"capabilities" => declaration}})
        when is_map(declaration) do
