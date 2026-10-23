@@ -191,7 +191,8 @@ defmodule PhoenixKitAI.Tasks do
           %{
             spec
             | module: module,
-              needs: Enum.filter(List.wrap(spec.needs), &(&1 in TaskSpec.needs()))
+              needs: Enum.filter(List.wrap(spec.needs), &(&1 in TaskSpec.needs())),
+              user_limits: spec.user_limits != false
           }
         ]
 

@@ -233,6 +233,11 @@ else every Owner, plus the task's own) get a notification of type
 `"ai_guard"`, once per window; a `Budget` refusal is told once a day, and a
 task whose endpoint's model stops fitting once a day per endpoint.
 
+A module that limits each of its users itself declares the task with
+`user_limits: false`: the guard then has only the task's limits for it,
+ignores the user part of `default_limits` and refuses user limits
+(`{:error, :user_limits_off}`); «AI → Tasks» shows no user limits for it.
+
 ### Off-purpose use and blocks
 
 The consumer has its model flag requests that are not what the task is
