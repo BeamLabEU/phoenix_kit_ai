@@ -460,6 +460,25 @@ defmodule PhoenixKitAI.TaskLimitsTest do
                "update"
     end
 
+    # The unit check comes before any query: `check/3` rescues a failing usage
+    # read into `:ok`, which must not let a millionths limit through.
+    test "a millionths limit refuses even when the usage read would fail" do
+      TestRepo.delete_all(PhoenixKitAI.TaskSetting)
+
+      TestRepo.insert!(%PhoenixKitAI.TaskSetting{
+        task_key: "test.unlimited",
+        limits: %{"task" => %{"money" => %{"day" => 1_500_000}}}
+      })
+
+      TaskLimits.forget("test.unlimited")
+      TestRepo.query!("ALTER TABLE phoenix_kit_ai_requests RENAME COLUMN cost TO cost_hidden")
+
+      ExUnit.CaptureLog.capture_log(fn ->
+        assert {:error, {:task_limit_unmigrated, "test.unlimited"}} =
+                 TaskLimits.check(spec("test.unlimited"), [])
+      end)
+    end
+
     test "a declared money default in integer millionths refuses too" do
       log =
         ExUnit.CaptureLog.capture_log(fn ->

@@ -235,16 +235,16 @@ defmodule PhoenixKitAI.Budget do
     end)
   end
 
-  # The new key decides when it is there; only when it is missing does an old
-  # key that still holds a cap mean the migration has not run.
-  defp money_limit(value, legacy) when value in [nil, ""] do
-    if Money.legacy_amount?(legacy), do: :unmigrated, else: Decimal.new(0)
-  end
-
-  defp money_limit(value, _legacy) do
+  # The new key decides when it holds an amount; when it is missing, blank or
+  # not a number, an old key that still holds a cap means the migration has
+  # not run (a hand-edited blank must not drop the cap).
+  defp money_limit(value, legacy) do
     case Money.to_decimal(value) do
-      {:ok, dollars} -> if Decimal.negative?(dollars), do: Decimal.new(0), else: dollars
-      :error -> Decimal.new(0)
+      {:ok, dollars} ->
+        if Decimal.negative?(dollars), do: Decimal.new(0), else: dollars
+
+      :error ->
+        if Money.legacy_amount?(legacy), do: :unmigrated, else: Decimal.new(0)
     end
   end
 

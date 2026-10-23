@@ -2708,7 +2708,7 @@ msgstr "≈ Hind päringu kohta"
 msgid "free — the operator's limits and terms apply"
 msgstr "tasuta — kehtivad teenusepakkuja piirangud ja tingimused"
 
-#: lib/phoenix_kit_ai/guard_events.ex:729
+#: lib/phoenix_kit_ai/guard_events.ex:732
 #, elixir-autogen, elixir-format
 msgid "%{email} has reached the %{name} (%{limit}) in the AI task %{task}."
 msgstr "%{email} on jõudnud piirini „%{name}“ (%{limit}) AI-ülesandes %{task}."
@@ -2738,7 +2738,7 @@ msgstr "AI-ülesannete valve"
 msgid "Add a person…"
 msgstr "Lisa inimene…"
 
-#: lib/phoenix_kit_ai/guard_events.ex:736
+#: lib/phoenix_kit_ai/guard_events.ex:739
 #, elixir-autogen, elixir-format
 msgid "An AI spending cap (%{cap}) refused a call. Calls are refused until spending is below it."
 msgstr "AI kulupiir (%{cap}) lükkas päringu tagasi. Päringuid lükatakse tagasi, kuni kulu on piirist väiksem."
@@ -2884,17 +2884,17 @@ msgstr "Ülesanne, päevas"
 msgid "Task, a month"
 msgstr "Ülesanne, kuus"
 
-#: lib/phoenix_kit_ai/guard_events.ex:722
+#: lib/phoenix_kit_ai/guard_events.ex:725
 #, elixir-autogen, elixir-format
 msgid "The AI task %{task} has reached its %{name} (%{limit})."
 msgstr "AI-ülesanne %{task} on jõudnud piirini „%{name}“ (%{limit})."
 
-#: lib/phoenix_kit_ai/guard_events.ex:715
+#: lib/phoenix_kit_ai/guard_events.ex:718
 #, elixir-autogen, elixir-format
 msgid "The AI task %{task} has used %{used} of its %{name} (%{limit})."
 msgstr "AI-ülesanne %{task} on kasutanud %{used} piirist „%{name}“ (%{limit})."
 
-#: lib/phoenix_kit_ai/guard_events.ex:749
+#: lib/phoenix_kit_ai/guard_events.ex:752
 #, elixir-autogen, elixir-format
 msgid "The AI task %{task} uses the endpoint %{endpoint}, whose model now lacks: %{needs}."
 msgstr "AI-ülesanne %{task} kasutab lõpp-punkti %{endpoint}, mille mudelil nüüd puudub: %{needs}."
@@ -2944,7 +2944,7 @@ msgstr "Jälgijad on salvestatud"
 msgid "Who is told"
 msgstr "Kellele teatatakse"
 
-#: lib/phoenix_kit_ai/guard_events.ex:708
+#: lib/phoenix_kit_ai/guard_events.ex:711
 #, elixir-autogen, elixir-format
 msgid "You have reached your %{name} (%{limit}) in the AI task %{task}."
 msgstr "Oled jõudnud piirini „%{name}“ (%{limit}) AI-ülesandes %{task}."
@@ -2954,7 +2954,7 @@ msgstr "Oled jõudnud piirini „%{name}“ (%{limit}) AI-ülesandes %{task}."
 msgid "You have reached your %{name} in this AI task"
 msgstr "Oled selles AI-ülesandes jõudnud piirini „%{name}“"
 
-#: lib/phoenix_kit_ai/guard_events.ex:701
+#: lib/phoenix_kit_ai/guard_events.ex:704
 #, elixir-autogen, elixir-format
 msgid "You have used %{used} of your %{name} (%{limit}) in the AI task %{task}."
 msgstr "Oled kasutanud %{used} piirist „%{name}“ (%{limit}) AI-ülesandes %{task}."
@@ -2995,17 +2995,17 @@ msgstr "kuine kulupiir"
 msgid "monthly token limit"
 msgstr "kuine tokenite piir"
 
-#: lib/phoenix_kit_ai/guard_events.ex:743
+#: lib/phoenix_kit_ai/guard_events.ex:746
 #, elixir-autogen, elixir-format
 msgid "one endpoint"
 msgstr "üks lõpp-punkt"
 
-#: lib/phoenix_kit_ai/guard_events.ex:745
+#: lib/phoenix_kit_ai/guard_events.ex:748
 #, elixir-autogen, elixir-format
 msgid "one user's calls"
 msgstr "ühe kasutaja päringud"
 
-#: lib/phoenix_kit_ai/guard_events.ex:744
+#: lib/phoenix_kit_ai/guard_events.ex:747
 #, elixir-autogen, elixir-format
 msgid "one user's spending"
 msgstr "ühe kasutaja kulu"
@@ -3015,7 +3015,7 @@ msgstr "ühe kasutaja kulu"
 msgid "only a holder of ai.manage may declare capabilities while only verified models are allowed"
 msgstr "kui lubatud on ainult kontrollitud mudelid, saab võimekusi märkida ainult ai.manage õiguse omanik"
 
-#: lib/phoenix_kit_ai/guard_events.ex:742
+#: lib/phoenix_kit_ai/guard_events.ex:745
 #, elixir-autogen, elixir-format
 msgid "the whole site"
 msgstr "kogu sait"
@@ -3085,17 +3085,17 @@ msgstr "Kontrollimata"
 msgid "Without a catalogue (OpenAI, xAI, Z.ai) the capabilities have to be marked on the endpoint, or the calls are refused."
 msgstr "Kataloogita teenusepakkujate (OpenAI, xAI, Z.ai) võimalused tuleb märkida lõpp-punktis, muidu lükatakse päringud tagasi."
 
-#: lib/phoenix_kit_ai/guard_events.ex:764
+#: lib/phoenix_kit_ai/guard_events.ex:767
 #, elixir-autogen, elixir-format
 msgid "%{email} asked the AI task %{task} for something outside its purpose. The flags are on the AI tasks page."
 msgstr "%{email} küsis AI-ülesandelt %{task} midagi, mis pole selle eesmärk. Märked on AI-ülesannete lehel."
 
-#: lib/phoenix_kit_ai/guard_events.ex:799
+#: lib/phoenix_kit_ai/guard_events.ex:802
 #, elixir-autogen, elixir-format
 msgid "%{email} is blocked from the AI task %{task}."
 msgstr "%{email} on AI-ülesandest %{task} blokeeritud."
 
-#: lib/phoenix_kit_ai/guard_events.ex:803
+#: lib/phoenix_kit_ai/guard_events.ex:806
 #, elixir-autogen, elixir-format
 msgid "%{email} is no longer blocked from the AI task %{task}."
 msgstr "%{email} ei ole enam AI-ülesandest %{task} blokeeritud."
@@ -3222,7 +3222,7 @@ msgstr "See blokeering on juba eemaldatud"
 msgid "That person is blocked from this task already"
 msgstr "See inimene on sellest ülesandest juba blokeeritud"
 
-#: lib/phoenix_kit_ai/guard_events.ex:757
+#: lib/phoenix_kit_ai/guard_events.ex:760
 #, elixir-autogen, elixir-format
 msgid "The AI task %{task} was asked for something outside its purpose. The flags are on the AI tasks page."
 msgstr "AI-ülesandelt %{task} küsiti midagi, mis pole selle eesmärk. Märked on AI-ülesannete lehel."
@@ -3232,12 +3232,12 @@ msgstr "AI-ülesandelt %{task} küsiti midagi, mis pole selle eesmärk. Märked 
 msgid "The person cannot use the tasks of the group %{group} until the block is lifted."
 msgstr "Inimene ei saa grupi %{group} ülesandeid kasutada, kuni blokeering on eemaldatud."
 
-#: lib/phoenix_kit_ai/guard_events.ex:779
+#: lib/phoenix_kit_ai/guard_events.ex:782
 #, elixir-autogen, elixir-format
 msgid "Unusual use of the AI task %{task} by %{email}: %{rule}."
 msgstr "AI-ülesande %{task} ebatavaline kasutus (%{email}): %{rule}."
 
-#: lib/phoenix_kit_ai/guard_events.ex:772
+#: lib/phoenix_kit_ai/guard_events.ex:775
 #, elixir-autogen, elixir-format
 msgid "Unusual use of the AI task %{task}: %{rule}."
 msgstr "AI-ülesande %{task} ebatavaline kasutus: %{rule}."
@@ -3252,7 +3252,7 @@ msgstr "Millal"
 msgid "Why (seen by those who manage the guard)"
 msgstr "Miks (näevad need, kes valvet haldavad)"
 
-#: lib/phoenix_kit_ai/guard_events.ex:806
+#: lib/phoenix_kit_ai/guard_events.ex:809
 #, elixir-autogen, elixir-format
 msgid "You are blocked from the AI task %{task} until an administrator lifts the block."
 msgstr "Sa oled AI-ülesandest %{task} blokeeritud, kuni administraator blokeeringu eemaldab."
@@ -3262,22 +3262,22 @@ msgstr "Sa oled AI-ülesandest %{task} blokeeritud, kuni administraator blokeeri
 msgid "You are blocked from this AI task until an administrator lifts the block"
 msgstr "Sa oled sellest AI-ülesandest blokeeritud, kuni administraator blokeeringu eemaldab"
 
-#: lib/phoenix_kit_ai/guard_events.ex:812
+#: lib/phoenix_kit_ai/guard_events.ex:815
 #, elixir-autogen, elixir-format
 msgid "You are no longer blocked from the AI task %{task}."
 msgstr "Sa ei ole enam AI-ülesandest %{task} blokeeritud."
 
-#: lib/phoenix_kit_ai/guard_events.ex:788
+#: lib/phoenix_kit_ai/guard_events.ex:791
 #, elixir-autogen, elixir-format
 msgid "a call from a place the task does not expect"
 msgstr "päring kohast, mida ülesanne ei oota"
 
-#: lib/phoenix_kit_ai/guard_events.ex:794
+#: lib/phoenix_kit_ai/guard_events.ex:797
 #, elixir-autogen, elixir-format
 msgid "a call of more than %{limit} tokens"
 msgstr "päring üle %{limit} märgi"
 
-#: lib/phoenix_kit_ai/guard_events.ex:791
+#: lib/phoenix_kit_ai/guard_events.ex:794
 #, elixir-autogen, elixir-format
 msgid "more than %{limit} calls in an hour"
 msgstr "üle %{limit} päringu tunnis"
@@ -3708,3 +3708,8 @@ msgstr "AI kulupiirangud vajavad uuendamist, enne kui AI-päringud saavad uuesti
 #, elixir-autogen, elixir-format
 msgid "This task's spending limit needs an update before it can run again"
 msgstr "Selle ülesande kulupiirang vajab uuendamist, enne kui see saab uuesti toimida"
+
+#: lib/phoenix_kit_ai/guard_events.ex:688
+#, elixir-autogen, elixir-format
+msgid "needs to be set again in dollars"
+msgstr "tuleb uuesti dollarites määrata"

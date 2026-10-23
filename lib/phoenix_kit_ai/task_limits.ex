@@ -621,25 +621,15 @@ defmodule PhoenixKitAI.TaskLimits do
   def check(%TaskSpec{} = spec, opts, now) do
     user_uuid = user_uuid(opts[:user_uuid])
     entry = cached(spec.key)
-    statuses = statuses(spec.key, effective(spec, entry, user_uuid), user_uuid, now)
+    limits = effective(spec, entry, user_uuid)
 
-    cond do
-      Enum.any?(statuses, &(&1.limit == :unmigrated)) ->
-        log_unmigrated(spec.key)
-        {:error, {:task_limit_unmigrated, spec.key}}
-
-      reached = Enum.find(statuses, &reached?/1) ->
-        GuardEvents.limit_reached(spec, user_for(reached, user_uuid), reached)
-        {:error, {:task_limit_exceeded, reached.scope, reached.unit, reached.period}}
-
-      true ->
-        percent = warn_percent(entry.setting)
-
-        statuses
-        |> Enum.filter(&warn?(&1, percent))
-        |> Enum.each(&GuardEvents.limit_warning(spec, user_for(&1, user_uuid), &1))
-
-        :ok
+    # Before any query: a failing usage read is rescued into `:ok` below, and
+    # a limit in the released unit must refuse whatever the database does.
+    if unmigrated?(limits) do
+      log_unmigrated(spec.key)
+      {:error, {:task_limit_unmigrated, spec.key}}
+    else
+      spec.key |> statuses(limits, user_uuid, now) |> decide(spec, entry, user_uuid)
     end
   rescue
     error ->
@@ -652,6 +642,30 @@ defmodule PhoenixKitAI.TaskLimits do
     :exit, _reason ->
       Logger.warning("[PhoenixKitAI] task limits of #{inspect(spec.key)} not checked: exit")
       :ok
+  end
+
+  defp decide(statuses, spec, entry, user_uuid) do
+    case Enum.find(statuses, &reached?/1) do
+      nil ->
+        percent = warn_percent(entry.setting)
+
+        statuses
+        |> Enum.filter(&warn?(&1, percent))
+        |> Enum.each(&GuardEvents.limit_warning(spec, user_for(&1, user_uuid), &1))
+
+        :ok
+
+      reached ->
+        GuardEvents.limit_reached(spec, user_for(reached, user_uuid), reached)
+        {:error, {:task_limit_exceeded, reached.scope, reached.unit, reached.period}}
+    end
+  end
+
+  # A money limit in force still in the released millionths (`normalize/1`).
+  defp unmigrated?(limits) do
+    Enum.any?([limits.task, limits.user], fn cells ->
+      cells |> Map.get(:money, %{}) |> Map.values() |> Enum.member?(:unmigrated)
+    end)
   end
 
   defp reached?(%{used: %Decimal{} = used, limit: %Decimal{} = limit}),

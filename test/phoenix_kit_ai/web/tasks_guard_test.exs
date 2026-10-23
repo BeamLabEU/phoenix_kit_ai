@@ -382,6 +382,22 @@ defmodule PhoenixKitAI.Web.TasksGuardTest do
       assert TestRepo.aggregate(TaskUserLimit, :count) == 0
     end
 
+    test "a personal money limit still in millionths shows, and the page still opens",
+         %{conn: conn} do
+      {user, _role} = admin(["ai", "ai.manage"])
+      person = Fixtures.user_fixture()
+
+      TestRepo.insert!(%TaskUserLimit{
+        task_key: "test.limited",
+        user_uuid: person.uuid,
+        limits: %{"money" => %{"day" => 5_000_000}}
+      })
+
+      view = open(conn, user)
+      assert has_element?(view, "#{@card} [data-personal-user='#{person.uuid}']")
+      assert render(view) =~ "needs to be set again in dollars"
+    end
+
     test "watchers are added and removed, and each change is in the Activity log",
          %{conn: conn} do
       {user, _role} = admin(["ai", "ai.manage"])

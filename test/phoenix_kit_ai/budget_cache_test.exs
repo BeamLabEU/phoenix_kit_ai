@@ -334,6 +334,24 @@ defmodule PhoenixKitAI.BudgetCacheTest do
       assert_received :provider_called
     end
 
+    test "a new key that is not an amount does not drop a released cap", %{endpoint: ep} do
+      stub_chat(self())
+
+      {:ok, _} =
+        PhoenixKit.Settings.update_setting_with_module("ai_daily_budget", "5000000", "ai")
+
+      for broken <- [" ", "lots"] do
+        {:ok, _} = PhoenixKit.Settings.update_setting_with_module("ai_daily_cap", broken, "ai")
+
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:error, {:budget_unmigrated, :global}} =
+                   PhoenixKitAI.ask(ep.uuid, "q #{inspect(broken)}")
+        end)
+      end
+
+      refute_received :provider_called
+    end
+
     test "an old key holding no released cap does not refuse", %{endpoint: ep} do
       stub_chat(self())
       PhoenixKit.Settings.delete_setting("ai_daily_cap")

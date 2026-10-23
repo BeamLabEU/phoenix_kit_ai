@@ -682,7 +682,10 @@ defmodule PhoenixKitAI.GuardEvents do
   def limit_name(:tokens, :month), do: gettext("monthly token limit")
 
   @doc "An amount of a unit for display: dollars for money, a count otherwise."
-  @spec format_amount(TaskLimits.unit(), TaskLimits.amount()) :: String.t()
+  @spec format_amount(TaskLimits.unit(), TaskLimits.amount() | :unmigrated) :: String.t()
+  # a money limit still in the released millionths (`TaskLimits.normalize/1`):
+  # shown, so the page that replaces it still opens
+  def format_amount(:money, :unmigrated), do: gettext("needs to be set again in dollars")
   def format_amount(:money, dollars), do: "$" <> format_usd(dollars)
   def format_amount(_unit, amount), do: Integer.to_string(amount)
 
