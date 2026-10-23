@@ -39,6 +39,7 @@ defmodule PhoenixKitAI.Web.Tasks do
   alias PhoenixKitAI.{TaskLimits, Tasks}
   alias PhoenixKitAI.TaskSpec
   alias PhoenixKitAI.Web.Access
+  alias PhoenixKitAI.Web.Components.CapabilityBadges
   alias PhoenixKitAI.Web.Components.TaskModelPicker
   alias PhoenixKitAI.Web.MessageShape
 
@@ -616,6 +617,8 @@ defmodule PhoenixKitAI.Web.Tasks do
         watchers={@watchers}
       />
 
+      <CapabilityBadges.glossary id="ai-tasks-capability-glossary" class="bg-base-100" />
+
       <%= if @tasks == [] do %>
         <div id="ai-tasks-empty" class="alert">
           {gettext("No module declares an AI task.")}
@@ -649,6 +652,7 @@ defmodule PhoenixKitAI.Web.Tasks do
                   :for={need <- task.spec.needs}
                   class="badge badge-outline badge-sm"
                   data-need={need}
+                  title={CapabilityBadges.explain_text(need)}
                 >
                   {Tasks.need_label(need)}
                 </span>

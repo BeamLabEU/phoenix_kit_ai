@@ -168,7 +168,11 @@ defmodule PhoenixKitAI.Web.EndpointForm do
           </div>
 
           <div class="flex flex-wrap gap-1 mt-2">
-            <span :if={@model.context_length} class="badge badge-outline badge-xs h-auto">
+            <span
+              :if={@model.context_length}
+              class="badge badge-outline badge-xs h-auto"
+              title={CapabilityBadges.explain_text(:context)}
+            >
               {format_number(@model.context_length)} ctx
             </span>
 
@@ -382,8 +386,8 @@ defmodule PhoenixKitAI.Web.EndpointForm do
   # What the "Current Model" panel shows about the current model's
   # capabilities: which ones the admin may declare (those the catalogue does
   # not know), what is declared — from the form while it carries a
-  # declaration for this model, else from the endpoint — and which
-  # declarations the catalogue contradicts.
+  # declaration for this model, else from the endpoint — which declarations
+  # the catalogue contradicts, and each capability's value with its source.
   def capability_panel(model_id, selected_model, form, endpoint, provider)
       when is_binary(model_id) and model_id != "" do
     catalogue =
@@ -414,11 +418,31 @@ defmodule PhoenixKitAI.Web.EndpointForm do
         catalogue == :unknown or Map.fetch!(catalogue, flag) == :unknown
       end)
 
-    %{open: open, declared: declared, conflicts: Capabilities.conflicts(catalogue, declared)}
+    %{
+      open: open,
+      declared: declared,
+      conflicts: Capabilities.conflicts(catalogue, declared),
+      rows: capability_rows(catalogue, declared)
+    }
   end
 
   def capability_panel(_model_id, _selected_model, _form, _endpoint, _provider),
-    do: %{open: [], declared: %{}, conflicts: []}
+    do: %{open: [], declared: %{}, conflicts: [], rows: []}
+
+  # Each capability's value and where it comes from: the catalogue when it
+  # knows (its answer wins over a declaration), else a declaration, else
+  # nobody («?», no source).
+  defp capability_rows(catalogue, declared) do
+    for flag <- Capabilities.declarable() do
+      from_catalogue = if catalogue == :unknown, do: :unknown, else: Map.fetch!(catalogue, flag)
+
+      cond do
+        from_catalogue != :unknown -> {flag, from_catalogue, :catalogue}
+        Map.get(declared, flag) == :yes -> {flag, :yes, :manual}
+        true -> {flag, :unknown, nil}
+      end
+    end
+  end
 
   # The checkboxes as the form last submitted them, when they were for this
   # model (the hidden `model` input says which): ticked `:yes`, unticked
