@@ -404,10 +404,19 @@ provided the API exposes `<base_url>/chat/completions` and `/models`.
 - Switching provider in the form clears the integration, model list and params,
   `provider_settings["voice"]` and `base_url` — with `""`, per the landmine
   above.
-- **The integration picker never auto-picks**, even when exactly one connection
-  exists. `active_connection` is set only from what the endpoint is actually
-  pinned to. An orphaned `integration_uuid` renders a "deleted/missing" warning
-  card; there is no silent rebinding on PubSub changes.
+- **The connection picker** is the form's own `EndpointForm.connection_picker/1`
+  (not core's `integration_picker`): each card is a toggle button with
+  `aria-pressed` and a radio mark, its status badge ("Connected", …) apart
+  from the selection, inside a labelled `role="group"`; >6 cards get core's
+  `IntegrationPickerSearch` hook. **Auto-pick:** a provider's only *usable*
+  connection (one with credentials, `Integrations.connected?/1`) is picked on
+  a new endpoint's mount (after a recommendation's prefilled one) and when the
+  provider changes — never on an edited endpoint's mount, and on a provider
+  change only when nothing is stored or it is the stored connection. With
+  several usable connections nothing is picked. An unpick is not undone while
+  the provider stays. An orphaned `integration_uuid` renders a
+  "deleted/missing" warning card; there is no silent rebinding on PubSub
+  changes.
 - OpenRouter's `/models` excludes embeddings, so a curated list in
   `OpenRouterClient` supplies them. Mistral's `/v1/models` returns chat and
   embeddings together, and its `/audio/voices` feeds the TTS voice picker.

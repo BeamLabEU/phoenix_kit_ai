@@ -13,6 +13,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
 
   alias PhoenixKit.Integrations
   alias PhoenixKit.Integrations.Events, as: IntegrationEvents
+  alias PhoenixKit.Integrations.Providers
   alias PhoenixKit.Settings
   alias PhoenixKit.Utils.Routes
   alias PhoenixKitAI, as: AI
@@ -241,6 +242,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
       assigns
       |> assign(:cards, Enum.map(connections, &{&1, &1.uuid in selected}))
       |> assign(:deleted, Enum.reject(selected, &MapSet.member?(uuids, &1)))
+      |> assign(:icon, provider_icon(assigns.provider))
 
     ~H"""
     <div id={@id}>
@@ -255,7 +257,12 @@ defmodule PhoenixKitAI.Web.EndpointForm do
         />
       </div>
 
-      <div :if={@cards != []} class="grid grid-cols-1 gap-2">
+      <div
+        :if={@cards != []}
+        role="group"
+        aria-label={gettext("Connections")}
+        class="grid grid-cols-1 gap-2"
+      >
         <button
           :for={{conn, selected} <- @cards}
           type="button"
@@ -288,6 +295,15 @@ defmodule PhoenixKitAI.Web.EndpointForm do
                 <span :if={selected} class="w-2 h-2 rounded-full bg-primary"></span>
               </span>
 
+              <span
+                :if={@icon}
+                data-provider-icon
+                aria-hidden="true"
+                class="w-8 h-8 flex items-center justify-center bg-base-200 rounded-lg shrink-0"
+              >
+                <.icon name={@icon} class="w-4 h-4" />
+              </span>
+
               <div class="flex-1 min-w-0">
                 <span class="font-medium truncate block">{conn.name}</span>
                 <p
@@ -316,12 +332,21 @@ defmodule PhoenixKitAI.Web.EndpointForm do
         </button>
       </div>
 
-      <div :for={_uuid <- @deleted} class="card bg-error/5 border border-error/30 mt-2">
+      <div
+        :for={_uuid <- @deleted}
+        data-deleted-integration
+        class="card bg-error/5 border border-error/30 mt-2"
+      >
         <div class="card-body p-3">
           <div class="flex items-center gap-3">
-            <.icon name="hero-exclamation-triangle" class="w-4 h-4 text-error shrink-0" />
+            <span class="w-8 h-8 rounded-lg bg-error/10 flex items-center justify-center shrink-0">
+              <.icon name="hero-exclamation-triangle" class="w-4 h-4 text-error" />
+            </span>
             <div class="flex-1 min-w-0">
-              <span class="font-medium text-error">{gettext("Integration deleted")}</span>
+              <div class="flex items-center gap-2">
+                <span class="font-medium text-error">{gettext("Integration deleted")}</span>
+                <span data-missing class="badge badge-error badge-xs">{gettext("Missing")}</span>
+              </div>
               <p class="text-xs text-base-content/50">
                 {gettext(
                   "The selected integration no longer exists. Please choose a different one."
@@ -332,7 +357,11 @@ defmodule PhoenixKitAI.Web.EndpointForm do
         </div>
       </div>
 
-      <div :if={@cards == [] and @deleted == []} class="text-center py-8 text-base-content/50">
+      <div
+        :if={@cards == [] and @deleted == []}
+        data-picker-empty
+        class="text-center py-8 text-base-content/50"
+      >
         <.icon name="hero-link" class="w-10 h-10 mx-auto mb-2 opacity-40" />
         <p class="text-sm">{gettext("No integrations configured.")}</p>
         <a :if={@empty_url} href={@empty_url} class="link link-primary text-sm">
@@ -342,6 +371,16 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     </div>
     """
   end
+
+  # The provider's icon from the Integrations registry, or nil.
+  defp provider_icon(provider) when is_binary(provider) do
+    case Providers.get(provider) do
+      %{icon: icon} when is_binary(icon) -> icon
+      _ -> nil
+    end
+  end
+
+  defp provider_icon(_provider), do: nil
 
   # The connection's status as a badge — what the last check said, which is
   # not whether the endpoint uses it.
@@ -2219,8 +2258,8 @@ defmodule PhoenixKitAI.Web.EndpointForm do
   @doc """
   Returns parameters supported by the model, filtered to ones we have UI for.
   Groups them by :basic and :advanced. A model whose `supported_parameters`
-  is empty or missing gets the standard OpenAI-compatible ones —
-  temperature, max tokens, top p and stop sequences.
+  is empty, missing, or names none the form knows gets the standard
+  OpenAI-compatible ones — temperature, max tokens, top p and stop sequences.
   """
   def get_supported_params(nil) do
     # No model selected - show all parameters
@@ -2236,10 +2275,12 @@ defmodule PhoenixKitAI.Web.EndpointForm do
   defp supported_params(supported) do
     definitions = parameter_definitions()
 
+    # A list naming none the form knows (only `tools`, say) is as good as
+    # no list.
     keys =
-      case supported do
-        [_ | _] -> Enum.filter(supported, &Map.has_key?(definitions, &1))
-        _ -> @standard_parameters
+      case Enum.filter(List.wrap(supported), &Map.has_key?(definitions, &1)) do
+        [] -> @standard_parameters
+        known -> known
       end
 
     group_parameters(keys, definitions)
@@ -2335,11 +2376,25 @@ defmodule PhoenixKitAI.Web.EndpointForm do
   end
 
   # "Anthropic (12 models)" for each provider in the model list.
-  defp provider_options(models_grouped) do
+  defp provider_options(models_grouped, current_provider) do
     for {provider, models} <- models_grouped do
       {ngettext("%{name} (%{count} model)", "%{name} (%{count} models)", length(models),
-         name: PhoenixKitAI.OpenRouterClient.humanize_provider(provider)
+         name: group_label(provider, current_provider)
        ), provider}
     end
   end
+
+  @doc false
+  # "11 models from Z.ai": how many models a group of the model list has.
+  def models_from_label(count, group, current_provider) do
+    ngettext("%{count} model from %{provider}", "%{count} models from %{provider}", count,
+      provider: group_label(group, current_provider)
+    )
+  end
+
+  # A group of the model list by name: the endpoint's own provider (a direct
+  # API's models carry no vendor prefix) as the provider dropdown names it,
+  # an OpenRouter vendor slug as OpenRouter's vendors are named.
+  defp group_label(group, group), do: Endpoint.provider_label(group)
+  defp group_label(group, _current_provider), do: OpenRouterClient.humanize_provider(group)
 end

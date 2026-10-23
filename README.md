@@ -533,7 +533,8 @@ column with a deprecation warning per request — until they're
 migrated, at which point the column is atomically wiped.
 
 The recommended workflow is to point each endpoint at a specific
-integration connection via the form's `integration_picker`. The
+integration connection via the form's connection picker (a
+provider's only connection with credentials is picked on its own). The
 endpoint changeset clears the legacy column to `""` in the same
 DB transaction (`Endpoint.maybe_clear_legacy_api_key/1`), so once
 migrated the credential lives only in the integration row.
@@ -549,8 +550,8 @@ card disappears once an integration is selected and saved.
 
 1. Open **Settings → Integrations** and add an OpenRouter connection if
    one doesn't exist.
-2. Edit the endpoint and select that connection from the
-   `integration_picker`.
+2. Edit the endpoint and select that connection in the connection
+   picker.
 3. Save. The legacy warning stops firing on the next request.
 
 ### Boot-time auto-migrator

@@ -22,6 +22,10 @@ defmodule PhoenixKitAI.Web.EndpointFormConnectionTest do
 
   use PhoenixKitAI.LiveCase
 
+  alias PhoenixKitAI.AIModel
+  alias PhoenixKitAI.Endpoint
+  alias PhoenixKitAI.Web.EndpointForm
+
   @picker "#endpoint-provider-picker"
 
   defp unique(prefix), do: "#{prefix}-#{System.unique_integer([:positive])}"
@@ -305,6 +309,110 @@ defmodule PhoenixKitAI.Web.EndpointFormConnectionTest do
 
       assert has_element?(view, "input[name='endpoint[model]'][value='glm-4.5-air']")
       assert has_element?(view, "input[name='endpoint[temperature]']")
+    end
+  end
+
+  describe "the picker's other branches" do
+    test "a stored connection that no longer exists shows the deleted card, marked missing",
+         %{conn: conn} do
+      endpoint = fixture_endpoint(integration_uuid: "01234567-89ab-7def-8000-000000030003")
+
+      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/#{endpoint.uuid}/edit")
+
+      assert has_element?(view, "#{@picker} [data-deleted-integration]", "Integration deleted")
+      assert has_element?(view, "#{@picker} [data-deleted-integration] [data-missing]", "Missing")
+    end
+
+    test "with no connection the empty state links to the integrations settings", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/new")
+
+      assert has_element?(
+               view,
+               "#{@picker} [data-picker-empty] a[href$='/admin/settings/integrations/new']",
+               "Add one in Settings → Integrations"
+             )
+    end
+
+    test "a card shows the key masked, and a short key fully masked", %{conn: conn} do
+      %{uuid: long} =
+        seed_openrouter_connection(unique("long"),
+          data: %{"api_key" => "sk-abcdefgh12345678wxyz"}
+        )
+
+      %{uuid: short} =
+        seed_openrouter_connection(unique("short"), data: %{"api_key" => "short-key"})
+
+      {:ok, view, html} = live(conn, "/en/admin/ai/endpoints/new")
+
+      assert has_element?(view, card(long), "sk-abcde…wxyz")
+      assert has_element?(view, card(short), "•••")
+      refute html =~ "sk-abcdefgh12345678wxyz"
+      refute html =~ "short-key"
+    end
+
+    test "more than six cards get the search field, six do not", %{conn: conn} do
+      for _ <- 1..6, do: seed_openrouter_connection(unique("six"))
+      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/new")
+      refute has_element?(view, "#endpoint-provider-picker-search")
+
+      seed_openrouter_connection(unique("seventh"))
+      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/new")
+
+      assert has_element?(
+               view,
+               "#endpoint-provider-picker-search[phx-hook=IntegrationPickerSearch][data-picker-id=endpoint-provider-picker]"
+             )
+    end
+
+    test "the cards are a labelled group, each with its provider's icon", %{conn: conn} do
+      %{uuid: uuid} = seed_openrouter_connection(unique("grouped"))
+      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/new")
+
+      assert has_element?(view, "#{@picker} [role=group][aria-label='Connections']")
+      assert has_element?(view, card(uuid) <> " [data-provider-icon]")
+    end
+  end
+
+  describe "the parameters of a model listing none the form knows" do
+    test "are the standard ones, as for a model listing none at all" do
+      keys = fn params ->
+        %AIModel{id: "m", supported_parameters: params}
+        |> EndpointForm.get_supported_params()
+        |> Map.values()
+        |> List.flatten()
+        |> Enum.map(&elem(&1, 0))
+        |> Enum.sort()
+      end
+
+      assert keys.(["tools"]) == keys.([])
+      assert keys.(["tools"]) == ~w(max_tokens stop temperature top_p)
+    end
+  end
+
+  describe "the count of a provider's models" do
+    test "names the provider as the dropdown does, translated with its plural" do
+      label = EndpointForm.models_from_label(11, "mistral", "mistral")
+      assert label == "11 models from #{Endpoint.provider_label("mistral")}"
+
+      assert EndpointForm.models_from_label(1, "mistral", "mistral") =~
+               "1 model from"
+
+      ru =
+        Gettext.with_locale(PhoenixKitAI.Gettext, "ru", fn ->
+          for n <- [1, 3, 11],
+              do: EndpointForm.models_from_label(n, "mistral", "mistral")
+        end)
+
+      name = Endpoint.provider_label("mistral")
+      assert ru == ["#{name}: 1 модель", "#{name}: 3 модели", "#{name}: 11 моделей"]
+    end
+
+    test "a provider's own group is named by its registry label, a vendor group as before" do
+      assert EndpointForm.models_from_label(2, "zai", "zai") ==
+               "2 models from #{Endpoint.provider_label("zai")}"
+
+      assert EndpointForm.models_from_label(2, "anthropic", "openrouter") ==
+               "2 models from Anthropic"
     end
   end
 end

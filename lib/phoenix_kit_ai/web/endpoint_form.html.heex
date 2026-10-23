@@ -708,7 +708,7 @@
                           length(@models_grouped)
                         )
                       }
-                      options={provider_options(@models_grouped)}
+                      options={provider_options(@models_grouped, @current_provider)}
                       phx-change="select_provider"
                       phx-hook="ResetSelect"
                       class="group-has-[select.phx-change-loading]:opacity-60 transition-opacity"
@@ -724,8 +724,10 @@
                     <div class="mt-4">
                       <div class="flex items-center justify-between mb-2">
                         <span class="text-sm text-base-content/70">
-                          {length(@provider_models)} models from {PhoenixKitAI.OpenRouterClient.humanize_provider(
-                            @selected_provider
+                          {PhoenixKitAI.Web.EndpointForm.models_from_label(
+                            length(@provider_models),
+                            @selected_provider,
+                            @current_provider
                           )}
                         </span>
                         <%!-- Only show Clear when there's a provider
