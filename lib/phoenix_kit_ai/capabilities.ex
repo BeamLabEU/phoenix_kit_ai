@@ -27,11 +27,10 @@ defmodule PhoenixKitAI.Capabilities do
       OpenAI-compatible layer, which ignores `response_format`, so
       `json_schema` is `:no` and `json` is `:yes` (the schema is written into
       the prompt instead); `tools` is `:yes`;
-      `capabilities.thinking.types.{enabled,adaptive,disabled}` →
-      `thinking_enabled` / `thinking_adaptive` / `thinking_disabled` (which
-      `thinking: {type: …}` forms the model accepts; the documented
-      catalogue rows show only `enabled` and `adaptive`, so
-      `thinking_disabled` is expected to stay `:unknown`).
+      `capabilities.thinking.types.{enabled,adaptive,disabled,between_tools}` →
+      `thinking_enabled` / `thinking_adaptive` / `thinking_disabled` /
+      `thinking_between_tools` (which `thinking: {type: …}` forms the model
+      accepts).
     * **DeepSeek** (`GET /models`): `image` among `input_modalities` →
       `vision`, `file` among them → `file_input` (absent says nothing),
       `image` among `output_modalities` → `image_output`; `context_window`
@@ -137,6 +136,7 @@ defmodule PhoenixKitAI.Capabilities do
             thinking_disabled: :unknown,
             thinking_enabled: :unknown,
             thinking_adaptive: :unknown,
+            thinking_between_tools: :unknown,
             name: nil,
             prompt_price: nil,
             completion_price: nil,
@@ -158,6 +158,7 @@ defmodule PhoenixKitAI.Capabilities do
           thinking_disabled: flag(),
           thinking_enabled: flag(),
           thinking_adaptive: flag(),
+          thinking_between_tools: flag(),
           name: String.t() | nil,
           prompt_price: float() | nil,
           completion_price: float() | nil,
@@ -467,7 +468,8 @@ defmodule PhoenixKitAI.Capabilities do
       text_output: true,
       thinking_disabled: thinking_type(row["capabilities"], "disabled"),
       thinking_enabled: thinking_type(row["capabilities"], "enabled"),
-      thinking_adaptive: thinking_type(row["capabilities"], "adaptive")
+      thinking_adaptive: thinking_type(row["capabilities"], "adaptive"),
+      thinking_between_tools: thinking_type(row["capabilities"], "between_tools")
     }
   end
 

@@ -851,6 +851,16 @@
                       {gettext("For models like DeepSeek R1, Qwen QwQ that support chain-of-thought reasoning")}
                     </:description>
                   </.checkbox>
+                  <p
+                    :if={is_binary(@current_provider) and
+                      PhoenixKitAI.Endpoint.base_provider(@current_provider) == "anthropic"}
+                    id="anthropic-thinking-note"
+                    class="text-xs opacity-70 mt-2"
+                  >
+                    {gettext(
+                      "Anthropic: on, the model thinks as it does by default (Claude 5 models think); off, thinking is turned off where the model allows it (not on Claude Opus 5.5 or Fable). Anthropic's OpenAI-compatible API ignores the effort level; a token limit is sent only to a model that takes a thinking budget."
+                    )}
+                  </p>
                 </div>
 
                 <%!-- Reasoning Options (shown when enabled) --%>

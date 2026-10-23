@@ -66,6 +66,23 @@ defmodule PhoenixKitAI.RequestRulesTest do
         }
       }
     },
+    # Turned off by `between_tools`, not by `disabled` (Claude Sonnet 5.5).
+    %{
+      "id" => "claude-between-tools",
+      "type" => "model",
+      "capabilities" => %{
+        "image_input" => %{"supported" => true},
+        "thinking" => %{
+          "supported" => true,
+          "types" => %{
+            "enabled" => %{"supported" => false},
+            "adaptive" => %{"supported" => true},
+            "disabled" => %{"supported" => false},
+            "between_tools" => %{"supported" => true}
+          }
+        }
+      }
+    },
     # An older model: a token budget, no adaptive thinking.
     %{
       "id" => "claude-budget-only",
@@ -273,20 +290,24 @@ defmodule PhoenixKitAI.RequestRulesTest do
       assert %Capabilities{thinking_enabled: :yes, thinking_adaptive: :no} =
                Capabilities.for_endpoint(budget)
 
+      # The compatibility layer refuses adaptive thinking and ignores an
+      # effort: the model's default, no thinking field.
       assert {:ok, _} = PhoenixKitAI.ask(adaptive.uuid, "hi")
-      assert %{"thinking" => %{"type" => "adaptive"}} = sent_body()
+      refute Map.has_key?(sent_body(), "thinking")
 
       assert {:ok, _} = PhoenixKitAI.ask(adaptive.uuid, "hi", reasoning_effort: "low")
-      assert %{"thinking" => %{"type" => "adaptive"}} = sent_body()
+      body = sent_body()
+      refute Map.has_key?(body, "thinking")
+      refute Map.has_key?(body, "reasoning")
 
-      # A token budget is a 400 on a model without `enabled`: adaptive instead.
+      # A token budget is a 400 on a model without `enabled`: nothing instead.
       assert {:ok, _} = PhoenixKitAI.ask(adaptive_budget.uuid, "hi")
-      assert %{"thinking" => %{"type" => "adaptive"}} = sent_body()
+      refute Map.has_key?(sent_body(), "thinking")
 
       assert {:ok, _} = PhoenixKitAI.ask(budget.uuid, "hi")
       assert %{"thinking" => %{"type" => "enabled", "budget_tokens" => 2048}} = sent_body()
 
-      # Neither a budget nor adaptive thinking: nothing is sent.
+      # No budget: nothing is sent.
       assert {:ok, _} = PhoenixKitAI.ask(budget_no_value.uuid, "hi")
       refute Map.has_key?(sent_body(), "thinking")
     end
@@ -356,6 +377,21 @@ defmodule PhoenixKitAI.RequestRulesTest do
       body = sent_body()
       refute Map.has_key?(body, "thinking")
       refute Map.has_key?(body, "reasoning")
+    end
+
+    test "thinking off is between_tools on a model that takes that and not disabled" do
+      stub()
+
+      ep =
+        anthropic_endpoint(%{reasoning_enabled: false, model: "claude-between-tools"})
+
+      start_catalogue()
+
+      assert %Capabilities{thinking_disabled: :no, thinking_between_tools: :yes} =
+               Capabilities.for_endpoint(ep)
+
+      assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "hi")
+      assert %{"thinking" => %{"type" => "between_tools"}} = sent_body()
     end
 
     test "other providers keep the endpoint's values and the reasoning object" do

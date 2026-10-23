@@ -26,7 +26,7 @@ msgstr "AI tõlge"
 msgid "AI Translation"
 msgstr "AI tõlge"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:847
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:848
 #: lib/phoenix_kit_ai/web/playground.ex:130
 #: lib/phoenix_kit_ai/web/prompt_form.ex:111
 #, elixir-autogen, elixir-format
@@ -137,7 +137,7 @@ msgstr "Lähtekeelt ei saa tõlkida."
 msgid "Change Model"
 msgstr "Muuda mudelit"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:2366
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:2367
 #, elixir-autogen, elixir-format
 msgid "Chat / Completion"
 msgstr "Vestlus / genereerimine"
@@ -161,8 +161,8 @@ msgstr "Vali mudel allolevast loendist"
 msgid "Clear"
 msgstr "Tühjenda"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:210
 #: lib/phoenix_kit_ai/web/endpoint_form.ex:211
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:212
 #: lib/phoenix_kit_ai/web/endpoint_form.html.heex:411
 #: lib/phoenix_kit_ai/web/endpoint_form.html.heex:412
 #, elixir-autogen, elixir-format
@@ -190,7 +190,7 @@ msgstr "Ühenda"
 msgid "Connect a %{provider} integration above to load available models"
 msgstr "Ühenda ülal %{provider} integratsioon, et laadida saadaolevad mudelid"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:388
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:389
 #: lib/phoenix_kit_ai/web/playground.html.heex:189
 #, elixir-autogen, elixir-format
 msgid "Connected"
@@ -255,7 +255,7 @@ msgstr "Vaikimisi tõlkeprompti genereerimine ebaõnnestus."
 msgid "Could not start translation."
 msgstr "Tõlke käivitamine ebaõnnestus."
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:1019
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:1029
 #, elixir-autogen, elixir-format
 msgid "Create Endpoint"
 msgstr "Loo lõpp-punkt"
@@ -275,7 +275,7 @@ msgstr "Loo esimene prompt"
 msgid "Create Prompt"
 msgstr "Loo prompt"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:762
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:763
 #, elixir-autogen, elixir-format
 msgid "Create a new AI endpoint with provider credentials, model selection, and parameters"
 msgstr "Loo uus AI lõpp-punkt: teenusepakkuja andmed, mudeli valik ja parameetrid"
@@ -300,7 +300,7 @@ msgstr "Loo korduvkasutatavad promptid muutujate asendusega"
 msgid "Create your first AI endpoint to get started."
 msgstr "Alustamiseks loo oma esimene AI lõpp-punkt."
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:315
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:316
 #: lib/phoenix_kit_ai/web/endpoints.ex:58
 #: lib/phoenix_kit_ai/web/prompts.ex:43
 #: lib/phoenix_kit_ai/web/prompts.html.heex:93
@@ -329,7 +329,7 @@ msgstr "Ainult praegune vahekaart (%{lang})"
 msgid "Database Record"
 msgstr "Andmebaasi kirje"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:864
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:874
 #, elixir-autogen, elixir-format
 msgid "Default (medium)"
 msgstr "Vaikimisi (keskmine)"
@@ -364,12 +364,12 @@ msgstr "Vaikimisi hääl"
 msgid "Default translation prompt generated."
 msgstr "Vaikimisi tõlkeprompt genereeritud."
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:1006
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:1016
 #, elixir-autogen, elixir-format
 msgid "Defaults to project_title (%{title}) from"
 msgstr "Vaikimisi project_title (%{title}) allikast"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:981
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:991
 #, elixir-autogen, elixir-format
 msgid "Defaults to site_url from"
 msgstr "Vaikimisi site_url allikast"
@@ -448,7 +448,7 @@ msgstr "Lohista, et muuta järjekorda"
 msgid "Each language is saved automatically the moment it finishes, so it's fine to navigate away or keep editing other fields — nothing will be lost."
 msgstr "Iga keel salvestatakse automaatselt kohe pärast valmimist — võid rahulikult lehelt lahkuda või teisi välju muuta, midagi ei lähe kaduma."
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:684
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:685
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:179
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:334
 #: lib/phoenix_kit_ai/web/prompt_form.ex:73
@@ -458,7 +458,7 @@ msgstr "Iga keel salvestatakse automaatselt kohe pärast valmimist — võid rah
 msgid "Edit"
 msgstr "Muuda"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:863
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:873
 #, elixir-autogen, elixir-format
 msgid "Effort Level"
 msgstr "Pingutuse tase"
@@ -521,7 +521,7 @@ msgid "Endpoint is disabled"
 msgstr "Lõpp-punkt on keelatud"
 
 #: lib/phoenix_kit_ai/errors.ex:36
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:669
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:670
 #: lib/phoenix_kit_ai/web/endpoints.ex:318
 #: lib/phoenix_kit_ai/web/endpoints.ex:340
 #, elixir-autogen, elixir-format
@@ -594,7 +594,7 @@ msgstr "Filtreerib allolevat mudelite loendit. Pildigeneratsiooni lõpp-punkte k
 msgid "Filters the model list below. Text-to-Speech endpoints are called via PhoenixKitAI.speak/3."
 msgstr "Filtreerib allolevat mudelite loendit. Kõnesünteesi lõpp-punkte kutsutakse funktsiooniga PhoenixKitAI.speak/3."
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:986
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:996
 #, elixir-autogen, elixir-format
 msgid "For OpenRouter rankings. Set site_url in"
 msgstr "OpenRouteri edetabelite jaoks. Määra site_url:"
@@ -615,17 +615,17 @@ msgid "Generate Default Prompt"
 msgstr "Genereeri vaikimisi prompt"
 
 #: lib/phoenix_kit_ai/web/endpoint_form.html.heex:800
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:928
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:938
 #, elixir-autogen, elixir-format
 msgid "Generation Parameters"
 msgstr "Genereerimise parameetrid"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:971
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:981
 #, elixir-autogen, elixir-format
 msgid "HTTP Referer"
 msgstr "HTTP Referer"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:893
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:903
 #, elixir-autogen, elixir-format
 msgid "Hide from response"
 msgstr "Peida vastusest"
@@ -635,7 +635,7 @@ msgstr "Peida vastusest"
 msgid "If a variable isn't provided when the prompt is used, it stays as-is in the output (e.g.,"
 msgstr "Kui muutujat prompti kasutamisel ei anta, jääb see väljundisse muutmata kujul (nt"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:2372
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:2373
 #, elixir-autogen, elixir-format
 msgid "Image Generation"
 msgstr "Pildigeneratsioon"
@@ -721,8 +721,8 @@ msgstr "Viimati kasutatud"
 msgid "Latency"
 msgstr "Latentsus"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:984
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:1009
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:994
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:1019
 #, elixir-autogen, elixir-format
 msgid "Leave blank to inherit."
 msgstr "Jäta tühjaks, et pärida väärtus."
@@ -872,7 +872,7 @@ msgid "No integration"
 msgstr "Integratsioon puudub"
 
 #: lib/phoenix_kit_ai/errors.ex:70
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:1632
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:1633
 #, elixir-autogen, elixir-format
 msgid "No integration configured for this endpoint. Set up the API key in Settings → Integrations."
 msgstr "Sellele lõpp-punktile pole integratsiooni seadistatud. Seadista API võti jaotises „Seaded → Integratsioonid“."
@@ -887,7 +887,7 @@ msgstr "Integratsiooni pole valitud. Valimiseks muuda lõpp-punkti."
 msgid "No model selected"
 msgstr "Mudelit pole valitud"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:961
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:971
 #, elixir-autogen, elixir-format
 msgid "No optional settings for this provider."
 msgstr "Sellel teenusepakkujal valikulisi seadeid pole."
@@ -897,7 +897,7 @@ msgstr "Sellel teenusepakkujal valikulisi seadeid pole."
 msgid "No requests match the current filters"
 msgstr "Praeguste filtritega ei sobi ükski päring"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:391
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:392
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:84
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:298
 #: lib/phoenix_kit_ai/web/playground.html.heex:184
@@ -921,7 +921,7 @@ msgstr "Tõlkida pole veel midagi — täida esmalt põhikeele väljad."
 msgid "Nothing to translate."
 msgstr "Tõlkida pole midagi."
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:951
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:961
 #, elixir-autogen, elixir-format
 msgid "Optional Provider Settings"
 msgstr "Valikulised teenusepakkuja seaded"
@@ -961,12 +961,12 @@ msgstr "Vali meeleolu — see teenusepakkuja ei saa kõnet genereerida ilma hä�
 msgid "Pick an integration above to load available models."
 msgstr "Vali ülal integratsioon, et laadida saadaolevad mudelid."
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:957
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:967
 #, elixir-autogen, elixir-format
 msgid "Pick an integration above to see optional provider-specific settings."
 msgstr "Vali ülal integratsioon, et näha teenusepakkujaspetsiifilisi valikulisi seadeid."
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:933
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:943
 #, elixir-autogen, elixir-format
 msgid "Pick an integration above, then a model, to configure generation parameters."
 msgstr "Vali ülal integratsioon ja seejärel mudel, et seadistada genereerimise parameetrid."
@@ -1140,7 +1140,7 @@ msgstr "Korduvkasutatavad promptmallid muutujate asendusega"
 msgid "Select Model"
 msgstr "Vali mudel"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:931
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:941
 #, elixir-autogen, elixir-format
 msgid "Select a model above to configure generation parameters. Available parameters depend on the selected model."
 msgstr "Vali ülal mudel, et seadistada genereerimise parameetrid. Saadaolevad parameetrid sõltuvad valitud mudelist."
@@ -1197,9 +1197,9 @@ msgstr "Saadetakse süsteemse sõnumina enne kasutaja prompti. Toetab ka {{varia
 msgid "Set Model"
 msgstr "Määra mudel"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:983
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:988
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:1008
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:993
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:998
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:1018
 #, elixir-autogen, elixir-format
 msgid "Settings"
 msgstr "Seaded"
@@ -1224,8 +1224,8 @@ msgstr "Kuvatud %{shown} päringut %{total}-st"
 msgid "Slug"
 msgstr "Slug"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:1571
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:1828
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:1572
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:1829
 #: lib/phoenix_kit_ai/web/prompt_form.ex:179
 #, elixir-autogen, elixir-format
 msgid "Something went wrong. Please try again."
@@ -1307,7 +1307,7 @@ msgstr "Süsteemne prompt (valikuline)"
 msgid "Test endpoints and prompts interactively"
 msgstr "Testi lõpp-punkte ja prompte interaktiivselt"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:2368
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:2369
 #, elixir-autogen, elixir-format
 msgid "Text-to-Speech"
 msgstr "Kõnesüntees"
@@ -1318,7 +1318,7 @@ msgstr "Kõnesüntees"
 msgid "Text-to-Speech model"
 msgstr "Kõnesünteesi mudel"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:1644
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:1645
 #, elixir-autogen, elixir-format
 msgid "The %{provider} integration is not connected — requests will fail until you connect it in Settings → Integrations."
 msgstr "%{provider} integratsioon ei ole ühendatud — päringud ebaõnnestuvad, kuni ühendad selle jaotises „Seaded → Integratsioonid“."
@@ -1348,12 +1348,12 @@ msgstr "Integratsiooni viimane valideerimine ebaõnnestus. Uuesti testimiseks av
 msgid "The pinned integration was deleted. Edit the endpoint and select a new one."
 msgstr "Kinnistatud integratsioon on kustutatud. Muuda lõpp-punkti ja vali uus."
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:1621
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:1622
 #, elixir-autogen, elixir-format
 msgid "The selected integration is not connected — requests will fail until you connect it in Settings → Integrations."
 msgstr "Valitud integratsioon ei ole ühendatud — päringud ebaõnnestuvad, kuni ühendad selle jaotises „Seaded → Integratsioonid“."
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:959
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:969
 #, elixir-autogen, elixir-format
 msgid "These settings apply only to OpenRouter."
 msgstr "Need seaded kehtivad ainult OpenRouteri kohta."
@@ -1383,7 +1383,7 @@ msgstr "Ajalõpp"
 msgid "Today"
 msgstr "Täna"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:873
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:883
 #, elixir-autogen, elixir-format
 msgid "Token Limit"
 msgstr "Tokenite piirmäär"
@@ -1491,7 +1491,7 @@ msgstr "Ootamatu viga: %{reason}"
 msgid "Unknown"
 msgstr "Teadmata"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:1019
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:1029
 #, elixir-autogen, elixir-format
 msgid "Update Endpoint"
 msgstr "Uuenda lõpp-punkti"
@@ -1501,7 +1501,7 @@ msgstr "Uuenda lõpp-punkti"
 msgid "Update Prompt"
 msgstr "Uuenda prompti"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:685
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:686
 #, elixir-autogen, elixir-format
 msgid "Update your AI endpoint configuration"
 msgstr "Uuenda oma AI lõpp-punkti seadistust"
@@ -1573,7 +1573,7 @@ msgstr "Muutujad"
 msgid "View"
 msgstr "Vaata"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:884
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:894
 #, elixir-autogen, elixir-format
 msgid "Visibility"
 msgstr "Nähtavus"
@@ -1588,7 +1588,7 @@ msgstr "Hääl"
 msgid "Waiting for response..."
 msgstr "Ootan vastust…"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:998
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:1008
 #, elixir-autogen, elixir-format
 msgid "X-Title"
 msgstr "X-Title"
@@ -1658,7 +1658,7 @@ msgstr "jääb muutmata)."
 msgid "the primary language"
 msgstr "põhikeel"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:989
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:999
 #, elixir-autogen, elixir-format
 msgid "to use it as the default."
 msgstr "et kasutada seda vaikimisi."
@@ -1696,19 +1696,19 @@ msgstr "— mõlemad toimivad"
 msgid "— won't be detected as a variable"
 msgstr "— ei tuvastata muutujana"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:208
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:209
 #: lib/phoenix_kit_ai/web/endpoint_form.html.heex:409
 #: lib/phoenix_kit_ai/web/endpoint_form.html.heex:742
 #, elixir-autogen, elixir-format
 msgid "…"
 msgstr "…"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:1586
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:1587
 #, elixir-autogen, elixir-format
 msgid "Endpoint created successfully"
 msgstr "Lõpp-punkt edukalt loodud"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:1587
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:1588
 #, elixir-autogen, elixir-format
 msgid "Endpoint updated successfully"
 msgstr "Lõpp-punkt edukalt uuendatud"
@@ -1783,7 +1783,7 @@ msgstr[0] "token"
 msgstr[1] "tokenit"
 
 #: lib/phoenix_kit_ai.ex:1110
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:620
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:621
 #: lib/phoenix_kit_ai/web/endpoints.ex:106
 #: lib/phoenix_kit_ai/web/playground.ex:52
 #: lib/phoenix_kit_ai/web/prompt_form.ex:36
@@ -1794,7 +1794,7 @@ msgid "AI"
 msgstr "AI"
 
 #: lib/phoenix_kit_ai.ex:1111
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:756
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:757
 #: lib/phoenix_kit_ai/web/endpoints.ex:80
 #, elixir-autogen, elixir-format
 msgid "Endpoints"
@@ -2194,8 +2194,8 @@ msgstr "Selle otspunkti viimase 24 tunni eelarve on ära kasutatud"
 msgid "You have used your AI allowance for the last 24 hours"
 msgstr "Sinu viimase 24 tunni AI limiit on ära kasutatud"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:623
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:653
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:624
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:654
 #, elixir-autogen, elixir-format
 msgid "New endpoint"
 msgstr "Uus lõpp-punkt"
@@ -2206,7 +2206,7 @@ msgstr "Uus lõpp-punkt"
 msgid "New prompt"
 msgstr "Uus prompt"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:905
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:915
 #, elixir-autogen, elixir-format
 msgid "Advanced Parameters"
 msgstr "Täpsemad parameetrid"
@@ -2286,7 +2286,7 @@ msgstr "Muutujad:"
 msgid "You have made as many AI requests as allowed for the last 24 hours"
 msgstr "Oled viimase 24 tunni jooksul teinud lubatud arvu AI-päringuid"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:2380
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:2381
 #, elixir-autogen, elixir-format
 msgid "%{name} (%{count} model)"
 msgid_plural "%{name} (%{count} models)"
@@ -2384,8 +2384,8 @@ msgstr "Keskmine (~50%)"
 msgid "Minimal (~10%)"
 msgstr "Minimaalne (~10%)"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:1741
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:1947
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:1742
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:1948
 #, elixir-autogen, elixir-format
 msgid "No API key configured"
 msgstr "API võti on seadistamata"
@@ -3318,12 +3318,12 @@ msgstr "Selles ülesandes kasutatud mudelid"
 msgid "Limits per user are set by the task's module"
 msgstr "Kasutaja piirid määrab ülesande moodul"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:367
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:368
 #, elixir-autogen, elixir-format
 msgid "Add one in Settings → Integrations"
 msgstr "Lisage see: Seaded → Integratsioonid"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:389
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:390
 #, elixir-autogen, elixir-format
 msgid "Auth failed"
 msgstr "Autentimine ebaõnnestus"
@@ -3333,27 +3333,27 @@ msgstr "Autentimine ebaõnnestus"
 msgid "Context: unknown"
 msgstr "Kontekst: teadmata"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:346
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:347
 #, elixir-autogen, elixir-format
 msgid "Integration deleted"
 msgstr "Integratsioon on kustutatud"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:365
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:366
 #, elixir-autogen, elixir-format
 msgid "No integrations configured."
 msgstr "Integratsioone pole seadistatud."
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:390
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:391
 #, elixir-autogen, elixir-format
 msgid "Not tested"
 msgstr "Testimata"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:254
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:255
 #, elixir-autogen, elixir-format
 msgid "Search integrations..."
 msgstr "Otsi integratsioone..."
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:350
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:351
 #, elixir-autogen, elixir-format
 msgid "The selected integration no longer exists. Please choose a different one."
 msgstr "Valitud integratsiooni enam ei ole. Valige mõni teine."
@@ -3570,7 +3570,7 @@ msgstr "operaator ei teata võimekusi"
 msgid "Counted from the price entered by hand on the endpoint"
 msgstr "Arvutatud lõpp-punktis käsitsi sisestatud hinna järgi"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:1200
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:1201
 #, elixir-autogen, elixir-format
 msgid "Enter a price in dollars, for example 0.60 — a number from 0 up."
 msgstr "Sisestage hind dollarites, näiteks 0.60 — arv alates 0-st."
@@ -3606,19 +3606,24 @@ msgstr "sisestatud käsitsi"
 msgid "price entered by hand"
 msgstr "hind sisestatud käsitsi"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:2389
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:2390
 #, elixir-autogen, elixir-format
 msgid "%{count} model from %{provider}"
 msgid_plural "%{count} models from %{provider}"
 msgstr[0] "%{provider}: %{count} mudel"
 msgstr[1] "%{provider}: %{count} mudelit"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:262
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:263
 #, elixir-autogen, elixir-format
 msgid "Connections"
 msgstr "Ühendused"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:347
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:348
 #, elixir-autogen, elixir-format
 msgid "Missing"
 msgstr "Puudub"
+
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:860
+#, elixir-autogen, elixir-format
+msgid "Anthropic: on, the model thinks as it does by default (Claude 5 models think); off, thinking is turned off where the model allows it (not on Claude Opus 5.5 or Fable). Anthropic's OpenAI-compatible API ignores the effort level; a token limit is sent only to a model that takes a thinking budget."
+msgstr "Anthropic: sees — mudel mõtleb nagu vaikimisi (Claude 5 mudelid mõtlevad); väljas — mõtlemine lülitatakse välja, kus mudel seda lubab (mitte Claude Opus 5.5 ega Fable puhul). Anthropicu OpenAI-ühilduv API eirab pingutuse taset; tokenite piir saadetakse ainult mudelile, mis võtab mõtlemise eelarve."

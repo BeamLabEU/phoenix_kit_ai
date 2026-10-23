@@ -891,16 +891,22 @@ defmodule PhoenixKitAI.Completion do
   defp anthropic_version(_id), do: nil
 
   # Each `thinking` form is sent only to a model whose catalogue entry says
-  # it accepts it — a form it does not take is a 400 (`budget_tokens` on any
-  # current Claude, `adaptive` before 4.6). Otherwise no `thinking` field is
-  # sent at all, which is what the compatibility layer got before (it
-  # ignores the `reasoning` object) and leaves the model's default.
+  # it accepts it — a form it does not take is a 400. Otherwise no `thinking`
+  # field is sent at all, which leaves the model's default: Claude 5 models
+  # think, earlier ones do not.
   #
-  #   * `enabled: false` → `{"type": "disabled"}` (`thinking_disabled: :yes`);
+  #   * `enabled: false` → `{"type": "disabled"}` (`thinking_disabled: :yes`),
+  #     else `{"type": "between_tools"}` (`thinking_between_tools: :yes`, the
+  #     way Claude Sonnet 5.5 is told not to think); a model that takes
+  #     neither (Claude Opus 5.5) keeps thinking;
   #   * a token budget → `{"type": "enabled", "budget_tokens": n}`
-  #     (`thinking_enabled: :yes`), else adaptive;
-  #   * `enabled: true` or an effort → `{"type": "adaptive"}`
-  #     (`thinking_adaptive: :yes`).
+  #     (`thinking_enabled: :yes`).
+  #
+  # Adaptive thinking and its effort are not sent: the compatibility layer
+  # answers `{"type": "adaptive"}` with a 400 ("not available via the
+  # OpenAI compatibility endpoint") and ignores `reasoning_effort` and
+  # `output_config`. `enabled: true` or an effort alone is the model's
+  # default. (Ported from BeamLabEU/phoenix_kit_ai#47, 8e8c65e.)
   defp anthropic_thinking(%{"reasoning" => reasoning} = body, endpoint) do
     caps = Capabilities.for_endpoint(endpoint)
 
@@ -936,21 +942,20 @@ defmodule PhoenixKitAI.Completion do
       thinking_flag(caps, :thinking_enabled) == :yes
   end
 
-  defp thinking_form(%{"enabled" => false}, caps),
-    do: if(thinking_flag(caps, :thinking_disabled) == :yes, do: %{"type" => "disabled"})
+  defp thinking_form(%{"enabled" => false}, caps) do
+    cond do
+      thinking_flag(caps, :thinking_disabled) == :yes -> %{"type" => "disabled"}
+      thinking_flag(caps, :thinking_between_tools) == :yes -> %{"type" => "between_tools"}
+      true -> nil
+    end
+  end
 
   defp thinking_form(%{"max_tokens" => budget}, caps) when is_integer(budget) do
     if thinking_flag(caps, :thinking_enabled) == :yes,
-      do: %{"type" => "enabled", "budget_tokens" => budget},
-      else: adaptive_form(caps)
+      do: %{"type" => "enabled", "budget_tokens" => budget}
   end
 
-  defp thinking_form(reasoning, caps) do
-    if reasoning["enabled"] == true or is_binary(reasoning["effort"]), do: adaptive_form(caps)
-  end
-
-  defp adaptive_form(caps),
-    do: if(thinking_flag(caps, :thinking_adaptive) == :yes, do: %{"type" => "adaptive"})
+  defp thinking_form(_reasoning, _caps), do: nil
 
   defp thinking_flag(%Capabilities{} = caps, flag), do: Map.fetch!(caps, flag)
   defp thinking_flag(_caps, _flag), do: :unknown

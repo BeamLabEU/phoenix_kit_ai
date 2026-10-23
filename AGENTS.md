@@ -779,11 +779,12 @@ Test database `phoenix_kit_ai_test`.
   counts as newer), and the OpenRouter-shaped reasoning options become `thinking`
   only in a form the model's catalogue lists
   (`capabilities.thinking.types.<type>.supported`): a token budget as
-  `enabled` + `budget_tokens`, else `adaptive`; with neither listed (or
-  the catalogue not read yet) no `thinking` is sent, as before. Anthropic's
-  documented catalogue rows show only `enabled` and `adaptive`, so
-  `reasoning_enabled: false` (`disabled`) is expected to send nothing
-  until a catalogue lists it — check one live `/v1/models` answer.
+  `enabled` + `budget_tokens`; `reasoning_enabled: false` as `disabled`,
+  else `between_tools`; otherwise (thinking on, an effort alone, or the
+  catalogue not read yet) no `thinking` is sent and the model keeps its
+  default. `adaptive` is never sent: the compatibility layer answers it
+  with a 400 and ignores `reasoning_effort` (ported from
+  BeamLabEU/phoenix_kit_ai#47, 8e8c65e).
 - On OpenRouter a call with a hard `:tools`/`:json_schema` need sends
   `provider.require_parameters` — only when the model's parameter list is
   in the capability cache (not before the first catalogue read after a
