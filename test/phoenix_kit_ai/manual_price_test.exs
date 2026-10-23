@@ -342,12 +342,12 @@ defmodule PhoenixKitAI.ManualPriceTest do
   end
 
   describe "money_counted?/2 for a task's needs" do
-    test "a manual price counts for chat, not for a task that reads or makes images" do
+    test "a manual price counts for chat and for reading images, not for making them" do
       priced = endpoint(%{"pricing" => @pricing})
 
       assert TaskLimits.money_counted?(priced, [])
       assert TaskLimits.money_counted?(priced, [:json_schema])
-      refute TaskLimits.money_counted?(priced, [:vision])
+      assert TaskLimits.money_counted?(priced, [:vision])
       refute TaskLimits.money_counted?(priced, [:image_output])
     end
 

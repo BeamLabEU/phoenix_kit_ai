@@ -229,13 +229,19 @@ provider's own (OpenRouter), else a catalogue price, the endpoint's manual
 price (`provider_settings["pricing"]`, set by a holder of `ai.manage`) or
 the built-in Anthropic list price — `PhoenixKitAI.reports_cost?/1` says
 whether an endpoint has one, and the usage row's `metadata.cost_source`
-which one counted; an empty limit is none, `0` allows nothing. Only
-successful calls count — a cached answer is one request — and a refusal is
-an error row like the model check's. At the warn percent (default 80) and
-when a limit is reached, the user and the watchers (`ai_guard_watchers`,
-else every Owner, plus the task's own) get a notification of type
-`"ai_guard"`, once per window; a `Budget` refusal is told once a day, and a
-task whose endpoint's model stops fitting once a day per endpoint.
+which one counted. The vision verbs (`describe_image`, `extract_text`,
+`compare_images`) are priced like chat, for the model the answer names, else
+the call's `model:`, else the endpoint's; making or editing images is priced
+per image or per call and counts only the provider's own cost
+(`TaskLimits.money_counted?/2` says so for a task that needs `:image_output`;
+one that needs `:vision` gets the chat answer). An empty limit is none, `0`
+allows nothing. Only successful calls count — a cached answer is one
+request — and a refusal is an error row like the model check's. At the
+warn percent (default 80) and when a limit is reached, the user and the
+watchers (`ai_guard_watchers`, else every Owner, plus the task's own) get a
+notification of type `"ai_guard"`, once per window; a `Budget` refusal is
+told once a day, and a task whose endpoint's model stops fitting once a day
+per endpoint.
 
 A module that limits each of its users itself declares the task with
 `user_limits: false`: the guard then has only the task's limits for it,

@@ -215,7 +215,13 @@ Repo-local aliases:
   endpoint's model. The table never becomes a catalogue price
   (`Capabilities.prompt_price`), so a manual price corrects it.
   `PhoenixKitAI.reports_cost?/1` says whether any source prices an
-  endpoint's model (`TaskLimits.money_counted?/2` reads it). A manual price
+  endpoint's model (`TaskLimits.money_counted?/2` reads it). Chat,
+  embeddings and the vision verbs (`describe_image` / `extract_text` /
+  `compare_images`, model: the answer's, else the call's `model:`, else the
+  endpoint's) are priced by `CallCost`; a call without tokens gets no cost.
+  Making or editing images (`generate_image` / `edit_image` /
+  `process_image`) is priced per image or per call, so it keeps only the
+  provider's own cost — no manual or table price. A manual price
   names its model (dropped when the model changes), has both halves, at most
   $10 000 per 1M tokens, and setting, changing or removing it needs
   `ai.manage` (the `:scope` option; an Owner always).
@@ -511,7 +517,8 @@ provided the API exposes `<base_url>/chat/completions` and `/models`.
   inputs); `dry_run: true` returns the plan without a request; a safety
   refusal is `{:content_policy, message}`. A prose-only answer is
   `{:error, {:no_image_in_response, text}}`.
-  Logged with tokens, `usage.cost` when reported, image counts and byte
+  Logged with tokens, the cost (vision: `CallCost`, like chat; making or
+  editing images: `usage.cost` when reported), image counts and byte
   sizes, operations and warnings; the image bytes themselves are never
   persisted. **Never send a provider a permanent Storage URL — inline the
   bytes.** `dev_docs/guides/image-processing.md` has the full picture.
@@ -685,7 +692,9 @@ Test database `phoenix_kit_ai_test`.
   tokens, a refusal never counts; money where a call has a cost
   (`PhoenixKitAI.CallCost`: the provider's own, else a catalogue, manual or
   built-in Anthropic price; `TaskLimits.money_counted?/2`, which for a task
-  that reads or makes images counts only the provider's own). Checked in
+  that makes images (`:image_output`) counts only the provider's own, and
+  for one that reads them (`:vision`) is the chat rule — so a caller asking
+  `money_counted?(endpoint, [:vision])` gets the chat answer). Checked in
   `authorize/5` after the model check and before `Budget`; a reached limit
   is `{:error, {:task_limit_exceeded, scope, unit, period}}` with a refusal
   row. Forgiving restarts one scope and period's count from that moment

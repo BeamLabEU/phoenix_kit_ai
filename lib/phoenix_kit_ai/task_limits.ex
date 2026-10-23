@@ -43,9 +43,10 @@ defmodule PhoenixKitAI.TaskLimits do
   so a cached answer (a zero-cost success row) counts as one request and no
   money or tokens. Money is what a row's cost says (`PhoenixKitAI.CallCost`:
   the provider's own cost, else a catalogue, the endpoint's manual or the
-  built-in Anthropic price, `metadata.cost_source`): an endpoint none of
-  them prices (`money_counted?/2`) adds nothing to it, and there requests
-  and tokens are what limits a task.
+  built-in Anthropic price, `metadata.cost_source`; the vision verbs are
+  priced like chat, making or editing images only by the provider's own
+  cost): an endpoint none of them prices (`money_counted?/2`) adds nothing
+  to it, and there requests and tokens are what limits a task.
 
   ## The check
 
@@ -240,20 +241,23 @@ defmodule PhoenixKitAI.TaskLimits do
   end
 
   @doc """
-  Whether the money of a task's calls counts on `endpoint`. For chat (the
-  default, `needs` without images): some source prices its calls
-  (`PhoenixKitAI.reports_cost?/1` — the provider's own cost, a catalogue,
-  manual or built-in price). A task that reads or makes images (`:vision`,
-  `:image_output` among `needs`) may call the image verbs, which only the
-  provider's own cost prices (OpenRouter): a manual or built-in price does
-  not count there. Speech is priced by `PhoenixKitAI.TtsPricing` on other
-  providers too; an endpoint does not say which kind it is.
+  Whether the money of a task's calls counts on `endpoint`. For chat and for
+  a task that reads images (`needs` without `:image_output`; the vision
+  verbs are chat calls with images, priced the same way): some source prices
+  its calls (`PhoenixKitAI.reports_cost?/1` — the provider's own cost, a
+  catalogue, manual or built-in price). A task that makes images
+  (`:image_output` among `needs`) may call the image-making verbs, priced
+  per image or per call, which only the provider's own cost prices
+  (OpenRouter): a manual or built-in price, per token, does not count there.
+  A caller asking for `[:vision]` gets the chat answer. Speech is priced by
+  `PhoenixKitAI.TtsPricing` on other providers too; an endpoint does not say
+  which kind it is.
   """
   @spec money_counted?(Endpoint.t(), [TaskSpec.need()]) :: boolean()
   def money_counted?(endpoint, needs \\ [])
 
   def money_counted?(%Endpoint{provider: provider} = endpoint, needs) when is_binary(provider) do
-    if Enum.any?([:vision, :image_output], &(&1 in needs)),
+    if :image_output in needs,
       do: Endpoint.base_provider(provider) == "openrouter",
       else: PhoenixKitAI.reports_cost?(endpoint)
   end

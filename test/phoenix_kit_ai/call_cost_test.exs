@@ -130,6 +130,16 @@ defmodule PhoenixKitAI.CallCostTest do
                {7_000, %{cost_source: "table"}}
     end
 
+    test "nothing for a call without tokens, unless the provider reported a cost" do
+      ep = endpoint(provider_settings: %{"pricing" => @manual})
+
+      assert CallCost.for_call(ep, "claude-sonnet-5-5", nil, 0, 0) == {nil, %{}}
+      assert CallCost.for_call(ep, "claude-sonnet-5-5", nil, nil, nil) == {nil, %{}}
+
+      assert CallCost.for_call(ep, "claude-sonnet-5-5", 0, 0, 0) ==
+               {0, %{cost_source: "provider"}}
+    end
+
     test "nothing when no source prices the model" do
       ep = endpoint(provider: "zai", base_url: "https://api.z.ai/api/paas/v4", model: "glm-4.6")
       assert CallCost.for_call(ep, "glm-4.6", nil, 1_000, 500) == {nil, %{}}
@@ -213,13 +223,20 @@ defmodule PhoenixKitAI.CallCostTest do
       assert %Request{cost_cents: 7_000, metadata: %{"cost_source" => "table"}} = row(ep)
     end
 
-    test "an answer without usage has no cost, not a priced $0" do
-      for ep <- [endpoint(%{}), endpoint(provider_settings: %{"pricing" => @manual})] do
+    test "an answer without usage, or with an empty one, has no cost, not a priced $0" do
+      for usage <- [nil, %{}],
+          ep <- [endpoint(%{}), endpoint(provider_settings: %{"pricing" => @manual})] do
         Req.Test.stub(__MODULE__, fn conn ->
-          Req.Test.json(conn, %{
-            "model" => "claude-sonnet-5-5",
-            "choices" => [%{"message" => %{"role" => "assistant", "content" => "ok"}}]
-          })
+          Req.Test.json(
+            conn,
+            Map.merge(
+              %{
+                "model" => "claude-sonnet-5-5",
+                "choices" => [%{"message" => %{"role" => "assistant", "content" => "ok"}}]
+              },
+              if(usage, do: %{"usage" => usage}, else: %{})
+            )
+          )
         end)
 
         assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "hi")

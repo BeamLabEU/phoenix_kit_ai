@@ -11,7 +11,12 @@ defmodule PhoenixKitAI.ManualPrice do
   prices gets its `cost_cents` — in micro-dollars too — from it, and its
   usage row says `cost_source: "manual"` (`PhoenixKitAI.CallCost` keeps the
   order of the sources). Money limits and the daily budget then count the
-  call like any other.
+  call like any other. That is chat, embeddings and the vision verbs
+  (`describe_image/3`, `extract_text/3`, `compare_images/4`), for a call
+  sent to the price's model. Making or editing images (`generate_image/3`,
+  `edit_image/4`, `process_image/4`) is priced per image or per call, not
+  per token, so a manual price does not apply there: those calls keep only
+  the provider's own cost.
   """
 
   alias PhoenixKitAI.Endpoint

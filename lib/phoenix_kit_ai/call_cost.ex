@@ -17,7 +17,15 @@ defmodule PhoenixKitAI.CallCost do
   the endpoint's model is tried — so an answer naming an unknown model is
   still counted when the endpoint's model has a price, and a money limit is
   not bypassed by it. The sum is in integers: tokens × micro-dollars per 1M,
-  over a million, rounded.
+  over a million, rounded. A call without tokens (an answer with no usage, or
+  an empty one) says nothing about its size and gets no cost, not a priced $0.
+
+  Chat, embeddings and the vision verbs (`describe_image/3`, `extract_text/3`,
+  `compare_images/4` — chat calls with images; the model sent is the call's
+  `model:`, else the endpoint's) are priced here. Making or editing images
+  (`generate_image/3`, `edit_image/4`, `process_image/4`) is priced per image
+  or per call, which a price per token does not fit: those rows keep only the
+  provider's own cost.
   """
 
   alias PhoenixKitAI.{AnthropicPricing, Capabilities, Completion, Endpoint, ManualPrice}
@@ -30,7 +38,7 @@ defmodule PhoenixKitAI.CallCost do
   A call's `cost_cents` and what its usage row's metadata gets: `reported`
   (the provider's cost, micro-dollars) with `cost_source: "provider"`, else
   the first priced source for `model` then for the endpoint's model, else
-  `{nil, %{}}`.
+  `{nil, %{}}` — and `{nil, %{}}` for a call without tokens.
   """
   @spec for_call(
           Endpoint.t() | map(),
@@ -42,6 +50,10 @@ defmodule PhoenixKitAI.CallCost do
   def for_call(_endpoint, _model, reported, _input_tokens, _output_tokens)
       when is_integer(reported),
       do: {reported, %{cost_source: "provider"}}
+
+  def for_call(_endpoint, _model, nil, input_tokens, output_tokens)
+      when input_tokens in [nil, 0] and output_tokens in [nil, 0],
+      do: {nil, %{}}
 
   def for_call(endpoint, model, nil, input_tokens, output_tokens) do
     input_tokens = input_tokens || 0

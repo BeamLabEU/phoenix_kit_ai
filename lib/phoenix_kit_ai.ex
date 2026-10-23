@@ -1476,7 +1476,9 @@ defmodule PhoenixKitAI do
   manual price (`provider_settings["pricing"]`) or the built-in Anthropic
   rates price its model. Where it is false, money limits and the daily
   budget cannot count the endpoint's calls. The order the sources are tried
-  in is `PhoenixKitAI.CallCost`'s.
+  in is `PhoenixKitAI.CallCost`'s. It speaks for chat, embeddings and the
+  vision verbs; making or editing images counts only the provider's own
+  cost.
   """
   @spec reports_cost?(Endpoint.t()) :: boolean()
   def reports_cost?(%Endpoint{} = endpoint), do: CallCost.reports_cost?(endpoint)
@@ -4249,8 +4251,8 @@ defmodule PhoenixKitAI do
       else: meta
   end
 
-  # One row per image verb (`image`, `image_edit`, `vision`): tokens and
-  # cost when the provider reports them, latency, counts and byte sizes of
+  # One row per image verb (`image`, `image_edit`, `vision`): tokens, the
+  # cost (`image_op_cost/5`), latency, counts and byte sizes of
   # the images — never the image bytes; prompt and any text under the PII
   # gate. `trace` comes from `trace/4`.
   defp log_image_op_request(endpoint, type, prompt, images, result, extra, trace) do
@@ -4273,10 +4275,13 @@ defmodule PhoenixKitAI do
       })
       |> Map.merge(trace_metadata(trace))
 
+    {cost, cost_metadata} = image_op_cost(type, endpoint, result, usage, trace)
+
     metadata =
       base_metadata
       |> maybe_add_content(:input, capture_content, fn -> prompt end)
       |> maybe_add_content(:response, capture_content, fn -> result[:text] end)
+      |> Map.merge(cost_metadata)
 
     create_request(%{
       endpoint_uuid: endpoint.uuid,
@@ -4286,13 +4291,31 @@ defmodule PhoenixKitAI do
       input_tokens: usage[:prompt_tokens] || 0,
       output_tokens: usage[:completion_tokens] || 0,
       total_tokens: usage[:total_tokens] || 0,
-      cost_cents: usage[:cost_cents],
+      cost_cents: cost,
       latency_ms: result[:latency_ms],
       status: "success",
       user_uuid: trace[:user_uuid],
       metadata: metadata
     })
   end
+
+  # A vision call is a chat call with images, priced like one (`CallCost`):
+  # the model the answer names, else the one sent — the call's `model:`,
+  # else the endpoint's (a manual price is its own model's, so it does not
+  # price a call sent to another). Making or editing images is priced per
+  # image or per call, which a price per token does not fit: there only the
+  # provider's own cost counts.
+  defp image_op_cost("vision", endpoint, result, usage, trace) do
+    CallCost.for_call(
+      %{endpoint | model: trace[:model] || endpoint.model},
+      result[:model],
+      usage[:cost_cents],
+      usage[:prompt_tokens],
+      usage[:completion_tokens]
+    )
+  end
+
+  defp image_op_cost(_type, _endpoint, _result, usage, _trace), do: {usage[:cost_cents], %{}}
 
   defp log_failed_image_op_request(endpoint, type, prompt, images, reason, trace) do
     capture_content = capture_request_content?(trace[:capture])
