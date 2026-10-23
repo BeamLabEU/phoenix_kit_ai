@@ -268,11 +268,12 @@ defmodule PhoenixKitAI.Recommendations do
     do: (caps.text_output != false or :image_output in needs) and caps.lifecycle != :retired
 
   # A plain list says nothing about a model, so its ids are the only hint:
-  # an id naming embeddings, speech, transcription or moderation is not a
-  # chat model and is never listed; one naming images (`image`, `dall-e`)
-  # only when the task makes images. A heuristic by name (OpenAI's ids, and
-  # any other plain list's alike), deliberately narrow.
-  @not_chat ~r/(embedding|(^|-)tts(-|$)|whisper|moderation)/i
+  # an id naming embeddings, speech, transcription, realtime or audio
+  # sessions, video (`sora`) or moderation is not a chat model and is never
+  # listed; one naming images (`image`, `dall-e`) only when the task makes
+  # images. A heuristic by name (OpenAI's ids, and any other plain list's
+  # alike), deliberately narrow.
+  @not_chat ~r/(embedding|(^|-)tts(-|$)|whisper|transcribe|realtime|audio|sora|moderation)/i
   @image_model ~r/(image|dall-e)/i
 
   defp plain_listed?(%{kind: :plain}, id, needs) do

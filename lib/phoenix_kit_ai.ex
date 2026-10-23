@@ -1484,6 +1484,14 @@ defmodule PhoenixKitAI do
   @doc """
   Creates a new AI endpoint.
 
+  A manual price in `provider_settings["pricing"]` (`PhoenixKitAI.ManualPrice`:
+  `%{"input" => µ$, "output" => µ$}` per 1M tokens, both halves, stamped with
+  the endpoint's model) steers the money limits, so setting one needs the
+  `:scope` option of a holder of `ai.manage` (an Owner always); without it
+  the call is `{:error, changeset}` with an error on `:provider_settings`.
+  A capability declaration needs the same while only verified models are
+  allowed.
+
   ## Examples
 
       {:ok, endpoint} = PhoenixKitAI.create_endpoint(%{
@@ -1517,6 +1525,15 @@ defmodule PhoenixKitAI do
   Accepts an `:actor_uuid` option so the mutation can be attributed in
   the activity feed. If the change toggles the `enabled` flag an
   additional `endpoint.enabled` / `endpoint.disabled` entry is logged.
+
+  Setting, changing or removing the manual price
+  (`provider_settings["pricing"]`, `PhoenixKitAI.ManualPrice`) needs the
+  `:scope` option of a holder of `ai.manage` (an Owner always); without it
+  the call is `{:error, changeset}` with an error on `:provider_settings`.
+  That includes replacing `provider_settings` wholesale without
+  `"pricing"` on an endpoint that has a price — merge the stored settings
+  instead. A model change drops the old model's price and needs nothing;
+  an update that leaves the price as it is needs nothing either.
   """
   @spec update_endpoint(Endpoint.t(), map(), keyword()) ::
           {:ok, Endpoint.t()} | {:error, Ecto.Changeset.t()}
@@ -4781,14 +4798,7 @@ defmodule PhoenixKitAI do
 
     # The provider's cost, else a catalogue, manual or table price for the
     # model the answer names (`CallCost`).
-    {cost, cost_metadata} =
-      CallCost.for_call(
-        endpoint,
-        response["model"],
-        usage.cost_cents,
-        usage.prompt_tokens,
-        usage.completion_tokens
-      )
+    {cost, cost_metadata} = call_cost(endpoint, response, usage, usage.completion_tokens)
 
     create_request(%{
       endpoint_uuid: endpoint.uuid,
@@ -4896,8 +4906,7 @@ defmodule PhoenixKitAI do
     usage = Completion.extract_usage(response)
     input_count = if is_list(input), do: length(input), else: 1
 
-    {cost, cost_metadata} =
-      CallCost.for_call(endpoint, response["model"], usage.cost_cents, usage.prompt_tokens, 0)
+    {cost, cost_metadata} = call_cost(endpoint, response, usage, 0)
 
     create_request(%{
       endpoint_uuid: endpoint.uuid,
@@ -4924,6 +4933,20 @@ defmodule PhoenixKitAI do
         )
     })
   end
+
+  # A call's cost from `CallCost`. An answer without `usage` says nothing
+  # about the call's size: no cost, rather than a priced $0.
+  defp call_cost(endpoint, %{"usage" => %{}} = response, usage, output_tokens) do
+    CallCost.for_call(
+      endpoint,
+      response["model"],
+      usage.cost_cents,
+      usage.prompt_tokens,
+      output_tokens
+    )
+  end
+
+  defp call_cost(_endpoint, _response, _usage, _output_tokens), do: {nil, %{}}
 
   defp log_failed_embedding_request(endpoint, reason, {source, stacktrace, caller_context, guard}) do
     create_request(%{

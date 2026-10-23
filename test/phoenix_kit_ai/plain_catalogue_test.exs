@@ -193,7 +193,8 @@ defmodule PhoenixKitAI.PlainCatalogueTest do
     test "leave out a plain list's models that do not chat, image models unless images are made" do
       ids =
         ~w(gpt-4o text-embedding-3-small tts-1 gpt-4o-mini-tts whisper-1 omni-moderation-latest
-           dall-e-3 gpt-image-1)
+           dall-e-3 gpt-image-1 gpt-4o-transcribe gpt-4o-realtime-preview gpt-4o-audio-preview
+           sora-2)
 
       catalogue = [
         %{

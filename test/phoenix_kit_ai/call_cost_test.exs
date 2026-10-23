@@ -213,6 +213,22 @@ defmodule PhoenixKitAI.CallCostTest do
       assert %Request{cost_cents: 7_000, metadata: %{"cost_source" => "table"}} = row(ep)
     end
 
+    test "an answer without usage has no cost, not a priced $0" do
+      for ep <- [endpoint(%{}), endpoint(provider_settings: %{"pricing" => @manual})] do
+        Req.Test.stub(__MODULE__, fn conn ->
+          Req.Test.json(conn, %{
+            "model" => "claude-sonnet-5-5",
+            "choices" => [%{"message" => %{"role" => "assistant", "content" => "ok"}}]
+          })
+        end)
+
+        assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "hi")
+
+        assert %Request{cost_cents: nil, metadata: metadata} = row(ep)
+        refute Map.has_key?(metadata, "cost_source")
+      end
+    end
+
     test "a reported cost is the provider's" do
       ep = endpoint(%{})
 
