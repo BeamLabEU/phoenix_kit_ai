@@ -310,7 +310,8 @@ defmodule PhoenixKitAI.Request do
 
   @doc false
   # `answered` where it names another model than `asked`; nil when it is
-  # the same: the same name, the same name with a provider prefix on one
+  # the same: the same name in any letter case (`Qwen/Qwen3-Embedding-8B` /
+  # `qwen/qwen3-embedding-8b`), the same name with a provider prefix on one
   # side only (`gpt-4o` / `openai/gpt-4o`; two different prefixes are two
   # models), or a dated snapshot (`-2024-08-06`, `-20241022`) of an
   # undated name asked for. A snapshot other than the one asked for is
@@ -325,7 +326,7 @@ defmodule PhoenixKitAI.Request do
   @dated ~r/-(?:\d{4}-\d{2}-\d{2}|\d{8})\z/
 
   defp same_model?(asked, answered) when is_binary(asked) do
-    {asked, answered} = unprefixed(asked, answered)
+    {asked, answered} = unprefixed(String.downcase(asked), String.downcase(answered))
     asked == answered or (not (asked =~ @dated) and String.replace(answered, @dated, "") == asked)
   end
 

@@ -631,6 +631,11 @@ defmodule PhoenixKitAI.ProviderErrorTest do
       assert answered("glm-4.5", "z-ai/glm-4.5") == nil
     end
 
+    test "is left out when it differs only in letter case" do
+      assert answered("qwen/qwen3-embedding-8b", "Qwen/Qwen3-Embedding-8B") == nil
+      assert answered("openai/text-embedding-3-small", "Text-Embedding-3-Small") == nil
+    end
+
     test "is kept when the two sides carry different provider prefixes" do
       assert answered("openai/gpt-4o", "azure/gpt-4o") == "azure/gpt-4o"
     end
