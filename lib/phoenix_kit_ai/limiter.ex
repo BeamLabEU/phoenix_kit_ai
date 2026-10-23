@@ -123,8 +123,17 @@ defmodule PhoenixKitAI.Limiter do
   defp endpoint_key(_kind, nil), do: nil
   defp endpoint_key(_kind, value), do: "endpoint:" <> to_string(value)
 
-  defp default_key(endpoint),
-    do: "provider:" <> to_string(Map.get(endpoint, :provider) || "unknown")
+  # The base provider: an endpoint on a named connection (`"openrouter:work"`)
+  # shares `"provider:openrouter"` with the others.
+  defp default_key(endpoint) do
+    case Map.get(endpoint, :provider) do
+      provider when is_binary(provider) and provider != "" ->
+        "provider:" <> PhoenixKitAI.Endpoint.base_provider(provider)
+
+      _ ->
+        "provider:unknown"
+    end
+  end
 
   defp with_slot(key, limit, settings, fun) do
     if Process.whereis(__MODULE__) do

@@ -1048,7 +1048,13 @@ defmodule PhoenixKitAI.Completion do
     if openrouter?(endpoint), do: Map.put(body, "usage", %{"include" => true}), else: body
   end
 
-  defp openrouter?(endpoint), do: Map.get(endpoint, :provider) == "openrouter"
+  # `"openrouter"` or a named OpenRouter connection (`"openrouter:work"`).
+  defp openrouter?(endpoint) do
+    case Map.get(endpoint, :provider) do
+      provider when is_binary(provider) -> Endpoint.base_provider(provider) == "openrouter"
+      _ -> false
+    end
+  end
 
   defp maybe_add(map, _key, nil), do: map
   defp maybe_add(map, _key, []), do: map

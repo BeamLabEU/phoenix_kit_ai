@@ -18,7 +18,9 @@ defmodule PhoenixKitAI.Cache do
     turns that cache off), so a missed broadcast heals itself.
 
   Credentials stay in this ETS table — never in a log line, a message or a
-  broadcast. Only `{:ok, _}` results are cached. Without the module's supervisor
+  broadcast. The table is `:public` (callers fill it), so any process on the
+  node can read it; that is no wider than today, where any process on the
+  node can call `PhoenixKit.Integrations.get_credentials/1` itself. Only `{:ok, _}` results are cached. Without the module's supervisor
   tree (`PhoenixKitAI.children/0`) every lookup goes straight to the source.
   """
   use GenServer

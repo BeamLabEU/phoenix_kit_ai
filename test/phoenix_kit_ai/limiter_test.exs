@@ -55,6 +55,13 @@ defmodule PhoenixKitAI.LimiterTest do
       assert {"provider:openrouter", 8, _} = Limiter.limit_for(@ep, [])
     end
 
+    test "an endpoint on a named connection shares its base provider's key" do
+      Application.put_env(:phoenix_kit_ai, :concurrency, %{"provider:openrouter" => 3})
+
+      assert {"provider:openrouter", 3, _} =
+               Limiter.limit_for(%{@ep | provider: "openrouter:work"}, [])
+    end
+
     test "an endpoint key (name) wins over the provider key" do
       Application.put_env(:phoenix_kit_ai, :concurrency, %{
         "provider:openrouter" => 8,

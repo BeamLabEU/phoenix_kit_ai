@@ -239,6 +239,15 @@ defmodule PhoenixKitAI.DeliveryTest do
       assert row.cost_nanodollars == 250_000_000
     end
 
+    test "an OpenRouter endpoint on a named connection gets both", %{counter: c} do
+      ep = endpoint_fixture("openrouter:default")
+      stub_sequence(c, [])
+      assert {:ok, _} = PhoenixKitAI.complete(ep.uuid, msgs(), models: ["x/y"])
+      assert_receive {:body, body}
+      assert body["usage"] == %{"include" => true}
+      assert body["models"] == ["google/gemini-2.5-flash", "x/y"]
+    end
+
     test "other providers get neither usage nor models", %{counter: c} do
       ep = endpoint_fixture("mistral")
       stub_sequence(c, [])
