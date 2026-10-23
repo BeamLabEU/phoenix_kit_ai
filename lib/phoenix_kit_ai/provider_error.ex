@@ -56,9 +56,13 @@ defmodule PhoenixKitAI.ProviderError do
                        openrouter_key_limit)
   @anthropic_spend_limit ~r/^You have reached your specified (workspace )?API usage limits/
 
-  # Words that look like a credential: a prefixed key (`sk-…`, `xai-…`) or
-  # a long unbroken token.
-  @key_shaped ~r/\b(?:sk|rk|pk|xai|gsk|key)[-_][A-Za-z0-9_\-\*\.]{6,}|[A-Za-z0-9_\-]{32,}/
+  # Words that look like a credential: a prefixed key (`sk-…`, `xai-…`),
+  # an AWS key id, a bearer token, or a long unbroken token with a digit or
+  # both cases in it — a Z.ai `id.secret`, base64, a JWT. A long run of
+  # plain words (`organization_usage_limit_exceeded`, a link) stays.
+  @prefixed_key ~r/\b(?:sk|rk|pk|xai|gsk|key)[-_][A-Za-z0-9_\-\*\.+\/=]{6,}|\bAKIA[0-9A-Z]{16}\b|\bBearer\s+\S+/
+  @long_token ~r/[A-Za-z0-9_\-\.+\/=]{32,}/
+  @code_shape ~r/\A[A-Za-z0-9_.\-]{1,64}\z/
 
   @doc false
   @spec parse(term()) :: map() | nil
@@ -86,7 +90,7 @@ defmodule PhoenixKitAI.ProviderError do
   end
 
   defp money?(status, error) do
-    field(error, ["code"]) in @zai_money or
+    code_string(field(error, ["code"])) in @zai_money or
       field(error, ["code"]) in @openai_money or
       field(error, ["type"]) in ["insufficient_quota", "billing_error"] or
       field(error, ["details", "error_code"]) == "enforced_spend_limit_reached" or
@@ -147,7 +151,7 @@ defmodule PhoenixKitAI.ProviderError do
 
   @doc false
   # The row's `error_message`: the module's text, then the provider's
-  # words unless they only repeat it, then its code.
+  # words unless the text already says them, then its code.
   @spec describe(String.t(), map()) :: String.t()
   def describe(text, note) do
     message = if same_words?(note[:message], text), do: nil, else: note[:message]
@@ -161,15 +165,16 @@ defmodule PhoenixKitAI.ProviderError do
   end
 
   defp same_words?(nil, _text), do: true
-  defp same_words?(message, text), do: plain(message) == plain(text)
+  defp same_words?(message, text), do: String.contains?(plain(text), plain(message))
 
   defp plain(text), do: text |> String.trim_trailing(".") |> String.downcase()
 
   defp drop_retry_after(note, :insufficient_credits), do: Map.delete(note, :retry_after_s)
   defp drop_retry_after(note, _reason), do: note
 
-  # The most specific code the body carries. OpenRouter's numeric `code`
-  # repeats the status and says nothing more.
+  # The most specific code the body carries that reads as a code: a short
+  # token, nothing key-shaped. OpenRouter's numeric `code` repeats the
+  # status and says nothing more.
   defp code(status, error) do
     [
       field(error, ["details", "error_code"]),
@@ -179,18 +184,23 @@ defmodule PhoenixKitAI.ProviderError do
       error["type"]
     ]
     |> Enum.find_value(fn
-      code when is_binary(code) and code != "" -> code
       code when is_integer(code) and code != status -> Integer.to_string(code)
+      code when is_binary(code) -> if code_shaped?(code), do: code
       _ -> nil
     end)
   end
 
+  defp code_shaped?(code), do: code =~ @code_shape and redact(code) == code
+
+  defp code_string(code) when is_integer(code), do: Integer.to_string(code)
+  defp code_string(code), do: code
+
   defp message(%{"message" => message}) when is_binary(message) do
     message
-    |> String.replace(@key_shaped, "[redacted]")
+    |> redact()
     |> String.split()
     |> Enum.join(" ")
-    |> String.slice(0, @max_message)
+    |> cap()
     |> case do
       "" -> nil
       text -> text
@@ -198,6 +208,25 @@ defmodule PhoenixKitAI.ProviderError do
   end
 
   defp message(_error), do: nil
+
+  defp redact(text) do
+    text
+    |> String.replace(@prefixed_key, "[redacted]")
+    |> String.replace(@long_token, fn token ->
+      if token =~ ~r/[0-9]/ or (token =~ ~r/[a-z]/ and token =~ ~r/[A-Z]/),
+        do: "[redacted]",
+        else: token
+    end)
+  end
+
+  # At most @max_message code points, so at most four times as many bytes
+  # however many combining marks one character carries.
+  defp cap(text) do
+    text
+    |> String.codepoints()
+    |> Enum.take(@max_message)
+    |> Enum.join()
+  end
 
   defp field(map, [key]) when is_map(map), do: map[key]
   defp field(map, [key | rest]) when is_map(map), do: field(map[key], rest)

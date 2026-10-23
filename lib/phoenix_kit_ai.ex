@@ -4917,13 +4917,14 @@ defmodule PhoenixKitAI do
   end
 
   # The model the provider says answered, where it is not the one asked
-  # for (a provider may route a request to another model); `model` keeps
-  # the one asked for.
-  defp maybe_put_answered_model(metadata, asked, answered)
-       when is_binary(answered) and answered != "" and answered != asked,
-       do: Map.put(metadata, :answered_model, answered)
-
-  defp maybe_put_answered_model(metadata, _asked, _answered), do: metadata
+  # for (a provider may route a request to another model;
+  # `Request.other_model/2`); `model` keeps the one asked for.
+  defp maybe_put_answered_model(metadata, asked, answered) do
+    case Request.other_model(asked, answered) do
+      nil -> metadata
+      other -> Map.put(metadata, :answered_model, other)
+    end
+  end
 
   defp maybe_add_content(metadata, _key, false, _build),
     do: Map.put(metadata, :content_redacted, true)
@@ -4988,7 +4989,8 @@ defmodule PhoenixKitAI do
             source: source,
             stacktrace: stacktrace,
             caller_context: caller_context
-          },
+          }
+          |> maybe_put_answered_model(endpoint.model, response["model"]),
           Map.merge(guard, cost_metadata)
         )
     })

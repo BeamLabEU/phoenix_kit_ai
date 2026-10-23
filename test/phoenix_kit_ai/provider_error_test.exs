@@ -363,6 +363,187 @@ defmodule PhoenixKitAI.ProviderErrorTest do
     end
   end
 
+  describe "money decided by the body, not the status" do
+    test "Anthropic's billing_error on a 400 is money" do
+      assert class(400, anthropic("billing_error", "Check your payment details")) ==
+               {:error, :insufficient_credits}
+    end
+
+    test "OpenRouter's credits limit_source on a 403 is money" do
+      body = openrouter(403, "No credits", %{"limit_source" => "openrouter_credits"})
+      assert class(403, body) == {:error, :insufficient_credits}
+    end
+
+    test "OpenRouter's payment_required error_type in a 200 body is money" do
+      stub(200, openrouter(500, "Upstream refused", %{"error_type" => "payment_required"}))
+
+      assert {:error, :insufficient_credits} =
+               Completion.chat_completion(endpoint_fixture(), [%{role: "user", content: "hi"}])
+    end
+
+    test "a Z.ai code sent as a number is still money" do
+      assert class(429, zai(1113, "Insufficient balance")) == {:error, :insufficient_credits}
+    end
+  end
+
+  describe "what the provider's body may not put on the row" do
+    defp note_for(body) do
+      stub(429, body)
+      ep = endpoint_fixture()
+      assert {:error, _} = PhoenixKitAI.complete(ep.uuid, [%{role: "user", content: "hi"}])
+      row = row_for(ep)
+      {row.error_message, row.metadata["provider_error"] || %{}}
+    end
+
+    test "a key-shaped code is left out" do
+      key = "sk-live-" <> String.duplicate("A1b2", 10)
+      {text, note} = note_for(%{"error" => %{"code" => key, "message" => "x"}})
+
+      refute Map.has_key?(note, "code")
+      refute text =~ "A1b2"
+    end
+
+    test "an overlong code is left out" do
+      code = String.duplicate("a", 2000)
+      {text, note} = note_for(%{"error" => %{"code" => code, "message" => "x"}})
+
+      refute Map.has_key?(note, "code")
+      assert byte_size(text) < 100
+    end
+
+    test "a code in the other fields goes through the same check" do
+      source = String.duplicate("b", 200)
+      {_text, note} = note_for(openrouter(429, "x", %{"limit_source" => source}))
+      refute Map.has_key?(note, "code")
+    end
+
+    test "a long documented code is kept" do
+      {text, note} =
+        note_for(openai("insufficient_quota", "organization_usage_limit_exceeded", "Limit"))
+
+      assert note["code"] == "organization_usage_limit_exceeded"
+      assert text =~ "(organization_usage_limit_exceeded)"
+    end
+
+    test "a Z.ai key is taken out whole, both halves" do
+      key = "0123456789abcdef0123456789abcdef.Wq2p8B3r5Tz1Xy9K"
+      {text, note} = note_for(zai("1000", "Authentication failed for #{key}"))
+
+      refute note["message"] =~ "0123456789abcdef"
+      refute note["message"] =~ "Wq2p8B3r5Tz1Xy9K"
+      refute text =~ "Wq2p8B3r5Tz1Xy9K"
+    end
+
+    test "base64 and JWT-shaped keys are taken out whole" do
+      message =
+        "AWS AKIAIOSFODNN7EXAMPLE wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY " <>
+          "JWT eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abc"
+
+      {_text, note} = note_for(%{"error" => %{"message" => message}})
+
+      for part <-
+            ~w(AKIAIOSFODNN7EXAMPLE wJalrXUtnFEMI bPxRfiCYEXAMPLEKEY eyJhbGciOiJIUzI1NiJ9 eyJzdWIiOiIxIn0) do
+        refute note["message"] =~ part, part
+      end
+    end
+
+    test "a long unprefixed token is taken out" do
+      token = String.duplicate("q7Z", 14)
+      {_text, note} = note_for(%{"error" => %{"message" => "Token #{token} is wrong"}})
+
+      refute note["message"] =~ token
+      assert note["message"] =~ "Token"
+    end
+
+    test "words and links stay readable" do
+      link = "https://platform.openai.com/settings/organization/billing"
+      {_text, note} = note_for(%{"error" => %{"message" => "Add credits at #{link}"}})
+      assert note["message"] == "Add credits at #{link}"
+    end
+
+    test "the message is capped in bytes too" do
+      bomb = String.duplicate("e" <> String.duplicate("\u0301", 1000), 300)
+      {text, note} = note_for(%{"error" => %{"message" => bomb}})
+
+      assert byte_size(note["message"]) <= 1200
+      assert byte_size(text) <= 1400
+      assert String.valid?(note["message"])
+    end
+  end
+
+  describe "the provider adapters' door (images)" do
+    defp image_endpoint, do: endpoint_fixture(%{provider: "openai", model: "gpt-image-1"})
+
+    test "an image call's row carries the Retry-After" do
+      stub(429, %{}, [{"retry-after", "30"}])
+      ep = image_endpoint()
+
+      assert {:error, :rate_limited} = PhoenixKitAI.generate_image(ep.uuid, "a cat")
+      assert row_for(ep).metadata["provider_error"]["retry_after_s"] == 30
+    end
+
+    test "nothing from an earlier call reaches an image row" do
+      stub(429, zai("1113", "Insufficient balance"))
+
+      assert {:error, :insufficient_credits} =
+               Completion.chat_completion(endpoint_fixture(), [%{role: "user", content: "hi"}])
+
+      stub(429, "")
+      ep = image_endpoint()
+
+      assert {:error, :rate_limited} = PhoenixKitAI.generate_image(ep.uuid, "a cat")
+
+      row = row_for(ep)
+      refute Map.has_key?(row.metadata, "provider_error")
+      assert row.error_message == "Rate limited"
+    end
+
+    test "a content-policy refusal gets a whole note, its words said once" do
+      stub(
+        400,
+        %{
+          "error" => %{
+            "message" => "Your request was rejected by the safety system",
+            "type" => "invalid_request_error",
+            "code" => "content_policy_violation"
+          }
+        },
+        [{"retry-after", "30"}]
+      )
+
+      ep = image_endpoint()
+
+      assert {:error, {:content_policy, _}} = PhoenixKitAI.generate_image(ep.uuid, "a cat")
+
+      row = row_for(ep)
+
+      assert row.metadata["provider_error"] == %{
+               "status" => 400,
+               "code" => "content_policy_violation",
+               "message" => "Your request was rejected by the safety system",
+               "retry_after_s" => 30
+             }
+
+      assert row.error_message ==
+               "The provider refused this content: Your request was rejected by the safety system (content_policy_violation)"
+    end
+  end
+
+  describe "a TTS call's row" do
+    test "keeps the provider's words" do
+      stub(429, zai("1113", "Insufficient balance or no resource package. Please recharge."))
+      ep = endpoint_fixture(%{provider: "mistral", model: "voxtral-mini-tts-2603"})
+
+      assert {:error, :insufficient_credits} = PhoenixKitAI.speak(ep.uuid, "Bonjour")
+
+      row = row_for(ep)
+      assert row.request_type == "tts"
+
+      assert row.error_message ==
+               "Insufficient credits — Insufficient balance or no resource package. Please recharge. (1113)"
+    end
+  end
+
   describe "the answered model" do
     defp answer(model) do
       %{
@@ -373,23 +554,63 @@ defmodule PhoenixKitAI.ProviderErrorTest do
       }
     end
 
-    test "is kept when it differs from the model asked for" do
-      stub(200, answer("glm-5.3-flash"))
-      ep = endpoint_fixture()
-
+    defp answered(asked, answered) do
+      stub(200, answer(answered))
+      ep = endpoint_fixture(%{model: asked})
       assert {:ok, _} = PhoenixKitAI.complete(ep.uuid, [%{role: "user", content: "hi"}])
-
       row = row_for(ep)
-      assert row.model == "glm-4.5"
-      assert row.metadata["answered_model"] == "glm-5.3-flash"
+      assert row.model == asked
+      row.metadata["answered_model"]
+    end
+
+    test "is kept when it differs from the model asked for" do
+      assert answered("glm-4.5", "glm-5.3-flash") == "glm-5.3-flash"
+      assert answered("glm-4.5", "glm-4.5-air") == "glm-4.5-air"
     end
 
     test "is left out when it is the model asked for" do
-      stub(200, answer("glm-4.5"))
-      ep = endpoint_fixture()
+      assert answered("glm-4.5", "glm-4.5") == nil
+    end
 
-      assert {:ok, _} = PhoenixKitAI.complete(ep.uuid, [%{role: "user", content: "hi"}])
-      refute Map.has_key?(row_for(ep).metadata, "answered_model")
+    test "is left out for a dated snapshot of the model asked for" do
+      assert answered("gpt-4o", "gpt-4o-2024-08-06") == nil
+      assert answered("claude-3-5-sonnet", "claude-3-5-sonnet-20241022") == nil
+    end
+
+    test "is left out when only the provider prefix differs" do
+      assert answered("openai/gpt-4o", "gpt-4o") == nil
+    end
+
+    test "an embedding row keeps it too" do
+      stub(200, %{
+        "data" => [%{"embedding" => [0.1]}],
+        "model" => "text-embedding-3-large",
+        "usage" => %{"prompt_tokens" => 5, "total_tokens" => 5}
+      })
+
+      ep = endpoint_fixture(%{model: "openai/text-embedding-3-small"})
+      assert {:ok, _} = PhoenixKitAI.embed(ep.uuid, "hello")
+
+      row = row_for(ep)
+      assert row.model == "openai/text-embedding-3-small"
+      assert row.metadata["answered_model"] == "text-embedding-3-large"
+    end
+
+    test "Request.answered_model/1 reads it back by the same rule" do
+      request = %PhoenixKitAI.Request{model: "gpt-4o", metadata: %{}}
+
+      assert PhoenixKitAI.Request.answered_model(%{
+               request
+               | metadata: %{"answered_model" => "gpt-4o-mini"}
+             }) == "gpt-4o-mini"
+
+      for same <- ["gpt-4o", "gpt-4o-2024-08-06", "openai/gpt-4o", ""] do
+        assert PhoenixKitAI.Request.answered_model(%{
+                 request
+                 | metadata: %{"answered_model" => same}
+               }) == nil,
+               same
+      end
     end
   end
 end

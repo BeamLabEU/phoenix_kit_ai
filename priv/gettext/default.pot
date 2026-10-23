@@ -543,7 +543,7 @@ msgstr ""
 msgid "Enter your prompt template...\n\nUse {{VariableName}} for dynamic content.\n\nExample:\nTranslate the following text to {{Language}}:\n\n{{Text}}"
 msgstr ""
 
-#: lib/phoenix_kit_ai/request.ex:225
+#: lib/phoenix_kit_ai/request.ex:232
 #: lib/phoenix_kit_ai/web/playground.html.heex:458
 #, elixir-autogen, elixir-format
 msgid "Error"
@@ -1271,7 +1271,7 @@ msgstr ""
 msgid "Streaming Voice (xAI)"
 msgstr ""
 
-#: lib/phoenix_kit_ai/request.ex:224
+#: lib/phoenix_kit_ai/request.ex:231
 #, elixir-autogen, elixir-format
 msgid "Success"
 msgstr ""
@@ -1373,7 +1373,7 @@ msgstr ""
 msgid "Time"
 msgstr ""
 
-#: lib/phoenix_kit_ai/request.ex:226
+#: lib/phoenix_kit_ai/request.ex:233
 #, elixir-autogen, elixir-format
 msgid "Timeout"
 msgstr ""
@@ -1486,7 +1486,7 @@ msgstr ""
 msgid "Unexpected error: %{reason}"
 msgstr ""
 
-#: lib/phoenix_kit_ai/request.ex:228
+#: lib/phoenix_kit_ai/request.ex:235
 #, elixir-autogen, elixir-format
 msgid "Unknown"
 msgstr ""
@@ -2580,7 +2580,7 @@ msgstr ""
 msgid "No provider of this model accepts all the request's parameters. Remove the ones it does not support from the endpoint."
 msgstr ""
 
-#: lib/phoenix_kit_ai/request.ex:227
+#: lib/phoenix_kit_ai/request.ex:234
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:699
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:782
 #, elixir-autogen, elixir-format

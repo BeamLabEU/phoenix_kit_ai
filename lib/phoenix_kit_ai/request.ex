@@ -34,6 +34,13 @@ defmodule PhoenixKitAI.Request do
 
   ### Metadata
   - `metadata`: Additional context (temperature, max_tokens, etc.)
+  - `metadata.answered_model`: on chat and embedding rows, the model the
+    provider says answered, where it is not the one asked for in `model`
+    (`answered_model/1`). Image and vision rows record the answered model
+    in `model` itself.
+  - `metadata.provider_error`: on a failed call, what the provider said —
+    `status`, `code`, `message` (trimmed, key-shaped words redacted) and
+    `retry_after_s` for an error that is not about money.
 
   ## Status Types
 
@@ -296,14 +303,30 @@ defmodule PhoenixKitAI.Request do
   is not the one asked for; `nil` otherwise.
   """
   @spec answered_model(t()) :: String.t() | nil
-  def answered_model(%__MODULE__{model: model, metadata: %{} = metadata}) do
-    case metadata["answered_model"] || metadata[:answered_model] do
-      answered when is_binary(answered) and answered != "" and answered != model -> answered
-      _ -> nil
-    end
-  end
+  def answered_model(%__MODULE__{model: model, metadata: %{} = metadata}),
+    do: other_model(model, metadata["answered_model"] || metadata[:answered_model])
 
   def answered_model(_request), do: nil
+
+  @doc false
+  # `answered` where it names another model than `asked` — not the same
+  # name behind a provider prefix (`openai/gpt-4o`) or as a dated snapshot
+  # (`gpt-4o-2024-08-06`, `claude-3-5-sonnet-20241022`); nil otherwise.
+  @spec other_model(String.t() | nil, term()) :: String.t() | nil
+  def other_model(asked, answered) when is_binary(answered) and answered != "" do
+    if base_model(answered) == base_model(asked), do: nil, else: answered
+  end
+
+  def other_model(_asked, _answered), do: nil
+
+  defp base_model(model) when is_binary(model) do
+    model
+    |> String.split("/")
+    |> List.last()
+    |> String.replace(~r/-(?:\d{4}-\d{2}-\d{2}|\d{8})\z/, "")
+  end
+
+  defp base_model(_model), do: nil
 
   @doc """
   Extracts the model name without provider prefix.

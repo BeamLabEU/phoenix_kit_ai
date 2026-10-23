@@ -495,6 +495,36 @@ defmodule PhoenixKitAI.TranslateWorkerFailureLoggingTest do
     end
   end
 
+  describe "a job whose provider is out of money" do
+    setup do
+      :ok = PhoenixKit.ModuleRegistry.register(FakeTranslatableValid)
+      on_exit(fn -> PhoenixKit.ModuleRegistry.unregister(FakeTranslatableValid) end)
+
+      # Z.ai sends a spent balance as a 429 with its own code.
+      Req.Test.stub(__MODULE__, fn conn ->
+        Plug.Conn.send_resp(
+          conn,
+          429,
+          ~s({"error":{"code":"1113","message":"Insufficient balance or no resource package. Please recharge."}})
+        )
+      end)
+
+      ai_fixture()
+    end
+
+    test "is discarded at once: no snooze, no retry", ctx do
+      uuid = Ecto.UUID.generate()
+      type = FakeTranslatableValid.resource_type()
+      :ok = PhoenixKitAI.Translations.subscribe(type, uuid)
+
+      assert {:discard, {:ai_error, :insufficient_credits}} =
+               TranslateWorker.perform(job(type, uuid, ctx, []))
+
+      assert_received {:ai_translation, :translation_failed, payload}
+      assert payload.reason == {"ai_error", "insufficient_credits"}
+    end
+  end
+
   describe "a failure whose reason wraps content" do
     defmodule RejectingAdapter do
       @moduledoc false

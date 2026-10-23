@@ -102,7 +102,9 @@ defmodule PhoenixKitAI.Providers.HTTP do
              ~r/safety|content[ _-]?policy|moderat|blocked|prohibited|violat/i,
              message
            ) do
-      {:error, {:content_policy, message}}
+      result = {:error, {:content_policy, message}}
+      :ok = ProviderError.note(status, ProviderError.parse(text), result)
+      result
     else
       _ -> Completion.handle_error_status(status, text)
     end
