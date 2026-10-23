@@ -137,7 +137,7 @@ msgstr "Can't translate the source language."
 msgid "Change Model"
 msgstr "Change Model"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:2388
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:2418
 #, elixir-autogen, elixir-format
 msgid "Chat / Completion"
 msgstr "Chat / Completion"
@@ -635,7 +635,7 @@ msgstr "Hide from response"
 msgid "If a variable isn't provided when the prompt is used, it stays as-is in the output (e.g.,"
 msgstr "If a variable isn't provided when the prompt is used, it stays as-is in the output (e.g.,"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:2394
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:2424
 #, elixir-autogen, elixir-format
 msgid "Image Generation"
 msgstr "Image Generation"
@@ -872,7 +872,7 @@ msgid "No integration"
 msgstr "No integration"
 
 #: lib/phoenix_kit_ai/errors.ex:70
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:1654
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:1684
 #, elixir-autogen, elixir-format
 msgid "No integration configured for this endpoint. Set up the API key in Settings → Integrations."
 msgstr "No integration configured for this endpoint. Set up the API key in Settings → Integrations."
@@ -1224,8 +1224,8 @@ msgstr "Showing %{shown} of %{total} requests"
 msgid "Slug"
 msgstr "Slug"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:1593
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:1850
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:1623
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:1880
 #: lib/phoenix_kit_ai/web/prompt_form.ex:179
 #, elixir-autogen, elixir-format
 msgid "Something went wrong. Please try again."
@@ -1307,7 +1307,7 @@ msgstr "System Prompt (Optional)"
 msgid "Test endpoints and prompts interactively"
 msgstr "Test endpoints and prompts interactively"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:2390
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:2420
 #, elixir-autogen, elixir-format
 msgid "Text-to-Speech"
 msgstr "Text-to-Speech"
@@ -1318,7 +1318,7 @@ msgstr "Text-to-Speech"
 msgid "Text-to-Speech model"
 msgstr "Text-to-Speech model"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:1666
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:1696
 #, elixir-autogen, elixir-format
 msgid "The %{provider} integration is not connected — requests will fail until you connect it in Settings → Integrations."
 msgstr "The %{provider} integration is not connected — requests will fail until you connect it in Settings → Integrations."
@@ -1348,7 +1348,7 @@ msgstr "The integration's last validation failed. Open it in Settings → Integr
 msgid "The pinned integration was deleted. Edit the endpoint and select a new one."
 msgstr "The pinned integration was deleted. Edit the endpoint and select a new one."
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:1643
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:1673
 #, elixir-autogen, elixir-format
 msgid "The selected integration is not connected — requests will fail until you connect it in Settings → Integrations."
 msgstr "The selected integration is not connected — requests will fail until you connect it in Settings → Integrations."
@@ -1703,12 +1703,12 @@ msgstr "— won't be detected as a variable"
 msgid "…"
 msgstr "…"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:1608
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:1638
 #, elixir-autogen, elixir-format
 msgid "Endpoint created successfully"
 msgstr "Endpoint created successfully"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:1609
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:1639
 #, elixir-autogen, elixir-format
 msgid "Endpoint updated successfully"
 msgstr "Endpoint updated successfully"
@@ -2286,7 +2286,7 @@ msgstr ""
 msgid "You have made as many AI requests as allowed for the last 24 hours"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:2402
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:2432
 #, elixir-autogen, elixir-format
 msgid "%{name} (%{count} model)"
 msgid_plural "%{name} (%{count} models)"
@@ -2384,8 +2384,8 @@ msgstr "Medium (~50%)"
 msgid "Minimal (~10%)"
 msgstr "Minimal (~10%)"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:1763
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:1969
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:1793
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:1999
 #, elixir-autogen, elixir-format
 msgid "No API key configured"
 msgstr "No API key configured"
@@ -3596,7 +3596,7 @@ msgstr "entered by hand"
 msgid "price entered by hand"
 msgstr "price entered by hand"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:2411
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:2441
 #, elixir-autogen, elixir-format
 msgid "%{count} model from %{provider}"
 msgid_plural "%{count} models from %{provider}"

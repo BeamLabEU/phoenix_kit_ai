@@ -8,6 +8,10 @@ defmodule PhoenixKitAI.Web.EndpointFormConnectionTest do
     changes — so the model section opens without a click. An explicit
     choice, a prefilled one and an edited endpoint's stored one are never
     replaced.
+  * The form of a new endpoint follows the dropdown when the connections
+    change under it: the first connection of another provider is added, or
+    the last one of the current provider is removed. An edited endpoint
+    keeps its stored provider.
   * Each connection card is a toggle button whose `aria-pressed` and radio
     mark say whether it is picked; its status badge ("Connected") is a
     separate thing.
@@ -44,6 +48,33 @@ defmodule PhoenixKitAI.Web.EndpointFormConnectionTest do
   end
 
   defp active_connection(view), do: :sys.get_state(view.pid).socket.assigns.active_connection
+
+  defp current_provider(view), do: :sys.get_state(view.pid).socket.assigns.current_provider
+
+  defp form_provider(view) do
+    :sys.get_state(view.pid).socket.assigns.form.source
+    |> Ecto.Changeset.get_field(:provider)
+  end
+
+  defp provider_keys(view) do
+    :sys.get_state(view.pid).socket.assigns.provider_options |> Enum.map(&elem(&1, 1))
+  end
+
+  defp seed_anthropic_connection(name) do
+    {:ok, setting} =
+      PhoenixKit.Settings.update_json_setting_with_module(
+        "integration:anthropic:#{name}",
+        %{
+          "provider" => "anthropic",
+          "name" => name,
+          "auth_type" => "api_key",
+          "status" => "connected"
+        },
+        "integrations"
+      )
+
+    %{uuid: setting.uuid, name: name}
+  end
 
   defp change_provider(view, provider) do
     view
@@ -157,6 +188,88 @@ defmodule PhoenixKitAI.Web.EndpointFormConnectionTest do
 
       assert active_connection(view) == nil
       refute pressed?(view, uuid)
+    end
+  end
+
+  describe "a new endpoint while the connections change" do
+    test "the first connection of another provider moves the form onto it", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/new")
+      # No connection yet: the dropdown offers every provider.
+      assert current_provider(view) == "openrouter"
+      assert "openrouter" in provider_keys(view)
+
+      %{uuid: uuid} = seed_anthropic_connection(unique("anthropic"))
+      send(view.pid, {:integration_connection_added, "anthropic", %{}})
+      _ = render(view)
+
+      assert provider_keys(view) == ["anthropic"]
+      assert current_provider(view) == "anthropic"
+      assert form_provider(view) == "anthropic"
+      assert active_connection(view) == uuid
+      assert pressed?(view, uuid)
+    end
+
+    test "removing the last connection of the current provider moves the form to another",
+         %{conn: conn} do
+      %{uuid: openrouter} = usable(&seed_openrouter_connection/2, "going")
+      %{uuid: mistral} = usable(&seed_mistral_connection/2, "staying")
+
+      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/new")
+      assert current_provider(view) == "openrouter"
+      assert active_connection(view) == openrouter
+
+      view
+      |> element("#ai-endpoint-form")
+      |> render_change(%{
+        "endpoint" => %{"provider" => "openrouter", "name" => "Typed", "model" => "x/y"}
+      })
+
+      :ok = PhoenixKit.Integrations.remove_connection(openrouter)
+      send(view.pid, {:integration_connection_removed, openrouter})
+      _ = render(view)
+
+      assert provider_keys(view) == ["mistral"]
+      assert current_provider(view) == "mistral"
+      assert form_provider(view) == "mistral"
+      assert active_connection(view) == mistral
+
+      # What was typed stays, but not an OpenRouter model id on Mistral.
+      form = :sys.get_state(view.pid).socket.assigns.form.source
+      assert Ecto.Changeset.get_field(form, :name) == "Typed"
+      assert Ecto.Changeset.get_field(form, :model) in [nil, ""]
+    end
+
+    test "a connection added for the provider the form is on changes nothing", %{conn: conn} do
+      usable(&seed_openrouter_connection/2, "first")
+      usable(&seed_openrouter_connection/2, "second")
+      usable(&seed_mistral_connection/2, "mistral")
+
+      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/new")
+      assert current_provider(view) == "openrouter"
+      assert active_connection(view) == nil
+
+      usable(&seed_openrouter_connection/2, "third")
+      send(view.pid, {:integration_connection_added, "openrouter", %{}})
+      _ = render(view)
+
+      assert current_provider(view) == "openrouter"
+      assert active_connection(view) == nil
+    end
+
+    test "an edited endpoint keeps its stored provider when its connection goes away",
+         %{conn: conn} do
+      %{uuid: uuid} = usable(&seed_openrouter_connection/2, "stored")
+      usable(&seed_mistral_connection/2, "other")
+      endpoint = fixture_endpoint(%{provider: "openrouter", integration_uuid: uuid})
+
+      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/#{endpoint.uuid}/edit")
+
+      :ok = PhoenixKit.Integrations.remove_connection(uuid)
+      send(view.pid, {:integration_connection_removed, uuid})
+      _ = render(view)
+
+      assert current_provider(view) == "openrouter"
+      assert form_provider(view) == "openrouter"
     end
   end
 

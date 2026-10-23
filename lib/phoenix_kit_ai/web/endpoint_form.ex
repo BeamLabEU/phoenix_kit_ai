@@ -1429,7 +1429,37 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     |> assign(:selected_uuids, selected_uuids)
     |> assign(:integration_connected, connected)
     |> refresh_provider_options(connections)
+    |> follow_offered_provider(connections)
   end
+
+  # A new endpoint starts on a provider the dropdown offers (`load_endpoint/3`),
+  # but the connections can change while the form is open: the first one of
+  # another provider is added, or the last one of the current provider is
+  # removed. The dropdown then offers only other providers and shows one of
+  # them while the form, the picker and the model fetch still mean the old
+  # one — and with a single provider offered the select cannot be changed to
+  # correct it. The form follows the dropdown as if the person had chosen it,
+  # keeping what they typed. An edited endpoint keeps its stored provider.
+  defp follow_offered_provider(%{assigns: %{endpoint: nil}} = socket, connections) do
+    current = socket.assigns.current_provider
+
+    case new_endpoint_provider(current, connections) do
+      ^current ->
+        socket
+
+      provider ->
+        typed = socket.assigns.form.params || %{}
+
+        {params, socket} =
+          maybe_handle_provider_change(Map.put(typed, "provider", provider), socket)
+
+        socket
+        |> assign(:form, to_form(AI.change_endpoint(%Endpoint{}, params)))
+        |> assign(:current_provider, provider)
+    end
+  end
+
+  defp follow_offered_provider(socket, _connections), do: socket
 
   # A validation or model fetch in flight for a connection that has just
   # gone away will be dropped by the uuid guards when it lands, so the
