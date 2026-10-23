@@ -10,8 +10,9 @@ defmodule PhoenixKitAI.TaskLimits do
   | `:task` | every call of the task, with a user or without |
   | `:user` | the calls of one user in the task |
 
-  Units: `:money` (micro-dollars, `$1 = 1_000_000`, the unit of the journal's
-  `cost_cents`), `:requests`, `:tokens`. Periods: `:day`, `:month` — the
+  Units: `:money` (micro-dollars, `$1 = 1_000_000`; the journal's
+  `cost_nanodollars` are summed and turned into micro-dollars,
+  `PhoenixKitAI.Money`), `:requests`, `:tokens`. Periods: `:day`, `:month` — the
   calendar day and month of the site time zone (Settings → `time_zone`,
   `PhoenixKit.Utils.TimeZone`), each from its local midnight to the next.
 
@@ -39,7 +40,7 @@ defmodule PhoenixKitAI.TaskLimits do
   The task's rows of the journal (`phoenix_kit_ai_requests`,
   `metadata->>'task'`), successful ones only (`status = 'success'`): a failed
   call costs nothing and a refusal is an error row, so neither counts. Money
-  is the `cost_cents` sum, tokens the `total_tokens` sum, requests the rows —
+  is the `cost_nanodollars` sum (in micro-dollars), tokens the `total_tokens` sum, requests the rows —
   so a cached answer (a zero-cost success row) counts as one request and no
   money or tokens. Money is what a row's cost says (`PhoenixKitAI.CallCost`:
   the provider's own cost, else a catalogue, the endpoint's manual or the
@@ -99,7 +100,7 @@ defmodule PhoenixKitAI.TaskLimits do
   alias PhoenixKit.Settings
   alias PhoenixKit.Users.Auth.User
   alias PhoenixKit.Utils.TimeZone
-  alias PhoenixKitAI.{Endpoint, Guard, GuardEvent, GuardEvents, Request}
+  alias PhoenixKitAI.{Endpoint, Guard, GuardEvent, GuardEvents, Money, Request}
   alias PhoenixKitAI.{Tasks, TaskSetting, TaskSpec, TaskUserLimit}
 
   @scopes [:task, :user]
@@ -451,8 +452,8 @@ defmodule PhoenixKitAI.TaskLimits do
     Map.new(@units, fn unit ->
       {unit,
        %{
-         day: to_int(totals && totals[:"day_#{unit}"]),
-         month: to_int(totals && totals[:"month_#{unit}"])
+         day: total(unit, totals && totals[:"day_#{unit}"]),
+         month: total(unit, totals && totals[:"month_#{unit}"])
        }}
     end)
   end
@@ -468,12 +469,15 @@ defmodule PhoenixKitAI.TaskLimits do
             r.inserted_at >= ^lower and r.inserted_at < ^month_to,
         select: %{
           day_money:
-            filter(sum(r.cost_cents), r.inserted_at >= ^day_from and r.inserted_at < ^day_to),
+            filter(
+              sum(r.cost_nanodollars),
+              r.inserted_at >= ^day_from and r.inserted_at < ^day_to
+            ),
           day_requests:
             filter(count(r.uuid), r.inserted_at >= ^day_from and r.inserted_at < ^day_to),
           day_tokens:
             filter(sum(r.total_tokens), r.inserted_at >= ^day_from and r.inserted_at < ^day_to),
-          month_money: filter(sum(r.cost_cents), r.inserted_at >= ^month_from),
+          month_money: filter(sum(r.cost_nanodollars), r.inserted_at >= ^month_from),
           month_requests: filter(count(r.uuid), r.inserted_at >= ^month_from),
           month_tokens: filter(sum(r.total_tokens), r.inserted_at >= ^month_from)
         }
@@ -528,6 +532,10 @@ defmodule PhoenixKitAI.TaskLimits do
     do: if(value in allowed, do: {:ok, value}, else: :error)
 
   defp known(_value, _allowed), do: :error
+
+  # The journal's money is nanodollars; a limit is micro-dollars (`Money`).
+  defp total(:money, value), do: value |> to_int() |> Money.nano_to_micro()
+  defp total(_unit, value), do: to_int(value)
 
   defp to_int(nil), do: 0
   defp to_int(%Decimal{} = value), do: value |> Decimal.round(0) |> Decimal.to_integer()

@@ -4,8 +4,9 @@ defmodule PhoenixKitAI.Budget do
 
   Usage rows already carry cost, endpoint and user; a cap is a sum over
   the trailing day plus a refusal. Three scopes, each a module setting in
-  the unit of the `cost_cents` column (millionths of a dollar — the module
-  calls them nanodollars; `1_000_000` = $1) where `0` means no cap:
+  micro-dollars (millionths of a dollar; `1_000_000` = $1) where `0` means
+  no cap. The journal's `cost_nanodollars` are summed and the sum turned into
+  micro-dollars before it meets a cap (`PhoenixKitAI.Money`):
 
   | setting | scope |
   |---|---|
@@ -29,7 +30,7 @@ defmodule PhoenixKitAI.Budget do
   `[:phoenix_kit_ai, :budget, :warning]` telemetry event fire once per
   crossing per scope (the flag clears when spend drops back under the
   line). Its `spent` / `limit` measurements are in the scope's unit:
-  nanodollars, or a call count for `:user_calls` — check the `scope`
+  micro-dollars, or a call count for `:user_calls` — check the `scope`
   metadata before adding them up.
 
   Once a cap is reached every verb returns `{:error, {:budget_exceeded,
@@ -52,7 +53,7 @@ defmodule PhoenixKitAI.Budget do
 
   require Logger
 
-  alias PhoenixKitAI.{Endpoint, Request}
+  alias PhoenixKitAI.{Endpoint, Money, Request}
 
   @scopes [:global, :endpoint, :user, :user_calls]
   @user_scopes [:user, :user_calls]
@@ -214,7 +215,7 @@ defmodule PhoenixKitAI.Budget do
     query =
       from(r in Request,
         where: r.inserted_at >= ^since and r.status == "success",
-        select: coalesce(sum(r.cost_cents), 0)
+        select: coalesce(sum(r.cost_nanodollars), 0)
       )
 
     query =
@@ -224,14 +225,16 @@ defmodule PhoenixKitAI.Budget do
         :user -> where(query, [r], r.user_uuid == ^user_uuid)
       end
 
-    # `sum(integer)` is a bigint on Postgres; the Decimal clause covers
-    # other adapters.
-    case PhoenixKit.RepoHelper.repo().one(query) do
-      %Decimal{} = decimal -> decimal |> Decimal.round(0) |> Decimal.to_integer()
-      value when is_integer(value) -> value
-      value when is_float(value) -> round(value)
-      _ -> 0
-    end
+    # `sum(bigint)` is a numeric on Postgres, read as a Decimal.
+    nanodollars =
+      case PhoenixKit.RepoHelper.repo().one(query) do
+        %Decimal{} = decimal -> decimal |> Decimal.round(0) |> Decimal.to_integer()
+        value when is_integer(value) -> value
+        value when is_float(value) -> round(value)
+        _ -> 0
+      end
+
+    Money.nano_to_micro(nanodollars)
   end
 
   # Warn once per crossing: the flag is an ETS row per scope key and clears
@@ -246,7 +249,7 @@ defmodule PhoenixKitAI.Budget do
       over? and not warned? ->
         :ets.insert(table, {key, true})
 
-        unit = if scope == :user_calls, do: "calls", else: "nanodollars"
+        unit = if scope == :user_calls, do: "calls", else: "micro-dollars"
 
         Logger.warning(
           "[PhoenixKitAI] budget #{scope} at #{div(spent * 100, max(limit, 1))}% (#{spent} of #{limit} #{unit} in 24h)"

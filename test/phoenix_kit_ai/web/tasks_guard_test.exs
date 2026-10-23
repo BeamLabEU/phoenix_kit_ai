@@ -280,7 +280,7 @@ defmodule PhoenixKitAI.Web.TasksGuardTest do
         request_type: "chat",
         status: "success",
         total_tokens: 42,
-        cost_cents: 0,
+        cost_nanodollars: 0,
         metadata: %{"task" => "test.limited"},
         inserted_at: now,
         updated_at: now

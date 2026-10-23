@@ -59,7 +59,7 @@ defmodule PhoenixKitAI.TaskUserLimitsOffTest do
       input_tokens: 0,
       output_tokens: 0,
       total_tokens: 10,
-      cost_cents: 1_000,
+      cost_nanodollars: 1_000_000,
       latency_ms: 1,
       user_uuid: user_uuid,
       metadata: %{"task" => @key},

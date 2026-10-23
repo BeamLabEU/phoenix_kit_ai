@@ -8,7 +8,7 @@ defmodule PhoenixKitAI.ManualPrice do
   price when the endpoint's model changes (like a capability declaration).
 
   A call whose provider reports no `usage.cost` and whose model no catalogue
-  prices gets its `cost_cents` — in micro-dollars too — from it, and its
+  prices gets its `cost_nanodollars` from it (`cost/3`), and its
   usage row says `cost_source: "manual"` (`PhoenixKitAI.CallCost` keeps the
   order of the sources). Money limits and the daily budget then count the
   call like any other. That is chat, embeddings and the vision verbs
@@ -47,8 +47,9 @@ defmodule PhoenixKitAI.ManualPrice do
   def get(_endpoint), do: nil
 
   @doc """
-  The cost of a call in micro-dollars: `input_tokens × input + output_tokens
-  × output`, over a million, rounded — in integers. nil when a price the
+  The cost of a call in nanodollars: `input_tokens × input + output_tokens
+  × output` (micro-dollars per 1M tokens), over a thousand, rounded — in
+  integers, so a call of a few tokens at a cheap price is not `0`. nil when a price the
   tokens need is missing (no price at all, or an output price for a call
   with output).
   """
@@ -58,7 +59,8 @@ defmodule PhoenixKitAI.ManualPrice do
   def cost(pricing, input_tokens, output_tokens) do
     with {:ok, input} <- part(pricing["input"], input_tokens),
          {:ok, output} <- part(pricing["output"], output_tokens) do
-      div(input + output + 500_000, 1_000_000)
+      # µ$ per 1M tokens × tokens is µ$ × 10⁻⁶, which is n$ × 10⁻³
+      div(input + output + 500, 1_000)
     else
       :missing -> nil
     end

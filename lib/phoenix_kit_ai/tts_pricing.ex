@@ -1,8 +1,8 @@
 defmodule PhoenixKitAI.TtsPricing do
   @moduledoc """
   Estimated per-request cost for a completed TTS request, in nanodollars
-  (1/1,000,000 of a dollar — the same unit `Request.cost_cents` already uses for
-  chat/embeddings, despite the field's legacy name).
+  (billionths of a dollar — the unit of `Request.cost_nanodollars`, as for
+  chat/embeddings).
 
   No TTS provider self-reports cost the way OpenRouter's chat completions do (there's
   no `usage` object at all in an `/audio/speech` or xAI `/tts` response) — so unlike
@@ -35,16 +35,16 @@ defmodule PhoenixKitAI.TtsPricing do
 
   alias PhoenixKitAI.Endpoint
 
-  # nanodollars/char = (dollars per 1M chars) since 1M chars * (rate/1M) dollars,
-  # and nanodollars = dollars * 1_000_000 — the two 1,000,000s cancel.
+  # nanodollars/char = (dollars per 1M chars) * 1_000: a char costs rate/1M dollars,
+  # and a dollar is 1_000_000_000 nanodollars.
   @per_char_nanodollars_by_provider %{
-    "mistral" => 16,
-    "xai" => 15
+    "mistral" => 16_000,
+    "xai" => 15_000
   }
 
-  # Blended input+output estimate — see moduledoc. 1_000_000 nanodollars = $1, so
-  # $0.015/min = 15_000 nanodollars/min.
-  @openai_nanodollars_per_minute 15_000
+  # Blended input+output estimate — see moduledoc. 1_000_000_000 nanodollars = $1, so
+  # $0.015/min = 15_000_000 nanodollars/min.
+  @openai_nanodollars_per_minute 15_000_000
 
   # This package's own TTS output is always MP3 (the only `response_format` any
   # caller currently requests) at 128kbps — used only to back out a duration

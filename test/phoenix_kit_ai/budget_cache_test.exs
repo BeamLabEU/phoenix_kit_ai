@@ -93,7 +93,8 @@ defmodule PhoenixKitAI.BudgetCacheTest do
 
       assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "q1")
       assert_received :provider_called
-      # 0.5 USD = 500_000 nanodollars spent; one more call is still allowed …
+
+      # 0.5 USD spent = 500_000 micro-dollars, the unit of a cap; one more call is still allowed …
       assert [%{scope: :global, spent: 500_000, remaining: 500_000}] = Budget.status(ep, [])
       assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "q2")
       assert_received :provider_called
@@ -108,7 +109,10 @@ defmodule PhoenixKitAI.BudgetCacheTest do
       {refused, paid} = Enum.split_with(rows(ep), &(&1.metadata["refused"] == true))
       assert [%{status: "success"}, %{status: "success"}] = paid
 
-      assert [%{status: "error", cost_cents: nil}, %{status: "error", cost_cents: nil}] =
+      assert [
+               %{status: "error", cost_nanodollars: nil},
+               %{status: "error", cost_nanodollars: nil}
+             ] =
                refused
     end
 
@@ -139,7 +143,7 @@ defmodule PhoenixKitAI.BudgetCacheTest do
           endpoint_name: ep.name,
           model: ep.model,
           request_type: "chat",
-          cost_cents: 5_000_000,
+          cost_nanodollars: 5_000_000_000,
           status: status,
           inserted_at: inserted_at,
           updated_at: inserted_at
@@ -149,6 +153,33 @@ defmodule PhoenixKitAI.BudgetCacheTest do
       assert [%{spent: 0}] = Budget.status(ep, [])
       assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "still allowed")
       assert_received :provider_called
+    end
+
+    test "calls cheaper than a micro-dollar add up toward a cap", %{endpoint: ep} do
+      # A cap is micro-dollars; the journal is nanodollars. Each row alone
+      # would round to 0 micro-dollars, the 2 000 of them are $0.0012.
+      {:ok, _} = Budget.set_limit(:global, 1)
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      TestRepo.insert_all(
+        Request,
+        for _ <- 1..2_000 do
+          %{
+            uuid: UUIDv7.generate(),
+            endpoint_uuid: ep.uuid,
+            endpoint_name: ep.name,
+            model: ep.model,
+            request_type: "embedding",
+            cost_nanodollars: 600,
+            status: "success",
+            inserted_at: now,
+            updated_at: now
+          }
+        end
+      )
+
+      assert [%{scope: :global, spent: 1_200, limit: 1}] = Budget.status(ep, [])
+      assert {:error, {:budget_exceeded, :global}} = PhoenixKitAI.ask(ep.uuid, "q")
     end
 
     test "per-user and per-endpoint caps scope correctly", %{endpoint: ep} do
@@ -278,14 +309,15 @@ defmodule PhoenixKitAI.BudgetCacheTest do
       assert_received {:event, [:phoenix_kit_ai, :cache, :hit], _, meta}
       assert meta == %{verb: :complete, endpoint_uuid: ep.uuid}
 
-      assert {[%{cost_cents: 500_000, metadata: %{"source" => "A"}}],
-              [%{cost_cents: 0, metadata: %{"cached" => true, "source" => "B"}}]} =
+      assert {[%{cost_nanodollars: 500_000_000, metadata: %{"source" => "A"}}],
+              [%{cost_nanodollars: 0, metadata: %{"cached" => true, "source" => "B"}}]} =
                fresh_and_cached(ep)
 
-      assert_received {:event, [:phoenix_kit_ai, :request], %{cost_cents: 500_000},
+      assert_received {:event, [:phoenix_kit_ai, :request], %{cost_nanodollars: 500_000_000},
                        %{cached: false, request_type: "chat"}}
 
-      assert_received {:event, [:phoenix_kit_ai, :request], %{cost_cents: 0}, %{cached: true}}
+      assert_received {:event, [:phoenix_kit_ai, :request], %{cost_nanodollars: 0},
+                       %{cached: true}}
 
       # A different prompt, a different option, or :refresh all call the provider.
       assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "other question", cache: true)
@@ -471,7 +503,7 @@ defmodule PhoenixKitAI.BudgetCacheTest do
                 %{
                   user_uuid: ^user_b,
                   prompt_uuid: puuid,
-                  cost_cents: 0,
+                  cost_nanodollars: 0,
                   metadata: %{
                     "cached" => true,
                     "prompt_snapshot" => %{"hash" => hash},
@@ -497,7 +529,7 @@ defmodule PhoenixKitAI.BudgetCacheTest do
       assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "q", user_uuid: user)
       assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "q")
 
-      assert %{total_requests: 1, total_cost_cents: 500_000} =
+      assert %{total_requests: 1, total_cost_nanodollars: 500_000_000} =
                PhoenixKitAI.get_usage_stats(user_uuid: user, endpoint_uuid: ep.uuid)
 
       assert %{total_requests: 0} =

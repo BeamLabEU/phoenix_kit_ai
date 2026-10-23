@@ -487,10 +487,10 @@
                   <.icon name="hero-calculator" class="w-3 h-3 inline" />
                   {PhoenixKitAI.Request.format_tokens(@response_usage.total_tokens)} {gettext("total")}
                 </span>
-                <%= if @response_usage.cost_cents do %>
+                <%= if @response_usage.cost_nanodollars do %>
                   <span>
                     <.icon name="hero-currency-dollar" class="w-3 h-3 inline" />
-                    {PhoenixKitAI.Request.format_cost(@response_usage.cost_cents)}
+                    {PhoenixKitAI.Request.format_cost(@response_usage.cost_nanodollars)}
                   </span>
                 <% end %>
               </div>

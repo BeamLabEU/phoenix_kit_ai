@@ -132,8 +132,9 @@ answer against the schema locally — check the keys you depend on.
 ### Spend caps and the request cache
 
 ```elixir
-# Settings in the unit of cost_cents: millionths of a dollar, 1_000_000 = $1
-# ("nanodollars" in the module's own vocabulary); trailing 24 hours; 0 = no cap
+# Caps in micro-dollars (millionths of a dollar, 1_000_000 = $1); trailing
+# 24 hours; 0 = no cap. The usage rows' cost_nanodollars are summed and the
+# sum compared in micro-dollars (PhoenixKitAI.Money).
 PhoenixKitAI.Budget.set_limit(:global, 5_000_000)   # $5 per rolling day for the whole install
 PhoenixKitAI.Budget.set_limit(:user, 100_000)       # $0.10 per rolling day per user_uuid
 
@@ -351,7 +352,7 @@ files: results come back as bytes for the caller to keep.
 
 # Usage statistics (cost in nanodollars)
 usage = PhoenixKitAI.extract_usage(response)
-# => %{prompt_tokens: 10, completion_tokens: 15, total_tokens: 25, cost_cents: 30}
+# => %{prompt_tokens: 10, completion_tokens: 15, total_tokens: 25, cost_nanodollars: 30_000}
 
 # Full response includes latency
 response["latency_ms"] # => 850
@@ -709,12 +710,14 @@ end
 
 ## Cost tracking
 
-Costs are stored in **nanodollars** (1/1,000,000 of a dollar) to
-preserve precision for cheap calls.
+Costs are stored in **nanodollars** (billionths of a dollar, column
+`cost_nanodollars`) so cheap calls keep their cost: a short embedding at
+$0.00000004 is `40`.
 
 ```elixir
-PhoenixKitAI.Request.format_cost(30)         # => "$0.000030"
-PhoenixKitAI.Request.format_cost(1_500_000)  # => "$1.50"
+PhoenixKitAI.Request.format_cost(40)             # => "$0.000000040"
+PhoenixKitAI.Request.format_cost(30_000)         # => "$0.000030"
+PhoenixKitAI.Request.format_cost(1_500_000_000)  # => "$1.50"
 ```
 
 `format_cost/1` tiers decimal precision: 2 decimals above $0.01,

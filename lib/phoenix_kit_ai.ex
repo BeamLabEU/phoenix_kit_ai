@@ -1319,7 +1319,10 @@ defmodule PhoenixKitAI do
       from(r in Request,
         where: not is_nil(r.endpoint_uuid),
         group_by: r.endpoint_uuid,
-        select: %{endpoint_uuid: r.endpoint_uuid, total: coalesce(sum(r.cost_cents), 0)}
+        select: %{
+          endpoint_uuid: r.endpoint_uuid,
+          total: type(coalesce(sum(r.cost_nanodollars), 0), :integer)
+        }
       )
 
     from(e in query,
@@ -1371,7 +1374,7 @@ defmodule PhoenixKitAI do
           %{
             request_count: count(),
             total_tokens: coalesce(sum(r.total_tokens), 0),
-            total_cost: coalesce(sum(r.cost_cents), 0),
+            total_cost: type(coalesce(sum(r.cost_nanodollars), 0), :integer),
             last_used_at: max(r.inserted_at)
           }
         }
@@ -2509,7 +2512,7 @@ defmodule PhoenixKitAI do
               :model,
               :total_tokens,
               :latency_ms,
-              :cost_cents,
+              :cost_nanodollars,
               :status,
               :endpoint_name
             ] do
@@ -2782,7 +2785,7 @@ defmodule PhoenixKitAI do
       %{
         input_tokens: request.input_tokens || 0,
         output_tokens: request.output_tokens || 0,
-        cost_cents: request.cost_cents || 0,
+        cost_nanodollars: request.cost_nanodollars || 0,
         latency_ms: request.latency_ms || 0
       },
       %{
@@ -3110,7 +3113,7 @@ defmodule PhoenixKitAI do
           input_tokens: 0,
           output_tokens: 0,
           total_tokens: 0,
-          cost_cents: 0,
+          cost_nanodollars: 0,
           latency_ms: 0,
           status: "success",
           user_uuid: row.caller_context[:user_uuid],
@@ -3280,7 +3283,12 @@ defmodule PhoenixKitAI do
 
     total_requests = repo().aggregate(base_query, :count)
     total_tokens = repo().aggregate(base_query, :sum, :total_tokens) || 0
-    total_cost = repo().aggregate(base_query, :sum, :cost_cents) || 0
+    # SUM over the bigint column is numeric; cast so callers get an integer, not a Decimal
+    total_cost =
+      repo().one(
+        from(r in base_query, select: type(coalesce(sum(r.cost_nanodollars), 0), :integer))
+      )
+
     avg_latency = repo().aggregate(base_query, :avg, :latency_ms)
 
     success_query = where(base_query, [r], r.status == "success")
@@ -3296,7 +3304,7 @@ defmodule PhoenixKitAI do
     %{
       total_requests: total_requests,
       total_tokens: total_tokens,
-      total_cost_cents: total_cost,
+      total_cost_nanodollars: total_cost,
       success_count: success_count,
       error_count: total_requests - success_count,
       success_rate: success_rate,
@@ -4387,7 +4395,7 @@ defmodule PhoenixKitAI do
       input_tokens: usage[:prompt_tokens] || 0,
       output_tokens: usage[:completion_tokens] || 0,
       total_tokens: usage[:total_tokens] || 0,
-      cost_cents: cost,
+      cost_nanodollars: cost,
       latency_ms: result[:latency_ms],
       status: "success",
       user_uuid: trace[:user_uuid],
@@ -4405,13 +4413,14 @@ defmodule PhoenixKitAI do
     CallCost.for_call(
       %{endpoint | model: trace[:model] || endpoint.model},
       result[:model],
-      usage[:cost_cents],
+      usage[:cost_nanodollars],
       usage[:prompt_tokens],
       usage[:completion_tokens]
     )
   end
 
-  defp image_op_cost(_type, _endpoint, _result, usage, _trace), do: {usage[:cost_cents], %{}}
+  defp image_op_cost(_type, _endpoint, _result, usage, _trace),
+    do: {usage[:cost_nanodollars], %{}}
 
   defp log_failed_image_op_request(endpoint, type, prompt, images, reason, trace) do
     capture_content = capture_request_content?(trace[:capture])
@@ -4945,7 +4954,7 @@ defmodule PhoenixKitAI do
       input_tokens: usage.prompt_tokens,
       output_tokens: usage.completion_tokens,
       total_tokens: usage.total_tokens,
-      cost_cents: cost,
+      cost_nanodollars: cost,
       latency_ms: response["latency_ms"],
       status: "success",
       user_uuid: caller_context[:user_uuid],
@@ -5080,7 +5089,7 @@ defmodule PhoenixKitAI do
       request_type: "embedding",
       input_tokens: usage.prompt_tokens,
       total_tokens: usage.total_tokens,
-      cost_cents: cost,
+      cost_nanodollars: cost,
       latency_ms: response["latency_ms"],
       status: "success",
       user_uuid: caller_context[:user_uuid],
@@ -5106,7 +5115,7 @@ defmodule PhoenixKitAI do
     CallCost.for_call(
       endpoint,
       response["model"],
-      usage.cost_cents,
+      usage.cost_nanodollars,
       usage.prompt_tokens,
       output_tokens
     )
@@ -5141,7 +5150,7 @@ defmodule PhoenixKitAI do
 
   # TTS responses carry no token usage — billing is per-character (or per-token with
   # no usage object to read back, for OpenAI) — so input_tokens/output_tokens/
-  # total_tokens stay unset, same as before. cost_cents is now estimated from a
+  # total_tokens stay unset, same as before. cost_nanodollars is now estimated from a
   # hand-maintained rate table (see TtsPricing) instead of staying unset, since no
   # TTS provider self-reports cost the way OpenRouter's chat completions do. The input
   # text is gated by `capture_request_content?/0` like chat/embedding.
@@ -5169,7 +5178,7 @@ defmodule PhoenixKitAI do
       latency_ms: result[:latency_ms],
       status: "success",
       user_uuid: caller_context[:user_uuid],
-      cost_cents: TtsPricing.cost_nanodollars(endpoint.provider, input_chars, audio_bytes),
+      cost_nanodollars: TtsPricing.cost_nanodollars(endpoint.provider, input_chars, audio_bytes),
       metadata:
         base_metadata
         |> Map.merge(guard)

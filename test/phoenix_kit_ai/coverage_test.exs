@@ -187,21 +187,21 @@ defmodule PhoenixKitAI.CoverageTest do
         request_fixture(%{
           endpoint_uuid: ep_low.uuid,
           total_tokens: 10,
-          cost_cents: 5
+          cost_nanodollars: 5
         })
 
       r_high1 =
         request_fixture(%{
           endpoint_uuid: ep_high.uuid,
           total_tokens: 100,
-          cost_cents: 50
+          cost_nanodollars: 50
         })
 
       r_high2 =
         request_fixture(%{
           endpoint_uuid: ep_high.uuid,
           total_tokens: 200,
-          cost_cents: 100
+          cost_nanodollars: 100
         })
 
       # `Request.timestamps(type: :utc_datetime)` is second-precision, so
@@ -288,7 +288,7 @@ defmodule PhoenixKitAI.CoverageTest do
         request_fixture(%{
           endpoint_uuid: ep.uuid,
           total_tokens: 100,
-          cost_cents: 25
+          cost_nanodollars: 25
         })
 
       stats = PhoenixKitAI.get_endpoint_usage_stats()
@@ -699,7 +699,7 @@ defmodule PhoenixKitAI.CoverageTest do
           model: "model-A",
           status: "success",
           total_tokens: 100,
-          cost_cents: 50,
+          cost_nanodollars: 50,
           metadata: %{"source" => "MyApp"}
         })
 
@@ -776,7 +776,7 @@ defmodule PhoenixKitAI.CoverageTest do
             :model,
             :total_tokens,
             :latency_ms,
-            :cost_cents,
+            :cost_nanodollars,
             :status,
             :endpoint_name
           ] do
@@ -835,7 +835,7 @@ defmodule PhoenixKitAI.CoverageTest do
           status: "success",
           total_tokens: 50,
           latency_ms: 200,
-          cost_cents: 10
+          cost_nanodollars: 10
         })
 
       _ =

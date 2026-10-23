@@ -23,23 +23,28 @@ defmodule PhoenixKitAI.RequestTest do
     end
 
     test "uses 2 decimals for amounts >= $0.01" do
-      # 1_000_000 nanodollars = $1.00
-      assert Request.format_cost(1_000_000) == "$1.00"
-      # 10_000 nanodollars = $0.01
-      assert Request.format_cost(10_000) == "$0.01"
+      # 1_000_000_000 nanodollars = $1.00
+      assert Request.format_cost(1_000_000_000) == "$1.00"
+      # 10_000_000 nanodollars = $0.01
+      assert Request.format_cost(10_000_000) == "$0.01"
     end
 
     test "uses 4 decimals for amounts between $0.0001 and $0.01" do
-      # 1_000 nanodollars = $0.001
-      result = Request.format_cost(1_000)
+      # 1_000_000 nanodollars = $0.001
+      result = Request.format_cost(1_000_000)
       assert result =~ "$0.00"
       assert String.length(result) >= 6
     end
 
-    test "uses 6 decimals for sub-microdollar amounts" do
-      # 30 nanodollars = $0.00003
-      result = Request.format_cost(30)
-      assert result == "$0.000030"
+    test "uses 6 decimals for amounts between $0.000001 and $0.0001" do
+      # 30_000 nanodollars = $0.00003
+      assert Request.format_cost(30_000) == "$0.000030"
+    end
+
+    test "uses 9 decimals below a millionth of a dollar" do
+      # 40 nanodollars = $0.00000004, a 2-token embedding
+      assert Request.format_cost(40) == "$0.000000040"
+      assert Request.format_cost(1) == "$0.000000001"
     end
   end
 

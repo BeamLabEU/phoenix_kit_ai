@@ -259,7 +259,7 @@ defmodule PhoenixKitAI.Web.ManualPriceUITest do
         model: "glm-4.6",
         status: "success",
         request_type: "chat",
-        cost_cents: 1_700,
+        cost_nanodollars: 1_700_000,
         metadata: %{"cost_source" => "manual"},
         inserted_at: now,
         updated_at: now
@@ -277,7 +277,7 @@ defmodule PhoenixKitAI.Web.ManualPriceUITest do
         model: "claude-sonnet-5-5",
         status: "success",
         request_type: "chat",
-        cost_cents: 7_000,
+        cost_nanodollars: 7_000_000,
         metadata: %{"cost_source" => "table"},
         inserted_at: now,
         updated_at: now
@@ -357,7 +357,7 @@ defmodule PhoenixKitAI.Web.ManualPriceUITest do
         model: "glm-4.6",
         status: "success",
         request_type: "chat",
-        cost_cents: 1_700,
+        cost_nanodollars: 1_700_000,
         metadata: %{"task" => "test.sized", "cost_source" => "manual"},
         inserted_at: now,
         updated_at: now

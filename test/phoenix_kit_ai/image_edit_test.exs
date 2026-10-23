@@ -171,7 +171,7 @@ defmodule PhoenixKitAI.ImageEditTest do
       assert req.model == "google/gemini-2.5-flash-image"
       assert req.input_tokens == 1290
       assert req.output_tokens == 1300
-      assert req.cost_cents == 12_300
+      assert req.cost_nanodollars == 12_300_000
       assert req.metadata["input_image_count"] == 2
       assert req.metadata["input_bytes"] == byte_size(@jpeg) + byte_size(@png)
       assert req.metadata["output_image_count"] == 1

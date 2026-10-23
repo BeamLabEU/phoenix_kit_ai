@@ -27,7 +27,7 @@ defmodule PhoenixKitAI.Request do
   - `total_tokens`: Total tokens used (input + output)
 
   ### Performance & Cost
-  - `cost_cents`: Estimated cost in nanodollars (when available)
+  - `cost_nanodollars`: Estimated cost in nanodollars (when available)
   - `latency_ms`: Response time in milliseconds
   - `status`: Request status - "success", "error", or "timeout"
   - `error_message`: Error details if status is not "success"
@@ -100,7 +100,7 @@ defmodule PhoenixKitAI.Request do
              :input_tokens,
              :output_tokens,
              :total_tokens,
-             :cost_cents,
+             :cost_nanodollars,
              :latency_ms,
              :status,
              :error_message,
@@ -126,7 +126,7 @@ defmodule PhoenixKitAI.Request do
     # is NANODOLLARS — 1e-6 dollars (see TTSPricing / Completion) — so
     # cents = value ÷ 10_000. Multiple external reviewers have misread
     # this as literal cents; convert accordingly in every consumer.
-    field(:cost_cents, :integer)
+    field(:cost_nanodollars, :integer)
     field(:latency_ms, :integer)
     field(:status, :string, default: "success")
     field(:error_message, :string)
@@ -159,7 +159,7 @@ defmodule PhoenixKitAI.Request do
       :input_tokens,
       :output_tokens,
       :total_tokens,
-      :cost_cents,
+      :cost_nanodollars,
       :latency_ms,
       :status,
       :error_message,
@@ -275,25 +275,25 @@ defmodule PhoenixKitAI.Request do
   @doc """
   Formats the cost for display.
 
-  Cost is stored in nanodollars (1/1000000 of a dollar) for precision.
-  Shows appropriate precision based on the amount:
-  - >= $1.00: 2 decimal places ($1.23)
-  - >= $0.01: 2 decimal places ($0.05)
+  Cost is stored in nanodollars (billionths of a dollar). Shows appropriate
+  precision based on the amount:
+  - >= $0.01: 2 decimal places ($0.05, $1.23)
   - >= $0.0001: 4 decimal places ($0.0012)
-  - > $0: 6 decimal places ($0.000030)
+  - >= $0.000001: 6 decimal places ($0.000030)
+  - > $0: 9 decimal places ($0.000000040)
   """
   @spec format_cost(integer() | nil) :: String.t()
   def format_cost(nil), do: "-"
   def format_cost(0), do: "$0.00"
 
   def format_cost(nanodollars) when is_integer(nanodollars) do
-    # Convert from nanodollars (1/1000000 of a dollar) to dollars
-    dollars = nanodollars / 1_000_000
+    dollars = nanodollars / 1_000_000_000
 
     cond do
       dollars >= 0.01 -> "$#{:erlang.float_to_binary(dollars, decimals: 2)}"
       dollars >= 0.0001 -> "$#{:erlang.float_to_binary(dollars, decimals: 4)}"
-      dollars > 0 -> "$#{:erlang.float_to_binary(dollars, decimals: 6)}"
+      dollars >= 0.000001 -> "$#{:erlang.float_to_binary(dollars, decimals: 6)}"
+      dollars > 0 -> "$#{:erlang.float_to_binary(dollars, decimals: 9)}"
       true -> "$0.00"
     end
   end

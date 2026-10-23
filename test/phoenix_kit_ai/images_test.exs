@@ -529,7 +529,7 @@ defmodule PhoenixKitAI.ImagesTest do
       assert question =~ "JSON object matching this JSON Schema"
       assert question =~ ~s("brand")
 
-      assert [%{request_type: "vision", cost_cents: 500, input_tokens: 300}] =
+      assert [%{request_type: "vision", cost_nanodollars: 500_000, input_tokens: 300}] =
                TestRepo.all(from(r in Request, where: r.request_type == "vision"))
     end
 
@@ -553,11 +553,16 @@ defmodule PhoenixKitAI.ImagesTest do
 
       # Every prose answer was a paid call: it keeps its usage row as a
       # success (the spend caps sum those), and no error row doubles it.
-      assert [{"success", 500}, {"success", 500}, {"success", 500}, {"success", 500}] =
+      assert [
+               {"success", 500_000},
+               {"success", 500_000},
+               {"success", 500_000},
+               {"success", 500_000}
+             ] =
                TestRepo.all(
                  from(r in Request,
                    where: r.request_type == "vision",
-                   select: {r.status, r.cost_cents}
+                   select: {r.status, r.cost_nanodollars}
                  )
                )
     end
@@ -837,8 +842,8 @@ defmodule PhoenixKitAI.ImagesTest do
       # ordering: two paid rows, two zero-cost cached ones, the override on both.
       rows = TestRepo.all(from(r in Request, where: r.request_type == "vision"))
       {fresh, cached} = Enum.split_with(rows, &(&1.metadata["cached"] != true))
-      assert [%{cost_cents: 500}, %{cost_cents: 500}] = fresh
-      assert [%{cost_cents: 0}, %{cost_cents: 0}] = cached
+      assert [%{cost_nanodollars: 500_000}, %{cost_nanodollars: 500_000}] = fresh
+      assert [%{cost_nanodollars: 0}, %{cost_nanodollars: 0}] = cached
       assert Enum.count(fresh, &(&1.model == "openai/gpt-4o-mini")) == 1
       assert Enum.count(cached, &(&1.model == "openai/gpt-4o-mini")) == 1
     end
@@ -854,7 +859,7 @@ defmodule PhoenixKitAI.ImagesTest do
         endpoint_name: ep.name,
         model: ep.model,
         request_type: "image",
-        cost_cents: 5,
+        cost_nanodollars: 5_000,
         status: "success"
       })
 
@@ -979,7 +984,7 @@ defmodule PhoenixKitAI.ImagesTest do
         endpoint_name: ep.name,
         model: ep.model,
         request_type: "chat",
-        cost_cents: 10,
+        cost_nanodollars: 10,
         status: "success"
       })
 

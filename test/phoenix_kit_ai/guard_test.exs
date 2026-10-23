@@ -263,7 +263,7 @@ defmodule PhoenixKitAI.GuardTest do
       assert row.request_type == "chat"
       assert row.user_uuid == user
       assert row.error_message =~ "images"
-      assert row.cost_cents == nil
+      assert row.cost_nanodollars == nil
 
       assert %{
                "refused" => true,

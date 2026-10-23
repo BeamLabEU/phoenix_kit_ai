@@ -797,25 +797,25 @@ defmodule PhoenixKitAI.Completion do
   Extracts usage information from a response.
 
   Returns a map with token counts and cost (if available from OpenRouter).
-  Cost is stored in nanodollars (1/1,000,000 of a dollar) to preserve precision
-  for cheap API calls. Stored in the cost_cents field for backward compatibility.
+  `cost_nanodollars` is the reported cost in billionths of a dollar
+  (`1_000_000_000` = $1), so a cheap call keeps its cost: a short embedding at
+  $0.00000004 is `40`, not `0`.
   """
   def extract_usage(%{"usage" => usage}) when is_map(usage) do
     %{
       prompt_tokens: usage["prompt_tokens"] || 0,
       completion_tokens: usage["completion_tokens"] || 0,
       total_tokens: usage["total_tokens"] || 0,
-      cost_cents: parse_cost(usage["cost"] || usage["total_cost"])
+      cost_nanodollars: parse_cost(usage["cost"] || usage["total_cost"])
     }
   end
 
   def extract_usage(_response) do
-    %{prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, cost_cents: nil}
+    %{prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, cost_nanodollars: nil}
   end
 
-  # Store in nanodollars (1/1000000 of a dollar) for precision
-  # e.g., $0.00003 becomes 30 nanodollars
-  defp parse_cost(cost) when is_number(cost), do: round(cost * 1_000_000)
+  # dollars -> nanodollars in one step: $0.00003 becomes 30_000
+  defp parse_cost(cost) when is_number(cost), do: PhoenixKitAI.Money.dollars_to_nano(cost)
   defp parse_cost(_), do: nil
 
   @doc false

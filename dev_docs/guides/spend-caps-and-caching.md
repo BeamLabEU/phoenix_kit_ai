@@ -7,10 +7,17 @@ what they deliberately do not. The code is `PhoenixKitAI.Budget`,
 
 ## Units
 
-`cost_cents` on a usage row holds millionths of a dollar — the module
-calls them *nanodollars* (a legacy misnomer kept for compatibility);
-`1_000_000` = $1. Every budget setting and every number `Budget` returns
-is in that unit. `set_limit(:global, 5_000_000)` is a five-dollar cap.
+`cost_nanodollars` on a usage row holds billionths of a dollar
+(`1_000_000_000` = $1), so a call cheaper than a millionth of a dollar
+keeps its cost. Every budget setting and every number `Budget` returns is
+in **micro-dollars** (`1_000_000` = $1): `set_limit(:global, 5_000_000)` is
+a five-dollar cap. A cap meets the journal only through
+`PhoenixKitAI.Money.nano_to_micro/1`, applied to the sum, so a thousand
+calls of 600 nanodollars count as 600 micro-dollars even though each would
+round to 0 on its own. Task limits and prices per 1M tokens are micro-dollars
+too (`PhoenixKitAI.Money`). Before core's V223 the column was `cost_cents`
+and held millionths of a dollar; the migration multiplied the stored costs
+by 1 000 and left the caps as they were.
 
 ## Spend caps (`PhoenixKitAI.Budget`)
 
@@ -110,7 +117,7 @@ model, material}`:
   on every uncached call is not free.
 
 A hit returns the stored result, calls no provider, and writes a
-**zero-cost usage row** (`cost_cents: 0`, tokens 0, `metadata.cached:
+**zero-cost usage row** (`cost_nanodollars: 0`, tokens 0, `metadata.cached:
 true`) with the hitter's `user_uuid`, `source`, attribution, prompt link
 and prompt snapshot — the same shape a fresh row has, minus the cost. It
 does not count against a cap because it cost nothing. Only `{:ok, _}`
@@ -158,7 +165,7 @@ row.
 
 | event | measurements | metadata |
 |---|---|---|
-| `[:phoenix_kit_ai, :request]` | `input_tokens`, `output_tokens`, `cost_cents`, `latency_ms` | `request_type`, `status`, `endpoint_uuid`, `model`, `user_uuid`, `source`, `cached` |
+| `[:phoenix_kit_ai, :request]` | `input_tokens`, `output_tokens`, `cost_nanodollars`, `latency_ms` | `request_type`, `status`, `endpoint_uuid`, `model`, `user_uuid`, `source`, `cached` |
 | `[:phoenix_kit_ai, :image, :request]` | `latency_ms`, `input_bytes`, `output_bytes`, `input_images`, `output_images` | `type`, `outcome`, `provider`, `model`, `endpoint_uuid`, `operations`, `warnings`, `error`, `source` |
 | `[:phoenix_kit_ai, :budget, :warning]` | `spent`, `limit` | `scope`, `endpoint_uuid`, `user_uuid` |
 | `[:phoenix_kit_ai, :cache, :hit \| :miss \| :refresh]` | `count` | `verb`, `endpoint_uuid` |

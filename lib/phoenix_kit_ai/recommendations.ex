@@ -184,7 +184,7 @@ defmodule PhoenixKitAI.Recommendations do
   calls first, ten at most, one row per model and operator: `%{model,
   provider, calls, avg_cost, error_share, avg_latency_ms, cost_reported?,
   notes}`. `provider` is the endpoint's provider key, `nil` when the
-  endpoint is gone. `avg_cost` is in the units of `cost_cents`
+  endpoint is gone. `avg_cost` is in the units of `cost_nanodollars`
   (`Request.format_cost/1` shows it) and `nil` when no call reported a
   cost; `error_share` is 0.0–1.0. Refusals and cache hits are not calls.
   """
@@ -342,10 +342,10 @@ defmodule PhoenixKitAI.Recommendations do
         provider: fragment("split_part(?, ':', 1)", e.provider),
         calls: count(r.uuid),
         errors: filter(count(r.uuid), r.status != "success"),
-        cost_rows: count(r.cost_cents),
+        cost_rows: count(r.cost_nanodollars),
         manual_rows: filter(count(r.uuid), fragment("?->>'cost_source' = 'manual'", r.metadata)),
         table_rows: filter(count(r.uuid), fragment("?->>'cost_source' = 'table'", r.metadata)),
-        avg_cost: avg(r.cost_cents),
+        avg_cost: avg(r.cost_nanodollars),
         avg_latency_ms: avg(r.latency_ms)
       }
     )

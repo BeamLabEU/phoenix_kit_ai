@@ -201,13 +201,18 @@ Repo-local aliases:
   `phx-mounted` and it bubbles to the container hook, which binds in
   `mounted()` and unbinds in `destroyed()`. A `document.addEventListener` in
   `mounted()` would instead leak one live handler per navigation.
-- The `cost_cents` column holds **nanodollars** (1/1,000,000 of a dollar),
-  not cents — the name is legacy. Reading it as cents is off by seven orders of
-  magnitude. The spend-cap settings use the same unit: `5_000_000` is $5.
+- Money has two units (`PhoenixKitAI.Money`): a call's cost is
+  **nanodollars** (`cost_nanodollars`, core's V223; `1_000_000_000` = $1), every
+  amount someone sets — spend caps, task limits and their declared defaults,
+  prices per 1M tokens — is **micro-dollars** (`1_000_000` = $1). A journal sum
+  meets a set amount only through `Money.nano_to_micro/1`; never compare a raw
+  sum with a cap or limit. This module needs a core with V223: on an older core
+  every usage row fails on the missing column.
 - A chat or embedding row's cost comes from `PhoenixKitAI.CallCost`, the
   first source with a price: the provider's `usage.cost` > the operator's
   catalogue price (OpenRouter `pricing`) > the endpoint's manual price
-  (`provider_settings["pricing"]`, whole µ$ per 1M tokens) > Anthropic's
+  (`provider_settings["pricing"]`, whole µ$ per 1M tokens; a call's cost from
+  it is nanodollars) > Anthropic's
   built-in rates (`AnthropicPricing`, from BeamLabEU/phoenix_kit_ai#47,
   overridable by `config :phoenix_kit_ai, :anthropic_prices`). The row's
   `metadata.cost_source` says which (`provider` / `catalogue` / `manual` /
@@ -365,7 +370,7 @@ Settings: `ai_enabled` (boolean, default `false`) is the module toggle;
 `migrate_legacy/0`; `ai_translation_sweep_last_run_<sweep_key>` holds each
 translation sweep's last outcome, written by `PhoenixKitAI.TranslationSweep`.
 Spend caps (`PhoenixKitAI.Budget`): `ai_daily_budget`,
-`ai_daily_budget_per_endpoint`, `ai_daily_budget_per_user` — nanodollars per
+`ai_daily_budget_per_endpoint`, `ai_daily_budget_per_user` — micro-dollars per
 trailing 24 hours, `0` = no cap — plus `ai_daily_calls_per_user` (a count of
 successful calls per user, scope `:user_calls`), and `ai_budget_warn_percent` (default 80),
 read through the settings cache. Every provider-calling verb (not the
@@ -505,12 +510,15 @@ provided the API exposes `<base_url>/chat/completions` and `/models`.
 ### Completion behaviour
 
 - **Per-call model and fallbacks**: `model:` replaces the endpoint's model for one
-  chat or embedding call; `models: [...]` is sent to OpenRouter as its model-routing
-  fallback list (the call's model first) and ignored for other providers. Both are
-  part of the cache key. The usage row records the model the response names
-  (`response_model/2`), so a fallback is visible.
+  chat or embedding call — it is the model the guard checks, the cache keys and the
+  usage row names and prices; `models: [...]` is sent to OpenRouter as its
+  model-routing fallback list (the call's model first) and ignored for other
+  providers, and is part of the cache key. A fallback that answered is the row's
+  `metadata.answered_model` (`Request.other_model/2`: a provider prefix on one side,
+  letter case or a dated snapshot of the asked model is the same model).
 - **Usage accounting**: OpenRouter chat calls send `usage: {include: true}` so the
-  response carries `usage.cost` (stored as nanodollars); other providers don't get it.
+  response carries `usage.cost` (stored as nanodollars, so even a $0.00000004
+  call keeps its cost); other providers don't get it.
 - **Delivery options** — `retry:`, `timeout:`, `concurrency:`, `log_cache_hit:` — change
   how a call is made, not what is asked, so they are dropped from the cache key.
 - **Endpoints by name**: `get_endpoint_by_name/1` / `resolve_endpoint_by_name/1`

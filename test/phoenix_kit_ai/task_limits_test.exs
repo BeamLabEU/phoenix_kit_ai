@@ -97,7 +97,9 @@ defmodule PhoenixKitAI.TaskLimitsTest do
       input_tokens: 0,
       output_tokens: 0,
       total_tokens: Map.get(attrs, :tokens, 10),
-      cost_cents: Map.get(attrs, :cost, 1_000),
+      # `:cost` is micro-dollars, the unit of a limit; the journal holds
+      # nanodollars, which `:cost_nanodollars` sets as they are
+      cost_nanodollars: Map.get(attrs, :cost_nanodollars, Map.get(attrs, :cost, 1_000) * 1_000),
       latency_ms: 1,
       user_uuid: Map.get(attrs, :user_uuid),
       metadata: metadata,
@@ -225,6 +227,15 @@ defmodule PhoenixKitAI.TaskLimitsTest do
       usage = TaskLimits.usage("test.limited", nil, now)
       assert usage.task.money == %{day: 11, month: 11}
       assert usage.task.tokens == %{day: 5, month: 5}
+    end
+
+    test "money is the nanodollar sum in micro-dollars, so calls under a micro-dollar count",
+         %{endpoint: ep} do
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      for _ <- 1..3, do: row(ep, now, cost_nanodollars: 600)
+
+      # 3 × 600 n$ = 1 800 n$ → 2 µ$; each row alone would be 0 µ$.
+      assert TaskLimits.usage("test.limited", nil, now).task.money.day == 2
     end
   end
 

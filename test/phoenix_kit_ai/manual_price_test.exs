@@ -3,7 +3,7 @@ defmodule PhoenixKitAI.ManualPriceTest do
   A price entered by hand on an endpoint whose provider gives none:
   `provider_settings["pricing"]`, whole micro-dollars per 1M input and
   output tokens. A call whose provider reports no `usage.cost` gets its
-  `cost_cents` (micro-dollars) from it, marked `cost_source: "manual"`; a
+  `cost_nanodollars` from it, marked `cost_source: "manual"`; a
   reported cost wins; no price leaves the cost unknown as before. A change
   of the price is in the Activity log. Provider calls are `Req.Test` stubs.
   """
@@ -77,16 +77,39 @@ defmodule PhoenixKitAI.ManualPriceTest do
   end
 
   describe "cost/3" do
-    test "is micro-dollars: tokens times micro-dollars per 1M, over a million, rounded" do
+    test "is nanodollars: tokens times micro-dollars per 1M, over a thousand, rounded" do
       # 1000 × 0.60 $/1M + 500 × 2.20 $/1M = $0.0006 + $0.0011 = $0.0017.
-      assert ManualPrice.cost(@pricing, 1_000, 500) == 1_700
-      # (600 000 + 2 200 000) / 1 000 000 = 2.8 → 3.
-      assert ManualPrice.cost(@pricing, 1, 1) == 3
+      assert ManualPrice.cost(@pricing, 1_000, 500) == 1_700_000
+      # (600 000 + 2 200 000) / 1 000 = 2 800: one token of each is not $0.
+      assert ManualPrice.cost(@pricing, 1, 1) == 2_800
+      # 7 tokens at $0.02 per 1M = 140 n$; 3 at $0.0003 per 1M = 0.9 → 1.
+      assert ManualPrice.cost(%{"input" => 20_000, "output" => 0}, 7, 0) == 140
+      assert ManualPrice.cost(%{"input" => 300, "output" => 0}, 3, 0) == 1
       assert ManualPrice.cost(@pricing, 0, 0) == 0
     end
 
     test "is nil without a price" do
       assert ManualPrice.cost(nil, 1_000, 500) == nil
+    end
+  end
+
+  describe "Money units" do
+    test "a journal sum in nanodollars meets a micro-dollar amount rounded half up" do
+      assert Money.nano_to_micro(nil) == nil
+      assert Money.nano_to_micro(0) == 0
+      assert Money.nano_to_micro(499) == 0
+      assert Money.nano_to_micro(500) == 1
+      assert Money.nano_to_micro(1_700_000) == 1_700
+      assert Money.nano_to_micro(-1_500) == -2
+      assert Money.micro_to_nano(1_700) == 1_700_000
+    end
+
+    test "a reported cost in dollars is nanodollars in one step" do
+      # a short embedding: $0.00000004 would be 0 as micro-dollars
+      assert Money.dollars_to_nano(0.00000004) == 40
+      assert Money.dollars_to_nano(0.0017) == 1_700_000
+      assert Money.dollars_to_nano(2.5) == 2_500_000_000
+      assert Money.dollars_to_nano(0) == 0
     end
   end
 
@@ -110,7 +133,7 @@ defmodule PhoenixKitAI.ManualPriceTest do
       assert {:ok, _} = PhoenixKitAI.ask(endpoint.uuid, "q")
 
       row = last_row(endpoint)
-      assert row.cost_cents == 1_700
+      assert row.cost_nanodollars == 1_700_000
       assert row.metadata["cost_source"] == "manual"
     end
 
@@ -127,7 +150,7 @@ defmodule PhoenixKitAI.ManualPriceTest do
       assert {:ok, _} = PhoenixKitAI.ask(endpoint.uuid, "q")
 
       row = last_row(endpoint)
-      assert row.cost_cents == 10_000
+      assert row.cost_nanodollars == 10_000_000
       assert row.metadata["cost_source"] == "provider"
     end
 
@@ -138,7 +161,7 @@ defmodule PhoenixKitAI.ManualPriceTest do
       assert {:ok, _} = PhoenixKitAI.ask(endpoint.uuid, "q")
 
       row = last_row(endpoint)
-      assert row.cost_cents == nil
+      assert row.cost_nanodollars == nil
       refute Map.has_key?(row.metadata, "cost_source")
     end
 
@@ -216,7 +239,7 @@ defmodule PhoenixKitAI.ManualPriceTest do
 
       stub_chat(%{"prompt_tokens" => 1_000, "completion_tokens" => 500, "total_tokens" => 1_500})
       assert {:ok, _} = PhoenixKitAI.ask(endpoint.uuid, "q")
-      assert last_row(endpoint).cost_cents == nil
+      assert last_row(endpoint).cost_nanodollars == nil
     end
 
     test "a price naming another model is dropped" do
@@ -306,7 +329,7 @@ defmodule PhoenixKitAI.ManualPriceTest do
 
       row = last_row(endpoint)
       # 1 000 × 600 000 µ$ per 1M = 600 µ$.
-      assert row.cost_cents == 600
+      assert row.cost_nanodollars == 600_000
       assert row.metadata["cost_source"] == "manual"
     end
 
@@ -322,11 +345,11 @@ defmodule PhoenixKitAI.ManualPriceTest do
           from(r in Request,
             where: r.endpoint_uuid == ^endpoint.uuid,
             order_by: r.inserted_at,
-            select: {r.cost_cents, fragment("?->>'cached'", r.metadata)}
+            select: {r.cost_nanodollars, fragment("?->>'cached'", r.metadata)}
           )
         )
 
-      assert {1_700, nil} in costs
+      assert {1_700_000, nil} in costs
       assert {0, "true"} in costs
     end
 

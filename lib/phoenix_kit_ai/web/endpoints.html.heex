@@ -623,7 +623,7 @@
                       {gettext("Latency")}
                     </.sort_header_cell>
                     <.sort_header_cell
-                      field={:cost_cents}
+                      field={:cost_nanodollars}
                       sort={sort}
                       event="usage_sort"
                       class="hidden sm:table-cell"
@@ -681,7 +681,7 @@
                         {PhoenixKitAI.Request.format_latency(request.latency_ms)}
                       </.table_default_cell>
                       <.table_default_cell class="hidden sm:table-cell text-sm">
-                        {PhoenixKitAI.Request.format_cost(request.cost_cents)}
+                        {PhoenixKitAI.Request.format_cost(request.cost_nanodollars)}
                         <.cost_source_badge source={PhoenixKitAI.CallCost.source(request)} />
                       </.table_default_cell>
                       <.table_default_cell>
@@ -791,7 +791,7 @@
           <div>
             <div class="text-xs text-base-content/70">{gettext("Cost")}</div>
             <div class="text-sm">
-              {PhoenixKitAI.Request.format_cost(@selected_request.cost_cents)}
+              {PhoenixKitAI.Request.format_cost(@selected_request.cost_nanodollars)}
               <.cost_source_badge source={PhoenixKitAI.CallCost.source(@selected_request)} />
             </div>
           </div>

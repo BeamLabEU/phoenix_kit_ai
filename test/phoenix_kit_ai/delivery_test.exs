@@ -221,7 +221,7 @@ defmodule PhoenixKitAI.DeliveryTest do
       assert_receive {:body, %{"usage" => %{"include" => true}}}
 
       [row] = TestRepo.all(from(r in Request, where: r.endpoint_uuid == ^ep.uuid))
-      assert row.cost_cents == 250_000
+      assert row.cost_nanodollars == 250_000_000
     end
 
     test "other providers get neither usage nor models", %{counter: c} do

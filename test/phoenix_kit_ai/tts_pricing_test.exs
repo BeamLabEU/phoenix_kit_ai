@@ -5,11 +5,11 @@ defmodule PhoenixKitAI.TtsPricingTest do
 
   describe "cost_nanodollars/3 — character-billed providers (exact)" do
     test "mistral: input_chars * $16/1M" do
-      assert TtsPricing.cost_nanodollars("mistral", 1000, 999_999) == 16_000
+      assert TtsPricing.cost_nanodollars("mistral", 1000, 999_999) == 16_000_000
     end
 
     test "xai: input_chars * $15/1M" do
-      assert TtsPricing.cost_nanodollars("xai", 1000, 999_999) == 15_000
+      assert TtsPricing.cost_nanodollars("xai", 1000, 999_999) == 15_000_000
     end
 
     test "a named integration connection (xai:personal) still resolves via base_provider" do
@@ -31,7 +31,7 @@ defmodule PhoenixKitAI.TtsPricingTest do
   describe "cost_nanodollars/3 — OpenAI (estimated from audio duration)" do
     test "one minute of audio at the assumed 128kbps costs ~$0.015" do
       one_minute_bytes = 128_000 * 60 / 8
-      assert TtsPricing.cost_nanodollars("openai", 0, round(one_minute_bytes)) == 15_000
+      assert TtsPricing.cost_nanodollars("openai", 0, round(one_minute_bytes)) == 15_000_000
     end
 
     test "input_chars is ignored — the blended rate already covers both legs" do

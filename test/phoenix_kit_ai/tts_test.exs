@@ -118,7 +118,7 @@ defmodule PhoenixKitAI.TTSTest do
       rows = TestRepo.all(from(r in Request, where: r.endpoint_uuid == ^ep.uuid))
 
       assert {[%{request_type: "tts"}],
-              [%{request_type: "tts", cost_cents: 0, metadata: %{"cached" => true}}]} =
+              [%{request_type: "tts", cost_nanodollars: 0, metadata: %{"cached" => true}}]} =
                Enum.split_with(rows, &(&1.metadata["cached"] != true))
     end
 
@@ -207,13 +207,13 @@ defmodule PhoenixKitAI.TTSTest do
       assert row.input_tokens == 0
       assert row.output_tokens == 0
 
-      # cost_cents stopped being nil in 0.15.0: no TTS provider self-reports
+      # cost_nanodollars stopped being nil in 0.15.0: no TTS provider self-reports
       # cost the way OpenRouter's chat completions do, so it is estimated from
       # TtsPricing's rate table. This fixture's provider ("mistral") is in that
       # table and the text is non-empty, so the estimate is a positive integer.
-      assert is_integer(row.cost_cents) and row.cost_cents > 0
+      assert is_integer(row.cost_nanodollars) and row.cost_nanodollars > 0
 
-      assert row.cost_cents ==
+      assert row.cost_nanodollars ==
                PhoenixKitAI.TtsPricing.cost_nanodollars(
                  "mistral",
                  String.length("Bonjour, ça va ?"),

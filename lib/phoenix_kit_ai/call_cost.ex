@@ -1,8 +1,7 @@
 defmodule PhoenixKitAI.CallCost do
   @moduledoc """
-  What a call cost, in micro-dollars (millionths of a dollar — the unit of
-  `Request.cost_cents`, which the module calls nanodollars), and where the
-  figure came from. The first source that has a price wins:
+  What a call cost, in nanodollars (billionths of a dollar — the unit of
+  `Request.cost_nanodollars`), and where the figure came from. The first source that has a price wins:
 
     1. `"provider"` — the cost the provider reports in `usage.cost`
        (OpenRouter);
@@ -17,7 +16,7 @@ defmodule PhoenixKitAI.CallCost do
   the endpoint's model is tried — so an answer naming an unknown model is
   still counted when the endpoint's model has a price, and a money limit is
   not bypassed by it. The sum is in integers: tokens × micro-dollars per 1M,
-  over a million, rounded. A call without tokens (an answer with no usage, or
+  over a thousand, rounded to nanodollars (`ManualPrice.cost/3`). A call without tokens (an answer with no usage, or
   an empty one) says nothing about its size and gets no cost, not a priced $0.
 
   Chat, embeddings and the vision verbs (`describe_image/3`, `extract_text/3`,
@@ -35,8 +34,8 @@ defmodule PhoenixKitAI.CallCost do
   @type source :: String.t()
 
   @doc """
-  A call's `cost_cents` and what its usage row's metadata gets: `reported`
-  (the provider's cost, micro-dollars) with `cost_source: "provider"`, else
+  A call's `cost_nanodollars` and what its usage row's metadata gets: `reported`
+  (the provider's cost, nanodollars) with `cost_source: "provider"`, else
   the first priced source for `model` then for the endpoint's model, else
   `{nil, %{}}` — and `{nil, %{}}` for a call without tokens.
   """

@@ -482,10 +482,11 @@ defmodule PhoenixKitAI.SchemaCoverageTest do
     test "format_cost/1 — nil + zero + dollar + cents + fractional + sub-fractional" do
       assert Request.format_cost(nil) == "-"
       assert Request.format_cost(0) == "$0.00"
-      assert Request.format_cost(1_500_000) == "$1.50"
-      assert Request.format_cost(50_000) == "$0.05"
-      assert Request.format_cost(500) == "$0.0005"
-      assert Request.format_cost(50) == "$0.000050"
+      assert Request.format_cost(1_500_000_000) == "$1.50"
+      assert Request.format_cost(50_000_000) == "$0.05"
+      assert Request.format_cost(500_000) == "$0.0005"
+      assert Request.format_cost(50_000) == "$0.000050"
+      assert Request.format_cost(50) == "$0.000000050"
     end
 
     test "short_model_name/1 — nil + empty + provider/model + bare + multi-slash" do

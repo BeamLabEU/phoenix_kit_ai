@@ -92,7 +92,7 @@ defmodule PhoenixKitAI.ImageCallCostTest do
       # 1 000 × 600 000 + 500 × 2 200 000 µ$ per 1M = 1 700 µ$ ($0.0017).
       assert %Request{
                request_type: "vision",
-               cost_cents: 1_700,
+               cost_nanodollars: 1_700_000,
                metadata: %{"cost_source" => "manual"}
              } = row(ep)
     end
@@ -104,7 +104,8 @@ defmodule PhoenixKitAI.ImageCallCostTest do
       assert {:ok, _} = PhoenixKitAI.describe_image(ep.uuid, @jpeg)
 
       # $2 and $10 per 1M: 1 000 in, 500 out = 7 000 µ$.
-      assert %Request{cost_cents: 7_000, metadata: %{"cost_source" => "table"}} = row(ep)
+      assert %Request{cost_nanodollars: 7_000_000, metadata: %{"cost_source" => "table"}} =
+               row(ep)
     end
 
     test "the provider's reported cost wins over a manual price" do
@@ -113,7 +114,8 @@ defmodule PhoenixKitAI.ImageCallCostTest do
 
       assert {:ok, _} = PhoenixKitAI.describe_image(ep.uuid, @jpeg)
 
-      assert %Request{cost_cents: 500, metadata: %{"cost_source" => "provider"}} = row(ep)
+      assert %Request{cost_nanodollars: 500_000, metadata: %{"cost_source" => "provider"}} =
+               row(ep)
     end
 
     test "an answer without usage, or without tokens, has no cost" do
@@ -123,7 +125,7 @@ defmodule PhoenixKitAI.ImageCallCostTest do
 
         assert {:ok, _} = PhoenixKitAI.describe_image(ep.uuid, @jpeg)
 
-        assert %Request{cost_cents: nil, metadata: metadata} = row(ep)
+        assert %Request{cost_nanodollars: nil, metadata: metadata} = row(ep)
         refute Map.has_key?(metadata, "cost_source")
       end
     end
@@ -140,11 +142,11 @@ defmodule PhoenixKitAI.ImageCallCostTest do
       assert {:ok, _} = PhoenixKitAI.extract_text(ep.uuid, @jpeg)
       assert {:ok, _} = PhoenixKitAI.compare_images(ep.uuid, @jpeg, @jpeg)
 
-      assert [{1_700, "manual"}, {1_700, "manual"}] =
+      assert [{1_700_000, "manual"}, {1_700_000, "manual"}] =
                TestRepo.all(
                  from(r in Request,
                    where: r.endpoint_uuid == ^ep.uuid,
-                   select: {r.cost_cents, fragment("?->>'cost_source'", r.metadata)}
+                   select: {r.cost_nanodollars, fragment("?->>'cost_source'", r.metadata)}
                  )
                )
     end
@@ -156,7 +158,7 @@ defmodule PhoenixKitAI.ImageCallCostTest do
       assert {:error, {:no_json_in_response, _}} =
                PhoenixKitAI.describe_image(ep.uuid, @jpeg, json: true)
 
-      assert %Request{status: "success", cost_cents: 1_700} = row(ep)
+      assert %Request{status: "success", cost_nanodollars: 1_700_000} = row(ep)
     end
   end
 
@@ -168,7 +170,8 @@ defmodule PhoenixKitAI.ImageCallCostTest do
       assert {:ok, _} = PhoenixKitAI.describe_image(ep.uuid, @jpeg)
 
       # Claude Opus 4.6: $5 and $25 per 1M.
-      assert %Request{cost_cents: 17_500, metadata: %{"cost_source" => "table"}} = row(ep)
+      assert %Request{cost_nanodollars: 17_500_000, metadata: %{"cost_source" => "table"}} =
+               row(ep)
     end
 
     test "else the call's model: override, not the endpoint's" do
@@ -177,7 +180,8 @@ defmodule PhoenixKitAI.ImageCallCostTest do
 
       assert {:ok, _} = PhoenixKitAI.describe_image(ep.uuid, @jpeg, model: "claude-opus-4-6")
 
-      assert %Request{cost_cents: 17_500, metadata: %{"cost_source" => "table"}} = row(ep)
+      assert %Request{cost_nanodollars: 17_500_000, metadata: %{"cost_source" => "table"}} =
+               row(ep)
     end
 
     test "a manual price is its model's: a call sent to another model is not priced by it" do
@@ -186,7 +190,7 @@ defmodule PhoenixKitAI.ImageCallCostTest do
 
       assert {:ok, _} = PhoenixKitAI.describe_image(ep.uuid, @jpeg, model: "glm-4.5v")
 
-      assert %Request{cost_cents: nil} = row(ep)
+      assert %Request{cost_nanodollars: nil} = row(ep)
     end
   end
 
@@ -210,7 +214,7 @@ defmodule PhoenixKitAI.ImageCallCostTest do
 
       assert {:ok, %{images: [_]}} = PhoenixKitAI.generate_image(ep.uuid, "a chair")
 
-      assert %Request{request_type: "image", cost_cents: nil, metadata: metadata} = row(ep)
+      assert %Request{request_type: "image", cost_nanodollars: nil, metadata: metadata} = row(ep)
       refute Map.has_key?(metadata, "cost_source")
     end
   end
