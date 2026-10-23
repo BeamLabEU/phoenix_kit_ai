@@ -362,4 +362,34 @@ defmodule PhoenixKitAI.ProviderErrorTest do
                "Insufficient credits — Insufficient Balance (unknown_error)"
     end
   end
+
+  describe "the answered model" do
+    defp answer(model) do
+      %{
+        "id" => "gen-1",
+        "model" => model,
+        "choices" => [%{"message" => %{"role" => "assistant", "content" => "Hi"}}],
+        "usage" => %{"prompt_tokens" => 5, "completion_tokens" => 3, "total_tokens" => 8}
+      }
+    end
+
+    test "is kept when it differs from the model asked for" do
+      stub(200, answer("glm-5.3-flash"))
+      ep = endpoint_fixture()
+
+      assert {:ok, _} = PhoenixKitAI.complete(ep.uuid, [%{role: "user", content: "hi"}])
+
+      row = row_for(ep)
+      assert row.model == "glm-4.5"
+      assert row.metadata["answered_model"] == "glm-5.3-flash"
+    end
+
+    test "is left out when it is the model asked for" do
+      stub(200, answer("glm-4.5"))
+      ep = endpoint_fixture()
+
+      assert {:ok, _} = PhoenixKitAI.complete(ep.uuid, [%{role: "user", content: "hi"}])
+      refute Map.has_key?(row_for(ep).metadata, "answered_model")
+    end
+  end
 end
