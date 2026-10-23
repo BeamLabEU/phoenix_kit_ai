@@ -1425,7 +1425,11 @@ defmodule PhoenixKitAI do
 
         from(e in Endpoint,
           where: fragment("lower(btrim(?))", e.name) == ^normalized,
-          order_by: [desc: fragment("lower(?) = ?", e.name, ^normalized), asc: e.inserted_at],
+          order_by: [
+            desc: fragment("lower(?) = ?", e.name, ^normalized),
+            asc: e.inserted_at,
+            asc: e.uuid
+          ],
           limit: 1
         )
         |> repo().one()

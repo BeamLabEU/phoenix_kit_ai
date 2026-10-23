@@ -1,6 +1,10 @@
 defmodule PhoenixKitAI.EndpointNameAndSourcePrefixTest do
   use PhoenixKitAI.DataCase, async: false
 
+  import Ecto.Query
+
+  alias PhoenixKitAI.Test.Repo
+
   defp endpoint!(attrs) do
     base = %{provider: "openrouter", model: "a/b", api_key: "sk-test-key"}
     {:ok, ep} = PhoenixKitAI.create_endpoint(Map.merge(base, attrs))
@@ -32,6 +36,24 @@ defmodule PhoenixKitAI.EndpointNameAndSourcePrefixTest do
       _second = endpoint!(%{name: "Twin "})
 
       for _ <- 1..5, do: assert(PhoenixKitAI.get_endpoint_by_name("twin").uuid == first.uuid)
+    end
+
+    test "endpoints created in the same second: the lower uuid wins, whatever the row order" do
+      first = endpoint!(%{name: " Tie"})
+      second = endpoint!(%{name: "Tie "})
+      assert first.uuid < second.uuid
+
+      same_second = ~U[2026-01-01 00:00:00Z]
+
+      # Touching the lower-uuid row last leaves it physically after the other one,
+      # so only the uuid tiebreaker can put it first.
+      for uuid <- [second.uuid, first.uuid] do
+        PhoenixKitAI.Endpoint
+        |> where([e], e.uuid == ^uuid)
+        |> Repo.update_all(set: [inserted_at: same_second])
+      end
+
+      for _ <- 1..5, do: assert(PhoenixKitAI.get_endpoint_by_name("tie").uuid == first.uuid)
     end
 
     test "unknown, blank or non-string names are nil" do
