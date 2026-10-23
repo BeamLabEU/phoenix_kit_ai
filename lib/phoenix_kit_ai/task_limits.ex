@@ -238,17 +238,15 @@ defmodule PhoenixKitAI.TaskLimits do
   end
 
   @doc """
-  Whether a chat call's money counts on `endpoint`: a provider that reports
-  a call's cost writes one (today OpenRouter), and so does an endpoint with
-  a manual price (`PhoenixKitAI.ManualPrice`). Speech is priced by
+  Whether a chat call's money counts on `endpoint`: some source prices its
+  calls (`PhoenixKitAI.reports_cost?/1` — the provider's own cost, a
+  catalogue, manual or built-in price). Speech is priced by
   `PhoenixKitAI.TtsPricing` on other providers too; an endpoint does not say
   which kind it is, so this answers for chat.
   """
   @spec money_counted?(Endpoint.t()) :: boolean()
   def money_counted?(%Endpoint{provider: provider} = endpoint) when is_binary(provider),
-    do:
-      Endpoint.base_provider(provider) == "openrouter" or
-        PhoenixKitAI.ManualPrice.get(endpoint) != nil
+    do: PhoenixKitAI.reports_cost?(endpoint)
 
   def money_counted?(_endpoint), do: false
 

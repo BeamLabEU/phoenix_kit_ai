@@ -121,6 +121,7 @@ defmodule PhoenixKitAI do
   alias PhoenixKit.Utils.Reorder
   alias PhoenixKit.Utils.UUID, as: UUIDUtils
   alias PhoenixKitAI.{Budget, Endpoint, Prompt, Provider, RequestCache, StructuredOutput}
+  alias PhoenixKitAI.CallCost
   alias PhoenixKitAI.Capabilities
   alias PhoenixKitAI.Guard
   alias PhoenixKitAI.GuardBlocks
@@ -1468,6 +1469,17 @@ defmodule PhoenixKitAI do
   def resolve_endpoint(%Endpoint{} = endpoint), do: {:ok, endpoint}
 
   def resolve_endpoint(_), do: {:error, :invalid_endpoint_identifier}
+
+  @doc """
+  Whether calls on `endpoint` get a cost in the usage journal: its provider
+  reports one (OpenRouter), or the operator's catalogue, the endpoint's
+  manual price (`provider_settings["pricing"]`) or the built-in Anthropic
+  rates price its model. Where it is false, money limits and the daily
+  budget cannot count the endpoint's calls. The order the sources are tried
+  in is `PhoenixKitAI.CallCost`'s.
+  """
+  @spec reports_cost?(Endpoint.t()) :: boolean()
+  def reports_cost?(%Endpoint{} = endpoint), do: CallCost.reports_cost?(endpoint)
 
   @doc """
   Creates a new AI endpoint.
@@ -4736,10 +4748,12 @@ defmodule PhoenixKitAI do
         Map.put(base_metadata, :content_redacted, true)
       end
 
-    # No reported cost: the endpoint's manual price, if it has one.
+    # The provider's cost, else a catalogue, manual or table price for the
+    # model the answer names (`CallCost`).
     {cost, cost_metadata} =
-      ManualPrice.for_call(
+      CallCost.for_call(
         endpoint,
+        response["model"],
         usage.cost_cents,
         usage.prompt_tokens,
         usage.completion_tokens
@@ -4852,7 +4866,7 @@ defmodule PhoenixKitAI do
     input_count = if is_list(input), do: length(input), else: 1
 
     {cost, cost_metadata} =
-      ManualPrice.for_call(endpoint, usage.cost_cents, usage.prompt_tokens, 0)
+      CallCost.for_call(endpoint, response["model"], usage.cost_cents, usage.prompt_tokens, 0)
 
     create_request(%{
       endpoint_uuid: endpoint.uuid,

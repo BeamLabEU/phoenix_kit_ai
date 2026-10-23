@@ -60,7 +60,8 @@ defmodule PhoenixKitAI.Recommendations do
 
   import Ecto.Query, only: [from: 2]
 
-  alias PhoenixKitAI.{Capabilities, Endpoint, ManualPrice, Request, Tasks, TaskSpec}
+  alias PhoenixKitAI.{AnthropicPricing, Capabilities, Endpoint, ManualPrice, Request}
+  alias PhoenixKitAI.{Tasks, TaskSpec}
 
   @limit 5
   @worked_limit 10
@@ -76,6 +77,7 @@ defmodule PhoenixKitAI.Recommendations do
           | :free
           | :capabilities_not_reported
           | :manual_price
+          | :table_price
   @type estimate :: :declared | :journal | :rough
 
   @doc "The capabilities the recommendations can be filtered by: images, documents, image generation."
@@ -325,6 +327,7 @@ defmodule PhoenixKitAI.Recommendations do
         errors: filter(count(r.uuid), r.status != "success"),
         cost_rows: count(r.cost_cents),
         manual_rows: filter(count(r.uuid), fragment("?->>'cost_source' = 'manual'", r.metadata)),
+        table_rows: filter(count(r.uuid), fragment("?->>'cost_source' = 'table'", r.metadata)),
         avg_cost: avg(r.cost_cents),
         avg_latency_ms: avg(r.latency_ms)
       }
@@ -362,7 +365,11 @@ defmodule PhoenixKitAI.Recommendations do
       cost_reported?: row.cost_rows > 0,
       notes:
         Enum.filter(
-          [alias?(row.model) && :alias, row.manual_rows > 0 && :manual_price],
+          [
+            alias?(row.model) && :alias,
+            row.manual_rows > 0 && :manual_price,
+            row.table_rows > 0 && :table_price
+          ],
           & &1
         )
     }
@@ -447,7 +454,7 @@ defmodule PhoenixKitAI.Recommendations do
   end
 
   defp row(source, id, caps, tokens) do
-    {caps, manual?} = with_manual_price(source, id, caps)
+    {caps, price_source} = extra_price(source, id, caps)
 
     %{
       model: id,
@@ -462,7 +469,7 @@ defmodule PhoenixKitAI.Recommendations do
       price_known?: caps.prompt_price != nil,
       input_price_per_million: caps.prompt_price && caps.prompt_price * 1_000_000,
       deprecated?: caps.lifecycle == :deprecated,
-      notes: notes(source.kind, id, caps, manual?),
+      notes: notes(source.kind, id, caps, price_source),
       sort_price: sort_price(caps, tokens)
     }
   end
@@ -472,31 +479,47 @@ defmodule PhoenixKitAI.Recommendations do
   defp row_provider(%{kind: :plain} = source), do: Map.get(source, :provider)
   defp row_provider(source), do: source.kind
 
-  # A model the catalogue gives no price, on an endpoint with a manual price
-  # for both directions, is priced by it (dollars per token, for ranking).
-  defp with_manual_price(source, id, %Capabilities{prompt_price: nil} = caps) do
+  # A model the catalogue gives no price is priced, in `PhoenixKitAI.CallCost`'s
+  # order, by an endpoint's manual price for it (both directions), else by
+  # Anthropic's built-in rates — dollars per token, for ranking. Says which.
+  defp extra_price(source, id, %Capabilities{prompt_price: nil} = caps) do
     case source |> Map.get(:manual_prices, %{}) |> Map.get(id) do
       %{"input" => input, "output" => output} ->
-        {%{caps | prompt_price: input * 1.0e-12, completion_price: output * 1.0e-12}, true}
+        {%{caps | prompt_price: input * 1.0e-12, completion_price: output * 1.0e-12}, :manual}
 
       _ ->
-        {caps, false}
+        table_price(source.kind, id, caps)
     end
   end
 
-  defp with_manual_price(_source, _id, caps), do: {caps, false}
+  defp extra_price(_source, _id, caps), do: {caps, nil}
 
-  defp notes(kind, id, caps, manual?) do
+  defp table_price(:anthropic, id, caps) do
+    case AnthropicPricing.per_token(id) do
+      {input, output} -> {%{caps | prompt_price: input, completion_price: output}, :table}
+      nil -> {caps, nil}
+    end
+  end
+
+  defp table_price(_kind, _id, caps), do: {caps, nil}
+
+  defp notes(kind, id, caps, price_source) do
     [
       alias?(id) && :alias,
       free?(caps) && :free,
-      manual? && :manual_price,
-      (kind != :openrouter and not manual?) && :cost_not_reported,
+      price_note(kind, price_source),
       kind == :anthropic && caps.json_schema == :no && :json_schema_openrouter_only,
       kind == :plain && :capabilities_not_reported
     ]
     |> Enum.filter(& &1)
   end
+
+  # Where a price the catalogue does not give came from, or that no cost is
+  # counted (no price at all, on an operator that reports none).
+  defp price_note(_kind, :manual), do: :manual_price
+  defp price_note(_kind, :table), do: :table_price
+  defp price_note(:openrouter, nil), do: nil
+  defp price_note(_kind, nil), do: :cost_not_reported
 
   # A model both of whose prices are zero (OpenRouter's `:free` variants):
   # rate-limited and on the operator's terms, so not a plain bargain.

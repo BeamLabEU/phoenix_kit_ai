@@ -116,7 +116,7 @@ defmodule PhoenixKitAI.ManualPriceTest do
 
       row = last_row(endpoint)
       assert row.cost_cents == 10_000
-      refute Map.has_key?(row.metadata, "cost_source")
+      assert row.metadata["cost_source"] == "provider"
     end
 
     test "stays unknown without a price, as before" do

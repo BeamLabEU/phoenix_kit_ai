@@ -147,6 +147,25 @@ defmodule PhoenixKitAI.Web.ManualPriceUITest do
 
       assert has_element?(view, "[data-cost-source=manual]", "entered by hand")
     end
+
+    test "marks a cost from the built-in price table", %{conn: conn} do
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      TestRepo.insert!(%Request{
+        model: "claude-sonnet-5-5",
+        status: "success",
+        request_type: "chat",
+        cost_cents: 7_000,
+        metadata: %{"cost_source" => "table"},
+        inserted_at: now,
+        updated_at: now
+      })
+
+      {:ok, view, _html} = live(conn, "/en/admin/ai/usage")
+
+      assert has_element?(view, "[data-cost-source=table]", "list price")
+      refute has_element?(view, "[data-cost-source=manual]")
+    end
   end
 
   describe "the recommendations" do
@@ -179,6 +198,34 @@ defmodule PhoenixKitAI.Web.ManualPriceUITest do
       other = Enum.find(recs.possible, &(&1.model == "glm-4.5"))
       refute :manual_price in other.notes
       assert other.price_per_call == nil
+    end
+
+    test "an Anthropic model is priced by the table, marked, and a manual price wins over it" do
+      source = fn manual_prices ->
+        %{
+          base_url: "https://api.anthropic.com/v1",
+          kind: :anthropic,
+          provider: "anthropic",
+          integration_uuid: nil,
+          manual_prices: manual_prices,
+          models: [{"claude-sonnet-5-5", %Capabilities{text_output: true}}]
+        }
+      end
+
+      [row] = Recommendations.ranked("test.sized", catalogue: [source.(%{})], limit: 10).possible
+      assert :table_price in row.notes
+      refute :cost_not_reported in row.notes
+      # $2 and $10 per 1M: 10 000 in, 1 000 out.
+      assert_in_delta row.price_per_call, 10_000 * 2.0e-6 + 1_000 * 10.0e-6, 1.0e-12
+
+      manual = %{"claude-sonnet-5-5" => %{"input" => 1_000_000, "output" => 1_000_000}}
+
+      [row] =
+        Recommendations.ranked("test.sized", catalogue: [source.(manual)], limit: 10).possible
+
+      assert :manual_price in row.notes
+      refute :table_price in row.notes
+      assert_in_delta row.price_per_call, 11_000 * 1.0e-6, 1.0e-12
     end
 
     test "a model that worked with manual costs says so", %{conn: conn} do

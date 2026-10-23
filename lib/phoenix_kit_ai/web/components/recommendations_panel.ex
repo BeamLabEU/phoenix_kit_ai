@@ -372,6 +372,7 @@ defmodule PhoenixKitAI.Web.Components.RecommendationsPanel do
   defp note_label(:cost_not_reported), do: gettext("cost is not counted")
 
   defp note_label(:manual_price), do: gettext("price entered by hand")
+  defp note_label(:table_price), do: gettext("list price, may be out of date")
 
   defp note_label(:capabilities_not_reported),
     do: gettext("the operator does not report capabilities")

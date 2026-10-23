@@ -5,10 +5,11 @@ defmodule PhoenixKitAI.ManualPrice do
   whole micro-dollars per 1M input and output tokens (`$0.60` per 1M is
   `600_000`), either one optional.
 
-  A call whose provider reports no `usage.cost` gets its `cost_cents` — in
-  micro-dollars too — from it (`for_call/4`), and its usage row says
-  `cost_source: "manual"`; a reported cost is always taken instead. Money
-  limits and the daily budget then count the call like any other.
+  A call whose provider reports no `usage.cost` and whose model no catalogue
+  prices gets its `cost_cents` — in micro-dollars too — from it, and its
+  usage row says `cost_source: "manual"` (`PhoenixKitAI.CallCost` keeps the
+  order of the sources). Money limits and the daily budget then count the
+  call like any other.
   """
 
   alias PhoenixKitAI.Endpoint
@@ -48,29 +49,6 @@ defmodule PhoenixKitAI.ManualPrice do
     do: {:ok, price * tokens}
 
   defp part(_price, _tokens), do: :missing
-
-  @doc """
-  A call's `cost_cents` and what to add to its row's metadata: the
-  provider's reported cost as it is, else the manual price's cost with
-  `%{cost_source: "manual"}`, else nil.
-  """
-  @spec for_call(Endpoint.t() | map(), integer() | nil, integer() | nil, integer() | nil) ::
-          {non_neg_integer() | nil, map()}
-  def for_call(_endpoint, reported, _input_tokens, _output_tokens) when is_integer(reported),
-    do: {reported, %{}}
-
-  def for_call(endpoint, nil, input_tokens, output_tokens) do
-    case cost(get(endpoint), input_tokens || 0, output_tokens || 0) do
-      nil -> {nil, %{}}
-      cost -> {cost, %{cost_source: "manual"}}
-    end
-  end
-
-  @doc "Whether a usage row's cost was computed from a manual price."
-  @spec manual_cost?(map()) :: boolean()
-  def manual_cost?(%{metadata: %{"cost_source" => "manual"}}), do: true
-  def manual_cost?(%{metadata: %{cost_source: "manual"}}), do: true
-  def manual_cost?(_request), do: false
 
   @doc """
   Checks a stored price: a map of `"input"` / `"output"` to whole

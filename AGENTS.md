@@ -204,6 +204,18 @@ Repo-local aliases:
 - The `cost_cents` column holds **nanodollars** (1/1,000,000 of a dollar),
   not cents — the name is legacy. Reading it as cents is off by seven orders of
   magnitude. The spend-cap settings use the same unit: `5_000_000` is $5.
+- A chat or embedding row's cost comes from `PhoenixKitAI.CallCost`, the
+  first source with a price: the provider's `usage.cost` > the operator's
+  catalogue price (OpenRouter `pricing`) > the endpoint's manual price
+  (`provider_settings["pricing"]`, whole µ$ per 1M tokens) > Anthropic's
+  built-in rates (`AnthropicPricing`, from BeamLabEU/phoenix_kit_ai#47,
+  overridable by `config :phoenix_kit_ai, :anthropic_prices`). The row's
+  `metadata.cost_source` says which (`provider` / `catalogue` / `manual` /
+  `table`). The answer's model is priced; with no price anywhere, the
+  endpoint's model. The table never becomes a catalogue price
+  (`Capabilities.prompt_price`), so a manual price corrects it.
+  `PhoenixKitAI.reports_cost?/1` says whether any source prices an
+  endpoint's model (`TaskLimits.money_counted?/1` reads it).
 - `user_uuid:` on a verb must be a PhoenixKit user uuid. The usage row has a
   foreign key on it, so an anonymous or external id cannot be stored there:
   the row is written without it (`user_uuid` nil, the submitted id kept in

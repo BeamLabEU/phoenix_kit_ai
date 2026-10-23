@@ -709,4 +709,34 @@ defmodule PhoenixKitAI.Web.Endpoints do
   # AI.delete_endpoint/2 so the mutation is logged against the right
   # actor. See PhoenixKitAI moduledoc for the activity logging pattern.
   defp actor_opts(socket), do: AuthHelpers.actor_opts(socket)
+
+  attr(:source, :string, default: nil)
+
+  # A usage row's cost that came from a price the provider did not report:
+  # entered by hand on the endpoint, or Anthropic's built-in list price.
+  defp cost_source_badge(%{source: "manual"} = assigns) do
+    ~H"""
+    <span
+      data-cost-source="manual"
+      class="badge badge-ghost badge-xs h-auto ml-1"
+      title={gettext("Counted from the price entered by hand on the endpoint")}
+    >
+      {gettext("entered by hand")}
+    </span>
+    """
+  end
+
+  defp cost_source_badge(%{source: "table"} = assigns) do
+    ~H"""
+    <span
+      data-cost-source="table"
+      class="badge badge-ghost badge-xs h-auto ml-1"
+      title={gettext("Counted from the built-in list price, which may be out of date")}
+    >
+      {gettext("list price")}
+    </span>
+    """
+  end
+
+  defp cost_source_badge(assigns), do: ~H""
 end
