@@ -60,3 +60,8 @@ config :phoenix_kit_ai, PhoenixKitAI.Test.Endpoint,
 config :phoenix, :json_library, Jason
 
 config :logger, level: :warning
+
+# The endpoint / credential lookup cache (PhoenixKitAI.Cache) is off in tests: many
+# tests rewrite settings and endpoint rows directly, which a cache would hide.
+# test/phoenix_kit_ai/cache_and_log_test.exs turns it on where it is under test.
+config :phoenix_kit_ai, endpoint_cache_ttl: 0, credential_cache_ttl: 0

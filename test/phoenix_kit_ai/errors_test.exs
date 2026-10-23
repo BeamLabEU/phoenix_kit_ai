@@ -106,6 +106,16 @@ defmodule PhoenixKitAI.ErrorsTest do
       assert Errors.message(:request_timeout) == "Request timeout"
     end
 
+    test ":concurrency_limit_timeout" do
+      assert Errors.message(:concurrency_limit_timeout) ==
+               "Too many AI requests are running; this one waited too long for its turn"
+    end
+
+    test ":concurrency_queue_full" do
+      assert Errors.message(:concurrency_queue_full) ==
+               "Too many AI requests are waiting; try again shortly"
+    end
+
     test ":invalid_json_response" do
       assert Errors.message(:invalid_json_response) == "Invalid JSON response"
     end

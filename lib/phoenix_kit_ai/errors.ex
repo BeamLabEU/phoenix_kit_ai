@@ -43,6 +43,13 @@ defmodule PhoenixKitAI.Errors do
   def message(:insufficient_credits), do: gettext("Insufficient credits")
   def message(:rate_limited), do: gettext("Rate limited")
   def message(:request_timeout), do: gettext("Request timeout")
+
+  def message(:concurrency_limit_timeout),
+    do: gettext("Too many AI requests are running; this one waited too long for its turn")
+
+  def message(:concurrency_queue_full),
+    do: gettext("Too many AI requests are waiting; try again shortly")
+
   def message(:invalid_json_response), do: gettext("Invalid JSON response")
   def message(:no_choices_in_response), do: gettext("No choices in response")
   def message(:invalid_response_format), do: gettext("Invalid response format")

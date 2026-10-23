@@ -589,8 +589,11 @@ defmodule PhoenixKitAI.OpenRouterClient do
   defp maybe_get_credentials(nil), do: {:error, :not_configured}
   defp maybe_get_credentials(""), do: {:error, :not_configured}
 
+  # Cached briefly (PhoenixKitAI.Cache): a call reads the credentials to validate
+  # the endpoint and again to build its headers; a change on core's integrations
+  # topic, or the TTL, drops the entry.
   defp maybe_get_credentials(key) when is_binary(key) do
-    PhoenixKit.Integrations.get_credentials(key)
+    PhoenixKitAI.Cache.credentials(key, fn -> PhoenixKit.Integrations.get_credentials(key) end)
   end
 
   # Lazy on-read promotion: when integration_uuid is nil but the

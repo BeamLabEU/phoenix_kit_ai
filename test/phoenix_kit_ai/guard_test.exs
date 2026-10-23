@@ -499,25 +499,25 @@ defmodule PhoenixKitAI.GuardTest do
       assert_received {:post, _, %{"model" => "vendor/vision"}}
     end
 
-    test "chat ignores model: (it sends the endpoint's model), so the endpoint's model is checked" do
+    test "chat sends model:, so the model it names is the one checked" do
       stub()
       vision = endpoint("vendor/vision")
       text = endpoint("vendor/text-only")
       start_catalogue()
       part = %{"type" => "image_url", "image_url" => %{"url" => @image_url}}
 
-      # A vision model named in model: does not let an image reach a text model.
-      assert {:error, {:model_unfit, [:vision]}} =
+      # A vision model named in model: takes the image a text endpoint could not.
+      assert {:ok, _} =
                PhoenixKitAI.complete(text.uuid, image_message(part), model: "vendor/vision")
 
-      refute_received {:post, _, _}
-      assert [%{model: "vendor/text-only", metadata: %{"refused" => true}}] = rows(text)
+      assert_received {:post, _, %{"model" => "vendor/vision"}}
 
-      # A text model named in model: does not refuse a call that goes to a vision model.
-      assert {:ok, _} =
+      # A text model named in model: is refused the image, on a vision endpoint too.
+      assert {:error, {:model_unfit, [:vision]}} =
                PhoenixKitAI.complete(vision.uuid, image_message(part), model: "vendor/text-only")
 
-      assert_received {:post, _, %{"model" => "vendor/vision"}}
+      refute_received {:post, _, _}
+      assert [%{model: "vendor/text-only", metadata: %{"refused" => true}}] = rows(vision)
     end
 
     test ":json is soft: a model without JSON gets the call and the row a warning" do
@@ -534,17 +534,26 @@ defmodule PhoenixKitAI.GuardTest do
   end
 
   describe "task, attribution and the row uuid" do
-    test "a cached chat row names the model actually sent, ignoring the unsupported override" do
+    test "a cached chat row names the model actually sent, a call's model: included" do
       ep = endpoint()
       stub()
-      opts = [model: "not-the-chat-model", cache: true, task: "test.plain"]
+      opts = [model: "vendor/override", cache: true, task: "test.plain"]
 
       assert {:ok, %{"request_uuid" => fresh}} = PhoenixKitAI.ask(ep.uuid, "q", opts)
+      assert_received {:post, _, %{"model" => "vendor/override"}}
       assert {:ok, %{"request_uuid" => cached}} = PhoenixKitAI.ask(ep.uuid, "q", opts)
       assert fresh != cached
-      assert PhoenixKitAI.get_request(fresh).model == ep.model
-      assert %{model: model, metadata: %{"cached" => true}} = PhoenixKitAI.get_request(cached)
-      assert model == ep.model
+      assert PhoenixKitAI.get_request(fresh).model == "vendor/override"
+
+      assert %{model: "vendor/override", metadata: %{"cached" => true}} =
+               PhoenixKitAI.get_request(cached)
+
+      # the endpoint's own model is another request, not that cached answer
+      assert {:ok, %{"request_uuid" => own}} =
+               PhoenixKitAI.ask(ep.uuid, "q", Keyword.delete(opts, :model))
+
+      assert PhoenixKitAI.get_request(own).model == ep.model
+      refute PhoenixKitAI.get_request(own).metadata["cached"]
     end
 
     test "on a chat success, an error, a cache hit and an unparsed JSON answer" do
