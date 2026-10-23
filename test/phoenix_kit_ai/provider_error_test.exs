@@ -436,15 +436,62 @@ defmodule PhoenixKitAI.ProviderErrorTest do
 
     test "base64 and JWT-shaped keys are taken out whole" do
       message =
-        "AWS AKIAIOSFODNN7EXAMPLE wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY " <>
+        "AWS AKIAIOSFODNN7EXAMPLE base64 dGhpc2lzYXZlcnlsb25nc2VjcmV0a2V5MTIzNDU2Nzg= " <>
           "JWT eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abc"
 
       {_text, note} = note_for(%{"error" => %{"message" => message}})
 
       for part <-
-            ~w(AKIAIOSFODNN7EXAMPLE wJalrXUtnFEMI bPxRfiCYEXAMPLEKEY eyJhbGciOiJIUzI1NiJ9 eyJzdWIiOiIxIn0) do
+            ~w(AKIAIOSFODNN7EXAMPLE dGhpc2lzYXZlcnlsb25n eyJhbGciOiJIUzI1NiJ9 eyJzdWIiOiIxIn0) do
         refute note["message"] =~ part, part
       end
+    end
+
+    test "a request id of 32 hex digits is taken out" do
+      id = "req_0123456789abcdef0123456789abcdef"
+      {_text, note} = note_for(%{"error" => %{"message" => "Request #{id} failed"}})
+      refute note["message"] =~ "0123456789abcdef"
+    end
+
+    test "a model id is kept, judged part by part" do
+      for model <- ~w(meta-llama/llama-3.1-405b-instruct anthropic/claude-3-5-sonnet-20241022) do
+        {_text, note} =
+          note_for(%{"error" => %{"message" => "The model #{model} does not exist"}})
+
+        assert note["message"] == "The model #{model} does not exist", model
+      end
+    end
+
+    test "a link keeps its scheme, host and path; query values are taken out" do
+      link = "https://api.z.ai/api/paas/v4/chat/completions"
+      {_text, note} = note_for(%{"error" => %{"message" => "Call #{link} instead"}})
+      assert note["message"] == "Call #{link} instead"
+
+      {_text, note} =
+        note_for(%{
+          "error" => %{"message" => "Bad request to #{link}?model=glm&key=AIzaSyA1b2C3d4E5"}
+        })
+
+      assert note["message"] =~ link
+      refute note["message"] =~ "AIzaSyA1b2C3d4E5"
+      refute note["message"] =~ "glm&"
+    end
+
+    test "a link's user and password are taken out" do
+      {_text, note} =
+        note_for(%{"error" => %{"message" => "Proxy https://bob:pa55word@proxy.test/v1 refused"}})
+
+      refute note["message"] =~ "pa55word"
+      assert note["message"] =~ "https://[redacted]@proxy.test/v1"
+    end
+
+    test "a key-shaped segment of a link's path is taken out" do
+      secret = String.duplicate("Ab1", 12)
+      link = "https://example.test/hooks/#{secret}/run"
+      {_text, note} = note_for(%{"error" => %{"message" => "Posted to #{link}"}})
+
+      refute note["message"] =~ secret
+      assert note["message"] =~ "https://example.test/hooks/"
     end
 
     test "a long unprefixed token is taken out" do
@@ -577,8 +624,20 @@ defmodule PhoenixKitAI.ProviderErrorTest do
       assert answered("claude-3-5-sonnet", "claude-3-5-sonnet-20241022") == nil
     end
 
-    test "is left out when only the provider prefix differs" do
+    test "is left out when only one side carries a provider prefix" do
       assert answered("openai/gpt-4o", "gpt-4o") == nil
+      assert answered("glm-4.5", "z-ai/glm-4.5") == nil
+    end
+
+    test "is kept when the two sides carry different provider prefixes" do
+      assert answered("openai/gpt-4o", "azure/gpt-4o") == "azure/gpt-4o"
+    end
+
+    test "is kept for a snapshot other than the one asked for" do
+      assert answered("claude-3-5-sonnet-20240620", "claude-3-5-sonnet-20241022") ==
+               "claude-3-5-sonnet-20241022"
+
+      assert answered("gpt-4o-2024-05-13", "gpt-4o-2024-11-20") == "gpt-4o-2024-11-20"
     end
 
     test "an embedding row keeps it too" do

@@ -58,10 +58,17 @@ defmodule PhoenixKitAI.ProviderError do
 
   # Words that look like a credential: a prefixed key (`sk-…`, `xai-…`),
   # an AWS key id, a bearer token, or a long unbroken token with a digit or
-  # both cases in it — a Z.ai `id.secret`, base64, a JWT. A long run of
-  # plain words (`organization_usage_limit_exceeded`, a link) stays.
+  # both cases in it — a Z.ai `id.secret`, base64, a JWT, a 32-hex request
+  # id. A long run of plain words (`organization_usage_limit_exceeded`)
+  # stays. A `/` splits a token and each part is judged alone, so a model id
+  # (`meta-llama/llama-3.1-405b-instruct`) or a link's path stays readable;
+  # the cost is that a base64 secret with `/` in it, every part under 32
+  # characters, is kept. A link keeps its scheme, host and path (a path
+  # part that is itself key-shaped goes); its query and fragment values
+  # and any user:password go.
   @prefixed_key ~r/\b(?:sk|rk|pk|xai|gsk|key)[-_][A-Za-z0-9_\-\*\.+\/=]{6,}|\bAKIA[0-9A-Z]{16}\b|\bBearer\s+\S+/
-  @long_token ~r/[A-Za-z0-9_\-\.+\/=]{32,}/
+  @long_token ~r/[A-Za-z0-9_\-\.+=]{32,}/
+  @link ~r/\bhttps?:\/\/[^\s]+/
   @code_shape ~r/\A[A-Za-z0-9_.\-]{1,64}\z/
 
   @doc false
@@ -211,6 +218,7 @@ defmodule PhoenixKitAI.ProviderError do
 
   defp redact(text) do
     text
+    |> String.replace(@link, &redact_link/1)
     |> String.replace(@prefixed_key, "[redacted]")
     |> String.replace(@long_token, fn token ->
       if token =~ ~r/[0-9]/ or (token =~ ~r/[a-z]/ and token =~ ~r/[A-Z]/),
@@ -218,6 +226,18 @@ defmodule PhoenixKitAI.ProviderError do
         else: token
     end)
   end
+
+  defp redact_link(link) do
+    case String.split(link, ~r/[?#]/, parts: 2, include_captures: true) do
+      [base, mark, rest] -> redact_userinfo(base) <> mark <> redact_values(rest)
+      [base] -> redact_userinfo(base)
+    end
+  end
+
+  defp redact_userinfo(base),
+    do: Regex.replace(~r/\A(https?:\/\/)[^\/@\s]+@/, base, "\\1[redacted]@")
+
+  defp redact_values(rest), do: Regex.replace(~r/=[^&#\s]+/, rest, "=[redacted]")
 
   # At most @max_message code points, so at most four times as many bytes
   # however many combining marks one character carries.

@@ -309,24 +309,37 @@ defmodule PhoenixKitAI.Request do
   def answered_model(_request), do: nil
 
   @doc false
-  # `answered` where it names another model than `asked` — not the same
-  # name behind a provider prefix (`openai/gpt-4o`) or as a dated snapshot
-  # (`gpt-4o-2024-08-06`, `claude-3-5-sonnet-20241022`); nil otherwise.
+  # `answered` where it names another model than `asked`; nil when it is
+  # the same: the same name, the same name with a provider prefix on one
+  # side only (`gpt-4o` / `openai/gpt-4o`; two different prefixes are two
+  # models), or a dated snapshot (`-2024-08-06`, `-20241022`) of an
+  # undated name asked for. A snapshot other than the one asked for is
+  # another model.
   @spec other_model(String.t() | nil, term()) :: String.t() | nil
   def other_model(asked, answered) when is_binary(answered) and answered != "" do
-    if base_model(answered) == base_model(asked), do: nil, else: answered
+    if same_model?(asked, answered), do: nil, else: answered
   end
 
   def other_model(_asked, _answered), do: nil
 
-  defp base_model(model) when is_binary(model) do
-    model
-    |> String.split("/")
-    |> List.last()
-    |> String.replace(~r/-(?:\d{4}-\d{2}-\d{2}|\d{8})\z/, "")
+  @dated ~r/-(?:\d{4}-\d{2}-\d{2}|\d{8})\z/
+
+  defp same_model?(asked, answered) when is_binary(asked) do
+    {asked, answered} = unprefixed(asked, answered)
+    asked == answered or (not (asked =~ @dated) and String.replace(answered, @dated, "") == asked)
   end
 
-  defp base_model(_model), do: nil
+  defp same_model?(_asked, _answered), do: false
+
+  defp unprefixed(asked, answered) do
+    case {String.contains?(asked, "/"), String.contains?(answered, "/")} do
+      {true, false} -> {last_part(asked), answered}
+      {false, true} -> {asked, last_part(answered)}
+      _both_or_neither -> {asked, answered}
+    end
+  end
+
+  defp last_part(model), do: model |> String.split("/") |> List.last()
 
   @doc """
   Extracts the model name without provider prefix.
