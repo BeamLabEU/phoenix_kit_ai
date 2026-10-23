@@ -2638,7 +2638,7 @@ msgstr ""
 msgid "Input, per 1M tokens"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:375
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:378
 #, elixir-autogen, elixir-format
 msgid "JSON schema only through OpenRouter"
 msgstr ""
@@ -3557,4 +3557,9 @@ msgstr ""
 #: lib/phoenix_kit_ai/web/components/capability_badges.ex:309
 #, elixir-autogen, elixir-format
 msgid "“image” or “imagine” in a name usually means the model generates images."
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:375
+#, elixir-autogen, elixir-format
+msgid "the operator does not report capabilities"
 msgstr ""

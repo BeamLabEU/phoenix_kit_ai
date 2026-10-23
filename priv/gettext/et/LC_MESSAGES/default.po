@@ -2638,7 +2638,7 @@ msgstr "Vead"
 msgid "Input, per 1M tokens"
 msgstr "Sisend, 1 M märgi kohta"
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:375
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:378
 #, elixir-autogen, elixir-format
 msgid "JSON schema only through OpenRouter"
 msgstr "JSON-skeem ainult OpenRouteri kaudu"
@@ -3558,3 +3558,8 @@ msgstr "mudelite ülevaade"
 #, elixir-autogen, elixir-format
 msgid "“image” or “imagine” in a name usually means the model generates images."
 msgstr "„image“ või „imagine“ nimes tähendab tavaliselt, et mudel loob pilte."
+
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:375
+#, elixir-autogen, elixir-format
+msgid "the operator does not report capabilities"
+msgstr "operaator ei teata võimekusi"

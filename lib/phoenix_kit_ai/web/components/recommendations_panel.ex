@@ -371,6 +371,9 @@ defmodule PhoenixKitAI.Web.Components.RecommendationsPanel do
   defp note_label(:alias), do: gettext("alias model, may change")
   defp note_label(:cost_not_reported), do: gettext("cost is not counted")
 
+  defp note_label(:capabilities_not_reported),
+    do: gettext("the operator does not report capabilities")
+
   defp note_label(:json_schema_openrouter_only),
     do: gettext("JSON schema only through OpenRouter")
 

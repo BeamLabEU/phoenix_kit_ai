@@ -2649,7 +2649,7 @@ msgstr "Ошибки"
 msgid "Input, per 1M tokens"
 msgstr "Вход, за 1 млн токенов"
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:375
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:378
 #, elixir-autogen, elixir-format
 msgid "JSON schema only through OpenRouter"
 msgstr "JSON-схема только через OpenRouter"
@@ -3569,3 +3569,8 @@ msgstr "обзор моделей"
 #, elixir-autogen, elixir-format
 msgid "“image” or “imagine” in a name usually means the model generates images."
 msgstr "«image» или «imagine» в названии обычно означает, что модель генерирует изображения."
+
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:375
+#, elixir-autogen, elixir-format
+msgid "the operator does not report capabilities"
+msgstr "оператор не сообщает возможности"
