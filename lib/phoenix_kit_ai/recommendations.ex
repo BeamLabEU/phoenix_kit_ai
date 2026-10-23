@@ -42,6 +42,16 @@ defmodule PhoenixKitAI.Recommendations do
   provider but OpenRouter reports what a call cost; they come after the
   priced ones, with one place kept for them among the rows.
 
+  A direct operator's plain list of ids (OpenAI, xAI, Z.ai — a `:plain`
+  source, `Capabilities.source_kind/2`) says nothing about any model: its
+  models are `possible` at best, never `verified`, marked
+  `:capabilities_not_reported`, and come after every model something is
+  known about. A capability filter does not hide them: «?» is not «no».
+
+  A model the catalogue gives no price is priced by the manual price an
+  endpoint there carries for it (`PhoenixKitAI.ManualPrice`), marked
+  `:manual_price`; so is a model that worked with costs counted from one.
+
   ## Journal
 
   `worked/2` leaves out the rows the guard refused before any HTTP
@@ -50,7 +60,8 @@ defmodule PhoenixKitAI.Recommendations do
 
   import Ecto.Query, only: [from: 2]
 
-  alias PhoenixKitAI.{Capabilities, Endpoint, Request, Tasks, TaskSpec}
+  alias PhoenixKitAI.{AnthropicPricing, Capabilities, Endpoint, ManualPrice, Request}
+  alias PhoenixKitAI.{Tasks, TaskSpec}
 
   @limit 5
   @worked_limit 10
@@ -59,7 +70,14 @@ defmodule PhoenixKitAI.Recommendations do
   # `preview`, `beta`, `exp` or `experimental` as a word of the model id.
   @experimental_id ~r/(^|[^a-z])(preview|beta|exp|experimental)([^a-z]|$)/i
 
-  @type note :: :alias | :cost_not_reported | :json_schema_openrouter_only | :free
+  @type note ::
+          :alias
+          | :cost_not_reported
+          | :json_schema_openrouter_only
+          | :free
+          | :capabilities_not_reported
+          | :manual_price
+          | :table_price
   @type estimate :: :declared | :journal | :rough
 
   @doc "The capabilities the recommendations can be filtered by: images, documents, image generation."
@@ -210,7 +228,8 @@ defmodule PhoenixKitAI.Recommendations do
       for source <- sources,
           {id, %Capabilities{} = caps} <- source.models,
           listed?(caps, needs),
-          group = group(Tasks.assess(caps, needs)),
+          plain_listed?(source, id, needs),
+          group = group(source.kind, Tasks.assess(caps, needs)),
           group != nil do
         {group,
          source |> row(id, caps, tokens) |> Map.put(:unverified, unverified(group, caps, needs))}
@@ -226,15 +245,19 @@ defmodule PhoenixKitAI.Recommendations do
     }
   end
 
-  defp group(:fit), do: :verified
-  defp group({:unknown, _unclear}), do: :possible
-  defp group({:unfit, _missing}), do: nil
+  # A plain list's model is never verified: nothing about it is known.
+  defp group(_kind, {:unfit, _missing}), do: nil
+  defp group(:plain, _assessment), do: :possible
+  defp group(_kind, :fit), do: :verified
+  defp group(_kind, {:unknown, _unclear}), do: :possible
 
   defp unverified(:verified, _caps, _needs), do: []
 
   defp unverified(:possible, caps, needs) do
-    {:unknown, unclear} = Tasks.assess(caps, needs)
-    unclear
+    case Tasks.assess(caps, needs) do
+      {:unknown, unclear} -> unclear
+      _fit -> []
+    end
   end
 
   defp of_group(rows, group), do: for({^group, row} <- rows, do: row)
@@ -243,6 +266,22 @@ defmodule PhoenixKitAI.Recommendations do
   # what the task needs; retired ones never.
   defp listed?(caps, needs),
     do: (caps.text_output != false or :image_output in needs) and caps.lifecycle != :retired
+
+  # A plain list says nothing about a model, so its ids are the only hint:
+  # an id naming embeddings, speech, transcription, realtime or audio
+  # sessions, video (`sora`) or moderation is not a chat model and is never
+  # listed; one naming images (`image`, `dall-e`) only when the task makes
+  # images. A heuristic by name (OpenAI's ids, and any other plain list's
+  # alike), deliberately narrow.
+  @not_chat ~r/(embedding|(^|-)tts(-|$)|whisper|transcribe|realtime|audio|sora|moderation)/i
+  @image_model ~r/(image|dall-e)/i
+
+  defp plain_listed?(%{kind: :plain}, id, needs) do
+    not Regex.match?(@not_chat, id) and
+      (:image_output in needs or not Regex.match?(@image_model, id))
+  end
+
+  defp plain_listed?(_source, _id, _needs), do: true
 
   defp experimental?(%{model: id} = row) do
     alias?(id) or String.contains?(id, ":free") or Regex.match?(@experimental_id, id) or
@@ -304,6 +343,8 @@ defmodule PhoenixKitAI.Recommendations do
         calls: count(r.uuid),
         errors: filter(count(r.uuid), r.status != "success"),
         cost_rows: count(r.cost_cents),
+        manual_rows: filter(count(r.uuid), fragment("?->>'cost_source' = 'manual'", r.metadata)),
+        table_rows: filter(count(r.uuid), fragment("?->>'cost_source' = 'table'", r.metadata)),
         avg_cost: avg(r.cost_cents),
         avg_latency_ms: avg(r.latency_ms)
       }
@@ -339,7 +380,15 @@ defmodule PhoenixKitAI.Recommendations do
       error_share: row.errors / row.calls,
       avg_latency_ms: to_float(row.avg_latency_ms),
       cost_reported?: row.cost_rows > 0,
-      notes: if(alias?(row.model), do: [:alias], else: [])
+      notes:
+        Enum.filter(
+          [
+            alias?(row.model) && :alias,
+            row.manual_rows > 0 && :manual_price,
+            row.table_rows > 0 && :table_price
+          ],
+          & &1
+        )
     }
   end
 
@@ -360,8 +409,10 @@ defmodule PhoenixKitAI.Recommendations do
 
   @doc """
   The catalogues the endpoints use, as the sources `cheapest/2` ranks: one
-  per base URL with a catalogue, `%{base_url, kind, endpoint_uuid,
-  integration_uuid, models}`. Read once and passed as `:catalogue` when several tasks are
+  per base URL with a catalogue or a plain list (`kind: :plain`),
+  `%{base_url, kind, provider, endpoint_uuid, integration_uuid, models}` —
+  `provider` the endpoints' provider key, which names a plain list's
+  operator. Read once and passed as `:catalogue` when several tasks are
   listed together. The integration is the one of an endpoint there (enabled
   ones first), which the create button hands to the endpoint form.
   """
@@ -375,7 +426,7 @@ defmodule PhoenixKitAI.Recommendations do
         []
 
       {base_url, [first | _] = endpoints} ->
-        case Capabilities.catalogue_kind(first.provider, base_url) do
+        case Capabilities.source_kind(first.provider, base_url) do
           nil ->
             []
 
@@ -385,13 +436,32 @@ defmodule PhoenixKitAI.Recommendations do
                 base_url: base_url,
                 kind: kind,
                 endpoint_uuid: first.uuid,
+                provider: Endpoint.base_provider(first.provider),
                 integration_uuid: Enum.find_value(endpoints, & &1.integration_uuid),
+                manual_prices: manual_prices(endpoints),
                 models: Capabilities.catalogue(base_url)
               }
             ]
         end
     end)
   end
+
+  # The manual prices of the endpoints at a base URL, by model (an enabled
+  # endpoint's first).
+  defp manual_prices(endpoints) do
+    endpoints
+    |> Enum.reverse()
+    |> Enum.flat_map(fn endpoint ->
+      case ManualPrice.get(endpoint) do
+        nil -> []
+        pricing -> [{endpoint.model, pricing}]
+      end
+    end)
+    |> Map.new()
+  end
+
+  # Fit means verified, which a plain list's model never is.
+  defp candidates(%{kind: :plain}, _needs, _tokens), do: []
 
   defp candidates(%{models: models} = source, needs, tokens) do
     for {id, %Capabilities{} = caps} <- models,
@@ -401,10 +471,12 @@ defmodule PhoenixKitAI.Recommendations do
   end
 
   defp row(source, id, caps, tokens) do
+    {caps, price_source} = extra_price(source, id, caps)
+
     %{
       model: id,
       name: caps.name || id,
-      provider: source.kind,
+      provider: row_provider(source),
       base_url: source.base_url,
       integration_uuid: source.integration_uuid,
       source_endpoint_uuid: source[:endpoint_uuid],
@@ -414,20 +486,57 @@ defmodule PhoenixKitAI.Recommendations do
       price_known?: caps.prompt_price != nil,
       input_price_per_million: caps.prompt_price && caps.prompt_price * 1_000_000,
       deprecated?: caps.lifecycle == :deprecated,
-      notes: notes(source.kind, id, caps),
+      notes: notes(source.kind, id, caps, price_source),
       sort_price: sort_price(caps, tokens)
     }
   end
 
-  defp notes(kind, id, caps) do
+  # A catalogue's kind names its operator; a plain list's operator is the
+  # endpoints' provider key.
+  defp row_provider(%{kind: :plain} = source), do: Map.get(source, :provider)
+  defp row_provider(source), do: source.kind
+
+  # A model the catalogue gives no price is priced, in `PhoenixKitAI.CallCost`'s
+  # order, by an endpoint's manual price for it (both directions), else by
+  # Anthropic's built-in rates — dollars per token, for ranking. Says which.
+  defp extra_price(source, id, %Capabilities{prompt_price: nil} = caps) do
+    case source |> Map.get(:manual_prices, %{}) |> Map.get(id) do
+      %{"input" => input, "output" => output} ->
+        {%{caps | prompt_price: input * 1.0e-12, completion_price: output * 1.0e-12}, :manual}
+
+      _ ->
+        table_price(source.kind, id, caps)
+    end
+  end
+
+  defp extra_price(_source, _id, caps), do: {caps, nil}
+
+  defp table_price(:anthropic, id, caps) do
+    case AnthropicPricing.per_token(id) do
+      {input, output} -> {%{caps | prompt_price: input, completion_price: output}, :table}
+      nil -> {caps, nil}
+    end
+  end
+
+  defp table_price(_kind, _id, caps), do: {caps, nil}
+
+  defp notes(kind, id, caps, price_source) do
     [
       alias?(id) && :alias,
       free?(caps) && :free,
-      kind != :openrouter && :cost_not_reported,
-      kind == :anthropic && caps.json_schema == :no && :json_schema_openrouter_only
+      price_note(kind, price_source),
+      kind == :anthropic && caps.json_schema == :no && :json_schema_openrouter_only,
+      kind == :plain && :capabilities_not_reported
     ]
     |> Enum.filter(& &1)
   end
+
+  # Where a price the catalogue does not give came from, or that no cost is
+  # counted (no price at all, on an operator that reports none).
+  defp price_note(_kind, :manual), do: :manual_price
+  defp price_note(_kind, :table), do: :table_price
+  defp price_note(:openrouter, nil), do: nil
+  defp price_note(_kind, nil), do: :cost_not_reported
 
   # A model both of whose prices are zero (OpenRouter's `:free` variants):
   # rate-limited and on the operator's terms, so not a plain bargain.
@@ -448,14 +557,19 @@ defmodule PhoenixKitAI.Recommendations do
   defp sort_price(caps, tokens), do: price_per_call(caps, tokens)
 
   # Priced rows by price (a tie by model id), with no more than one free model;
-  # then the unpriced ones, Anthropic first, with one place kept for them. The
-  # sort key is dropped.
+  # then the unpriced ones, Anthropic first and a plain list's last, with one
+  # place kept for them. The sort key is dropped.
   defp rank(_candidates, _tokens, limit) when is_integer(limit) and limit <= 0, do: []
 
   defp rank(candidates, _tokens, limit) do
     {priced, unpriced} = Enum.split_with(candidates, &(&1.sort_price != nil))
     priced = priced |> Enum.sort_by(&{&1.sort_price, &1.model}) |> one_free()
-    unpriced = Enum.sort_by(unpriced, &{&1.provider != :anthropic, reverse_id(&1.model)})
+
+    unpriced =
+      Enum.sort_by(
+        unpriced,
+        &{:capabilities_not_reported in &1.notes, &1.provider != :anthropic, reverse_id(&1.model)}
+      )
 
     take_priced = min(length(priced), limit - min(length(unpriced), 1))
 

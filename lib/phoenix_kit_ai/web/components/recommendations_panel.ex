@@ -96,6 +96,7 @@ defmodule PhoenixKitAI.Web.Components.RecommendationsPanel do
             phx-target={@myself}
             data-filter={flag}
             aria-pressed={to_string(flag in @filters)}
+            title={CapabilityBadges.explain_text(flag)}
             class={[
               "btn btn-xs transition-colors",
               if(flag in @filters, do: "btn-primary", else: "btn-outline")
@@ -104,6 +105,8 @@ defmodule PhoenixKitAI.Web.Components.RecommendationsPanel do
             {CapabilityBadges.label(flag)}
           </button>
         </div>
+
+        <CapabilityBadges.glossary id={@id <> "-glossary"} />
 
         <section id={@id <> "-worked"} class="flex min-w-0 flex-col gap-2">
           <h4 class="font-semibold">{gettext("Models used in this task")}</h4>
@@ -222,7 +225,9 @@ defmodule PhoenixKitAI.Web.Components.RecommendationsPanel do
             <th>{gettext("Model")}</th>
             <th>{gettext("Provider")}</th>
             <th class="text-right">{price_heading(@estimate)}</th>
-            <th class="text-right">{gettext("Context")}</th>
+            <th class="text-right" title={CapabilityBadges.explain_text(:context)}>
+              {gettext("Context")}
+            </th>
             <th :if={@can_create?}></th>
           </tr>
         </thead>
@@ -365,6 +370,12 @@ defmodule PhoenixKitAI.Web.Components.RecommendationsPanel do
   defp note_label(:free), do: gettext("free — the operator's limits and terms apply")
   defp note_label(:alias), do: gettext("alias model, may change")
   defp note_label(:cost_not_reported), do: gettext("cost is not counted")
+
+  defp note_label(:manual_price), do: gettext("price entered by hand")
+  defp note_label(:table_price), do: gettext("list price, may be out of date")
+
+  defp note_label(:capabilities_not_reported),
+    do: gettext("the operator does not report capabilities")
 
   defp note_label(:json_schema_openrouter_only),
     do: gettext("JSON schema only through OpenRouter")

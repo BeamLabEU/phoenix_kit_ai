@@ -30,7 +30,9 @@ defmodule PhoenixKitAI.Web.Components.CapabilityBadgesTest do
 
     assert [unknown] = query(html, "[data-capability=file_input][data-state=unknown]")
     assert LazyHTML.text(unknown) =~ "?"
-    assert LazyHTML.attribute(unknown, "title") == ["Not verified — mark it on the endpoint"]
+    # The capability explained, then the hint.
+    assert [title] = LazyHTML.attribute(unknown, "title")
+    assert String.ends_with?(title, "Not verified — mark it on the endpoint")
     assert LazyHTML.attribute(unknown, "class") |> hd() =~ "badge-ghost"
     refute LazyHTML.attribute(unknown, "class") |> hd() =~ "badge-error"
     refute LazyHTML.text(unknown) =~ "✗"
@@ -52,7 +54,9 @@ defmodule PhoenixKitAI.Web.Components.CapabilityBadgesTest do
       })
 
     assert [unknown] = query(html, "[data-capability=file_input][data-state=unknown]")
-    assert LazyHTML.attribute(unknown, "title") == ["Not verified"]
+    # The capability explained, then the hint.
+    assert [title] = LazyHTML.attribute(unknown, "title")
+    assert String.ends_with?(title, "Not verified")
 
     assert [all] =
              query(

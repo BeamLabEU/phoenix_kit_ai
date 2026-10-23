@@ -11,7 +11,7 @@ msgstr ""
 "Language: ru\n"
 "Plural-Forms: nplurals=3; plural=(n%10==1 && n%100 != 11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10||n%100>=20) ? 1 : 2);\n"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:548
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:657
 #, elixir-autogen, elixir-format
 msgid "(taking longer than usual — the provider may be slow)"
 msgstr "(это занимает больше времени, чем обычно — провайдер может отвечать медленно)"
@@ -26,14 +26,14 @@ msgstr "Перевод через AI"
 msgid "AI Translation"
 msgstr "Перевод через AI"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:542
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:859
 #: lib/phoenix_kit_ai/web/playground.ex:130
 #: lib/phoenix_kit_ai/web/prompt_form.ex:111
 #, elixir-autogen, elixir-format
 msgid "AI module is not enabled"
 msgstr "Модуль AI не включён"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:999
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:1001
 #, elixir-autogen, elixir-format
 msgid "API Response (raw)"
 msgstr "Ответ API (сырой)"
@@ -132,12 +132,12 @@ msgstr "Краткое описание назначения промпта…"
 msgid "Can't translate the source language."
 msgstr "Нельзя перевести исходный язык."
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:531
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:640
 #, elixir-autogen, elixir-format
 msgid "Change Model"
 msgstr "Сменить модель"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:1973
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:2388
 #, elixir-autogen, elixir-format
 msgid "Chat / Completion"
 msgstr "Чат / генерация"
@@ -148,12 +148,12 @@ msgstr "Чат / генерация"
 msgid "Chat / completion model"
 msgstr "Модель для чата / завершения"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:429
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:428
 #, elixir-autogen, elixir-format
 msgid "Choose a model from the list below"
 msgstr "Выберите модель из списка ниже"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:660
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:771
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:563
 #: lib/phoenix_kit_ai/web/playground.html.heex:133
 #: lib/phoenix_kit_ai/web/playground.html.heex:263
@@ -161,16 +161,16 @@ msgstr "Выберите модель из списка ниже"
 msgid "Clear"
 msgstr "Очистить"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:204
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:205
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:211
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:212
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:411
 #: lib/phoenix_kit_ai/web/endpoint_form.html.heex:412
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:413
 #, elixir-autogen, elixir-format
 msgid "Clear model"
 msgstr "Очистить модель"
 
 #: lib/phoenix_kit_ai/components/ai_translate.ex:122
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:1020
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:1022
 #, elixir-autogen, elixir-format
 msgid "Close"
 msgstr "Закрыть"
@@ -185,11 +185,12 @@ msgstr "Конфигурация"
 msgid "Connect"
 msgstr "Подключить"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:597
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:706
 #, elixir-autogen, elixir-format
 msgid "Connect a %{provider} integration above to load available models"
 msgstr "Подключите интеграцию %{provider} выше, чтобы загрузить доступные модели"
 
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:389
 #: lib/phoenix_kit_ai/web/playground.html.heex:189
 #, elixir-autogen, elixir-format
 msgid "Connected"
@@ -216,24 +217,24 @@ msgstr "Содержимое"
 msgid "Content must be a string"
 msgstr "Содержимое должно быть строкой"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:721
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:833
 #, elixir-autogen, elixir-format
 msgid "Context: %{tokens} tokens"
 msgstr "Контекст: %{tokens} токенов"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:146
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:145
 #, elixir-autogen, elixir-format
 msgid "Copied!"
 msgstr "Скопировано!"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:142
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:141
 #, elixir-autogen, elixir-format
 msgid "Copy"
 msgstr "Копировать"
 
 #: lib/phoenix_kit_ai/web/endpoints.ex:64
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:227
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:782
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:783
 #, elixir-autogen, elixir-format
 msgid "Cost"
 msgstr "Стоимость"
@@ -254,7 +255,7 @@ msgstr "Не удалось сгенерировать промпт перево
 msgid "Could not start translation."
 msgstr "Не удалось запустить перевод."
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:930
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:1055
 #, elixir-autogen, elixir-format
 msgid "Create Endpoint"
 msgstr "Создать конечную точку"
@@ -274,7 +275,7 @@ msgstr "Создать первый промпт"
 msgid "Create Prompt"
 msgstr "Создать промпт"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:457
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:771
 #, elixir-autogen, elixir-format
 msgid "Create a new AI endpoint with provider credentials, model selection, and parameters"
 msgstr "Создайте новую конечную точку AI: учётные данные провайдера, выбор модели и параметры"
@@ -299,6 +300,7 @@ msgstr "Создавайте переиспользуемые промпты с 
 msgid "Create your first AI endpoint to get started."
 msgstr "Создайте первую конечную точку AI, чтобы начать работу."
 
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:316
 #: lib/phoenix_kit_ai/web/endpoints.ex:58
 #: lib/phoenix_kit_ai/web/prompts.ex:43
 #: lib/phoenix_kit_ai/web/prompts.html.heex:93
@@ -312,7 +314,7 @@ msgstr "Создан"
 msgid "Credentials live in"
 msgstr "Учётные данные хранятся в"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:378
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:377
 #, elixir-autogen, elixir-format
 msgid "Current Model"
 msgstr "Текущая модель"
@@ -322,37 +324,37 @@ msgstr "Текущая модель"
 msgid "Current tab only (%{lang})"
 msgstr "Только текущая вкладка (%{lang})"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:1010
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:1012
 #, elixir-autogen, elixir-format
 msgid "Database Record"
 msgstr "Запись в базе данных"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:775
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:900
 #, elixir-autogen, elixir-format
 msgid "Default (medium)"
 msgstr "По умолчанию (среднее)"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:319
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:318
 #, elixir-autogen, elixir-format
 msgid "Default Aspect Ratio"
 msgstr "Соотношение сторон по умолчанию"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:361
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:360
 #, elixir-autogen, elixir-format
 msgid "Default Quality"
 msgstr "Качество по умолчанию"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:329
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:328
 #, elixir-autogen, elixir-format
 msgid "Default Resolution"
 msgstr "Разрешение по умолчанию"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:351
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:350
 #, elixir-autogen, elixir-format
 msgid "Default Size"
 msgstr "Размер по умолчанию"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:237
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:236
 #, elixir-autogen, elixir-format
 msgid "Default Voice"
 msgstr "Голос по умолчанию"
@@ -362,12 +364,12 @@ msgstr "Голос по умолчанию"
 msgid "Default translation prompt generated."
 msgstr "Промпт перевода по умолчанию сгенерирован."
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:917
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:1042
 #, elixir-autogen, elixir-format
 msgid "Defaults to project_title (%{title}) from"
 msgstr "По умолчанию — project_title (%{title}) из"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:892
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:1017
 #, elixir-autogen, elixir-format
 msgid "Defaults to site_url from"
 msgstr "По умолчанию — site_url из"
@@ -446,7 +448,7 @@ msgstr "Перетащите, чтобы изменить порядок"
 msgid "Each language is saved automatically the moment it finishes, so it's fine to navigate away or keep editing other fields — nothing will be lost."
 msgstr "Каждый язык сохраняется автоматически сразу после завершения — можно спокойно уйти со страницы или продолжать редактировать другие поля, ничего не потеряется."
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:401
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:693
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:179
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:334
 #: lib/phoenix_kit_ai/web/prompt_form.ex:73
@@ -456,7 +458,7 @@ msgstr "Каждый язык сохраняется автоматически 
 msgid "Edit"
 msgstr "Редактировать"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:774
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:899
 #, elixir-autogen, elixir-format
 msgid "Effort Level"
 msgstr "Уровень усилий"
@@ -475,7 +477,7 @@ msgstr "Модель эмбеддингов"
 msgid "Enable"
 msgstr "Включить"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:760
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:875
 #, elixir-autogen, elixir-format
 msgid "Enable Thinking"
 msgstr "Включить размышление"
@@ -487,7 +489,7 @@ msgid "Enabled"
 msgstr "Включено"
 
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:596
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:792
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:794
 #: lib/phoenix_kit_ai/web/playground.html.heex:13
 #, elixir-autogen, elixir-format
 msgid "Endpoint"
@@ -519,14 +521,14 @@ msgid "Endpoint is disabled"
 msgstr "Конечная точка отключена"
 
 #: lib/phoenix_kit_ai/errors.ex:36
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:386
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:678
 #: lib/phoenix_kit_ai/web/endpoints.ex:318
 #: lib/phoenix_kit_ai/web/endpoints.ex:340
 #, elixir-autogen, elixir-format
 msgid "Endpoint not found"
 msgstr "Конечная точка не найдена"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:580
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:689
 #, elixir-autogen, elixir-format
 msgid "Enter model ID (e.g., anthropic/claude-3-haiku)"
 msgstr "Введите ID модели (например, anthropic/claude-3-haiku)"
@@ -572,32 +574,32 @@ msgstr "Не удалось обновить конечную точку"
 msgid "Failed to update prompt"
 msgstr "Не удалось обновить промпт"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:676
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:787
 #, elixir-autogen, elixir-format
 msgid "Filter models…"
 msgstr "Фильтр моделей…"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:217
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:216
 #, elixir-autogen, elixir-format
 msgid "Filters the model list below."
 msgstr "Фильтрует список моделей ниже."
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:212
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:211
 #, elixir-autogen, elixir-format
 msgid "Filters the model list below. Image generation endpoints are called via PhoenixKitAI.generate_image/3."
 msgstr "Фильтрует список моделей ниже. Конечные точки генерации изображений вызываются через PhoenixKitAI.generate_image/3."
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:208
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:207
 #, elixir-autogen, elixir-format
 msgid "Filters the model list below. Text-to-Speech endpoints are called via PhoenixKitAI.speak/3."
 msgstr "Фильтрует список моделей ниже. Конечные точки синтеза речи вызываются через PhoenixKitAI.speak/3."
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:897
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:1022
 #, elixir-autogen, elixir-format
 msgid "For OpenRouter rankings. Set site_url in"
 msgstr "Для рейтингов OpenRouter. Задайте site_url в"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:762
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:877
 #, elixir-autogen, elixir-format
 msgid "For models like DeepSeek R1, Qwen QwQ that support chain-of-thought reasoning"
 msgstr "Для моделей вроде DeepSeek R1, Qwen QwQ, поддерживающих цепочку рассуждений"
@@ -612,18 +614,18 @@ msgstr "Произвольный ввод (без шаблона промпта)
 msgid "Generate Default Prompt"
 msgstr "Сгенерировать промпт по умолчанию"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:715
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:839
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:826
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:964
 #, elixir-autogen, elixir-format
 msgid "Generation Parameters"
 msgstr "Параметры генерации"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:882
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:1007
 #, elixir-autogen, elixir-format
 msgid "HTTP Referer"
 msgstr "HTTP Referer"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:804
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:929
 #, elixir-autogen, elixir-format
 msgid "Hide from response"
 msgstr "Скрыть из ответа"
@@ -633,7 +635,7 @@ msgstr "Скрыть из ответа"
 msgid "If a variable isn't provided when the prompt is used, it stays as-is in the output (e.g.,"
 msgstr "Если переменная не указана при использовании промпта, она остаётся в тексте как есть (например,"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:1979
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:2394
 #, elixir-autogen, elixir-format
 msgid "Image Generation"
 msgstr "Генерация изображений"
@@ -714,33 +716,33 @@ msgid "Last Used"
 msgstr "Последнее использование"
 
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:623
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:776
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:777
 #, elixir-autogen, elixir-format
 msgid "Latency"
 msgstr "Задержка"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:895
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:920
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:1020
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:1045
 #, elixir-autogen, elixir-format
 msgid "Leave blank to inherit."
 msgstr "Оставьте пустым, чтобы унаследовать значение."
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:111
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:110
 #, elixir-autogen, elixir-format
 msgid "Legacy API key (recovery)"
 msgstr "Устаревший API-ключ (восстановление)"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:729
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:730
 #, elixir-autogen, elixir-format
 msgid "Load More"
 msgstr "Загрузить ещё"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:541
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:650
 #, elixir-autogen, elixir-format
 msgid "Loading models..."
 msgstr "Загрузка моделей…"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:635
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:744
 #, elixir-autogen, elixir-format
 msgid "Loading models…"
 msgstr "Загрузка моделей…"
@@ -750,7 +752,7 @@ msgstr "Загрузка моделей…"
 msgid "Manual"
 msgstr "Вручную"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:724
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:839
 #, elixir-autogen, elixir-format
 msgid "Max output: %{tokens} tokens"
 msgstr "Макс. вывод: %{tokens} токенов"
@@ -771,22 +773,22 @@ msgstr "Отсутствуют переменные промпта: %{vars}"
 msgid "Missing variables:"
 msgstr "Отсутствующие переменные:"
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:117
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:222
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:120
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:225
 #: lib/phoenix_kit_ai/web/endpoints.ex:61
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:218
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:607
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:811
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:813
 #, elixir-autogen, elixir-format
 msgid "Model"
 msgstr "Модель"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:162
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:161
 #, elixir-autogen, elixir-format
 msgid "Model Selection"
 msgstr "Выбор модели"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:199
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:198
 #, elixir-autogen, elixir-format
 msgid "Model Type"
 msgstr "Тип модели"
@@ -801,7 +803,7 @@ msgstr "Модель не найдена"
 msgid "Monitor API requests, token usage, and costs"
 msgstr "Отслеживайте запросы к API, расход токенов и затраты"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:266
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:265
 #, elixir-autogen, elixir-format
 msgid "Mood"
 msgstr "Настроение"
@@ -870,7 +872,7 @@ msgid "No integration"
 msgstr "Интеграция не выбрана"
 
 #: lib/phoenix_kit_ai/errors.ex:70
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:1250
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:1654
 #, elixir-autogen, elixir-format
 msgid "No integration configured for this endpoint. Set up the API key in Settings → Integrations."
 msgstr "Для этой конечной точки не настроена интеграция. Настройте API-ключ в разделе «Настройки → Интеграции»."
@@ -880,12 +882,12 @@ msgstr "Для этой конечной точки не настроена ин
 msgid "No integration selected. Edit the endpoint to pick one."
 msgstr "Интеграция не выбрана. Отредактируйте конечную точку, чтобы выбрать её."
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:427
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:426
 #, elixir-autogen, elixir-format
 msgid "No model selected"
 msgstr "Модель не выбрана"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:872
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:997
 #, elixir-autogen, elixir-format
 msgid "No optional settings for this provider."
 msgstr "У этого провайдера нет дополнительных настроек."
@@ -895,6 +897,7 @@ msgstr "У этого провайдера нет дополнительных �
 msgid "No requests match the current filters"
 msgstr "Нет запросов, соответствующих текущим фильтрам"
 
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:392
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:84
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:298
 #: lib/phoenix_kit_ai/web/playground.html.heex:184
@@ -902,7 +905,7 @@ msgstr "Нет запросов, соответствующих текущим �
 msgid "Not connected"
 msgstr "Не подключено"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:402
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:401
 #, elixir-autogen, elixir-format
 msgid "Not in current model list"
 msgstr "Отсутствует в текущем списке моделей"
@@ -918,7 +921,7 @@ msgstr "Пока нечего переводить — сначала запол
 msgid "Nothing to translate."
 msgstr "Нечего переводить."
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:862
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:987
 #, elixir-autogen, elixir-format
 msgid "Optional Provider Settings"
 msgstr "Дополнительные настройки провайдера"
@@ -928,7 +931,7 @@ msgstr "Дополнительные настройки провайдера"
 msgid "Optional description of this endpoint's purpose"
 msgstr "Необязательное описание назначения этой конечной точки"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:291
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:290
 #, elixir-autogen, elixir-format
 msgid "Optional provider-specific voice id. Used when speak/3 is called without an explicit voice."
 msgstr "Необязательный идентификатор голоса конкретного провайдера. Используется, если speak/3 вызывается без явного указания голоса."
@@ -948,22 +951,22 @@ msgstr "Необязательные системные инструкции…"
 msgid "Order"
 msgstr "Порядок"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:277
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:276
 #, elixir-autogen, elixir-format
 msgid "Pick a mood — this provider can't generate speech without a voice."
 msgstr "Выберите настроение — этот провайдер не может синтезировать речь без голоса."
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:166
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:165
 #, elixir-autogen, elixir-format
 msgid "Pick an integration above to load available models."
 msgstr "Выберите интеграцию выше, чтобы загрузить доступные модели."
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:868
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:993
 #, elixir-autogen, elixir-format
 msgid "Pick an integration above to see optional provider-specific settings."
 msgstr "Выберите интеграцию выше, чтобы увидеть дополнительные настройки провайдера."
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:844
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:969
 #, elixir-autogen, elixir-format
 msgid "Pick an integration above, then a model, to configure generation parameters."
 msgstr "Выберите интеграцию выше, затем модель, чтобы настроить параметры генерации."
@@ -983,7 +986,7 @@ msgid "Price"
 msgstr "Цена"
 
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:599
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:796
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:798
 #, elixir-autogen, elixir-format
 msgid "Prompt"
 msgstr "Промпт"
@@ -1046,8 +1049,8 @@ msgstr "Промпт не найден"
 msgid "Prompt updated successfully"
 msgstr "Промпт успешно обновлён"
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:118
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:223
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:121
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:226
 #: lib/phoenix_kit_ai/web/endpoint_form.html.heex:62
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:216
 #, elixir-autogen, elixir-format
@@ -1074,12 +1077,12 @@ msgstr "Модели с рассуждением («thinking») работают
 msgid "Recent Requests"
 msgstr "Недавние запросы"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:753
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:754
 #, elixir-autogen, elixir-format
 msgid "Request Details"
 msgstr "Детали запроса"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:986
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:988
 #, elixir-autogen, elixir-format
 msgid "Request Payload (sent to API)"
 msgstr "Тело запроса (отправлено в API)"
@@ -1091,7 +1094,7 @@ msgstr "Тайм-аут запроса"
 
 #: lib/phoenix_kit_ai/web/endpoints.ex:62
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:221
-#: lib/phoenix_kit_ai/web/tasks.ex:1294
+#: lib/phoenix_kit_ai/web/tasks.ex:1290
 #, elixir-autogen, elixir-format
 msgid "Requests"
 msgstr "Запросы"
@@ -1111,18 +1114,18 @@ msgstr "Запросы / токены (за всё время)"
 msgid "Requests / Tokens today"
 msgstr "Запросы / токены сегодня"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:876
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:878
 #: lib/phoenix_kit_ai/web/playground.html.heex:467
 #, elixir-autogen, elixir-format
 msgid "Response"
 msgstr "Ответ"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:566
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:675
 #, elixir-autogen, elixir-format
 msgid "Retry"
 msgstr "Повторить"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:563
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:672
 #, elixir-autogen, elixir-format
 msgid "Retrying…"
 msgstr "Повтор…"
@@ -1132,12 +1135,12 @@ msgstr "Повтор…"
 msgid "Reusable prompt templates with variable substitution"
 msgstr "Переиспользуемые промпты с подстановкой переменных"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:533
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:642
 #, elixir-autogen, elixir-format
 msgid "Select Model"
 msgstr "Выбрать модель"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:842
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:967
 #, elixir-autogen, elixir-format
 msgid "Select a model above to configure generation parameters. Available parameters depend on the selected model."
 msgstr "Выберите модель выше, чтобы настроить параметры генерации. Доступные параметры зависят от выбранной модели."
@@ -1147,7 +1150,7 @@ msgstr "Выберите модель выше, чтобы настроить п
 msgid "Select a prompt..."
 msgstr "Выберите промпт…"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:695
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:806
 #, elixir-autogen, elixir-format
 msgid "Select a provider to see available models with pricing details"
 msgstr "Выберите провайдера, чтобы увидеть доступные модели с ценами"
@@ -1189,14 +1192,14 @@ msgstr "Отправка…"
 msgid "Sent as the system message before the user prompt. Supports {{variables}} too."
 msgstr "Отправляется как системное сообщение перед пользовательским промптом. Также поддерживает {{variables}}."
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:592
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:701
 #, elixir-autogen, elixir-format
 msgid "Set Model"
 msgstr "Задать модель"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:894
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:899
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:919
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:1019
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:1024
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:1044
 #, elixir-autogen, elixir-format
 msgid "Settings"
 msgstr "Настройки"
@@ -1206,7 +1209,7 @@ msgstr "Настройки"
 msgid "Settings → Integrations"
 msgstr "Настройки → Интеграции"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:587
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:696
 #, elixir-autogen, elixir-format
 msgid "Setting…"
 msgstr "Задание…"
@@ -1221,15 +1224,15 @@ msgstr "Показано %{shown} из %{total} запросов"
 msgid "Slug"
 msgstr "Slug"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:1189
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:1447
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:1593
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:1850
 #: lib/phoenix_kit_ai/web/prompt_form.ex:179
 #, elixir-autogen, elixir-format
 msgid "Something went wrong. Please try again."
 msgstr "Что-то пошло не так. Попробуйте ещё раз."
 
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:637
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:929
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:931
 #, elixir-autogen, elixir-format
 msgid "Source"
 msgstr "Источник"
@@ -1244,7 +1247,7 @@ msgstr "Источник: %{lang}. Каждый перевод выполняе�
 msgid "Speak"
 msgstr "Озвучить"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:256
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:255
 #, elixir-autogen, elixir-format
 msgid "Speaker"
 msgstr "Диктор"
@@ -1257,7 +1260,7 @@ msgstr "Запуск…"
 #: lib/phoenix_kit_ai/web/endpoints.ex:60
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:214
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:634
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:762
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:763
 #: lib/phoenix_kit_ai/web/prompts.html.heex:139
 #, elixir-autogen, elixir-format
 msgid "Status"
@@ -1304,7 +1307,7 @@ msgstr "Системный промпт (необязательно)"
 msgid "Test endpoints and prompts interactively"
 msgstr "Интерактивное тестирование конечных точек и промптов"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:1975
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:2390
 #, elixir-autogen, elixir-format
 msgid "Text-to-Speech"
 msgstr "Синтез речи"
@@ -1315,7 +1318,7 @@ msgstr "Синтез речи"
 msgid "Text-to-Speech model"
 msgstr "Модель синтеза речи"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:1262
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:1666
 #, elixir-autogen, elixir-format
 msgid "The %{provider} integration is not connected — requests will fail until you connect it in Settings → Integrations."
 msgstr "Интеграция %{provider} не подключена — запросы будут завершаться ошибкой, пока вы не подключите её в «Настройки → Интеграции»."
@@ -1345,17 +1348,17 @@ msgstr "Последняя проверка интеграции заверши�
 msgid "The pinned integration was deleted. Edit the endpoint and select a new one."
 msgstr "Закреплённая интеграция была удалена. Отредактируйте конечную точку и выберите новую."
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:1239
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:1643
 #, elixir-autogen, elixir-format
 msgid "The selected integration is not connected — requests will fail until you connect it in Settings → Integrations."
 msgstr "Выбранная интеграция не подключена — запросы будут завершаться ошибкой, пока вы не подключите её в «Настройки → Интеграции»."
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:870
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:995
 #, elixir-autogen, elixir-format
 msgid "These settings apply only to OpenRouter."
 msgstr "Эти настройки применяются только к OpenRouter."
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:114
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:113
 #, elixir-autogen, elixir-format
 msgid "This endpoint still has an api_key from before the Integrations system. Copy it and paste it into a new Integration above to migrate. The field will be removed once you connect this endpoint to an Integration."
 msgstr "У этой конечной точки всё ещё есть api_key со времён до системы интеграций. Скопируйте его и вставьте в новую интеграцию выше, чтобы перейти на неё. Поле будет удалено, как только вы подключите эту конечную точку к интеграции."
@@ -1380,7 +1383,7 @@ msgstr "Тайм-аут"
 msgid "Today"
 msgstr "Сегодня"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:784
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:909
 #, elixir-autogen, elixir-format
 msgid "Token Limit"
 msgstr "Лимит токенов"
@@ -1388,7 +1391,7 @@ msgstr "Лимит токенов"
 #: lib/phoenix_kit_ai/web/endpoints.ex:63
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:224
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:615
-#: lib/phoenix_kit_ai/web/tasks.ex:1295
+#: lib/phoenix_kit_ai/web/tasks.ex:1291
 #, elixir-autogen, elixir-format
 msgid "Tokens"
 msgstr "Токены"
@@ -1490,7 +1493,7 @@ msgstr "Неожиданная ошибка: %{reason}"
 msgid "Unknown"
 msgstr "Неизвестно"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:930
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:1055
 #, elixir-autogen, elixir-format
 msgid "Update Endpoint"
 msgstr "Обновить конечную точку"
@@ -1500,7 +1503,7 @@ msgstr "Обновить конечную точку"
 msgid "Update Prompt"
 msgstr "Обновить промпт"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:402
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:694
 #, elixir-autogen, elixir-format
 msgid "Update your AI endpoint configuration"
 msgstr "Обновите конфигурацию конечной точки AI"
@@ -1513,7 +1516,7 @@ msgstr "Обновите конфигурацию конечной точки AI
 msgid "Updating…"
 msgstr "Обновление…"
 
-#: lib/phoenix_kit_ai.ex:1113
+#: lib/phoenix_kit_ai.ex:1115
 #: lib/phoenix_kit_ai/web/endpoints.ex:76
 #: lib/phoenix_kit_ai/web/prompts.ex:41
 #, elixir-autogen, elixir-format
@@ -1535,17 +1538,17 @@ msgstr "Используйте только буквы, цифры и подчё
 msgid "Use the {{VariableName}} syntax for dynamic content."
 msgstr "Для динамического содержимого используйте синтаксис {{VariableName}}."
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:337
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:336
 #, elixir-autogen, elixir-format
 msgid "Used when generate_image/3 is called without an explicit :aspect_ratio/:resolution."
 msgstr "Используется, если generate_image/3 вызывается без явного указания :aspect_ratio/:resolution."
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:369
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:368
 #, elixir-autogen, elixir-format
 msgid "Used when generate_image/3 is called without an explicit :size/:quality."
 msgstr "Используется, если generate_image/3 вызывается без явного указания :size/:quality."
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:280
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:279
 #, elixir-autogen, elixir-format
 msgid "Used when speak/3 is called without an explicit voice."
 msgstr "Используется, если speak/3 вызывается без явного указания голоса."
@@ -1566,13 +1569,13 @@ msgstr "Синтаксис переменных"
 msgid "Variables"
 msgstr "Переменные"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:710
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:714
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:711
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:715
 #, elixir-autogen, elixir-format
 msgid "View"
 msgstr "Просмотр"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:795
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:920
 #, elixir-autogen, elixir-format
 msgid "Visibility"
 msgstr "Видимость"
@@ -1587,12 +1590,12 @@ msgstr "Голос"
 msgid "Waiting for response..."
 msgstr "Ожидание ответа…"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:909
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:1034
 #, elixir-autogen, elixir-format
 msgid "X-Title"
 msgstr "X-Title"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:879
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:881
 #, elixir-autogen, elixir-format
 msgid "assistant"
 msgstr "ассистент"
@@ -1602,12 +1605,12 @@ msgstr "ассистент"
 msgid "auto-generated-slug"
 msgstr "автоматически-сгенерированный-slug"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:903
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:905
 #, elixir-autogen, elixir-format
 msgid "chain of thought"
 msgstr "цепочка рассуждений"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:288
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:287
 #, elixir-autogen, elixir-format
 msgid "e.g. casual_male"
 msgstr "например, casual_male"
@@ -1657,7 +1660,7 @@ msgstr "остаётся без изменений)."
 msgid "the primary language"
 msgstr "основной язык"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:900
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:1025
 #, elixir-autogen, elixir-format
 msgid "to use it as the default."
 msgstr "чтобы использовать его по умолчанию."
@@ -1667,20 +1670,20 @@ msgstr "чтобы использовать его по умолчанию."
 msgid "total"
 msgstr "всего"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:219
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:218
 #, elixir-autogen, elixir-format
 msgid "xAI's text-to-speech isn't model-based — any endpoint already works with PhoenixKitAI.speak/3."
 msgstr "Синтез речи xAI не основан на моделях — любая конечная точка уже работает с PhoenixKitAI.speak/3."
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:321
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:331
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:353
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:363
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:320
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:330
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:352
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:362
 #, elixir-autogen, elixir-format
 msgid "— Provider default —"
 msgstr "— по умолчанию у провайдера —"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:268
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:267
 #, elixir-autogen, elixir-format
 msgid "— Select —"
 msgstr "— Выбрать —"
@@ -1695,19 +1698,19 @@ msgstr "— работают оба варианта"
 msgid "— won't be detected as a variable"
 msgstr "— не будет распознано как переменная"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:202
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:410
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:657
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:209
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:409
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:768
 #, elixir-autogen, elixir-format
 msgid "…"
 msgstr "…"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:1204
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:1608
 #, elixir-autogen, elixir-format
 msgid "Endpoint created successfully"
 msgstr "Конечная точка успешно создана"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:1205
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:1609
 #, elixir-autogen, elixir-format
 msgid "Endpoint updated successfully"
 msgstr "Конечная точка успешно обновлена"
@@ -1785,32 +1788,32 @@ msgstr[0] "токен"
 msgstr[1] "токена"
 msgstr[2] "токенов"
 
-#: lib/phoenix_kit_ai.ex:1109
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:347
+#: lib/phoenix_kit_ai.ex:1111
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:629
 #: lib/phoenix_kit_ai/web/endpoints.ex:106
 #: lib/phoenix_kit_ai/web/playground.ex:52
 #: lib/phoenix_kit_ai/web/prompt_form.ex:36
 #: lib/phoenix_kit_ai/web/prompts.ex:62
-#: lib/phoenix_kit_ai/web/tasks.ex:64
+#: lib/phoenix_kit_ai/web/tasks.ex:63
 #, elixir-autogen, elixir-format
 msgid "AI"
 msgstr "AI"
 
-#: lib/phoenix_kit_ai.ex:1110
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:451
+#: lib/phoenix_kit_ai.ex:1112
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:765
 #: lib/phoenix_kit_ai/web/endpoints.ex:80
 #, elixir-autogen, elixir-format
 msgid "Endpoints"
 msgstr "Конечные точки"
 
-#: lib/phoenix_kit_ai.ex:1112
-#: lib/phoenix_kit_ai.ex:1147
+#: lib/phoenix_kit_ai.ex:1114
+#: lib/phoenix_kit_ai.ex:1149
 #: lib/phoenix_kit_ai/web/playground.ex:55
 #, elixir-autogen, elixir-format
 msgid "Playground"
 msgstr "Песочница"
 
-#: lib/phoenix_kit_ai.ex:1111
+#: lib/phoenix_kit_ai.ex:1113
 #: lib/phoenix_kit_ai/web/prompt_form.ex:81
 #: lib/phoenix_kit_ai/web/prompts.ex:65
 #, elixir-autogen, elixir-format
@@ -1854,8 +1857,8 @@ msgid "Please add at least one image"
 msgstr "Добавьте хотя бы одно изображение"
 
 #: lib/phoenix_kit_ai/web/playground.html.heex:279
-#: lib/phoenix_kit_ai/web/tasks.ex:762
-#: lib/phoenix_kit_ai/web/tasks.ex:950
+#: lib/phoenix_kit_ai/web/tasks.ex:758
+#: lib/phoenix_kit_ai/web/tasks.ex:946
 #, elixir-autogen, elixir-format
 msgid "Remove"
 msgstr "Удалить"
@@ -2077,7 +2080,7 @@ msgstr "Улучшить фото"
 msgid "Free-form instruction"
 msgstr "Произвольная инструкция"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:726
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:727
 #: lib/phoenix_kit_ai/web/playground.html.heex:330
 #, elixir-autogen, elixir-format
 msgid "Loading…"
@@ -2198,8 +2201,8 @@ msgstr "Бюджет этого эндпоинта за последние 24 ч
 msgid "You have used your AI allowance for the last 24 hours"
 msgstr "Вы исчерпали свой лимит ИИ за последние 24 часа"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:350
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:370
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:632
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:662
 #, elixir-autogen, elixir-format
 msgid "New endpoint"
 msgstr "Новая конечная точка"
@@ -2210,72 +2213,72 @@ msgstr "Новая конечная точка"
 msgid "New prompt"
 msgstr "Новый промпт"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:816
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:941
 #, elixir-autogen, elixir-format
 msgid "Advanced Parameters"
 msgstr "Дополнительные параметры"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:939
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:941
 #, elixir-autogen, elixir-format
 msgid "Caller Context"
 msgstr "Контекст вызова"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:849
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:851
 #, elixir-autogen, elixir-format
 msgid "Error Message"
 msgstr "Сообщение об ошибке"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:758
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:759
 #, elixir-autogen, elixir-format
 msgid "ID"
 msgstr "ID"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:819
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:821
 #, elixir-autogen, elixir-format
 msgid "Input Tokens"
 msgstr "Входные токены"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:957
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:959
 #, elixir-autogen, elixir-format
 msgid "Memory"
 msgstr "Память"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:948
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:950
 #, elixir-autogen, elixir-format
 msgid "Node"
 msgstr "Узел"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:825
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:827
 #, elixir-autogen, elixir-format
 msgid "Output Tokens"
 msgstr "Выходные токены"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:952
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:954
 #, elixir-autogen, elixir-format
 msgid "PID"
 msgstr "PID"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:917
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:919
 #, elixir-autogen, elixir-format
 msgid "Parameters"
 msgstr "Параметры"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:943
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:945
 #, elixir-autogen, elixir-format
 msgid "Request ID"
 msgstr "ID запроса"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:859
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:861
 #, elixir-autogen, elixir-format
 msgid "Request Messages"
 msgstr "Сообщения запроса"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:840
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:842
 #, elixir-autogen, elixir-format
 msgid "Timestamp"
 msgstr "Время"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:831
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:833
 #, elixir-autogen, elixir-format
 msgid "Total Tokens"
 msgstr "Всего токенов"
@@ -2290,7 +2293,7 @@ msgstr "Переменные:"
 msgid "You have made as many AI requests as allowed for the last 24 hours"
 msgstr "Вы исчерпали допустимое число запросов к ИИ за последние 24 часа"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:1987
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:2402
 #, elixir-autogen, elixir-format
 msgid "%{name} (%{count} model)"
 msgid_plural "%{name} (%{count} models)"
@@ -2298,7 +2301,7 @@ msgstr[0] "%{name} (%{count} модель)"
 msgstr[1] "%{name} (%{count} модели)"
 msgstr[2] "%{name} (%{count} моделей)"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:895
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:897
 #, elixir-autogen, elixir-format
 msgid "Reasoning (%{count} character)"
 msgid_plural "Reasoning (%{count} characters)"
@@ -2311,7 +2314,7 @@ msgstr[2] "Рассуждение (%{count} символов)"
 msgid "Speaking…"
 msgstr "Озвучивание…"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:969
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:971
 #, elixir-autogen, elixir-format
 msgid "Stacktrace (%{count} frame)"
 msgid_plural "Stacktrace (%{count} frames)"
@@ -2319,7 +2322,7 @@ msgstr[0] "Стек вызовов (%{count} кадр)"
 msgstr[1] "Стек вызовов (%{count} кадра)"
 msgstr[2] "Стек вызовов (%{count} кадров)"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:622
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:731
 #, elixir-autogen, elixir-format
 msgid "— Select provider (%{count} available) —"
 msgid_plural "— Select provider (%{count} available) —"
@@ -2332,85 +2335,85 @@ msgstr[2] "— Выберите провайдера (доступно %{count})
 msgid "(No content in response)"
 msgstr "(В ответе нет содержимого)"
 
-#: lib/phoenix_kit_ai/endpoint.ex:530
+#: lib/phoenix_kit_ai/endpoint.ex:568
 #, elixir-autogen, elixir-format
 msgid "1024x1024 (Square)"
 msgstr "1024x1024 (квадрат)"
 
-#: lib/phoenix_kit_ai/endpoint.ex:532
+#: lib/phoenix_kit_ai/endpoint.ex:570
 #, elixir-autogen, elixir-format
 msgid "1024x1792 (Portrait)"
 msgstr "1024x1792 (портрет)"
 
-#: lib/phoenix_kit_ai/endpoint.ex:556
+#: lib/phoenix_kit_ai/endpoint.ex:594
 #, elixir-autogen, elixir-format
 msgid "16:9 (Landscape)"
 msgstr "16:9 (альбом)"
 
-#: lib/phoenix_kit_ai/endpoint.ex:531
+#: lib/phoenix_kit_ai/endpoint.ex:569
 #, elixir-autogen, elixir-format
 msgid "1792x1024 (Landscape)"
 msgstr "1792x1024 (альбом)"
 
-#: lib/phoenix_kit_ai/endpoint.ex:555
+#: lib/phoenix_kit_ai/endpoint.ex:593
 #, elixir-autogen, elixir-format
 msgid "1:1 (Square)"
 msgstr "1:1 (квадрат)"
 
-#: lib/phoenix_kit_ai/endpoint.ex:557
+#: lib/phoenix_kit_ai/endpoint.ex:595
 #, elixir-autogen, elixir-format
 msgid "9:16 (Portrait)"
 msgstr "9:16 (портрет)"
 
-#: lib/phoenix_kit_ai/endpoint.ex:588
+#: lib/phoenix_kit_ai/endpoint.ex:626
 #, elixir-autogen, elixir-format
 msgid "Extra High (~95%)"
 msgstr "Очень высокое (~95%)"
 
-#: lib/phoenix_kit_ai/endpoint.ex:543
+#: lib/phoenix_kit_ai/endpoint.ex:581
 #, elixir-autogen, elixir-format
 msgid "HD"
 msgstr "HD"
 
-#: lib/phoenix_kit_ai/endpoint.ex:587
+#: lib/phoenix_kit_ai/endpoint.ex:625
 #, elixir-autogen, elixir-format
 msgid "High (~80%)"
 msgstr "Высокое (~80%)"
 
-#: lib/phoenix_kit_ai/endpoint.ex:585
+#: lib/phoenix_kit_ai/endpoint.ex:623
 #, elixir-autogen, elixir-format
 msgid "Low (~20%)"
 msgstr "Низкое (~20%)"
 
-#: lib/phoenix_kit_ai/endpoint.ex:586
+#: lib/phoenix_kit_ai/endpoint.ex:624
 #, elixir-autogen, elixir-format
 msgid "Medium (~50%)"
 msgstr "Среднее (~50%)"
 
-#: lib/phoenix_kit_ai/endpoint.ex:584
+#: lib/phoenix_kit_ai/endpoint.ex:622
 #, elixir-autogen, elixir-format
 msgid "Minimal (~10%)"
 msgstr "Минимальное (~10%)"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:1360
-#: lib/phoenix_kit_ai/web/endpoint_form.ex:1566
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:1763
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:1969
 #, elixir-autogen, elixir-format
 msgid "No API key configured"
 msgstr "API-ключ не настроен"
 
-#: lib/phoenix_kit_ai/endpoint.ex:583
+#: lib/phoenix_kit_ai/endpoint.ex:621
 #, elixir-autogen, elixir-format
 msgid "None (disabled)"
 msgstr "Нет (отключено)"
 
-#: lib/phoenix_kit_ai/endpoint.ex:357
-#: lib/phoenix_kit_ai/endpoint.ex:358
-#: lib/phoenix_kit_ai/endpoint.ex:370
+#: lib/phoenix_kit_ai/endpoint.ex:395
+#: lib/phoenix_kit_ai/endpoint.ex:396
+#: lib/phoenix_kit_ai/endpoint.ex:408
 #, elixir-autogen, elixir-format
 msgid "Not set"
 msgstr "Не задан"
 
-#: lib/phoenix_kit_ai/endpoint.ex:542
+#: lib/phoenix_kit_ai/endpoint.ex:580
 #, elixir-autogen, elixir-format
 msgid "Standard"
 msgstr "Стандартное"
@@ -2420,65 +2423,65 @@ msgstr "Стандартное"
 msgid "The request could not be completed"
 msgstr "Не удалось выполнить запрос"
 
-#: lib/phoenix_kit_ai/web/components/capability_badges.ex:37
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:39
 #, elixir-autogen, elixir-format
 msgid "Capabilities unknown"
 msgstr "Возможности неизвестны"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:467
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:466
 #, elixir-autogen, elixir-format
 msgid "Declared capabilities"
 msgstr "Объявленные возможности"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:510
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:543
 #, elixir-autogen, elixir-format
 msgid "Declared, but the catalogue says this model cannot: %{capabilities}. The catalogue's answer is used."
 msgstr "Объявлено, но по каталогу эта модель этого не умеет: %{capabilities}. Действует ответ каталога."
 
-#: lib/phoenix_kit_ai/web/components/capability_badges.ex:75
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:77
 #, elixir-autogen, elixir-format
 msgid "Images"
 msgstr "Картинки"
 
 #: lib/phoenix_kit_ai/tasks.ex:250
-#: lib/phoenix_kit_ai/web/components/capability_badges.ex:79
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:81
 #, elixir-autogen, elixir-format
 msgid "JSON schema"
 msgstr "JSON-схема"
 
-#: lib/phoenix_kit_ai/web/components/capability_badges.ex:68
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:70
 #, elixir-autogen, elixir-format
 msgid "Retired"
 msgstr "Снята"
 
-#: lib/phoenix_kit_ai/web/components/capability_badges.ex:61
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:249
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:63
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:254
 #, elixir-autogen, elixir-format
 msgid "Retiring"
 msgstr "Уходит"
 
-#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:469
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:468
 #, elixir-autogen, elixir-format
 msgid "The provider does not report what this model can do. Tick what it can — the catalogue's answer, once it has one, replaces yours."
 msgstr "Провайдер не сообщает, что умеет эта модель. Отметьте, что она умеет, — ответ каталога, когда он появится, заменит ваш."
 
-#: lib/phoenix_kit_ai/web/components/capability_badges.ex:78
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:80
 #, elixir-autogen, elixir-format
 msgid "Tools"
 msgstr "Инструменты"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:597
+#: lib/phoenix_kit_ai/web/tasks.ex:590
 #, elixir-autogen, elixir-format
 msgid "Each task is declared by a module. A call with a task is refused before it reaches the provider when the model lacks something the task needs."
 msgstr "Каждую задачу объявляет модуль. Вызов с задачей отклоняется до обращения к провайдеру, если модель не умеет того, что нужно задаче."
 
-#: lib/phoenix_kit_ai/web/tasks.ex:659
+#: lib/phoenix_kit_ai/web/tasks.ex:655
 #, elixir-autogen, elixir-format
 msgid "Endpoints in use:"
 msgstr "Используемые конечные точки:"
 
 #: lib/phoenix_kit_ai/web/components/task_model_picker.ex:108
-#: lib/phoenix_kit_ai/web/tasks.ex:1339
+#: lib/phoenix_kit_ai/web/tasks.ex:1335
 #, elixir-autogen, elixir-format
 msgid "Fits"
 msgstr "Подходит"
@@ -2489,32 +2492,33 @@ msgid "It is not known whether the endpoint's model can do what this task needs 
 msgstr "Неизвестно, умеет ли модель конечной точки то, что нужно задаче (%{needs}). Сначала отметьте возможности модели на конечной точке."
 
 #: lib/phoenix_kit_ai/tasks.ex:251
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:82
 #, elixir-autogen, elixir-format
 msgid "JSON"
 msgstr "JSON"
 
 #: lib/phoenix_kit_ai/web/components/task_model_picker.ex:118
-#: lib/phoenix_kit_ai/web/tasks.ex:1349
+#: lib/phoenix_kit_ai/web/tasks.ex:1345
 #, elixir-autogen, elixir-format
 msgid "Lacks: %{needs}"
 msgstr "Не умеет: %{needs}"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:312
+#: lib/phoenix_kit_ai/web/tasks.ex:311
 #, elixir-autogen, elixir-format
 msgid "Model catalogues refreshed"
 msgstr "Каталоги моделей обновлены"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:637
+#: lib/phoenix_kit_ai/web/tasks.ex:632
 #, elixir-autogen, elixir-format
 msgid "Module off"
 msgstr "Модуль выключен"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:644
+#: lib/phoenix_kit_ai/web/tasks.ex:639
 #, elixir-autogen, elixir-format
 msgid "Needs:"
 msgstr "Нужно:"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:621
+#: lib/phoenix_kit_ai/web/tasks.ex:616
 #, elixir-autogen, elixir-format
 msgid "No module declares an AI task."
 msgstr "Ни один модуль не объявил задачу AI."
@@ -2524,30 +2528,30 @@ msgstr "Ни один модуль не объявил задачу AI."
 msgid "No provider of this model accepts all the request's parameters (%{params}). Remove the ones it does not support from the endpoint."
 msgstr "Ни один провайдер этой модели не принимает все параметры запроса (%{params}). Уберите из конечной точки те, что модель не поддерживает."
 
-#: lib/phoenix_kit_ai/web/tasks.ex:662
+#: lib/phoenix_kit_ai/web/tasks.ex:658
 #, elixir-autogen, elixir-format
 msgid "None chosen; the caller names an endpoint per call."
 msgstr "Не выбраны: конечную точку указывает каждый вызов."
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:241
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:246
 #: lib/phoenix_kit_ai/web/components/task_model_picker.ex:128
-#: lib/phoenix_kit_ai/web/tasks.ex:1359
+#: lib/phoenix_kit_ai/web/tasks.ex:1355
 #, elixir-autogen, elixir-format
 msgid "Not verified: %{needs}"
 msgstr "Не проверено: %{needs}"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:609
+#: lib/phoenix_kit_ai/web/tasks.ex:602
 #, elixir-autogen, elixir-format
 msgid "Refresh catalogues"
 msgstr "Обновить каталоги"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:315
+#: lib/phoenix_kit_ai/web/tasks.ex:314
 #, elixir-autogen, elixir-format
 msgid "Some model catalogues could not be read"
 msgstr "Не удалось прочитать некоторые каталоги моделей"
 
-#: lib/phoenix_kit_ai.ex:1114
-#: lib/phoenix_kit_ai/web/tasks.ex:67
+#: lib/phoenix_kit_ai.ex:1116
+#: lib/phoenix_kit_ai/web/tasks.ex:66
 #, elixir-autogen, elixir-format
 msgid "Tasks"
 msgstr "Задачи"
@@ -2557,12 +2561,12 @@ msgstr "Задачи"
 msgid "The endpoint's model cannot do what this task needs: %{needs}"
 msgstr "Модель конечной точки не умеет того, что нужно задаче: %{needs}"
 
-#: lib/phoenix_kit_ai.ex:1135
+#: lib/phoenix_kit_ai.ex:1137
 #, elixir-autogen, elixir-format
 msgid "Translation"
 msgstr "Перевод"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:68
+#: lib/phoenix_kit_ai/web/tasks.ex:67
 #, elixir-autogen, elixir-format
 msgid "What each AI task needs and whether its endpoints fit"
 msgstr "Что нужно каждой задаче AI и подходят ли её конечные точки"
@@ -2572,7 +2576,7 @@ msgstr "Что нужно каждой задаче AI и подходят ли 
 msgid "images"
 msgstr "картинки"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:646
+#: lib/phoenix_kit_ai/web/tasks.ex:641
 #, elixir-autogen, elixir-format
 msgid "text only"
 msgstr "только текст"
@@ -2588,83 +2592,84 @@ msgid "No provider of this model accepts all the request's parameters. Remove th
 msgstr "Ни один провайдер этой модели не принимает все параметры запроса. Уберите из конечной точки те, что модель не поддерживает."
 
 #: lib/phoenix_kit_ai/request.ex:227
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:689
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:772
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:690
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:773
 #, elixir-autogen, elixir-format
 msgid "Refused"
 msgstr "Отказано"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:687
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:688
 #, elixir-autogen, elixir-format
 msgid "Refused before reaching the provider"
 msgstr "Отказано до обращения к провайдеру"
 
-#: lib/phoenix_kit_ai.ex:1150
+#: lib/phoenix_kit_ai.ex:1152
 #, elixir-autogen, elixir-format
 msgid "Let an administrator try endpoints and prompts by hand."
 msgstr "Даёт администратору вручную проверить конечные точки и промпты."
 
-#: lib/phoenix_kit_ai.ex:1138
+#: lib/phoenix_kit_ai.ex:1140
 #, elixir-autogen, elixir-format
 msgid "Translate the text fields of a record from one language into another, keeping the field structure."
 msgstr "Переводит текстовые поля записи с одного языка на другой, сохраняя структуру полей."
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:120
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:123
 #, elixir-autogen, elixir-format
 msgid "Average cost"
 msgstr "Средняя цена"
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:122
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:125
 #, elixir-autogen, elixir-format
 msgid "Average latency"
 msgstr "Средняя задержка"
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:119
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:122
 #, elixir-autogen, elixir-format
 msgid "Calls"
 msgstr "Вызовов"
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:225
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:83
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:229
 #, elixir-autogen, elixir-format
 msgid "Context"
 msgstr "Контекст"
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:266
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:271
 #, elixir-autogen, elixir-format
 msgid "Create endpoint with this model"
 msgstr "Создать конечную точку с этой моделью"
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:121
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:124
 #, elixir-autogen, elixir-format
 msgid "Errors"
 msgstr "Ошибки"
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:318
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:323
 #, elixir-autogen, elixir-format
 msgid "Input, per 1M tokens"
 msgstr "Вход, за 1 млн токенов"
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:370
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:381
 #, elixir-autogen, elixir-format
 msgid "JSON schema only through OpenRouter"
 msgstr "JSON-схема только через OpenRouter"
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:111
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:114
 #, elixir-autogen, elixir-format
 msgid "No calls in the last 30 days."
 msgstr "За последние 30 дней вызовов не было."
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:161
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:164
 #, elixir-autogen, elixir-format
 msgid "No model of the connected catalogues is known to fit this task."
 msgstr "В подключённых каталогах не известно ни одной модели, подходящей для этой задачи."
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:298
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:303
 #, elixir-autogen, elixir-format
 msgid "Price of a call of about %{input} input and %{output} output tokens, as the task declares."
 msgstr "Цена вызова примерно из %{input} входных и %{output} выходных токенов — как объявляет задача."
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:306
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:311
 #, elixir-autogen, elixir-format
 msgid "Price of a call of about %{input} input and %{output} output tokens, the median of this task's calls in the last 30 days."
 msgstr "Цена вызова примерно из %{input} входных и %{output} выходных токенов — медиана вызовов этой задачи за последние 30 дней."
@@ -2674,17 +2679,17 @@ msgstr "Цена вызова примерно из %{input} входных и %
 msgid "Recommended models"
 msgstr "Рекомендуемые модели"
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:314
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:319
 #, elixir-autogen, elixir-format
 msgid "The size of a call is not known yet, so the models are ranked by the input price alone (rough)."
 msgstr "Размер вызова пока не известен, поэтому модели упорядочены только по цене входа (приблизительно)."
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:366
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:371
 #, elixir-autogen, elixir-format
 msgid "alias model, may change"
 msgstr "модель-алиас, может смениться"
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:367
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:372
 #, elixir-autogen, elixir-format
 msgid "cost is not counted"
 msgstr "деньги не считаются"
@@ -2699,17 +2704,17 @@ msgstr "нет: %{needs}"
 msgid "not verified"
 msgstr "не проверено"
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:327
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:332
 #, elixir-autogen, elixir-format
 msgid "price not known"
 msgstr "цена не известна"
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:319
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:324
 #, elixir-autogen, elixir-format
 msgid "≈ Price per call"
 msgstr "≈ Цена вызова"
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:365
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:370
 #, elixir-autogen, elixir-format
 msgid "free — the operator's limits and terms apply"
 msgstr "бесплатная — лимиты и условия оператора"
@@ -2719,12 +2724,12 @@ msgstr "бесплатная — лимиты и условия оператор
 msgid "%{email} has reached the %{name} (%{limit}) in the AI task %{task}."
 msgstr "%{email} исчерпал лимит «%{name}» (%{limit}) в задаче ИИ %{task}."
 
-#: lib/phoenix_kit_ai/web/tasks.ex:731
+#: lib/phoenix_kit_ai/web/tasks.ex:727
 #, elixir-autogen, elixir-format
 msgid "A call is refused when nobody knows whether the model can do what its task needs. Declaring capabilities on an endpoint then needs this permission too."
 msgstr "Вызов отклоняется, если неизвестно, умеет ли модель то, что нужно задаче. Отмечать возможности на конечной точке тогда тоже можно только с этим правом."
 
-#: lib/phoenix_kit_ai/web/tasks.ex:280
+#: lib/phoenix_kit_ai/web/tasks.ex:279
 #, elixir-autogen, elixir-format
 msgid "A limit must be a whole number, or dollars for money"
 msgstr "Лимит — целое число, для денег — сумма в долларах"
@@ -2734,12 +2739,12 @@ msgstr "Лимит — целое число, для денег — сумма �
 msgid "A user"
 msgstr "Пользователь"
 
-#: lib/phoenix_kit_ai.ex:983
+#: lib/phoenix_kit_ai.ex:985
 #, elixir-autogen, elixir-format
 msgid "AI task guard"
 msgstr "Охрана задач ИИ"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:776
+#: lib/phoenix_kit_ai/web/tasks.ex:772
 #, elixir-autogen, elixir-format
 msgid "Add a person…"
 msgstr "Добавить человека…"
@@ -2749,77 +2754,77 @@ msgstr "Добавить человека…"
 msgid "An AI spending cap (%{cap}) refused a call. Calls are refused until spending is below it."
 msgstr "Лимит расходов на ИИ (%{cap}) отклонил вызов. Вызовы отклоняются, пока расходы не станут ниже лимита."
 
-#: lib/phoenix_kit_ai/web/tasks.ex:995
-#: lib/phoenix_kit_ai/web/tasks.ex:1172
-#: lib/phoenix_kit_ai/web/tasks.ex:1253
+#: lib/phoenix_kit_ai/web/tasks.ex:991
+#: lib/phoenix_kit_ai/web/tasks.ex:1168
+#: lib/phoenix_kit_ai/web/tasks.ex:1249
 #, elixir-autogen, elixir-format
 msgid "Cancel"
 msgstr "Отмена"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:716
+#: lib/phoenix_kit_ai/web/tasks.ex:712
 #, elixir-autogen, elixir-format
 msgid "Changing the guard needs the “Manage the AI task guard” permission."
 msgstr "Чтобы менять охрану, нужно право «Управлять охраной задач ИИ»."
 
-#: lib/phoenix_kit_ai/web/tasks.ex:819
+#: lib/phoenix_kit_ai/web/tasks.ex:815
 #, elixir-autogen, elixir-format
 msgid "Each user, a day"
 msgstr "Каждый пользователь, в сутки"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:820
+#: lib/phoenix_kit_ai/web/tasks.ex:816
 #, elixir-autogen, elixir-format
 msgid "Each user, a month"
 msgstr "Каждый пользователь, в месяц"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:752
+#: lib/phoenix_kit_ai/web/tasks.ex:748
 #, elixir-autogen, elixir-format
 msgid "Every Owner"
 msgstr "Все владельцы"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:897
-#: lib/phoenix_kit_ai/web/tasks.ex:926
+#: lib/phoenix_kit_ai/web/tasks.ex:893
+#: lib/phoenix_kit_ai/web/tasks.ex:922
 #, elixir-autogen, elixir-format
 msgid "Forgive"
 msgstr "Простить"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:130
+#: lib/phoenix_kit_ai/web/tasks.ex:129
 #, elixir-autogen, elixir-format
 msgid "Limit forgiven"
 msgstr "Лимит прощён"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:806
+#: lib/phoenix_kit_ai/web/tasks.ex:802
 #, elixir-autogen, elixir-format
 msgid "Limits and use:"
 msgstr "Лимиты и расход:"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:115
+#: lib/phoenix_kit_ai/web/tasks.ex:114
 #, elixir-autogen, elixir-format
 msgid "Limits saved"
 msgstr "Лимиты сохранены"
 
-#: lib/phoenix_kit_ai.ex:1115
+#: lib/phoenix_kit_ai.ex:1117
 #, elixir-autogen, elixir-format
 msgid "Manage the AI task guard"
 msgstr "Управлять охраной задач ИИ"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1293
+#: lib/phoenix_kit_ai/web/tasks.ex:1289
 #, elixir-autogen, elixir-format
 msgid "Money"
 msgstr "Деньги"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:779
-#: lib/phoenix_kit_ai/web/tasks.ex:965
+#: lib/phoenix_kit_ai/web/tasks.ex:775
+#: lib/phoenix_kit_ai/web/tasks.ex:961
 #, elixir-autogen, elixir-format
 msgid "No matches"
 msgstr "Ничего не найдено"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:933
-#: lib/phoenix_kit_ai/web/tasks.ex:1053
+#: lib/phoenix_kit_ai/web/tasks.ex:929
+#: lib/phoenix_kit_ai/web/tasks.ex:1049
 #, elixir-autogen, elixir-format
 msgid "None"
 msgstr "Нет"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:729
+#: lib/phoenix_kit_ai/web/tasks.ex:725
 #, elixir-autogen, elixir-format
 msgid "Only verified models"
 msgstr "Только проверенные модели"
@@ -2829,63 +2834,63 @@ msgstr "Только проверенные модели"
 msgid "Only verified models are allowed: declaring capabilities needs the “Manage the AI task guard” permission."
 msgstr "Разрешены только проверенные модели: отмечать возможности можно только с правом «Управлять охраной задач ИИ»."
 
-#: lib/phoenix_kit_ai/web/tasks.ex:907
+#: lib/phoenix_kit_ai/web/tasks.ex:903
 #, elixir-autogen, elixir-format
 msgid "People at a limit now:"
 msgstr "Сейчас у лимита:"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:185
+#: lib/phoenix_kit_ai/web/tasks.ex:184
 #, elixir-autogen, elixir-format
 msgid "Personal limits removed"
 msgstr "Личные лимиты удалены"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:176
+#: lib/phoenix_kit_ai/web/tasks.ex:175
 #, elixir-autogen, elixir-format
 msgid "Personal limits saved"
 msgstr "Личные лимиты сохранены"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:932
+#: lib/phoenix_kit_ai/web/tasks.ex:928
 #, elixir-autogen, elixir-format
 msgid "Personal limits:"
 msgstr "Личные лимиты:"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:885
+#: lib/phoenix_kit_ai/web/tasks.ex:881
 #, elixir-autogen, elixir-format
 msgid "Reached: %{limit}"
 msgstr "Исчерпан: %{limit}"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:992
+#: lib/phoenix_kit_ai/web/tasks.ex:988
 #, elixir-autogen, elixir-format
 msgid "Save"
 msgstr "Сохранить"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:857
+#: lib/phoenix_kit_ai/web/tasks.ex:853
 #, elixir-autogen, elixir-format
 msgid "Save limits"
 msgstr "Сохранить лимиты"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:778
-#: lib/phoenix_kit_ai/web/tasks.ex:964
+#: lib/phoenix_kit_ai/web/tasks.ex:774
+#: lib/phoenix_kit_ai/web/tasks.ex:960
 #, elixir-autogen, elixir-format
 msgid "Searching…"
 msgstr "Поиск…"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:962
+#: lib/phoenix_kit_ai/web/tasks.ex:958
 #, elixir-autogen, elixir-format
 msgid "Set personal limits for…"
 msgstr "Задать личные лимиты для…"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:714
+#: lib/phoenix_kit_ai/web/tasks.ex:710
 #, elixir-autogen, elixir-format
 msgid "Task guard"
 msgstr "Охрана задач"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:817
+#: lib/phoenix_kit_ai/web/tasks.ex:813
 #, elixir-autogen, elixir-format
 msgid "Task, a day"
 msgstr "Задача, в сутки"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:818
+#: lib/phoenix_kit_ai/web/tasks.ex:814
 #, elixir-autogen, elixir-format
 msgid "Task, a month"
 msgstr "Задача, в месяц"
@@ -2905,7 +2910,7 @@ msgstr "Задача ИИ %{task} израсходовала %{used} из лим
 msgid "The AI task %{task} uses the endpoint %{endpoint}, whose model now lacks: %{needs}."
 msgstr "Задача ИИ %{task} использует конечную точку %{endpoint}, модели которой теперь не хватает: %{needs}."
 
-#: lib/phoenix_kit_ai/web/tasks.ex:304
+#: lib/phoenix_kit_ai/web/tasks.ex:303
 #, elixir-autogen, elixir-format
 msgid "The change was not saved"
 msgstr "Изменение не сохранено"
@@ -2915,37 +2920,37 @@ msgstr "Изменение не сохранено"
 msgid "This AI task has reached its %{name}"
 msgstr "Эта задача ИИ исчерпала лимит «%{name}»"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:298
+#: lib/phoenix_kit_ai/web/tasks.ex:297
 #, elixir-autogen, elixir-format
 msgid "Too many watchers"
 msgstr "Слишком много наблюдателей"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:816
+#: lib/phoenix_kit_ai/web/tasks.ex:812
 #, elixir-autogen, elixir-format
 msgid "Used this month"
 msgstr "Расход за месяц"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:815
+#: lib/phoenix_kit_ai/web/tasks.ex:811
 #, elixir-autogen, elixir-format
 msgid "Used today"
 msgstr "Расход за сегодня"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:861
+#: lib/phoenix_kit_ai/web/tasks.ex:857
 #, elixir-autogen, elixir-format
 msgid "Warn at %{percent}%"
 msgstr "Предупреждать на %{percent}%"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:849
+#: lib/phoenix_kit_ai/web/tasks.ex:845
 #, elixir-autogen, elixir-format
 msgid "Warn at, %"
 msgstr "Предупреждать, %"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:271
+#: lib/phoenix_kit_ai/web/tasks.ex:270
 #, elixir-autogen, elixir-format
 msgid "Watchers saved"
 msgstr "Наблюдатели сохранены"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:744
+#: lib/phoenix_kit_ai/web/tasks.ex:740
 #, elixir-autogen, elixir-format
 msgid "Who is told"
 msgstr "Кому сообщать"
@@ -2965,8 +2970,8 @@ msgstr "Вы исчерпали лимит «%{name}» в этой задаче 
 msgid "You have used %{used} of your %{name} (%{limit}) in the AI task %{task}."
 msgstr "Вы израсходовали %{used} из лимита «%{name}» (%{limit}) в задаче ИИ %{task}."
 
-#: lib/phoenix_kit_ai/web/tasks.ex:104
-#: lib/phoenix_kit_ai/web/tasks.ex:277
+#: lib/phoenix_kit_ai/web/tasks.ex:103
+#: lib/phoenix_kit_ai/web/tasks.ex:276
 #, elixir-autogen, elixir-format
 msgid "You may not change the AI task guard"
 msgstr "У вас нет права менять охрану задач ИИ"
@@ -3016,7 +3021,7 @@ msgstr "вызовы одного пользователя"
 msgid "one user's spending"
 msgstr "расходы одного пользователя"
 
-#: lib/phoenix_kit_ai.ex:1588
+#: lib/phoenix_kit_ai.ex:1632
 #, elixir-autogen, elixir-format
 msgid "only a holder of ai.manage may declare capabilities while only verified models are allowed"
 msgstr "пока разрешены только проверенные модели, отмечать возможности может только обладатель права ai.manage"
@@ -3026,27 +3031,22 @@ msgstr "пока разрешены только проверенные моде
 msgid "the whole site"
 msgstr "весь сайт"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:283
+#: lib/phoenix_kit_ai/web/tasks.ex:282
 #, elixir-autogen, elixir-format
 msgid "That person was not found"
 msgstr "Такой человек не найден"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:873
-#, elixir-autogen, elixir-format
-msgid "Money is not counted for chat calls on %{endpoints}: the provider does not report what a call cost. Requests and tokens still apply."
-msgstr "На %{endpoints} деньги за чат-вызовы не считаются: провайдер не сообщает стоимость вызова. Лимиты запросов и токенов действуют."
-
-#: lib/phoenix_kit_ai/web/components/capability_badges.ex:76
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:78
 #, elixir-autogen, elixir-format
 msgid "Documents"
 msgstr "Документы"
 
-#: lib/phoenix_kit_ai/web/components/capability_badges.ex:77
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:79
 #, elixir-autogen, elixir-format
 msgid "Image generation"
 msgstr "Генерация изображений"
 
-#: lib/phoenix_kit_ai/web/components/capability_badges.ex:82
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:338
 #, elixir-autogen, elixir-format
 msgid "Not verified — mark it on the endpoint"
 msgstr "Не проверено — отметьте на конечной точке"
@@ -3061,17 +3061,17 @@ msgstr "документы"
 msgid "image generation"
 msgstr "генерация изображений"
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:170
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:173
 #, elixir-autogen, elixir-format
 msgid "Can do everything needed (verified)"
 msgstr "Умеют всё нужное (проверено)"
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:192
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:195
 #, elixir-autogen, elixir-format
 msgid "Experimental (%{count})"
 msgstr "Экспериментальные (%{count})"
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:180
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:183
 #, elixir-autogen, elixir-format
 msgid "May be able to (not verified)"
 msgstr "Возможно умеют (не проверено)"
@@ -3081,17 +3081,17 @@ msgstr "Возможно умеют (не проверено)"
 msgid "Must handle:"
 msgstr "Должна уметь:"
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:196
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:199
 #, elixir-autogen, elixir-format
 msgid "Previews, betas, free variants, aliases and models without a price: they can change or disappear."
 msgstr "Превью, беты, бесплатные варианты, алиасы и модели без цены: они могут измениться или пропасть."
 
-#: lib/phoenix_kit_ai/web/components/capability_badges.ex:85
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:341
 #, elixir-autogen, elixir-format
 msgid "Not verified"
 msgstr "Не проверено"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:736
+#: lib/phoenix_kit_ai/web/tasks.ex:732
 #, elixir-autogen, elixir-format
 msgid "Without a catalogue (OpenAI, xAI, Z.ai) the capabilities have to be marked on the endpoint, or the calls are refused."
 msgstr "Без каталога (OpenAI, xAI, Z.ai) возможности нужно отметить на конечной точке, иначе вызовы будут отклонены."
@@ -3111,124 +3111,124 @@ msgstr "%{email} заблокирован в задаче ИИ %{task}."
 msgid "%{email} is no longer blocked from the AI task %{task}."
 msgstr "%{email} больше не заблокирован в задаче ИИ %{task}."
 
-#: lib/phoenix_kit_ai.ex:985
+#: lib/phoenix_kit_ai.ex:987
 #, elixir-autogen, elixir-format
 msgid "An AI task is near or at a limit, a spending cap refused a call, a task's model no longer fits it, a request was flagged as off-purpose, a task is used unusually, or a person was blocked or unblocked"
 msgstr "Задача ИИ близка к лимиту или достигла его, лимит расходов отклонил вызов, модель задачи ей больше не подходит, запрос отмечен как не по назначению, задачу используют необычно, или человека заблокировали или разблокировали"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1079
-#: lib/phoenix_kit_ai/web/tasks.ex:1133
-#: lib/phoenix_kit_ai/web/tasks.ex:1169
+#: lib/phoenix_kit_ai/web/tasks.ex:1075
+#: lib/phoenix_kit_ai/web/tasks.ex:1129
+#: lib/phoenix_kit_ai/web/tasks.ex:1165
 #, elixir-autogen, elixir-format
 msgid "Block"
 msgstr "Заблокировать"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:251
+#: lib/phoenix_kit_ai/web/tasks.ex:250
 #, elixir-autogen, elixir-format
 msgid "Block lifted"
 msgstr "Блокировка снята"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:232
+#: lib/phoenix_kit_ai/web/tasks.ex:231
 #, elixir-autogen, elixir-format
 msgid "Blocked"
 msgstr "Заблокирован"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1177
+#: lib/phoenix_kit_ai/web/tasks.ex:1173
 #, elixir-autogen, elixir-format
 msgid "Blocked now:"
 msgstr "Сейчас заблокированы:"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1188
+#: lib/phoenix_kit_ai/web/tasks.ex:1184
 #, elixir-autogen, elixir-format
 msgid "By"
 msgstr "Кем"
 
-#: lib/phoenix_kit_ai.ex:1116
+#: lib/phoenix_kit_ai.ex:1118
 #, elixir-autogen, elixir-format
 msgid "Change the limits of AI tasks, who is told about them and which models may be used; block a person from a task; see why a private task's request was flagged"
 msgstr "Менять лимиты задач ИИ, кому о них сообщать и какие модели можно использовать; блокировать человека в задаче; видеть, почему запрос приватной задачи отмечен"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1061
+#: lib/phoenix_kit_ai/web/tasks.ex:1057
 #, elixir-autogen, elixir-format
 msgid "Flags"
 msgstr "Отметки"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1108
-#: lib/phoenix_kit_ai/web/tasks.ex:1201
+#: lib/phoenix_kit_ai/web/tasks.ex:1104
+#: lib/phoenix_kit_ai/web/tasks.ex:1197
 #, elixir-autogen, elixir-format
 msgid "Hidden: the task is private"
 msgstr "Скрыто: задача приватная"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1115
+#: lib/phoenix_kit_ai/web/tasks.ex:1111
 #, elixir-autogen, elixir-format
 msgid "Journal row"
 msgstr "Строка журнала"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1222
-#: lib/phoenix_kit_ai/web/tasks.ex:1250
+#: lib/phoenix_kit_ai/web/tasks.ex:1218
+#: lib/phoenix_kit_ai/web/tasks.ex:1246
 #, elixir-autogen, elixir-format
 msgid "Lift"
 msgstr "Снять"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:746
+#: lib/phoenix_kit_ai/web/tasks.ex:742
 #, elixir-autogen, elixir-format
 msgid "Limits near or reached, spending caps, models that stop fitting, off-purpose flags, unusual use and blocks are sent to these people (and to the people a task names), never with a reason. Nobody chosen: every Owner."
 msgstr "О лимитах на подходе и исчерпанных, о лимитах расходов, о моделях, которые перестали подходить, об отметках «не по назначению», необычном использовании и блокировках сообщается этим людям (и тем, кого называет задача), без причин. Никто не выбран — всем владельцам."
 
-#: lib/phoenix_kit_ai/web/tasks.ex:434
+#: lib/phoenix_kit_ai/web/tasks.ex:433
 #, elixir-autogen, elixir-format
 msgid "No user"
 msgstr "Без пользователя"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1179
+#: lib/phoenix_kit_ai/web/tasks.ex:1175
 #, elixir-autogen, elixir-format
 msgid "Nobody"
 msgstr "Никто"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:289
+#: lib/phoenix_kit_ai/web/tasks.ex:288
 #, elixir-autogen, elixir-format
 msgid "Nobody but an Owner lifts their own block"
 msgstr "Снять собственную блокировку может только владелец"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1244
+#: lib/phoenix_kit_ai/web/tasks.ex:1240
 #, elixir-autogen, elixir-format
 msgid "Note"
 msgstr "Заметка"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1051
+#: lib/phoenix_kit_ai/web/tasks.ex:1047
 #, elixir-autogen, elixir-format
 msgid "Off-purpose flags, last 30 days:"
 msgstr "Отметки «не по назначению» за 30 дней:"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:286
+#: lib/phoenix_kit_ai/web/tasks.ex:285
 #, elixir-autogen, elixir-format
 msgid "Only an Owner blocks an Owner or lifts their block"
 msgstr "Блокировать владельца и снимать его блокировку может только владелец"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1060
-#: lib/phoenix_kit_ai/web/tasks.ex:1092
-#: lib/phoenix_kit_ai/web/tasks.ex:1186
+#: lib/phoenix_kit_ai/web/tasks.ex:1056
+#: lib/phoenix_kit_ai/web/tasks.ex:1088
+#: lib/phoenix_kit_ai/web/tasks.ex:1182
 #, elixir-autogen, elixir-format
 msgid "Person"
 msgstr "Человек"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1093
-#: lib/phoenix_kit_ai/web/tasks.ex:1189
+#: lib/phoenix_kit_ai/web/tasks.ex:1089
+#: lib/phoenix_kit_ai/web/tasks.ex:1185
 #, elixir-autogen, elixir-format
 msgid "Reason"
 msgstr "Причина"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1187
+#: lib/phoenix_kit_ai/web/tasks.ex:1183
 #, elixir-autogen, elixir-format
 msgid "Since"
 msgstr "С"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:295
+#: lib/phoenix_kit_ai/web/tasks.ex:294
 #, elixir-autogen, elixir-format
 msgid "That block was lifted already"
 msgstr "Эта блокировка уже снята"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:292
+#: lib/phoenix_kit_ai/web/tasks.ex:291
 #, elixir-autogen, elixir-format
 msgid "That person is blocked from this task already"
 msgstr "Этот человек уже заблокирован в этой задаче"
@@ -3238,7 +3238,7 @@ msgstr "Этот человек уже заблокирован в этой за
 msgid "The AI task %{task} was asked for something outside its purpose. The flags are on the AI tasks page."
 msgstr "Задачу ИИ %{task} попросили о том, что не входит в её назначение. Отметки — на странице задач ИИ."
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1162
+#: lib/phoenix_kit_ai/web/tasks.ex:1158
 #, elixir-autogen, elixir-format
 msgid "The person cannot use the tasks of the group %{group} until the block is lifted."
 msgstr "Человек не сможет пользоваться задачами группы %{group}, пока блокировку не снимут."
@@ -3253,12 +3253,12 @@ msgstr "Необычное использование задачи ИИ %{task} 
 msgid "Unusual use of the AI task %{task}: %{rule}."
 msgstr "Необычное использование задачи ИИ %{task}: %{rule}."
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1091
+#: lib/phoenix_kit_ai/web/tasks.ex:1087
 #, elixir-autogen, elixir-format
 msgid "When"
 msgstr "Когда"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1157
+#: lib/phoenix_kit_ai/web/tasks.ex:1153
 #, elixir-autogen, elixir-format
 msgid "Why (seen by those who manage the guard)"
 msgstr "Почему (видят те, кто управляет охраной)"
@@ -3293,12 +3293,12 @@ msgstr "вызов больше чем на %{limit} токенов"
 msgid "more than %{limit} calls in an hour"
 msgstr "больше %{limit} вызовов за час"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1042
+#: lib/phoenix_kit_ai/web/tasks.ex:1038
 #, elixir-autogen, elixir-format
 msgid "The model flags off-purpose requests"
 msgstr "Модель отмечает запросы не по назначению"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1044
+#: lib/phoenix_kit_ai/web/tasks.ex:1040
 #, elixir-autogen, elixir-format
 msgid "The module that uses this task asks the model to refuse what is not the task's purpose and to flag it. Off: no such instruction, and no flags are written."
 msgstr "Модуль, который пользуется этой задачей, просит модель отказывать в том, что не входит в назначение задачи, и отмечать такие запросы. Выключено: такой инструкции нет, и отметки не пишутся."
@@ -3308,18 +3308,384 @@ msgstr "Модуль, который пользуется этой задаче�
 msgid "Base URL"
 msgstr "Базовый URL"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:868
+#: lib/phoenix_kit_ai/web/tasks.ex:864
 #, elixir-autogen, elixir-format
 msgid "Days and months follow the site time zone. Empty limits inherit defaults when set; otherwise they are unlimited. 0 allows nothing. Calls running at the same time can each go past a limit by their own size."
 msgstr "Сутки и месяцы — по часовому поясу сайта. Пустые лимиты наследуют заданные значения по умолчанию; иначе ограничений нет. 0 — ничего нельзя. Одновременные вызовы могут каждый превысить лимит на свой размер."
 
-#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:109
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:112
 #, elixir-autogen, elixir-format
 msgid "Models used in this task"
 msgstr "Модели, использованные в этой задаче"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:301
-#: lib/phoenix_kit_ai/web/tasks.ex:903
+#: lib/phoenix_kit_ai/web/tasks.ex:300
+#: lib/phoenix_kit_ai/web/tasks.ex:899
 #, elixir-autogen, elixir-format
 msgid "Limits per user are set by the task's module"
 msgstr "Лимиты на пользователя задаёт модуль задачи"
+
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:368
+#, elixir-autogen, elixir-format
+msgid "Add one in Settings → Integrations"
+msgstr "Добавьте её в Настройки → Интеграции"
+
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:390
+#, elixir-autogen, elixir-format
+msgid "Auth failed"
+msgstr "Ошибка авторизации"
+
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:836
+#, elixir-autogen, elixir-format
+msgid "Context: unknown"
+msgstr "Контекст: неизвестно"
+
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:347
+#, elixir-autogen, elixir-format
+msgid "Integration deleted"
+msgstr "Интеграция удалена"
+
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:366
+#, elixir-autogen, elixir-format
+msgid "No integrations configured."
+msgstr "Интеграции не настроены."
+
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:391
+#, elixir-autogen, elixir-format
+msgid "Not tested"
+msgstr "Не проверялось"
+
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:255
+#, elixir-autogen, elixir-format
+msgid "Search integrations..."
+msgstr "Поиск интеграций..."
+
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:351
+#, elixir-autogen, elixir-format
+msgid "The selected integration no longer exists. Please choose a different one."
+msgstr "Выбранная интеграция больше не существует. Выберите другую."
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:319
+#, elixir-autogen, elixir-format
+msgid "A GLM model with a “v” in its name (glm-4.5v) usually reads images."
+msgstr "Модель GLM с буквой «v» в названии (glm-4.5v) обычно понимает картинки."
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:301
+#, elixir-autogen, elixir-format
+msgid "Another OpenAI-compatible operator — its own model page; OpenRouter lists the models of many operators with their capabilities:"
+msgstr "Другой OpenAI-совместимый оператор — его собственная страница моделей; модели многих операторов с их возможностями собраны на OpenRouter:"
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:173
+#, elixir-autogen, elixir-format
+msgid "Context: how much text, in tokens, the model takes in one request — the question, the data sent with it and the answer together."
+msgstr "Контекст: сколько текста (в токенах) модель принимает за один запрос — вопрос, отправленные с ним данные и ответ вместе."
+
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:506
+#, elixir-autogen, elixir-format
+msgid "Current values"
+msgstr "Текущие значения"
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:113
+#, elixir-autogen, elixir-format
+msgid "Documents: the model can read files such as PDFs sent with the request."
+msgstr "Документы: модель может читать файлы, например PDF, отправленные с запросом."
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:317
+#, elixir-autogen, elixir-format
+msgid "Hints in the name (usually, not always)"
+msgstr "Подсказки в названии (обычно, но не всегда)"
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:282
+#, elixir-autogen, elixir-format
+msgid "How to determine a model's capabilities"
+msgstr "Как определить возможности модели"
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:181
+#, elixir-autogen, elixir-format
+msgid "How to tell: the model card at the operator lists the context window; OpenRouter shows it for every model."
+msgstr "Как узнать: размер контекста указан в карточке модели у оператора; OpenRouter показывает его для каждой модели."
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:165
+#, elixir-autogen, elixir-format
+msgid "How to tell: the model card at the operator or on OpenRouter lists JSON mode (response format); or send a test request that asks for JSON."
+msgstr "Как узнать: в карточке модели у оператора или на OpenRouter указан режим JSON (response format); или отправьте тестовый запрос с просьбой ответить в JSON."
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:116
+#, elixir-autogen, elixir-format
+msgid "How to tell: the model card at the operator or on OpenRouter lists file or PDF input; or send a test request with a document."
+msgstr "Как узнать: в карточке модели у оператора или на OpenRouter указан ввод файлов или PDF; или отправьте тестовый запрос с документом."
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:106
+#, elixir-autogen, elixir-format
+msgid "How to tell: the model card at the operator or on OpenRouter lists image input; or send a test request with a picture."
+msgstr "Как узнать: в карточке модели у оператора или на OpenRouter указан ввод изображений; или отправьте тестовый запрос с картинкой."
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:126
+#, elixir-autogen, elixir-format
+msgid "How to tell: the model card at the operator or on OpenRouter lists image output; or send a test request that asks for a picture."
+msgstr "Как узнать: в карточке модели у оператора или на OpenRouter указан вывод изображений; или отправьте тестовый запрос с просьбой нарисовать картинку."
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:149
+#, elixir-autogen, elixir-format
+msgid "How to tell: the model card at the operator or on OpenRouter lists structured outputs (JSON schema); or send a test request with a schema."
+msgstr "Как узнать: в карточке модели у оператора или на OpenRouter указаны структурированные ответы (JSON-схема); или отправьте тестовый запрос со схемой."
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:136
+#, elixir-autogen, elixir-format
+msgid "How to tell: the model card at the operator or on OpenRouter lists tools (function calling); or send a test request with a tool."
+msgstr "Как узнать: в карточке модели у оператора или на OpenRouter указаны инструменты (function calling); или отправьте тестовый запрос с инструментом."
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:123
+#, elixir-autogen, elixir-format
+msgid "Image generation: the model answers with a picture, not only with text."
+msgstr "Генерация изображений: модель отвечает картинкой, а не только текстом."
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:100
+#, elixir-autogen, elixir-format
+msgid "Images: the model can look at pictures sent with the request — photos, scans, screenshots."
+msgstr "Картинки: модель может смотреть на изображения, отправленные с запросом, — фото, сканы, скриншоты."
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:144
+#, elixir-autogen, elixir-format
+msgid "JSON schema: the model answers with a strictly filled-in form that the site reads without errors."
+msgstr "JSON-схема: модель отвечает строго заполненной формой, которую сайт разбирает без ошибок."
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:157
+#, elixir-autogen, elixir-format
+msgid "JSON: the model answers in JSON, without a promise that every field of a form is there."
+msgstr "JSON: модель отвечает в JSON, но без гарантии, что в ответе есть каждое поле формы."
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:134
+#, elixir-autogen, elixir-format
+msgid "Needed by an assistant that acts on the site."
+msgstr "Нужно ассистенту, который выполняет действия на сайте."
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:124
+#, elixir-autogen, elixir-format
+msgid "Needed by tasks that draw or edit images."
+msgstr "Нужно задачам, которые рисуют или редактируют изображения."
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:147
+#, elixir-autogen, elixir-format
+msgid "Needed by tasks that parse the answer (for example picking items)."
+msgstr "Нужно задачам, которые разбирают ответ (например, подбор позиций)."
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:104
+#, elixir-autogen, elixir-format
+msgid "Needed by tasks that read a photo, for example recognising the items in it."
+msgstr "Нужно задачам, которые читают фото, например распознают на нём позиции."
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:161
+#, elixir-autogen, elixir-format
+msgid "Needed by tasks that read a structured answer and can live with a missing field."
+msgstr "Нужно задачам, которые читают структурированный ответ и переживут пропущенное поле."
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:114
+#, elixir-autogen, elixir-format
+msgid "Needed by tasks that read an uploaded document."
+msgstr "Нужно задачам, которые читают загруженный документ."
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:177
+#, elixir-autogen, elixir-format
+msgid "Needed by tasks with long inputs, such as large documents or many items at once."
+msgstr "Нужно задачам с длинными входными данными — большими документами или множеством позиций сразу."
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:207
+#, elixir-autogen, elixir-format
+msgid "No"
+msgstr "Нет"
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:327
+#, elixir-autogen, elixir-format
+msgid "Not sure — leave it at «?», not «yes»: a «yes» switches off the protection against an unsuitable model."
+msgstr "Не уверены — оставьте «?», а не «да»: «да» отключает защиту от неподходящей модели."
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:286
+#, elixir-autogen, elixir-format
+msgid "Operators without a capability catalogue (Z.ai, OpenAI, xAI and other OpenAI-compatible ones) do not say what a model can do, so it is marked here."
+msgstr "Операторы без каталога возможностей (Z.ai, OpenAI, xAI и другие OpenAI-совместимые) не сообщают, что умеет модель, поэтому это отмечают здесь."
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:133
+#, elixir-autogen, elixir-format
+msgid "Tools: the model can ask the site to run an action or look up data."
+msgstr "Инструменты: модель может попросить сайт выполнить действие или найти данные."
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:234
+#, elixir-autogen, elixir-format
+msgid "What the capabilities mean"
+msgstr "Что означают возможности"
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:292
+#, elixir-autogen, elixir-format
+msgid "Where to look"
+msgstr "Где смотреть"
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:206
+#, elixir-autogen, elixir-format
+msgid "Yes"
+msgstr "Да"
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:331
+#, elixir-autogen, elixir-format
+msgid "You can check by sending a test request in the Playground."
+msgstr "Можно проверить, отправив тестовый запрос в Playground."
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:270
+#, elixir-autogen, elixir-format
+msgid "an example of a model that reads images"
+msgstr "пример модели, которая понимает картинки"
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:216
+#, elixir-autogen, elixir-format
+msgid "checked by a call"
+msgstr "проверено вызовом"
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:214
+#, elixir-autogen, elixir-format
+msgid "from the catalogue"
+msgstr "из каталога"
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:215
+#, elixir-autogen, elixir-format
+msgid "marked by hand"
+msgstr "отмечено вручную"
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:267
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:268
+#, elixir-autogen, elixir-format
+msgid "the model list"
+msgstr "список моделей"
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:269
+#, elixir-autogen, elixir-format
+msgid "the model overview"
+msgstr "обзор моделей"
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:321
+#, elixir-autogen, elixir-format
+msgid "“image” or “imagine” in a name usually means the model generates images."
+msgstr "«image» или «imagine» в названии обычно означает, что модель генерирует изображения."
+
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:378
+#, elixir-autogen, elixir-format
+msgid "the operator does not report capabilities"
+msgstr "оператор не сообщает возможности"
+
+#: lib/phoenix_kit_ai/web/endpoints.ex:722
+#, elixir-autogen, elixir-format
+msgid "Counted from the price entered by hand on the endpoint"
+msgstr "Посчитано по цене, введённой вручную на конечной точке"
+
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:593
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:604
+#, elixir-autogen, elixir-format
+msgid "Input, $ per 1M tokens"
+msgstr "Вход, $ за 1M токенов"
+
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:594
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:615
+#, elixir-autogen, elixir-format
+msgid "Output, $ per 1M tokens"
+msgstr "Выход, $ за 1M токенов"
+
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:574
+#, elixir-autogen, elixir-format
+msgid "Price entered by hand"
+msgstr "Цена, введённая вручную"
+
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:576
+#, elixir-autogen, elixir-format
+msgid "The provider does not give this model's price, so the cost of its calls is not counted. Enter the price per 1M tokens in dollars and each call's cost is counted from its tokens; a cost the provider reports is used instead."
+msgstr "Провайдер не сообщает цену этой модели, поэтому стоимость её вызовов не считается. Введите цену за 1M токенов в долларах — стоимость каждого вызова будет считаться по его токенам; если провайдер сам сообщит стоимость, берётся она."
+
+#: lib/phoenix_kit_ai/web/endpoints.ex:724
+#, elixir-autogen, elixir-format
+msgid "entered by hand"
+msgstr "введена вручную"
+
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:374
+#, elixir-autogen, elixir-format
+msgid "price entered by hand"
+msgstr "цена введена вручную"
+
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:2411
+#, elixir-autogen, elixir-format
+msgid "%{count} model from %{provider}"
+msgid_plural "%{count} models from %{provider}"
+msgstr[0] "%{provider}: %{count} модель"
+msgstr[1] "%{provider}: %{count} модели"
+msgstr[2] "%{provider}: %{count} моделей"
+
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:263
+#, elixir-autogen, elixir-format
+msgid "Connections"
+msgstr "Подключения"
+
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:348
+#, elixir-autogen, elixir-format
+msgid "Missing"
+msgstr "Отсутствует"
+
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:886
+#, elixir-autogen, elixir-format
+msgid "Anthropic: on, the model thinks as it does by default (Claude 5 models think); off, thinking is turned off where the model allows it (not on Claude Opus 5.5 or Fable). Anthropic's OpenAI-compatible API ignores the effort level; a token limit is sent only to a model that takes a thinking budget."
+msgstr "Anthropic: включено — модель думает, как по умолчанию (модели Claude 5 думают); выключено — размышление отключается там, где модель это позволяет (не у Claude Opus 5.5 и Fable). Уровень усилия совместимый с OpenAI API Anthropic не принимает; лимит токенов уходит только модели, которая принимает бюджет размышления."
+
+#: lib/phoenix_kit_ai/web/endpoints.ex:734
+#, elixir-autogen, elixir-format
+msgid "Counted from the built-in list price, which may be out of date"
+msgstr "Посчитано по встроенному прайс-листу, он мог устареть"
+
+#: lib/phoenix_kit_ai/web/endpoints.ex:736
+#, elixir-autogen, elixir-format
+msgid "list price"
+msgstr "прайс-лист"
+
+#: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:375
+#, elixir-autogen, elixir-format
+msgid "list price, may be out of date"
+msgstr "цена по прайс-листу, могла устареть"
+
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:1222
+#, elixir-autogen, elixir-format
+msgid "Enter a price in dollars, for example 0.60 — a number from 0 up to 10 000."
+msgstr "Введите цену в долларах, например 0.60, — число от 0 до 10 000."
+
+#: lib/phoenix_kit_ai/web/endpoint_form.ex:1219
+#, elixir-autogen, elixir-format
+msgid "Enter both prices, or leave both empty."
+msgstr "Введите обе цены или оставьте обе пустыми."
+
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:585
+#, elixir-autogen, elixir-format
+msgid "The catalogue gives this model a price, which is used first: this price is not used. Empty both fields to remove it."
+msgstr "Каталог даёт этой модели цену, и она используется первой: эта цена не используется. Очистите оба поля, чтобы удалить её."
+
+#: lib/phoenix_kit_ai/web/endpoint_form.html.heex:597
+#, elixir-autogen, elixir-format
+msgid "Setting a price needs the “Manage the AI task guard” permission: it decides what the money limits count."
+msgstr "Чтобы задать цену, нужно право «Управлять охраной задач ИИ»: от неё зависит, что считают денежные лимиты."
+
+#: lib/phoenix_kit_ai.ex:1655
+#, elixir-autogen, elixir-format
+msgid "only a holder of ai.manage may set or change a manual price"
+msgstr "только владелец права ai.manage может задать или изменить ручную цену"
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:190
+#, elixir-autogen, elixir-format
+msgid "%{capability}: something the model has to be able to do."
+msgstr "%{capability}: то, что модель должна уметь."
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:193
+#, elixir-autogen, elixir-format
+msgid "How to tell: the model card at the operator or on OpenRouter; or send a test request."
+msgstr "Как узнать: карточка модели у оператора или на OpenRouter; или отправьте тестовый запрос."
+
+#: lib/phoenix_kit_ai/web/tasks.ex:869
+#, elixir-autogen, elixir-format
+msgid "Money is not counted for this task's calls on %{endpoints}: nothing prices them (the provider reports no cost, and no catalogue, manual or list price applies). Requests and tokens still apply."
+msgstr "Деньги за вызовы этой задачи на %{endpoints} не считаются: их нечем оценить (провайдер не сообщает стоимость, и нет ни цены каталога, ни ручной цены, ни цены по прайс-листу). Запросы и токены по-прежнему учитываются."
+
+#: lib/phoenix_kit_ai/web/components/capability_badges.ex:191
+#, elixir-autogen, elixir-format
+msgid "Needed by the tasks that declare it."
+msgstr "Нужно задачам, которые это объявляют."

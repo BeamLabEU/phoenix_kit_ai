@@ -184,25 +184,26 @@ defmodule PhoenixKitAI.CapabilitiesServerTest do
       assert %Capabilities{vision: :yes} = Capabilities.for_endpoint(endpoint)
     end
 
-    test "a provider without a catalogue is not asked and stays unknown unless declared", %{
-      stub: stub
-    } do
+    test "a provider with neither a catalogue nor a plain list is not asked and stays unknown unless declared",
+         %{
+           stub: stub
+         } do
       {:ok, plain} =
         PhoenixKitAI.create_endpoint(%{
-          name: "xAI #{System.unique_integer([:positive])}",
-          provider: "xai",
-          base_url: "https://api.x.ai/v1",
+          name: "Custom #{System.unique_integer([:positive])}",
+          provider: "custom",
+          base_url: "https://llm.example.test/v1",
           model: "grok-4",
-          api_key: "xai-test-key"
+          api_key: "custom-test-key"
         })
 
       {:ok, declared} =
         PhoenixKitAI.create_endpoint(%{
-          name: "xAI declared #{System.unique_integer([:positive])}",
-          provider: "xai",
-          base_url: "https://api.x.ai/v1",
+          name: "Custom declared #{System.unique_integer([:positive])}",
+          provider: "custom",
+          base_url: "https://llm.example.test/v1",
           model: "grok-4",
-          api_key: "xai-test-key",
+          api_key: "custom-test-key",
           provider_settings: %{
             "capabilities" => %{"model" => "grok-4", "vision" => "yes"}
           }

@@ -36,13 +36,12 @@ defmodule PhoenixKitAI.Web.Tasks do
   alias PhoenixKit.Users.Auth
   alias PhoenixKit.Users.Auth.User
   alias PhoenixKitAI.{Capabilities, Guard, GuardBlocks, GuardEvents, Recommendations}
-  alias PhoenixKitAI.{TaskLimits, Tasks}
+  alias PhoenixKitAI.{Money, TaskLimits, Tasks}
   alias PhoenixKitAI.TaskSpec
   alias PhoenixKitAI.Web.Access
+  alias PhoenixKitAI.Web.Components.CapabilityBadges
   alias PhoenixKitAI.Web.Components.TaskModelPicker
   alias PhoenixKitAI.Web.MessageShape
-
-  @max_dollars Decimal.new(1_000_000_000)
 
   @impl true
   def mount(_params, session, socket) do
@@ -456,7 +455,7 @@ defmodule PhoenixKitAI.Web.Tasks do
           }
         end),
       reached: Enum.map(reached, &Map.put(&1, :email, emails[&1.user_uuid] || &1.user_uuid)),
-      money_uncounted: for(e <- endpoints, !TaskLimits.money_counted?(e), do: e.name)
+      money_uncounted: for(e <- endpoints, !TaskLimits.money_counted?(e, spec.needs), do: e.name)
     }
   end
 
@@ -553,18 +552,12 @@ defmodule PhoenixKitAI.Web.Tasks do
   defp form_value(nil), do: ""
   defp form_value(_value), do: :invalid
 
-  # Dollars, finite, from 0 to $1 000 000 000; a positive amount that would
-  # round to 0 micro-dollars is refused (0 allows nothing).
+  # Dollars, finite, from 0 to $1 000 000 000 (`PhoenixKitAI.Money`); 0
+  # allows nothing.
   defp amount("money", value) when is_binary(value) do
-    with {decimal, ""} <- Decimal.parse(value),
-         false <- Decimal.nan?(decimal) or Decimal.inf?(decimal),
-         false <- Decimal.negative?(decimal),
-         false <- Decimal.gt?(decimal, @max_dollars),
-         micro = decimal |> Decimal.mult(1_000_000) |> Decimal.round(0) |> Decimal.to_integer(),
-         false <- micro == 0 and not Decimal.eq?(decimal, 0) do
-      micro
-    else
-      _ -> :error
+    case Money.parse_dollars(value) do
+      {:ok, micro} -> micro
+      :error -> :error
     end
   end
 
@@ -616,6 +609,8 @@ defmodule PhoenixKitAI.Web.Tasks do
         watchers={@watchers}
       />
 
+      <CapabilityBadges.glossary id="ai-tasks-capability-glossary" class="bg-base-100" />
+
       <%= if @tasks == [] do %>
         <div id="ai-tasks-empty" class="alert">
           {gettext("No module declares an AI task.")}
@@ -649,6 +644,7 @@ defmodule PhoenixKitAI.Web.Tasks do
                   :for={need <- task.spec.needs}
                   class="badge badge-outline badge-sm"
                   data-need={need}
+                  title={CapabilityBadges.explain_text(need)}
                 >
                   {Tasks.need_label(need)}
                 </span>
@@ -871,7 +867,7 @@ defmodule PhoenixKitAI.Web.Tasks do
       </p>
       <p :if={@view.money_uncounted != []} class="text-xs text-warning" data-money-uncounted>
         {gettext(
-          "Money is not counted for chat calls on %{endpoints}: the provider does not report what a call cost. Requests and tokens still apply.",
+          "Money is not counted for this task's calls on %{endpoints}: nothing prices them (the provider reports no cost, and no catalogue, manual or list price applies). Requests and tokens still apply.",
           endpoints: Enum.join(@view.money_uncounted, ", ")
         )}
       </p>

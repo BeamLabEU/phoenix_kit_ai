@@ -27,11 +27,10 @@ defmodule PhoenixKitAI.Capabilities do
       OpenAI-compatible layer, which ignores `response_format`, so
       `json_schema` is `:no` and `json` is `:yes` (the schema is written into
       the prompt instead); `tools` is `:yes`;
-      `capabilities.thinking.types.{enabled,adaptive,disabled}` →
-      `thinking_enabled` / `thinking_adaptive` / `thinking_disabled` (which
-      `thinking: {type: …}` forms the model accepts; the documented
-      catalogue rows show only `enabled` and `adaptive`, so
-      `thinking_disabled` is expected to stay `:unknown`).
+      `capabilities.thinking.types.{enabled,adaptive,disabled,between_tools}` →
+      `thinking_enabled` / `thinking_adaptive` / `thinking_disabled` /
+      `thinking_between_tools` (which `thinking: {type: …}` forms the model
+      accepts).
     * **DeepSeek** (`GET /models`): `image` among `input_modalities` →
       `vision`, `file` among them → `file_input` (absent says nothing),
       `image` among `output_modalities` → `image_output`; `context_window`
@@ -40,8 +39,11 @@ defmodule PhoenixKitAI.Capabilities do
       `capabilities.function_calling` → `tools`, `max_context_length` →
       `context_length`; `completion_chat: false` marks a model that does not
       answer in text. Documents and images out are not listed: `:unknown`.
-    * **Every other provider** (OpenAI, xAI, Z.ai, …) — `:unknown`, unless
-      declared.
+    * **OpenAI, xAI, Z.ai** (`GET /models`, a plain list of ids): the
+      models are kept — `source_kind/2` says `:plain` — with every
+      capability `:unknown` and no price, so the recommendations can name
+      them; declarations fill them as for any catalogue.
+    * **Every other provider** — `:unknown`, unless declared.
 
   ## Declared capabilities
 
@@ -102,6 +104,13 @@ defmodule PhoenixKitAI.Capabilities do
     {:deepseek, "deepseek", "api.deepseek.com"},
     {:mistral, "mistral", "api.mistral.ai"}
   ]
+  # Direct operators whose `/models` is a plain list of ids, with nothing on
+  # what a model can do or costs: the provider key and the API host.
+  @plain_catalogues [
+    {"openai", "api.openai.com"},
+    {"xai", "api.x.ai"},
+    {"zai", "api.z.ai"}
+  ]
 
   @refresh_interval :timer.hours(6)
   # A failed catalogue is tried again after these delays, then not before
@@ -127,6 +136,7 @@ defmodule PhoenixKitAI.Capabilities do
             thinking_disabled: :unknown,
             thinking_enabled: :unknown,
             thinking_adaptive: :unknown,
+            thinking_between_tools: :unknown,
             name: nil,
             prompt_price: nil,
             completion_price: nil,
@@ -148,6 +158,7 @@ defmodule PhoenixKitAI.Capabilities do
           thinking_disabled: flag(),
           thinking_enabled: flag(),
           thinking_adaptive: flag(),
+          thinking_between_tools: flag(),
           name: String.t() | nil,
           prompt_price: float() | nil,
           completion_price: float() | nil,
@@ -188,7 +199,7 @@ defmodule PhoenixKitAI.Capabilities do
         caps
 
       [] ->
-        if catalogue_kind(nil, base_url), do: GenServer.cast(__MODULE__, {:miss, base_url})
+        if source_kind(nil, base_url), do: GenServer.cast(__MODULE__, {:miss, base_url})
         :unknown
     end
   rescue
@@ -290,6 +301,26 @@ defmodule PhoenixKitAI.Capabilities do
     Enum.find_value(@catalogues, fn {kind, key, catalogue_host} ->
       if provider == key or host == catalogue_host, do: kind
     end)
+  end
+
+  @doc """
+  What the cache reads at a provider: its catalogue kind (`catalogue_kind/2`),
+  else `:plain` for a direct operator whose `/models` lists ids only
+  (OpenAI, xAI, Z.ai — by provider key or API host), else `nil`.
+  """
+  @spec source_kind(String.t() | nil, String.t() | nil) ::
+          :openrouter | :anthropic | :deepseek | :mistral | :plain | nil
+  def source_kind(provider, base_url) do
+    catalogue_kind(provider, base_url) || plain_kind(provider, base_url)
+  end
+
+  defp plain_kind(provider, base_url) do
+    host = host(base_url)
+
+    if Enum.any?(@plain_catalogues, fn {key, plain_host} ->
+         provider == key or host == plain_host
+       end),
+       do: :plain
   end
 
   @doc """
@@ -437,7 +468,8 @@ defmodule PhoenixKitAI.Capabilities do
       text_output: true,
       thinking_disabled: thinking_type(row["capabilities"], "disabled"),
       thinking_enabled: thinking_type(row["capabilities"], "enabled"),
-      thinking_adaptive: thinking_type(row["capabilities"], "adaptive")
+      thinking_adaptive: thinking_type(row["capabilities"], "adaptive"),
+      thinking_between_tools: thinking_type(row["capabilities"], "between_tools")
     }
   end
 
@@ -880,7 +912,7 @@ defmodule PhoenixKitAI.Capabilities do
        when is_binary(model) and model != "" do
     base_url = resolved_base_url(endpoint)
 
-    case base_url && catalogue_kind(endpoint.provider, base_url) do
+    case base_url && source_kind(endpoint.provider, base_url) do
       nil -> []
       kind -> [{base_url, kind, endpoint}]
     end

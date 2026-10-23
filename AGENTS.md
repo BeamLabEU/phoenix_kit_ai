@@ -204,6 +204,27 @@ Repo-local aliases:
 - The `cost_cents` column holds **nanodollars** (1/1,000,000 of a dollar),
   not cents — the name is legacy. Reading it as cents is off by seven orders of
   magnitude. The spend-cap settings use the same unit: `5_000_000` is $5.
+- A chat or embedding row's cost comes from `PhoenixKitAI.CallCost`, the
+  first source with a price: the provider's `usage.cost` > the operator's
+  catalogue price (OpenRouter `pricing`) > the endpoint's manual price
+  (`provider_settings["pricing"]`, whole µ$ per 1M tokens) > Anthropic's
+  built-in rates (`AnthropicPricing`, from BeamLabEU/phoenix_kit_ai#47,
+  overridable by `config :phoenix_kit_ai, :anthropic_prices`). The row's
+  `metadata.cost_source` says which (`provider` / `catalogue` / `manual` /
+  `table`). The answer's model is priced; with no price anywhere, the
+  endpoint's model. The table never becomes a catalogue price
+  (`Capabilities.prompt_price`), so a manual price corrects it.
+  `PhoenixKitAI.reports_cost?/1` says whether any source prices an
+  endpoint's model (`TaskLimits.money_counted?/2` reads it). Chat,
+  embeddings and the vision verbs (`describe_image` / `extract_text` /
+  `compare_images`, model: the answer's, else the call's `model:`, else the
+  endpoint's) are priced by `CallCost`; a call without tokens gets no cost.
+  Making or editing images (`generate_image` / `edit_image` /
+  `process_image`) is priced per image or per call, so it keeps only the
+  provider's own cost — no manual or table price. A manual price
+  names its model (dropped when the model changes), has both halves, at most
+  $10 000 per 1M tokens, and setting, changing or removing it needs
+  `ai.manage` (the `:scope` option; an Owner always).
 - `user_uuid:` on a verb must be a PhoenixKit user uuid. The usage row has a
   foreign key on it, so an anonymous or external id cannot be stored there:
   the row is written without it (`user_uuid` nil, the submitted id kept in
@@ -404,10 +425,19 @@ provided the API exposes `<base_url>/chat/completions` and `/models`.
 - Switching provider in the form clears the integration, model list and params,
   `provider_settings["voice"]` and `base_url` — with `""`, per the landmine
   above.
-- **The integration picker never auto-picks**, even when exactly one connection
-  exists. `active_connection` is set only from what the endpoint is actually
-  pinned to. An orphaned `integration_uuid` renders a "deleted/missing" warning
-  card; there is no silent rebinding on PubSub changes.
+- **The connection picker** is the form's own `EndpointForm.connection_picker/1`
+  (not core's `integration_picker`): each card is a toggle button with
+  `aria-pressed` and a radio mark, its status badge ("Connected", …) apart
+  from the selection, inside a labelled `role="group"`; >6 cards get core's
+  `IntegrationPickerSearch` hook. **Auto-pick:** a provider's only *usable*
+  connection (one with credentials, `Integrations.connected?/1`) is picked on
+  a new endpoint's mount (after a recommendation's prefilled one) and when the
+  provider changes — never on an edited endpoint's mount, and on a provider
+  change only when nothing is stored or it is the stored connection. With
+  several usable connections nothing is picked. An unpick is not undone while
+  the provider stays. An orphaned `integration_uuid` renders a
+  "deleted/missing" warning card; there is no silent rebinding on PubSub
+  changes.
 - OpenRouter's `/models` excludes embeddings, so a curated list in
   `OpenRouterClient` supplies them. Mistral's `/v1/models` returns chat and
   embeddings together, and its `/audio/voices` feeds the TTS voice picker.
@@ -487,7 +517,8 @@ provided the API exposes `<base_url>/chat/completions` and `/models`.
   inputs); `dry_run: true` returns the plan without a request; a safety
   refusal is `{:content_policy, message}`. A prose-only answer is
   `{:error, {:no_image_in_response, text}}`.
-  Logged with tokens, `usage.cost` when reported, image counts and byte
+  Logged with tokens, the cost (vision: `CallCost`, like chat; making or
+  editing images: `usage.cost` when reported), image counts and byte
   sizes, operations and warnings; the image bytes themselves are never
   persisted. **Never send a provider a permanent Storage URL — inline the
   bytes.** `dev_docs/guides/image-processing.md` has the full picture.
@@ -658,8 +689,12 @@ Test database `phoenix_kit_ai_test`.
   `{:error, :user_limits_off}`. Empty is none, `0` allows nothing.
   Counted from the journal by `metadata->>'task'` (and `user_uuid`),
   `status = 'success'` only — a cache hit is one request and no money or
-  tokens, a refusal never counts; money only where the provider reports a
-  cost. Checked in
+  tokens, a refusal never counts; money where a call has a cost
+  (`PhoenixKitAI.CallCost`: the provider's own, else a catalogue, manual or
+  built-in Anthropic price; `TaskLimits.money_counted?/2`, which for a task
+  that makes images (`:image_output`) counts only the provider's own, and
+  for one that reads them (`:vision`) is the chat rule — so a caller asking
+  `money_counted?(endpoint, [:vision])` gets the chat answer). Checked in
   `authorize/5` after the model check and before `Budget`; a reached limit
   is `{:error, {:task_limit_exceeded, scope, unit, period}}` with a refusal
   row. Forgiving restarts one scope and period's count from that moment
@@ -770,11 +805,12 @@ Test database `phoenix_kit_ai_test`.
   counts as newer), and the OpenRouter-shaped reasoning options become `thinking`
   only in a form the model's catalogue lists
   (`capabilities.thinking.types.<type>.supported`): a token budget as
-  `enabled` + `budget_tokens`, else `adaptive`; with neither listed (or
-  the catalogue not read yet) no `thinking` is sent, as before. Anthropic's
-  documented catalogue rows show only `enabled` and `adaptive`, so
-  `reasoning_enabled: false` (`disabled`) is expected to send nothing
-  until a catalogue lists it — check one live `/v1/models` answer.
+  `enabled` + `budget_tokens`; `reasoning_enabled: false` as `disabled`,
+  else `between_tools`; otherwise (thinking on, an effort alone, or the
+  catalogue not read yet) no `thinking` is sent and the model keeps its
+  default. `adaptive` is never sent: the compatibility layer answers it
+  with a 400 and ignores `reasoning_effort` (ported from
+  BeamLabEU/phoenix_kit_ai#47, 8e8c65e).
 - On OpenRouter a call with a hard `:tools`/`:json_schema` need sends
   `provider.require_parameters` — only when the model's parameter list is
   in the capability cache (not before the first catalogue read after a

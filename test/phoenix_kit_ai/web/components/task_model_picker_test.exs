@@ -233,9 +233,12 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPickerTest do
       row = "[data-recommended-model='google/gemini-flash']"
 
       # No endpoint has the model yet: nothing to mark, so the hint only says so.
-      assert doc(html)
-             |> LazyHTML.query("#{row} [data-capability=json_schema][data-state=unknown]")
-             |> LazyHTML.attribute("title") == ["Not verified"]
+      assert [title] =
+               doc(html)
+               |> LazyHTML.query("#{row} [data-capability=json_schema][data-state=unknown]")
+               |> LazyHTML.attribute("title")
+
+      assert String.ends_with?(title, "Not verified")
 
       assert present?(html, "#{row} [data-capability=vision][data-state=yes]")
       assert present?(html, "#{row} [data-capability=tools]")

@@ -13,6 +13,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
 
   alias PhoenixKit.Integrations
   alias PhoenixKit.Integrations.Events, as: IntegrationEvents
+  alias PhoenixKit.Integrations.Providers
   alias PhoenixKit.Settings
   alias PhoenixKit.Utils.Routes
   alias PhoenixKitAI, as: AI
@@ -20,6 +21,8 @@ defmodule PhoenixKitAI.Web.EndpointForm do
   alias PhoenixKitAI.Capabilities
   alias PhoenixKitAI.Endpoint
   alias PhoenixKitAI.Guard
+  alias PhoenixKitAI.ManualPrice
+  alias PhoenixKitAI.Money
   alias PhoenixKitAI.OpenRouterClient
   alias PhoenixKitAI.Web.Access
   alias PhoenixKitAI.Web.AuthHelpers
@@ -168,7 +171,11 @@ defmodule PhoenixKitAI.Web.EndpointForm do
           </div>
 
           <div class="flex flex-wrap gap-1 mt-2">
-            <span :if={@model.context_length} class="badge badge-outline badge-xs h-auto">
+            <span
+              :if={@model.context_length}
+              class="badge badge-outline badge-xs h-auto"
+              title={CapabilityBadges.explain_text(:context)}
+            >
               {format_number(@model.context_length)} ctx
             </span>
 
@@ -210,12 +217,218 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     """
   end
 
+  attr(:id, :string, required: true)
+  attr(:connections, :list, required: true)
+  attr(:selected, :list, default: [])
+  attr(:provider, :string, default: nil)
+  attr(:on_select, :string, required: true)
+  attr(:empty_url, :string, default: nil)
+
+  @doc """
+  Renders the provider's connections as toggle cards: `aria-pressed` and a
+  radio mark say which one the endpoint uses, and the status badge
+  ("Connected", "Auth failed", …) is shown apart from that, so a connected
+  card no longer reads as a picked one. Clicking a card sends `on_select`
+  with `"uuid"` and `"action"` (`"select"`, or `"deselect"` for the picked
+  card). A selected uuid that is not among the provider's connections is
+  shown as a deleted integration.
+  """
+  def connection_picker(assigns) do
+    connections = Enum.filter(assigns.connections, &(&1.data["provider"] == assigns.provider))
+    uuids = MapSet.new(connections, & &1.uuid)
+    selected = Enum.reject(assigns.selected, &is_nil/1)
+
+    assigns =
+      assigns
+      |> assign(:cards, Enum.map(connections, &{&1, &1.uuid in selected}))
+      |> assign(:deleted, Enum.reject(selected, &MapSet.member?(uuids, &1)))
+      |> assign(:icon, provider_icon(assigns.provider))
+
+    ~H"""
+    <div id={@id}>
+      <div :if={length(@cards) > 6} class="mb-3">
+        <input
+          type="text"
+          id={"#{@id}-search"}
+          phx-hook="IntegrationPickerSearch"
+          data-picker-id={@id}
+          placeholder={gettext("Search integrations...")}
+          class="input input-sm w-full"
+        />
+      </div>
+
+      <div
+        :if={@cards != []}
+        role="group"
+        aria-label={gettext("Connections")}
+        class="grid grid-cols-1 gap-2"
+      >
+        <button
+          :for={{conn, selected} <- @cards}
+          type="button"
+          phx-click={@on_select}
+          phx-value-uuid={conn.uuid}
+          phx-value-action={if selected, do: "deselect", else: "select"}
+          data-connection={conn.uuid}
+          data-search-text={connection_search_text(conn)}
+          aria-pressed={to_string(selected)}
+          class={[
+            "card border text-left transition-all cursor-pointer",
+            "[&.phx-click-loading]:opacity-60 [&.phx-click-loading]:pointer-events-none",
+            if(selected,
+              do: "border-primary bg-primary/5 ring-2 ring-primary/20",
+              else: "border-base-300 bg-base-100 hover:border-primary/50 hover:shadow-md"
+            )
+          ]}
+        >
+          <div class="card-body p-3">
+            <div class="flex items-center gap-3">
+              <span
+                data-selection-mark
+                data-selected={selected}
+                aria-hidden="true"
+                class={[
+                  "w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0",
+                  if(selected, do: "border-primary", else: "border-base-content/30")
+                ]}
+              >
+                <span :if={selected} class="w-2 h-2 rounded-full bg-primary"></span>
+              </span>
+
+              <span
+                :if={@icon}
+                data-provider-icon
+                aria-hidden="true"
+                class="w-8 h-8 flex items-center justify-center bg-base-200 rounded-lg shrink-0"
+              >
+                <.icon name={@icon} class="w-4 h-4" />
+              </span>
+
+              <div class="flex-1 min-w-0">
+                <span class="font-medium truncate block">{conn.name}</span>
+                <p
+                  :if={connection_subtitle(conn) not in [nil, ""]}
+                  class="text-xs text-base-content/60 truncate"
+                >
+                  {connection_subtitle(conn)}
+                </p>
+                <p :if={conn[:date_added]} class="text-xs text-base-content/40">
+                  {gettext("Created")} <.time_ago datetime={conn.date_added} class="text-xs" />
+                </p>
+              </div>
+
+              <span class="hidden [.phx-click-loading_&]:inline-flex">
+                <span class="loading loading-spinner loading-xs"></span>
+              </span>
+              <% {status_label, status_class} = connection_status(conn.data) %>
+              <span
+                class={["badge badge-xs shrink-0 [.phx-click-loading_&]:hidden", status_class]}
+                title={conn.data["validation_status"]}
+              >
+                {status_label}
+              </span>
+            </div>
+          </div>
+        </button>
+      </div>
+
+      <div
+        :for={_uuid <- @deleted}
+        data-deleted-integration
+        class="card bg-error/5 border border-error/30 mt-2"
+      >
+        <div class="card-body p-3">
+          <div class="flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-error/10 flex items-center justify-center shrink-0">
+              <.icon name="hero-exclamation-triangle" class="w-4 h-4 text-error" />
+            </span>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2">
+                <span class="font-medium text-error">{gettext("Integration deleted")}</span>
+                <span data-missing class="badge badge-error badge-xs">{gettext("Missing")}</span>
+              </div>
+              <p class="text-xs text-base-content/50">
+                {gettext(
+                  "The selected integration no longer exists. Please choose a different one."
+                )}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div
+        :if={@cards == [] and @deleted == []}
+        data-picker-empty
+        class="text-center py-8 text-base-content/50"
+      >
+        <.icon name="hero-link" class="w-10 h-10 mx-auto mb-2 opacity-40" />
+        <p class="text-sm">{gettext("No integrations configured.")}</p>
+        <a :if={@empty_url} href={@empty_url} class="link link-primary text-sm">
+          {gettext("Add one in Settings → Integrations")}
+        </a>
+      </div>
+    </div>
+    """
+  end
+
+  # The provider's icon from the Integrations registry, or nil.
+  defp provider_icon(provider) when is_binary(provider) do
+    case Providers.get(provider) do
+      %{icon: icon} when is_binary(icon) -> icon
+      _ -> nil
+    end
+  end
+
+  defp provider_icon(_provider), do: nil
+
+  # The connection's status as a badge — what the last check said, which is
+  # not whether the endpoint uses it.
+  defp connection_status(data) do
+    case data["status"] do
+      "connected" -> {gettext("Connected"), "badge-success"}
+      "error" -> {gettext("Auth failed"), "badge-error"}
+      "configured" -> {gettext("Not tested"), "badge-warning"}
+      _ -> {gettext("Not connected"), "badge-ghost"}
+    end
+  end
+
+  # The OAuth account, else the credential's first 8 and last 4 characters
+  # (all masked when shorter than 14), else nothing.
+  defp connection_subtitle(conn) do
+    case conn.data["external_account_id"] do
+      account when is_binary(account) and account != "" ->
+        account
+
+      _ ->
+        ~w(api_key bot_token access_key)
+        |> Enum.map(&conn.data[&1])
+        |> Enum.find(&(is_binary(&1) and &1 != ""))
+        |> mask_credential()
+    end
+  end
+
+  defp mask_credential(nil), do: nil
+
+  defp mask_credential(value) do
+    if String.length(value) < 14,
+      do: "•••",
+      else: String.slice(value, 0, 8) <> "…" <> String.slice(value, -4..-1//1)
+  end
+
+  defp connection_search_text(conn) do
+    [conn.name, conn.data["external_account_id"], conn.data["provider"]]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join(" ")
+    |> String.downcase()
+  end
+
   @doc false
   # What the "Current Model" panel shows about the current model's
   # capabilities: which ones the admin may declare (those the catalogue does
   # not know), what is declared — from the form while it carries a
-  # declaration for this model, else from the endpoint — and which
-  # declarations the catalogue contradicts.
+  # declaration for this model, else from the endpoint — which declarations
+  # the catalogue contradicts, and each capability's value with its source.
   def capability_panel(model_id, selected_model, form, endpoint, provider)
       when is_binary(model_id) and model_id != "" do
     catalogue =
@@ -246,11 +459,78 @@ defmodule PhoenixKitAI.Web.EndpointForm do
         catalogue == :unknown or Map.fetch!(catalogue, flag) == :unknown
       end)
 
-    %{open: open, declared: declared, conflicts: Capabilities.conflicts(catalogue, declared)}
+    %{
+      open: open,
+      declared: declared,
+      conflicts: Capabilities.conflicts(catalogue, declared),
+      rows: capability_rows(catalogue, declared)
+    }
   end
 
   def capability_panel(_model_id, _selected_model, _form, _endpoint, _provider),
-    do: %{open: [], declared: %{}, conflicts: []}
+    do: %{open: [], declared: %{}, conflicts: [], rows: []}
+
+  # Each capability's value and where it comes from: the catalogue when it
+  # knows (its answer wins over a declaration), else a declaration, else
+  # nobody («?», no source).
+  defp capability_rows(catalogue, declared) do
+    for flag <- Capabilities.declarable() do
+      from_catalogue = if catalogue == :unknown, do: :unknown, else: Map.fetch!(catalogue, flag)
+
+      cond do
+        from_catalogue != :unknown -> {flag, from_catalogue, :catalogue}
+        Map.get(declared, flag) == :yes -> {flag, :yes, :manual}
+        true -> {flag, :unknown, nil}
+      end
+    end
+  end
+
+  @doc false
+  # Whether the catalogue gives the model a price — the model list's row, or
+  # the capability cache. Without one the form offers the manual price.
+  def catalogue_priced?(selected_model, model_id, form, provider) do
+    listed? =
+      match?(%AIModel{}, selected_model) and
+        format_price((selected_model.pricing || %{})["prompt"]) != nil
+
+    listed? or
+      match?(
+        %Capabilities{prompt_price: price} when is_number(price),
+        %{base_url: form[:base_url].value, provider: provider}
+        |> Capabilities.resolved_base_url()
+        |> Capabilities.lookup(model_id)
+      )
+  end
+
+  @doc false
+  # The endpoint's stored manual price when it is for `model_id` (the form's
+  # current model), else nil. A stored price is always shown, so it can be
+  # removed even where the catalogue's price is the one used.
+  def stored_price(%Endpoint{model: model_id} = endpoint, model_id), do: ManualPrice.get(endpoint)
+  def stored_price(_endpoint, _model_id), do: nil
+
+  @doc false
+  # A manual price field's value: what was typed, else the stored price for
+  # the form's current model in dollars ("0.6"), else empty.
+  def price_value(form, endpoint, key, model_id) do
+    case get_in(form.params || %{}, ["provider_settings", "pricing", key]) do
+      value when is_binary(value) ->
+        value
+
+      _ ->
+        case stored_price(endpoint, model_id) do
+          %{^key => micro} ->
+            micro
+            |> Decimal.new()
+            |> Decimal.div(1_000_000)
+            |> Decimal.normalize()
+            |> Decimal.to_string(:normal)
+
+          _ ->
+            ""
+        end
+    end
+  end
 
   # The checkboxes as the form last submitted them, when they were for this
   # model (the hidden `model` input says which): ticked `:yes`, unticked
@@ -322,6 +602,8 @@ defmodule PhoenixKitAI.Web.EndpointForm do
       socket
       |> Access.assign_session(session)
       |> assign(:may_declare, true)
+      |> assign(:may_price, false)
+      |> assign(:pricing_error, nil)
       |> assign(:project_title, nil)
       |> assign(:current_path, Routes.path("/admin/ai"))
       |> assign(:provider_connections, [])
@@ -355,15 +637,25 @@ defmodule PhoenixKitAI.Web.EndpointForm do
   end
 
   defp load_endpoint(socket, nil, params) do
-    # New endpoint: nothing is pre-selected unless the page was opened from a
-    # recommendation (`prefill/2`): then the name, the model and the
-    # operator's integration are filled in for the person to look over —
-    # nothing is saved. Otherwise, auto-selecting a single available
-    # connection would mask "no integration set" with "an integration is
-    # set" and confuse anyone scanning the form to verify wiring.
-    {attrs, connection, source} = prefill(params, socket.assigns.provider_connections)
+    # New endpoint. Opened from a recommendation (`prefill/2`), the name, the
+    # model and the operator's integration are filled in for the person to
+    # look over — nothing is saved. Otherwise the form starts on a provider
+    # the dropdown offers, with that provider's connection picked when it
+    # has exactly one usable one; with several, the person picks.
+    connections = socket.assigns.provider_connections
+    {attrs, prefilled, source} = prefill(params, connections)
+
+    provider =
+      attrs["provider"] || new_endpoint_provider(socket.assigns.current_provider, connections)
+
+    connection = prefilled || sole_usable_connection(connections, provider)
     active = connection && connection.uuid
     connected = !!active && Integrations.connected?(active)
+
+    attrs =
+      attrs
+      |> Map.put("provider", provider)
+      |> then(&if(active, do: Map.put(&1, "integration_uuid", active), else: &1))
 
     socket
     |> assign(:page_crumbs, [endpoints_crumb()])
@@ -375,7 +667,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     |> assign(:active_connection, active)
     |> assign(:selected_uuids, List.wrap(active))
     |> assign(:integration_connected, connected)
-    |> assign(:current_provider, attrs["provider"] || socket.assigns.current_provider)
+    |> assign(:current_provider, provider)
     |> maybe_fetch_models_on_load(connected)
   end
 
@@ -408,6 +700,28 @@ defmodule PhoenixKitAI.Web.EndpointForm do
         |> assign(:current_provider, endpoint.provider)
         |> assign(:model_type, model_type_for(endpoint.model))
         |> maybe_fetch_models_on_load(connected)
+    end
+  end
+
+  # The provider a new endpoint starts on: the current one when the
+  # dropdown offers it, else the dropdown's first. Otherwise the dropdown
+  # would show a provider the form is not on, and choosing it would be no
+  # change.
+  defp new_endpoint_provider(current, connections) do
+    case Enum.map(provider_options_for(connections, nil), &elem(&1, 1)) do
+      [] -> current
+      keys -> if current in keys, do: current, else: hd(keys)
+    end
+  end
+
+  # The provider's only connection with credentials, or nil when it has
+  # none or several.
+  defp sole_usable_connection(connections, provider) do
+    connections
+    |> Enum.filter(&(&1.data["provider"] == provider and Integrations.connected?(&1.uuid)))
+    |> case do
+      [connection] -> connection
+      _ -> nil
     end
   end
 
@@ -534,6 +848,9 @@ defmodule PhoenixKitAI.Web.EndpointForm do
         # While only verified models are allowed, declaring capabilities
         # needs ai.manage (`PhoenixKitAI.update_endpoint/3` checks it again).
         |> assign(:may_declare, not Guard.verified_only?() or Access.may_manage?(socket))
+        # A manual price steers the money limits: it needs ai.manage
+        # (`PhoenixKitAI.update_endpoint/3` checks it again).
+        |> assign(:may_price, Access.may_manage?(socket))
 
       {:noreply, socket}
     else
@@ -845,6 +1162,66 @@ defmodule PhoenixKitAI.Web.EndpointForm do
 
   @impl true
   def handle_event("save", %{"endpoint" => params}, socket) do
+    case submitted_pricing(params) do
+      refused when refused in [:error, :half] ->
+        # The typed values stay in the fields; nothing is saved.
+        {:noreply,
+         socket
+         |> assign(:pricing_error, pricing_error(refused))
+         |> assign(
+           :form,
+           to_form(AI.change_endpoint(socket.assigns.endpoint || %Endpoint{}, params))
+         )}
+
+      pricing ->
+        save_with_pricing(params, pricing, assign(socket, :pricing_error, nil))
+    end
+  end
+
+  # The manual price fields as submitted, read with the module's money
+  # parser: `%{"input" => µ$, "output" => µ$}` (the changeset stamps the
+  # model), `%{}` when both are empty (removes the price), `:half` when only
+  # one is filled, `:error` when one is not a price, `:not_submitted`
+  # when the form did not show them (the stored price is left as it is).
+  defp submitted_pricing(params) do
+    case get_in(params, ["provider_settings", "pricing"]) do
+      %{} = submitted ->
+        ["input", "output"]
+        |> Enum.reduce_while(%{}, &put_parsed_price(&2, &1, submitted[&1]))
+        |> both_halves()
+
+      _ ->
+        :not_submitted
+    end
+  end
+
+  defp put_parsed_price(acc, key, value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> {:cont, acc}
+      dollars -> put_micro(acc, key, Money.parse_dollars(dollars))
+    end
+  end
+
+  defp put_parsed_price(acc, _key, _missing), do: {:cont, acc}
+
+  defp put_micro(acc, key, {:ok, micro}), do: {:cont, Map.put(acc, key, micro)}
+  defp put_micro(_acc, _key, :error), do: {:halt, :error}
+
+  defp both_halves(%{"input" => _, "output" => _} = pricing), do: pricing
+  defp both_halves(pricing) when pricing == %{}, do: pricing
+  defp both_halves(:error), do: :error
+  defp both_halves(_half), do: :half
+
+  defp put_pricing(settings, :not_submitted), do: settings
+  defp put_pricing(settings, pricing) when pricing == %{}, do: Map.delete(settings, "pricing")
+  defp put_pricing(settings, pricing), do: Map.put(settings, "pricing", pricing)
+
+  defp pricing_error(:half), do: gettext("Enter both prices, or leave both empty.")
+
+  defp pricing_error(:error),
+    do: gettext("Enter a price in dollars, for example 0.60 — a number from 0 up to 10 000.")
+
+  defp save_with_pricing(params, pricing, socket) do
     # Merge submitted provider_settings into the endpoint's existing
     # settings so we don't wipe keys the form doesn't render (current or
     # future). For a brand-new endpoint the existing map is empty.
@@ -866,6 +1243,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
         "resolution" => get_in(params, ["provider_settings", "resolution"]) || ""
       })
       |> put_declared_capabilities(params)
+      |> put_pricing(pricing)
 
     params = Map.put(params, "provider_settings", provider_settings)
 
@@ -945,11 +1323,14 @@ defmodule PhoenixKitAI.Web.EndpointForm do
         |> Map.put("aspect_ratio", "")
         |> Map.put("resolution", "")
 
+      connection = provider_change_connection(socket, new_provider)
+
       params =
         params
         |> Map.put("base_url", "")
         |> Map.put("model", "")
         |> Map.put("provider_settings", provider_settings)
+        |> then(&if(connection, do: Map.put(&1, "integration_uuid", connection.uuid), else: &1))
 
       socket =
         socket
@@ -966,11 +1347,34 @@ defmodule PhoenixKitAI.Web.EndpointForm do
         |> stop_model_fetch_indicators()
         |> assign(:models_error, nil)
         |> maybe_reset_tts_model_type(new_provider)
+        |> pick_connection(connection)
 
       {params, socket}
     else
       {params, socket}
     end
+  end
+
+  # The connection to pick for a provider just chosen: its only usable one.
+  # On an edited endpoint, only when that is the stored connection or none
+  # is stored — the stored choice is not replaced by another.
+  defp provider_change_connection(socket, provider) do
+    stored = socket.assigns.endpoint && socket.assigns.endpoint.integration_uuid
+
+    case sole_usable_connection(socket.assigns.provider_connections, provider) do
+      %{uuid: uuid} = connection when is_nil(stored) or stored == uuid -> connection
+      _ -> nil
+    end
+  end
+
+  defp pick_connection(socket, nil), do: socket
+
+  defp pick_connection(socket, %{uuid: uuid}) do
+    socket
+    |> assign(:active_connection, uuid)
+    |> assign(:selected_uuids, [uuid])
+    |> assign(:integration_connected, true)
+    |> maybe_fetch_models_on_load(true)
   end
 
   # Switching to a provider whose current `model_type` isn't offered for
@@ -1307,8 +1711,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     # Only fetch for the picker's actual selection. Falling back to
     # "any openrouter:default connection" silently misled operators
     # whose integration was named anything other than "default" (and
-    # contradicted the picker's "reflect state, never auto-pick"
-    # policy).
+    # fetched for a connection the picker did not show as picked).
     active_key = socket.assigns[:active_connection]
 
     if connection_api_key(active_key) do
@@ -1869,9 +2272,15 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     }
   end
 
+  # The OpenAI-compatible parameters offered for a model whose provider
+  # lists none for it (a `/models` that returns plain ids).
+  @standard_parameters ~w(temperature max_tokens top_p stop)
+
   @doc """
   Returns parameters supported by the model, filtered to ones we have UI for.
-  Groups them by :basic and :advanced.
+  Groups them by :basic and :advanced. A model whose `supported_parameters`
+  is empty, missing, or names none the form knows gets the standard
+  OpenAI-compatible ones — temperature, max tokens, top p and stop sequences.
   """
   def get_supported_params(nil) do
     # No model selected - show all parameters
@@ -1879,17 +2288,23 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     group_parameters(Map.keys(definitions), definitions)
   end
 
-  def get_supported_params(%AIModel{} = model) do
-    definitions = parameter_definitions()
-    supported_keys = Enum.filter(model.supported_parameters, &Map.has_key?(definitions, &1))
-    group_parameters(supported_keys, definitions)
-  end
+  def get_supported_params(%AIModel{} = model), do: supported_params(model.supported_parameters)
 
-  def get_supported_params(model) when is_map(model) do
-    supported = model["supported_parameters"] || []
+  def get_supported_params(model) when is_map(model),
+    do: supported_params(model["supported_parameters"])
+
+  defp supported_params(supported) do
     definitions = parameter_definitions()
-    supported_keys = Enum.filter(supported, &Map.has_key?(definitions, &1))
-    group_parameters(supported_keys, definitions)
+
+    # A list naming none the form knows (only `tools`, say) is as good as
+    # no list.
+    keys =
+      case Enum.filter(List.wrap(supported), &Map.has_key?(definitions, &1)) do
+        [] -> @standard_parameters
+        known -> known
+      end
+
+    group_parameters(keys, definitions)
   end
 
   defp group_parameters(keys, definitions) do
@@ -1982,11 +2397,25 @@ defmodule PhoenixKitAI.Web.EndpointForm do
   end
 
   # "Anthropic (12 models)" for each provider in the model list.
-  defp provider_options(models_grouped) do
+  defp provider_options(models_grouped, current_provider) do
     for {provider, models} <- models_grouped do
       {ngettext("%{name} (%{count} model)", "%{name} (%{count} models)", length(models),
-         name: PhoenixKitAI.OpenRouterClient.humanize_provider(provider)
+         name: group_label(provider, current_provider)
        ), provider}
     end
   end
+
+  @doc false
+  # "11 models from Z.ai": how many models a group of the model list has.
+  def models_from_label(count, group, current_provider) do
+    ngettext("%{count} model from %{provider}", "%{count} models from %{provider}", count,
+      provider: group_label(group, current_provider)
+    )
+  end
+
+  # A group of the model list by name: the endpoint's own provider (a direct
+  # API's models carry no vendor prefix) as the provider dropdown names it,
+  # an OpenRouter vendor slug as OpenRouter's vendors are named.
+  defp group_label(group, group), do: Endpoint.provider_label(group)
+  defp group_label(group, _current_provider), do: OpenRouterClient.humanize_provider(group)
 end

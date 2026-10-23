@@ -44,6 +44,7 @@ defmodule PhoenixKitAI.Test.FakeAITasks do
       %TaskSpec{key: "test.same-id", label: "Dashed"},
       %TaskSpec{key: "test.json", label: "Loose JSON", needs: [:json]},
       %TaskSpec{key: "test.documents", label: "Document reading", needs: [:file_input]},
+      %TaskSpec{key: "test.drawing", label: "Drawing", needs: [:image_output]},
       # Accepted for later parts of the guard, not used yet.
       %TaskSpec{
         key: "test.free",

@@ -673,6 +673,7 @@
                       </.table_default_cell>
                       <.table_default_cell class="hidden sm:table-cell text-sm">
                         {PhoenixKitAI.Request.format_cost(request.cost_cents)}
+                        <.cost_source_badge source={PhoenixKitAI.CallCost.source(request)} />
                       </.table_default_cell>
                       <.table_default_cell>
                         <.status_badge
@@ -782,6 +783,7 @@
             <div class="text-xs text-base-content/70">{gettext("Cost")}</div>
             <div class="text-sm">
               {PhoenixKitAI.Request.format_cost(@selected_request.cost_cents)}
+              <.cost_source_badge source={PhoenixKitAI.CallCost.source(@selected_request)} />
             </div>
           </div>
         </div>

@@ -244,7 +244,45 @@ defmodule PhoenixKitAI.Endpoint do
     |> validate_base_url(Keyword.get(opts, :resolve_base_url, true))
     |> maybe_clear_legacy_api_key()
     |> drop_stale_capabilities()
+    |> validate_pricing()
     |> unique_constraint(:name)
+  end
+
+  # A manual price (`provider_settings["pricing"]`, `PhoenixKitAI.ManualPrice`)
+  # is both halves in whole micro-dollars per 1M tokens — never a float —
+  # for one model: given without a model it is stamped with the endpoint's;
+  # naming another model (the model changed) it is dropped, as a stale
+  # capability declaration is.
+  defp validate_pricing(changeset) do
+    model = get_field(changeset, :model)
+
+    case get_field(changeset, :provider_settings) do
+      %{"pricing" => pricing} = settings ->
+        cond do
+          PhoenixKitAI.ManualPrice.validate(pricing) != :ok ->
+            add_error(
+              changeset,
+              :provider_settings,
+              "price must be both halves, whole micro-dollars per 1M tokens up to $10 000"
+            )
+
+          Map.get(pricing, "model", model) != model ->
+            put_change(changeset, :provider_settings, Map.delete(settings, "pricing"))
+
+          not Map.has_key?(pricing, "model") ->
+            put_change(
+              changeset,
+              :provider_settings,
+              Map.put(settings, "pricing", Map.put(pricing, "model", model))
+            )
+
+          true ->
+            changeset
+        end
+
+      _ ->
+        changeset
+    end
   end
 
   # Capabilities declared in `provider_settings["capabilities"]` describe

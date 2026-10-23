@@ -224,14 +224,24 @@ PhoenixKitAI.ask(endpoint_uuid, "…", task: "my_module.photo_count", user_uuid:
   guard_admission: token)
 ```
 
-Money is in micro-dollars and counts only where the provider reports a
-call's cost (OpenRouter); an empty limit is none, `0` allows nothing. Only
-successful calls count — a cached answer is one request — and a refusal is
-an error row like the model check's. At the warn percent (default 80) and
-when a limit is reached, the user and the watchers (`ai_guard_watchers`,
-else every Owner, plus the task's own) get a notification of type
-`"ai_guard"`, once per window; a `Budget` refusal is told once a day, and a
-task whose endpoint's model stops fitting once a day per endpoint.
+Money is in micro-dollars and counts where a call has a cost: the
+provider's own (OpenRouter), else a catalogue price, the endpoint's manual
+price (`provider_settings["pricing"]`, set by a holder of `ai.manage`) or
+the built-in Anthropic list price — `PhoenixKitAI.reports_cost?/1` says
+whether an endpoint has one, and the usage row's `metadata.cost_source`
+which one counted. The vision verbs (`describe_image`, `extract_text`,
+`compare_images`) are priced like chat, for the model the answer names, else
+the call's `model:`, else the endpoint's; making or editing images is priced
+per image or per call and counts only the provider's own cost
+(`TaskLimits.money_counted?/2` says so for a task that needs `:image_output`;
+one that needs `:vision` gets the chat answer). An empty limit is none, `0`
+allows nothing. Only successful calls count — a cached answer is one
+request — and a refusal is an error row like the model check's. At the
+warn percent (default 80) and when a limit is reached, the user and the
+watchers (`ai_guard_watchers`, else every Owner, plus the task's own) get a
+notification of type `"ai_guard"`, once per window; a `Budget` refusal is
+told once a day, and a task whose endpoint's model stops fitting once a day
+per endpoint.
 
 A module that limits each of its users itself declares the task with
 `user_limits: false`: the guard then has only the task's limits for it,
@@ -533,7 +543,8 @@ column with a deprecation warning per request — until they're
 migrated, at which point the column is atomically wiped.
 
 The recommended workflow is to point each endpoint at a specific
-integration connection via the form's `integration_picker`. The
+integration connection via the form's connection picker (a
+provider's only connection with credentials is picked on its own). The
 endpoint changeset clears the legacy column to `""` in the same
 DB transaction (`Endpoint.maybe_clear_legacy_api_key/1`), so once
 migrated the credential lives only in the integration row.
@@ -549,8 +560,8 @@ card disappears once an integration is selected and saved.
 
 1. Open **Settings → Integrations** and add an OpenRouter connection if
    one doesn't exist.
-2. Edit the endpoint and select that connection from the
-   `integration_picker`.
+2. Edit the endpoint and select that connection in the connection
+   picker.
 3. Save. The legacy warning stops firing on the next request.
 
 ### Boot-time auto-migrator
