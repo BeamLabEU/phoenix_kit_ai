@@ -436,13 +436,14 @@ defmodule PhoenixKitAI.ProviderErrorTest do
 
     test "base64 and JWT-shaped keys are taken out whole" do
       message =
-        "AWS AKIAIOSFODNN7EXAMPLE base64 dGhpc2lzYXZlcnlsb25nc2VjcmV0a2V5MTIzNDU2Nzg= " <>
+        "AWS AKIAIOSFODNN7EXAMPLE wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY " <>
+          "base64 dGhpc2lzYXZlcnlsb25nc2VjcmV0a2V5MTIzNDU2Nzg= " <>
           "JWT eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abc"
 
       {_text, note} = note_for(%{"error" => %{"message" => message}})
 
       for part <-
-            ~w(AKIAIOSFODNN7EXAMPLE dGhpc2lzYXZlcnlsb25n eyJhbGciOiJIUzI1NiJ9 eyJzdWIiOiIxIn0) do
+            ~w(AKIAIOSFODNN7EXAMPLE wJalrXUtnFEMI K7MDENG bPxRfiCYEXAMPLEKEY dGhpc2lzYXZlcnlsb25n eyJhbGciOiJIUzI1NiJ9 eyJzdWIiOiIxIn0) do
         refute note["message"] =~ part, part
       end
     end
@@ -454,7 +455,8 @@ defmodule PhoenixKitAI.ProviderErrorTest do
     end
 
     test "a model id is kept, judged part by part" do
-      for model <- ~w(meta-llama/llama-3.1-405b-instruct anthropic/claude-3-5-sonnet-20241022) do
+      for model <-
+            ~w(meta-llama/llama-3.1-405b-instruct anthropic/claude-3-5-sonnet-20241022 Qwen/Qwen2.5-72B-Instruct) do
         {_text, note} =
           note_for(%{"error" => %{"message" => "The model #{model} does not exist"}})
 
