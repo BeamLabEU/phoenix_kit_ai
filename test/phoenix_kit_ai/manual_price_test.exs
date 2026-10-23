@@ -70,11 +70,8 @@ defmodule PhoenixKitAI.ManualPriceTest do
       assert ManualPrice.cost(@pricing, 0, 0) == 0
     end
 
-    test "is nil without a price the tokens need" do
+    test "is nil without a price" do
       assert ManualPrice.cost(nil, 1_000, 500) == nil
-      assert ManualPrice.cost(%{"input" => 600_000}, 1_000, 500) == nil
-      # An input-only price prices a call without output (an embedding).
-      assert ManualPrice.cost(%{"input" => 600_000}, 1_000, 0) == 600
     end
   end
 
@@ -179,6 +176,90 @@ defmodule PhoenixKitAI.ManualPriceTest do
         resource_uuid: endpoint.uuid,
         metadata_has: %{"input_before" => 600_000}
       )
+    end
+  end
+
+  describe "the price belongs to a model" do
+    test "a stored price names the endpoint's model" do
+      endpoint = endpoint(%{"pricing" => @pricing})
+
+      assert endpoint.provider_settings["pricing"] ==
+               Map.put(@pricing, "model", "glm-4.6")
+    end
+
+    test "a model change drops it, and the new model's calls are not priced by it" do
+      endpoint = endpoint(%{"pricing" => @pricing})
+      {:ok, endpoint} = PhoenixKitAI.update_endpoint(endpoint, %{model: "glm-4.5"})
+
+      refute Map.has_key?(endpoint.provider_settings, "pricing")
+
+      stub_chat(%{"prompt_tokens" => 1_000, "completion_tokens" => 500, "total_tokens" => 1_500})
+      assert {:ok, _} = PhoenixKitAI.ask(endpoint.uuid, "q")
+      assert last_row(endpoint).cost_cents == nil
+    end
+
+    test "a price naming another model is dropped" do
+      endpoint = endpoint(%{"pricing" => Map.put(@pricing, "model", "glm-other")})
+      refute Map.has_key?(endpoint.provider_settings, "pricing")
+    end
+
+    test "a price read for another model than the endpoint's is no price" do
+      stale = %{
+        model: "glm-4.5",
+        provider: "zai",
+        base_url: nil,
+        provider_settings: %{"pricing" => Map.put(@pricing, "model", "glm-4.6")}
+      }
+
+      assert ManualPrice.get(stale) == nil
+      refute PhoenixKitAI.CallCost.reports_cost?(stale)
+    end
+  end
+
+  describe "both halves of the price" do
+    test "are required: half a price is refused" do
+      for half <- [%{"input" => 600_000}, %{"output" => 2_200_000}] do
+        assert {:error, changeset} =
+                 PhoenixKitAI.create_endpoint(%{
+                   name: "Half #{System.unique_integer([:positive])}",
+                   provider: "zai",
+                   model: "glm-4.6",
+                   provider_settings: %{"pricing" => half}
+                 })
+
+        assert changeset.errors[:provider_settings], inspect(half)
+      end
+    end
+
+    test "half a price read from storage is no price and counts no money" do
+      half = %{
+        model: "glm-4.6",
+        provider: "zai",
+        base_url: nil,
+        provider_settings: %{"pricing" => %{"model" => "glm-4.6", "input" => 600_000}}
+      }
+
+      assert ManualPrice.get(half) == nil
+      refute PhoenixKitAI.CallCost.reports_cost?(half)
+    end
+  end
+
+  describe "the upper bound" do
+    test "is $10 000 per 1M tokens" do
+      ok = %{"input" => 10_000_000_000, "output" => 10_000_000_000}
+
+      assert %{"input" => 10_000_000_000} =
+               endpoint(%{"pricing" => ok}).provider_settings["pricing"]
+
+      assert {:error, changeset} =
+               PhoenixKitAI.create_endpoint(%{
+                 name: "Dear #{System.unique_integer([:positive])}",
+                 provider: "zai",
+                 model: "glm-4.6",
+                 provider_settings: %{"pricing" => %{ok | "input" => 10_000_000_001}}
+               })
+
+      assert changeset.errors[:provider_settings]
     end
   end
 end

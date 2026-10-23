@@ -62,6 +62,7 @@ defmodule PhoenixKitAI.Web.ManualPriceUITest do
       save(view, endpoint, %{"input" => "0.60", "output" => "2.20"})
 
       assert PhoenixKitAI.get_endpoint!(endpoint.uuid).provider_settings["pricing"] == %{
+               "model" => "glm-4.6",
                "input" => 600_000,
                "output" => 2_200_000
              }
@@ -84,6 +85,71 @@ defmodule PhoenixKitAI.Web.ManualPriceUITest do
         assert html =~ "Enter a price in dollars", bad
       end
 
+      refute Map.has_key?(PhoenixKitAI.get_endpoint!(endpoint.uuid).provider_settings, "pricing")
+    end
+
+    test "half a price is refused, and nothing is saved", %{conn: conn} do
+      endpoint = unpriced_endpoint()
+      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/#{endpoint.uuid}/edit")
+
+      for half <- [%{"input" => "0.60", "output" => ""}, %{"input" => "", "output" => "2.20"}] do
+        html = save(view, endpoint, half)
+        assert html =~ "Enter both prices, or leave both empty", inspect(half)
+      end
+
+      refute Map.has_key?(PhoenixKitAI.get_endpoint!(endpoint.uuid).provider_settings, "pricing")
+    end
+
+    test "a stored price stays visible and removable when the catalogue prices the model",
+         %{conn: conn} do
+      stub = Module.concat(__MODULE__, "CatStub#{System.unique_integer([:positive])}")
+      Application.put_env(:phoenix_kit_ai, :req_options, plug: {Req.Test, stub}, retry: false)
+      on_exit(fn -> Application.delete_env(:phoenix_kit_ai, :req_options) end)
+
+      Req.Test.stub(stub, fn conn ->
+        Req.Test.json(conn, %{
+          "data" => [
+            %{
+              "id" => "v/priced",
+              "pricing" => %{"prompt" => "0.0000001", "completion" => "0.0000004"},
+              "architecture" => %{"input_modalities" => ["text"], "output_modalities" => ["text"]}
+            }
+          ]
+        })
+      end)
+
+      # Connected without a key: the edit page opens the model section and
+      # fetches nothing.
+      %{uuid: integration_uuid} =
+        seed_openrouter_connection("cat-#{System.unique_integer([:positive])}",
+          data: %{"status" => "connected"}
+        )
+
+      endpoint =
+        fixture_endpoint(
+          model: "v/priced",
+          integration_uuid: integration_uuid,
+          provider_settings: %{"pricing" => %{"input" => 600_000, "output" => 2_200_000}}
+        )
+
+      # The catalogue is read with this endpoint's key.
+      fixture_endpoint(model: "v/priced")
+
+      pid =
+        start_supervised!(
+          {Capabilities,
+           [initial_refresh: :never, refresh_interval: :infinity, retry_backoff: []]}
+        )
+
+      Req.Test.allow(stub, self(), pid)
+      assert :ok = Capabilities.refresh()
+
+      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/#{endpoint.uuid}/edit")
+
+      assert has_element?(view, "#{@price} input[name$='[input]'][value='0.6']")
+      assert has_element?(view, "#{@price} [data-catalogue-price-wins]")
+
+      save(view, endpoint, %{"input" => "", "output" => ""})
       refute Map.has_key?(PhoenixKitAI.get_endpoint!(endpoint.uuid).provider_settings, "pricing")
     end
 

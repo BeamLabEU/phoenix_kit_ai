@@ -554,23 +554,35 @@
               <%!-- A price entered by hand, offered only while the catalogue
                    gives the model none: a call whose provider reports no
                    cost is then counted from its tokens. --%>
+              <% catalogue_priced =
+                has_model &&
+                  PhoenixKitAI.Web.EndpointForm.catalogue_priced?(
+                    @selected_model,
+                    current_model_id,
+                    @form,
+                    @current_provider
+                  )
+
+              stored_price =
+                has_model && PhoenixKitAI.Web.EndpointForm.stored_price(@endpoint, current_model_id) %>
               <div
-                :if={
-                  has_model &&
-                    !PhoenixKitAI.Web.EndpointForm.catalogue_priced?(
-                      @selected_model,
-                      current_model_id,
-                      @form,
-                      @current_provider
-                    )
-                }
+                :if={has_model && (!catalogue_priced || stored_price)}
                 id="endpoint-manual-price"
                 class="rounded-lg border border-base-300 p-3 mt-3"
               >
                 <div class="text-sm font-medium">{gettext("Price entered by hand")}</div>
-                <p class="text-xs text-base-content/60 mt-1">
+                <p :if={!catalogue_priced} class="text-xs text-base-content/60 mt-1">
                   {gettext(
                     "The provider does not give this model's price, so the cost of its calls is not counted. Enter the price per 1M tokens in dollars and each call's cost is counted from its tokens; a cost the provider reports is used instead."
+                  )}
+                </p>
+                <p
+                  :if={catalogue_priced}
+                  data-catalogue-price-wins
+                  class="text-xs text-warning mt-1"
+                >
+                  {gettext(
+                    "The catalogue gives this model a price, which is used first: this price is not used. Empty both fields to remove it."
                   )}
                 </p>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
@@ -580,7 +592,7 @@
                       type="text"
                       inputmode="decimal"
                       name="endpoint[provider_settings][pricing][input]"
-                      value={PhoenixKitAI.Web.EndpointForm.price_value(@form, @endpoint, "input")}
+                      value={PhoenixKitAI.Web.EndpointForm.price_value(@form, @endpoint, "input", current_model_id)}
                       class={["input input-sm", @pricing_error && "input-error"]}
                       placeholder="0.60"
                     />
@@ -591,7 +603,7 @@
                       type="text"
                       inputmode="decimal"
                       name="endpoint[provider_settings][pricing][output]"
-                      value={PhoenixKitAI.Web.EndpointForm.price_value(@form, @endpoint, "output")}
+                      value={PhoenixKitAI.Web.EndpointForm.price_value(@form, @endpoint, "output", current_model_id)}
                       class={["input input-sm", @pricing_error && "input-error"]}
                       placeholder="2.20"
                     />

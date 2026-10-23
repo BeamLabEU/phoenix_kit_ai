@@ -1,9 +1,11 @@
 defmodule PhoenixKitAI.ManualPrice do
   @moduledoc """
   A price entered by hand on an endpoint whose provider gives none (Z.ai,
-  say): `provider_settings["pricing"]` — `%{"input" => µ$, "output" => µ$}`,
-  whole micro-dollars per 1M input and output tokens (`$0.60` per 1M is
-  `600_000`), either one optional.
+  say): `provider_settings["pricing"]` — `%{"model" => id, "input" => µ$,
+  "output" => µ$}`, whole micro-dollars per 1M input and output tokens
+  (`$0.60` per 1M is `600_000`), both required, for the model it names. The
+  endpoint's changeset stamps the model when none is given and drops the
+  price when the endpoint's model changes (like a capability declaration).
 
   A call whose provider reports no `usage.cost` and whose model no catalogue
   prices gets its `cost_cents` — in micro-dollars too — from it, and its
@@ -16,12 +18,26 @@ defmodule PhoenixKitAI.ManualPrice do
 
   @type t :: %{optional(String.t()) => non_neg_integer()}
 
-  @doc "The endpoint's manual price, or nil when it has none."
+  # The highest price per 1M tokens a person may enter: $10 000.
+  @max 10_000_000_000
+
+  @doc "The highest price per 1M tokens, in micro-dollars ($10 000)."
+  def max, do: @max
+
+  @doc """
+  The endpoint's manual price for its own model, `%{"input" => µ$, "output" =>
+  µ$}`, or nil — when it has none, or the stored price names another model
+  or lacks a half.
+  """
   @spec get(Endpoint.t() | map() | nil) :: t() | nil
-  def get(%{provider_settings: %{"pricing" => %{} = pricing}}) do
-    pricing = Map.take(pricing, ["input", "output"])
-    if pricing == %{}, do: nil, else: pricing
-  end
+  def get(%{
+        model: model,
+        provider_settings: %{
+          "pricing" => %{"model" => model, "input" => input, "output" => output}
+        }
+      })
+      when is_integer(input) and is_integer(output),
+      do: %{"input" => input, "output" => output}
 
   def get(_endpoint), do: nil
 
@@ -51,17 +67,22 @@ defmodule PhoenixKitAI.ManualPrice do
   defp part(_price, _tokens), do: :missing
 
   @doc """
-  Checks a stored price: a map of `"input"` / `"output"` to whole
-  non-negative micro-dollars. `:ok` or `:error`.
+  Checks a stored price: `"input"` and `"output"` both, whole micro-dollars
+  from 0 to `max/0`, and an optional `"model"` (the model it prices). `:ok`
+  or `:error`.
   """
   @spec validate(term()) :: :ok | :error
-  def validate(%{} = pricing) do
-    if Enum.all?(pricing, fn {key, value} ->
-         key in ["input", "output"] and is_integer(value) and value >= 0
-       end),
-       do: :ok,
-       else: :error
+  def validate(%{"input" => input, "output" => output} = pricing) do
+    allowed? = Enum.all?(Map.keys(pricing), &(&1 in ["model", "input", "output"]))
+
+    model? =
+      not Map.has_key?(pricing, "model") or
+        (is_binary(pricing["model"]) and pricing["model"] != "")
+
+    if allowed? and model? and amount?(input) and amount?(output), do: :ok, else: :error
   end
 
   def validate(_pricing), do: :error
+
+  defp amount?(value), do: is_integer(value) and value >= 0 and value <= @max
 end
