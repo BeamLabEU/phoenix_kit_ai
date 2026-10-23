@@ -11,6 +11,12 @@ defmodule PhoenixKitAI.EndpointNameAndSourcePrefixTest do
     ep
   end
 
+  defp set_inserted_at(uuid, at) do
+    PhoenixKitAI.Endpoint
+    |> where([e], e.uuid == ^uuid)
+    |> Repo.update_all(set: [inserted_at: at])
+  end
+
   describe "get_endpoint_by_name/1" do
     test "matches case-insensitively and ignores surrounding spaces" do
       ep = endpoint!(%{name: "Label Reader"})
@@ -33,27 +39,29 @@ defmodule PhoenixKitAI.EndpointNameAndSourcePrefixTest do
 
     test "with no exact name, the oldest endpoint wins every time" do
       first = endpoint!(%{name: " Twin"})
-      _second = endpoint!(%{name: "Twin "})
+      second = endpoint!(%{name: "Twin "})
+
+      # Two rows made in one test share a second (and maybe a millisecond, where
+      # UUIDv7 order is random), so the ages are set apart explicitly.
+      set_inserted_at(first.uuid, ~U[2026-01-01 00:00:00Z])
+      set_inserted_at(second.uuid, ~U[2026-01-01 00:00:01Z])
 
       for _ <- 1..5, do: assert(PhoenixKitAI.get_endpoint_by_name("twin").uuid == first.uuid)
     end
 
     test "endpoints created in the same second: the lower uuid wins, whatever the row order" do
-      first = endpoint!(%{name: " Tie"})
-      second = endpoint!(%{name: "Tie "})
-      assert first.uuid < second.uuid
+      a = endpoint!(%{name: " Tie"})
+      b = endpoint!(%{name: "Tie "})
 
-      same_second = ~U[2026-01-01 00:00:00Z]
+      # UUIDv7 is random within one millisecond, so which row has the lower uuid
+      # is not known in advance.
+      [lower, higher] = Enum.sort([a.uuid, b.uuid])
 
       # Touching the lower-uuid row last leaves it physically after the other one,
       # so only the uuid tiebreaker can put it first.
-      for uuid <- [second.uuid, first.uuid] do
-        PhoenixKitAI.Endpoint
-        |> where([e], e.uuid == ^uuid)
-        |> Repo.update_all(set: [inserted_at: same_second])
-      end
+      for uuid <- [higher, lower], do: set_inserted_at(uuid, ~U[2026-01-01 00:00:00Z])
 
-      for _ <- 1..5, do: assert(PhoenixKitAI.get_endpoint_by_name("tie").uuid == first.uuid)
+      for _ <- 1..5, do: assert(PhoenixKitAI.get_endpoint_by_name("tie").uuid == lower)
     end
 
     test "unknown, blank or non-string names are nil" do
