@@ -365,6 +365,33 @@ defmodule PhoenixKitAI.ManualPriceTest do
     end
   end
 
+  describe "a database whose costs are not in dollars yet" do
+    # A legacy cost column beside `cost` (a schema repair on a database stamped
+    # by an unreleased V223 would leave one) means past costs are not in
+    # `cost`: no call may run until they are. Added inside the test's
+    # transaction, so the database is left as it was.
+    test "refuses every call before the provider while a legacy cost column is left" do
+      endpoint = endpoint(%{})
+      :persistent_term.erase({Money, :ready})
+      TestRepo.query!("ALTER TABLE phoenix_kit_ai_requests ADD COLUMN cost_nanodollars bigint")
+      on_exit(fn -> :persistent_term.erase({Money, :ready}) end)
+
+      test_pid = self()
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        send(test_pid, :provider_called)
+        Req.Test.json(conn, %{"choices" => [%{"message" => %{"content" => "x"}}]})
+      end)
+
+      refute Money.ready?()
+      assert {:error, :money_migration_required} = PhoenixKitAI.ask(endpoint.uuid, "q")
+      refute_received :provider_called
+
+      TestRepo.query!("ALTER TABLE phoenix_kit_ai_requests DROP COLUMN cost_nanodollars")
+      assert Money.ready?()
+    end
+  end
+
   describe "a price still in the released millionths" do
     test "refuses the endpoint's calls before the provider, and is no price" do
       endpoint = endpoint(%{"pricing" => @pricing})

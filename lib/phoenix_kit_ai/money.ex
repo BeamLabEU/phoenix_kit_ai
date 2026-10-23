@@ -125,9 +125,11 @@ defmodule PhoenixKitAI.Money do
 
   @doc """
   Whether the database keeps costs in dollars: core's V223 has made
-  `phoenix_kit_ai_requests.cost`. Checked once per node and remembered once
-  true; until then every call is refused (`{:error, :money_migration_required}`),
-  because a sum of a column that is not there reads as no spend.
+  `phoenix_kit_ai_requests.cost` and no legacy cost column (`cost_cents`,
+  `cost_nanodollars`) is left beside it. Checked once per node and remembered
+  once true; until then every call is refused
+  (`{:error, :money_migration_required}`), because a sum of a column that is
+  not there — or of a new empty one beside the old costs — reads as no spend.
   """
   @spec ready?() :: boolean()
   def ready? do
@@ -140,9 +142,20 @@ defmodule PhoenixKitAI.Money do
   defp check_ready do
     import Ecto.Query, only: [from: 2]
 
-    PhoenixKit.RepoHelper.repo().all(from(r in PhoenixKitAI.Request, select: r.cost, limit: 0))
-    :persistent_term.put({__MODULE__, :ready}, true)
-    true
+    repo = PhoenixKit.RepoHelper.repo()
+    repo.all(from(r in PhoenixKitAI.Request, select: r.cost, limit: 0))
+
+    %{rows: [[legacy]]} =
+      repo.query!(
+        "SELECT count(*) FROM information_schema.columns WHERE table_schema = $1 " <>
+          "AND table_name = 'phoenix_kit_ai_requests' " <>
+          "AND column_name IN ('cost_cents', 'cost_nanodollars')",
+        [PhoenixKitAI.Request.__schema__(:prefix) || "public"]
+      )
+
+    ready? = legacy == 0
+    if ready?, do: :persistent_term.put({__MODULE__, :ready}, true)
+    ready?
   rescue
     _ -> false
   catch

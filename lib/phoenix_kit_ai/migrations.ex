@@ -69,8 +69,10 @@ defmodule PhoenixKitAI.Migrations do
       -> 'pricing'`) whose halves are numbers becomes dollar strings per 1M.
 
   It needs core's V223 first (the `cost` column) and stops otherwise. Down to 3
-  turns the task limits and prices back into integer millionths and deletes the
-  new cap keys (the old ones still hold the released values).
+  turns the task limits and prices back into integer millionths — losing what is
+  finer than a millionth (`"0.0000004"` becomes `0`, and a money limit of 0
+  allows nothing) — and deletes the new cap keys, also ones set after V4 (the
+  old keys still hold the released values).
 
   ## Version marker
 
@@ -439,7 +441,7 @@ defmodule PhoenixKitAI.Migrations do
           WHERE table_schema = '#{prefix}' AND table_name = 'phoenix_kit_ai_requests'
             AND column_name = 'cost'
         ) THEN
-          RAISE EXCEPTION 'phoenix_kit_ai V4 needs core''s V223 (phoenix_kit_ai_requests.cost); run core''s migrations first';
+          RAISE EXCEPTION 'phoenix_kit_ai V4 needs core''s V223 (phoenix_kit_ai_requests.cost); run core''s migrations first. A database stamped 223 by an unreleased V223 (it has cost_nanodollars) is converted by running PhoenixKit.Migrations.Postgres.V223.up_statements/1 once';
         END IF;
       END
       $$
