@@ -8,6 +8,7 @@ defmodule PhoenixKitAI.Providers.HTTP do
   require Logger
 
   alias PhoenixKitAI.Completion
+  alias PhoenixKitAI.ProviderError
   alias PhoenixKitAI.Providers.OpenAICompatible
 
   @timeout 120_000
@@ -46,8 +47,11 @@ defmodule PhoenixKitAI.Providers.HTTP do
         ] ++
         Application.get_env(:phoenix_kit_ai, :req_options, [])
 
+    :ok = ProviderError.clear()
+
     case Req.request(all) do
-      {:ok, %Req.Response{status: status, body: body}} ->
+      {:ok, %Req.Response{status: status, body: body} = response} ->
+        if status not in 200..299, do: ProviderError.put_retry_after(response)
         {:ok, %{status: status, body: body}}
 
       {:error, %Req.TransportError{reason: :timeout}} ->
@@ -98,7 +102,9 @@ defmodule PhoenixKitAI.Providers.HTTP do
              ~r/safety|content[ _-]?policy|moderat|blocked|prohibited|violat/i,
              message
            ) do
-      {:error, {:content_policy, message}}
+      result = {:error, {:content_policy, message}}
+      :ok = ProviderError.note(status, ProviderError.parse(text), result)
+      result
     else
       _ -> Completion.handle_error_status(status, text)
     end

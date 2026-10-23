@@ -34,6 +34,13 @@ defmodule PhoenixKitAI.Request do
 
   ### Metadata
   - `metadata`: Additional context (temperature, max_tokens, etc.)
+  - `metadata.answered_model`: on chat and embedding rows, the model the
+    provider says answered, where it is not the one asked for in `model`
+    (`answered_model/1`). Image and vision rows record the answered model
+    in `model` itself.
+  - `metadata.provider_error`: on a failed call, what the provider said —
+    `status`, `code`, `message` (trimmed, key-shaped words redacted) and
+    `retry_after_s` for an error that is not about money.
 
   ## Status Types
 
@@ -290,6 +297,49 @@ defmodule PhoenixKitAI.Request do
       true -> "$0.00"
     end
   end
+
+  @doc """
+  The model the provider says answered (`metadata.answered_model`), where it
+  is not the one asked for; `nil` otherwise.
+  """
+  @spec answered_model(t()) :: String.t() | nil
+  def answered_model(%__MODULE__{model: model, metadata: %{} = metadata}),
+    do: other_model(model, metadata["answered_model"] || metadata[:answered_model])
+
+  def answered_model(_request), do: nil
+
+  @doc false
+  # `answered` where it names another model than `asked`; nil when it is
+  # the same: the same name, the same name with a provider prefix on one
+  # side only (`gpt-4o` / `openai/gpt-4o`; two different prefixes are two
+  # models), or a dated snapshot (`-2024-08-06`, `-20241022`) of an
+  # undated name asked for. A snapshot other than the one asked for is
+  # another model.
+  @spec other_model(String.t() | nil, term()) :: String.t() | nil
+  def other_model(asked, answered) when is_binary(answered) and answered != "" do
+    if same_model?(asked, answered), do: nil, else: answered
+  end
+
+  def other_model(_asked, _answered), do: nil
+
+  @dated ~r/-(?:\d{4}-\d{2}-\d{2}|\d{8})\z/
+
+  defp same_model?(asked, answered) when is_binary(asked) do
+    {asked, answered} = unprefixed(asked, answered)
+    asked == answered or (not (asked =~ @dated) and String.replace(answered, @dated, "") == asked)
+  end
+
+  defp same_model?(_asked, _answered), do: false
+
+  defp unprefixed(asked, answered) do
+    case {String.contains?(asked, "/"), String.contains?(answered, "/")} do
+      {true, false} -> {last_part(asked), answered}
+      {false, true} -> {asked, last_part(answered)}
+      _both_or_neither -> {asked, answered}
+    end
+  end
+
+  defp last_part(model), do: model |> String.split("/") |> List.last()
 
   @doc """
   Extracts the model name without provider prefix.
