@@ -171,6 +171,8 @@ row.
 | `[:phoenix_kit_ai, :request]` | `input_tokens`, `output_tokens`, `cost` (dollars, a float), `latency_ms` | `request_type`, `status`, `endpoint_uuid`, `model`, `user_uuid`, `source`, `cached` |
 | `[:phoenix_kit_ai, :image, :request]` | `latency_ms`, `input_bytes`, `output_bytes`, `input_images`, `output_images` | `type`, `outcome`, `provider`, `model`, `endpoint_uuid`, `operations`, `warnings`, `error`, `source` |
 | `[:phoenix_kit_ai, :budget, :warning]` | `spent`, `limit` (dollars as floats; a count for `:user_calls`) | `scope`, `endpoint_uuid`, `user_uuid` |
+| `[:phoenix_kit_ai, :request, :retry]` | `attempt`, `delay_ms` | `status` ("HTTP 429", "a timeout", "a connection error") |
+| `[:phoenix_kit_ai, :limiter, :rejected]` | `count` | `key`, `reason` (`:full` or `:timeout`) |
 | `[:phoenix_kit_ai, :cache, :hit \| :miss \| :refresh]` | `count` | `verb`, `endpoint_uuid` |
 
 `[:phoenix_kit_ai, :request]` fires from `create_request/1`, so it covers
