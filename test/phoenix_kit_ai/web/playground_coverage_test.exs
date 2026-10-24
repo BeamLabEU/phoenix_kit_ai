@@ -9,6 +9,10 @@ defmodule PhoenixKitAI.Web.PlaygroundCoverageTest do
 
   use PhoenixKitAI.LiveCase
 
+  alias PhoenixKit.Test.Fixtures
+  alias PhoenixKit.Users.Auth.Scope
+  alias PhoenixKitAI.Web.Playground
+
   setup do
     Application.put_env(:phoenix_kit_ai, :req_options,
       plug: {Req.Test, PhoenixKitAI.Web.PlaygroundCoverageTest},
@@ -246,6 +250,116 @@ defmodule PhoenixKitAI.Web.PlaygroundCoverageTest do
       render_change(view, "change", %{"message" => "Hi"})
 
       assert send_and_render(view) =~ "(No content in response)"
+    end
+  end
+
+  describe "the cost of a call" do
+    # The answer carries tokens and no `usage.cost`, as every provider but
+    # OpenRouter's does.
+    defp payload_without_cost(model, prompt_tokens, completion_tokens) do
+      %{
+        "id" => "gen-2",
+        "model" => model,
+        "choices" => [%{"message" => %{"role" => "assistant", "content" => "Priced"}}],
+        "usage" => %{
+          "prompt_tokens" => prompt_tokens,
+          "completion_tokens" => completion_tokens,
+          "total_tokens" => prompt_tokens + completion_tokens
+        }
+      }
+    end
+
+    defp ask(conn, endpoint) do
+      {:ok, view, _html} = live(conn, "/en/admin/ai/playground")
+      render_change(view, "change", %{"endpoint_uuid" => endpoint.uuid})
+      render_change(view, "change", %{"message" => "Hello"})
+      send_and_render(view)
+    end
+
+    test "an Anthropic call shows the cost its rate table gives", %{conn: conn} do
+      stub_response(200, payload_without_cost("claude-opus-5-5", 100_000, 50_000))
+
+      ep =
+        fixture_endpoint(%{
+          provider: "anthropic",
+          model: "claude-opus-5-5",
+          api_key: "sk-ant-test"
+        })
+
+      html = ask(conn, ep)
+
+      # $4 / $20 per 1M tokens: 0.1M in + 0.05M out.
+      assert html =~ "hero-currency-dollar"
+      assert html =~ "$1.40"
+    end
+
+    test "a call priced by hand on the endpoint shows that price", %{conn: conn} do
+      stub_response(200, payload_without_cost("anthropic/claude-3-haiku", 5, 3))
+
+      # Setting a manual price needs ai.manage; the first user is the Owner.
+      {:ok, ep} =
+        PhoenixKitAI.create_endpoint(
+          %{
+            name: "Priced #{System.unique_integer([:positive])}",
+            provider: "openrouter",
+            model: "anthropic/claude-3-haiku",
+            api_key: "sk-or-v1-test-key",
+            provider_settings: %{"pricing" => %{"input" => "1", "output" => "2"}}
+          },
+          scope: Scope.for_user(Fixtures.user_fixture())
+        )
+
+      html = ask(conn, ep)
+
+      # ($1 x 5 + $2 x 3) per 1M tokens = $0.000011.
+      assert html =~ "hero-currency-dollar"
+      assert html =~ "$0.000011"
+    end
+
+    test "the cost the provider reports is shown as before", %{conn: conn} do
+      payload = success_payload("Hi")
+      stub_response(200, put_in(payload, ["usage", "cost"], 0.0021))
+
+      html = ask(conn, fixture_endpoint())
+
+      assert html =~ "hero-currency-dollar"
+      assert html =~ "$0.0021"
+    end
+
+    test "a usage row of another endpoint gives no cost" do
+      mine = fixture_endpoint()
+      other = fixture_endpoint()
+
+      {:ok, row} =
+        PhoenixKitAI.create_request(%{
+          endpoint_uuid: other.uuid,
+          endpoint_name: other.name,
+          model: other.model,
+          status: "success",
+          input_tokens: 1,
+          output_tokens: 1,
+          total_tokens: 2,
+          cost: Decimal.new("1.4"),
+          latency_ms: 5
+        })
+
+      response = %{
+        "request_uuid" => row.uuid,
+        "usage" => %{"prompt_tokens" => 1, "completion_tokens" => 1, "total_tokens" => 2}
+      }
+
+      assert %{cost: nil} = Playground.response_usage(response, mine.uuid)
+      assert %{cost: cost} = Playground.response_usage(response, other.uuid)
+      assert Decimal.equal?(cost, "1.4")
+    end
+
+    test "a call nothing prices shows no cost", %{conn: conn} do
+      stub_response(200, payload_without_cost("anthropic/claude-3-haiku", 5, 3))
+
+      html = ask(conn, fixture_endpoint())
+
+      assert html =~ "8 total"
+      refute html =~ "hero-currency-dollar"
     end
   end
 
