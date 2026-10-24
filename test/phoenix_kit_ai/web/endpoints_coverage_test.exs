@@ -146,6 +146,18 @@ defmodule PhoenixKitAI.Web.EndpointsCoverageTest do
       assert path =~ "dir=asc"
     end
 
+    test "the usage tab sorts by cost under the column's name", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/en/admin/ai/usage?sort=inserted_at&dir=desc")
+
+      render_hook(view, "usage_sort", %{"by" => "cost"})
+      path = assert_patch(view)
+      assert path =~ "sort=cost"
+
+      # the released name is no field any more
+      render_hook(view, "usage_sort", %{"by" => "cost_cents"})
+      assert assert_patch(view) =~ "sort=cost&"
+    end
+
     test "a usage_sort event naming no known field keeps the current field", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/en/admin/ai/usage?sort=model&dir=asc")
 

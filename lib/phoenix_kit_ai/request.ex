@@ -27,7 +27,7 @@ defmodule PhoenixKitAI.Request do
   - `total_tokens`: Total tokens used (input + output)
 
   ### Performance & Cost
-  - `cost_cents`: Estimated cost in nanodollars (when available)
+  - `cost`: What the call cost in US dollars, a `Decimal` (when known)
   - `latency_ms`: Response time in milliseconds
   - `status`: Request status - "success", "error", or "timeout"
   - `error_message`: Error details if status is not "success"
@@ -100,7 +100,7 @@ defmodule PhoenixKitAI.Request do
              :input_tokens,
              :output_tokens,
              :total_tokens,
-             :cost_cents,
+             :cost,
              :latency_ms,
              :status,
              :error_message,
@@ -122,11 +122,8 @@ defmodule PhoenixKitAI.Request do
     field(:input_tokens, :integer, default: 0)
     field(:output_tokens, :integer, default: 0)
     field(:total_tokens, :integer, default: 0)
-    # MISNOMER (kept for schema compat): despite the name, the stored unit
-    # is NANODOLLARS — 1e-6 dollars (see TTSPricing / Completion) — so
-    # cents = value ÷ 10_000. Multiple external reviewers have misread
-    # this as literal cents; convert accordingly in every consumer.
-    field(:cost_cents, :integer)
+    # US dollars (core's V223, numeric(28,18)); see `PhoenixKitAI.Money`.
+    field(:cost, :decimal)
     field(:latency_ms, :integer)
     field(:status, :string, default: "success")
     field(:error_message, :string)
@@ -135,7 +132,6 @@ defmodule PhoenixKitAI.Request do
     # Associations
     belongs_to(:endpoint, Endpoint, foreign_key: :endpoint_uuid, references: :uuid, type: UUIDv7)
     belongs_to(:prompt, Prompt, foreign_key: :prompt_uuid, references: :uuid, type: UUIDv7)
-    field(:account_uuid, UUIDv7)
     belongs_to(:user, User, foreign_key: :user_uuid, references: :uuid, type: UUIDv7)
 
     timestamps(type: :utc_datetime)
@@ -151,7 +147,6 @@ defmodule PhoenixKitAI.Request do
       :endpoint_name,
       :prompt_uuid,
       :prompt_name,
-      :account_uuid,
       :user_uuid,
       :slot_index,
       :model,
@@ -159,7 +154,7 @@ defmodule PhoenixKitAI.Request do
       :input_tokens,
       :output_tokens,
       :total_tokens,
-      :cost_cents,
+      :cost,
       :latency_ms,
       :status,
       :error_message,
@@ -172,6 +167,7 @@ defmodule PhoenixKitAI.Request do
     |> validate_number(:output_tokens, greater_than_or_equal_to: 0)
     |> validate_number(:total_tokens, greater_than_or_equal_to: 0)
     |> validate_number(:latency_ms, greater_than_or_equal_to: 0)
+    |> validate_cost(attrs)
     |> calculate_total_tokens()
     # Core names these constraints `fk_ai_requests_*` (v135), not the
     # `phoenix_kit_ai_requests_<field>_fkey` that `foreign_key_constraint/2`
@@ -273,28 +269,46 @@ defmodule PhoenixKitAI.Request do
   def format_tokens(tokens), do: "#{Float.round(tokens / 1_000_000, 2)}M"
 
   @doc """
-  Formats the cost for display.
-
-  Cost is stored in nanodollars (1/1000000 of a dollar) for precision.
-  Shows appropriate precision based on the amount:
-  - >= $1.00: 2 decimal places ($1.23)
-  - >= $0.01: 2 decimal places ($0.05)
+  Formats a cost in dollars for display, with the precision the amount needs:
+  - >= $0.01: 2 decimal places ($0.05, $1.23)
   - >= $0.0001: 4 decimal places ($0.0012)
-  - > $0: 6 decimal places ($0.000030)
+  - >= $0.000001: 6 decimal places ($0.000030)
+  - > $0: at least 10 decimal places, more for an amount that needs them to
+    show three significant digits, up to the column's 18 ($0.0000000400,
+    $0.00000000000141)
   """
-  @spec format_cost(integer() | nil) :: String.t()
+  @spec format_cost(Decimal.t() | 0 | nil) :: String.t()
   def format_cost(nil), do: "-"
   def format_cost(0), do: "$0.00"
 
-  def format_cost(nanodollars) when is_integer(nanodollars) do
-    # Convert from nanodollars (1/1000000 of a dollar) to dollars
-    dollars = nanodollars / 1_000_000
+  def format_cost(%Decimal{} = dollars) do
+    places =
+      cond do
+        Decimal.compare(dollars, "0.01") != :lt -> 2
+        Decimal.compare(dollars, "0.0001") != :lt -> 4
+        Decimal.compare(dollars, "0.000001") != :lt -> 6
+        Decimal.compare(dollars, 0) == :gt -> tiny_places(dollars)
+        true -> 2
+      end
 
-    cond do
-      dollars >= 0.01 -> "$#{:erlang.float_to_binary(dollars, decimals: 2)}"
-      dollars >= 0.0001 -> "$#{:erlang.float_to_binary(dollars, decimals: 4)}"
-      dollars > 0 -> "$#{:erlang.float_to_binary(dollars, decimals: 6)}"
-      true -> "$0.00"
+    "$" <>
+      (dollars |> Decimal.round(places, :half_up) |> Decimal.to_string(:normal) |> pad(places))
+  end
+
+  # Three significant digits of an amount below a millionth: its first one is at
+  # decimal place `-(exp + digits - 1)`.
+  defp tiny_places(%Decimal{} = dollars) do
+    %Decimal{coef: coef, exp: exp} = Decimal.normalize(dollars)
+    first = -(exp + length(Integer.digits(coef)) - 1)
+    first |> Kernel.+(2) |> max(10) |> min(18)
+  end
+
+  # `Decimal.round/3` keeps the places it was given, except for a whole number
+  # read back with fewer: pad so `$1` shows as `$1.00`.
+  defp pad(text, places) do
+    case String.split(text, ".") do
+      [whole] -> whole <> "." <> String.duplicate("0", places)
+      [whole, frac] -> whole <> "." <> String.pad_trailing(frac, places, "0")
     end
   end
 
@@ -310,7 +324,8 @@ defmodule PhoenixKitAI.Request do
 
   @doc false
   # `answered` where it names another model than `asked`; nil when it is
-  # the same: the same name, the same name with a provider prefix on one
+  # the same: the same name in any letter case (`Qwen/Qwen3-Embedding-8B` /
+  # `qwen/qwen3-embedding-8b`), the same name with a provider prefix on one
   # side only (`gpt-4o` / `openai/gpt-4o`; two different prefixes are two
   # models), or a dated snapshot (`-2024-08-06`, `-20241022`) of an
   # undated name asked for. A snapshot other than the one asked for is
@@ -325,7 +340,7 @@ defmodule PhoenixKitAI.Request do
   @dated ~r/-(?:\d{4}-\d{2}-\d{2}|\d{8})\z/
 
   defp same_model?(asked, answered) when is_binary(asked) do
-    {asked, answered} = unprefixed(asked, answered)
+    {asked, answered} = unprefixed(String.downcase(asked), String.downcase(answered))
     asked == answered or (not (asked =~ @dated) and String.replace(answered, @dated, "") == asked)
   end
 
@@ -356,6 +371,40 @@ defmodule PhoenixKitAI.Request do
   end
 
   # Private functions
+
+  # A cost is dollars, not negative, and fits the column: at most 18 decimal
+  # places (a caller passing more is refused, not silently rounded). Given as
+  # an integer (other than 0) or a float it is refused like any amount
+  # (`PhoenixKitAI.Money.amount/1`): the released API took integer millionths,
+  # and `cost: 5_000_000` must not be stored as $5,000,000.
+  defp validate_cost(changeset, attrs) do
+    given = if is_map(attrs), do: Map.get(attrs, :cost, Map.get(attrs, "cost"))
+
+    if (is_integer(given) and given != 0) or is_float(given) do
+      add_error(changeset, :cost, "must be dollars as a Decimal or a string, not a bare number")
+    else
+      validate_cost(changeset)
+    end
+  end
+
+  defp validate_cost(changeset) do
+    case get_change(changeset, :cost) do
+      %Decimal{} = cost ->
+        cond do
+          Decimal.negative?(cost) ->
+            add_error(changeset, :cost, "must be greater than or equal to 0")
+
+          Decimal.normalize(cost).exp < -18 ->
+            add_error(changeset, :cost, "has more than 18 decimal places")
+
+          true ->
+            changeset
+        end
+
+      _ ->
+        changeset
+    end
+  end
 
   defp calculate_total_tokens(changeset) do
     input = get_field(changeset, :input_tokens) || 0

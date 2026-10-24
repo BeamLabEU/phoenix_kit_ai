@@ -77,6 +77,9 @@ defmodule PhoenixKitAI.BudgetCacheTest do
     Enum.split_with(rows(ep), &(&1.metadata["cached"] != true))
   end
 
+  defp dollars?(%Decimal{} = value, expected), do: Decimal.equal?(value, Decimal.new(expected))
+  defp dollars?(_value, _expected), do: false
+
   defp attach(event) do
     :telemetry.attach(
       "#{inspect(event)}-#{System.unique_integer([:positive])}",
@@ -89,16 +92,19 @@ defmodule PhoenixKitAI.BudgetCacheTest do
   describe "Budget" do
     test "a reached global cap refuses before the provider is called", %{endpoint: ep} do
       stub_chat(self())
-      {:ok, _} = Budget.set_limit(:global, 1_000_000)
+      {:ok, _} = Budget.set_limit(:global, "1.00")
 
       assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "q1")
       assert_received :provider_called
-      # 0.5 USD = 500_000 nanodollars spent; one more call is still allowed …
-      assert [%{scope: :global, spent: 500_000, remaining: 500_000}] = Budget.status(ep, [])
+
+      # $0.50 spent of a $1 cap; one more call is still allowed …
+      assert [%{scope: :global, spent: spent, remaining: remaining}] = Budget.status(ep, [])
+      assert dollars?(spent, "0.5") and dollars?(remaining, "0.5")
       assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "q2")
       assert_received :provider_called
       # … and now the cap is reached (remaining 0 is not room).
-      assert [%{remaining: 0}] = Budget.status(ep.uuid, [])
+      assert [%{remaining: remaining}] = Budget.status(ep.uuid, [])
+      assert dollars?(remaining, "0")
       assert {:error, {:budget_exceeded, :global}} = PhoenixKitAI.ask(ep.uuid, "q3")
       refute_received :provider_called
       # A cached answer is refused too: a cap is a stop switch.
@@ -108,13 +114,16 @@ defmodule PhoenixKitAI.BudgetCacheTest do
       {refused, paid} = Enum.split_with(rows(ep), &(&1.metadata["refused"] == true))
       assert [%{status: "success"}, %{status: "success"}] = paid
 
-      assert [%{status: "error", cost_cents: nil}, %{status: "error", cost_cents: nil}] =
+      assert [
+               %{status: "error", cost: nil},
+               %{status: "error", cost: nil}
+             ] =
                refused
     end
 
     test "dry_run: does not lift the cap on a verb that ignores it", %{endpoint: ep} do
       stub_chat(self())
-      {:ok, _} = Budget.set_limit(:global, 500_000)
+      {:ok, _} = Budget.set_limit(:global, "0.50")
       assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "spend it")
       assert_received :provider_called
 
@@ -127,7 +136,7 @@ defmodule PhoenixKitAI.BudgetCacheTest do
 
     test "only success rows inside the trailing 24 hours count", %{endpoint: ep} do
       stub_chat(self())
-      {:ok, _} = Budget.set_limit(:global, 600_000)
+      {:ok, _} = Budget.set_limit(:global, "0.60")
       old = DateTime.add(DateTime.utc_now(), -25 * 60 * 60, :second) |> DateTime.truncate(:second)
 
       for {status, inserted_at} <- [
@@ -139,23 +148,52 @@ defmodule PhoenixKitAI.BudgetCacheTest do
           endpoint_name: ep.name,
           model: ep.model,
           request_type: "chat",
-          cost_cents: 5_000_000,
+          cost: Decimal.new("5"),
           status: status,
           inserted_at: inserted_at,
           updated_at: inserted_at
         })
       end
 
-      assert [%{spent: 0}] = Budget.status(ep, [])
+      assert [%{spent: spent}] = Budget.status(ep, [])
+      assert dollars?(spent, "0")
       assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "still allowed")
       assert_received :provider_called
+    end
+
+    test "calls cheaper than a micro-dollar add up toward a cap", %{endpoint: ep} do
+      # Each row is $0.0000006 — 0 in the released integer millionths; the
+      # 2 000 of them are $0.0012, past a $0.001 cap.
+      {:ok, _} = Budget.set_limit(:global, "0.001")
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      TestRepo.insert_all(
+        Request,
+        for _ <- 1..2_000 do
+          %{
+            uuid: UUIDv7.generate(),
+            endpoint_uuid: ep.uuid,
+            endpoint_name: ep.name,
+            model: ep.model,
+            request_type: "embedding",
+            cost: Decimal.new("0.0000006"),
+            status: "success",
+            inserted_at: now,
+            updated_at: now
+          }
+        end
+      )
+
+      assert [%{scope: :global, spent: spent, limit: limit}] = Budget.status(ep, [])
+      assert dollars?(spent, "0.0012") and dollars?(limit, "0.001")
+      assert {:error, {:budget_exceeded, :global}} = PhoenixKitAI.ask(ep.uuid, "q")
     end
 
     test "per-user and per-endpoint caps scope correctly", %{endpoint: ep} do
       stub_chat(self())
       user = Fixtures.confirmed_user_fixture().uuid
       other = Fixtures.confirmed_user_fixture().uuid
-      {:ok, _} = Budget.set_limit(:user, 400_000)
+      {:ok, _} = Budget.set_limit(:user, "0.40")
 
       assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "a", user_uuid: user)
       assert {:error, {:budget_exceeded, :user}} = PhoenixKitAI.ask(ep.uuid, "b", user_uuid: user)
@@ -165,9 +203,10 @@ defmodule PhoenixKitAI.BudgetCacheTest do
 
       # The endpoint cap sees only its own endpoint's spend.
       {:ok, _} = Budget.set_limit(:user, 0)
-      {:ok, _} = Budget.set_limit(:endpoint, 1_000_000)
+      {:ok, _} = Budget.set_limit(:endpoint, "1.00")
       other_ep = endpoint_fixture()
-      assert [%{scope: :endpoint, spent: 0}] = Budget.status(other_ep, [])
+      assert [%{scope: :endpoint, spent: spent}] = Budget.status(other_ep, [])
+      assert dollars?(spent, "0")
       assert {:ok, _} = PhoenixKitAI.ask(other_ep.uuid, "fresh endpoint")
       assert {:error, {:budget_exceeded, :endpoint}} = PhoenixKitAI.ask(ep.uuid, "e")
     end
@@ -210,9 +249,11 @@ defmodule PhoenixKitAI.BudgetCacheTest do
       assert [row] = rows(ep)
       assert row.user_uuid == nil
       assert row.metadata["unresolved_refs"] == %{"user_uuid" => ghost}
-      {:ok, _} = Budget.set_limit(:endpoint, 1_000_000_000)
+      {:ok, _} = Budget.set_limit(:endpoint, "1000.00")
       assert %{spent: spent} = Enum.find(Budget.status(ep, []), &(&1.scope == :endpoint))
-      assert spent > 0, "an unattributed row must still count toward its endpoint's cap"
+
+      assert dollars?(spent, "0.5"),
+             "an unattributed row must still count toward its endpoint's cap"
     end
 
     test "the warning fires once per crossing and status/2 stays side-effect free", %{
@@ -220,27 +261,32 @@ defmodule PhoenixKitAI.BudgetCacheTest do
     } do
       attach([:phoenix_kit_ai, :budget, :warning])
       stub_chat(self())
-      {:ok, _} = Budget.set_limit(:global, 1_200_000)
+      {:ok, _} = Budget.set_limit(:global, "1.20")
       assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "1")
       refute_received {:event, _, _, _}
       assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "2")
-      # 1_000_000 of 1_200_000 = 83% → one warning on the next check, not one
-      # per call or per status read.
-      assert [%{spent: 1_000_000}] = Budget.status(ep, [])
+      # $1.00 of $1.20 = 83% → one warning on the next check, not one per call
+      # or per status read.
+      assert [%{spent: spent}] = Budget.status(ep, [])
+      assert dollars?(spent, "1")
       refute_received {:event, _, _, _}
       assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "3")
-      assert_received {:event, _, %{spent: 1_000_000, limit: 1_200_000}, %{scope: :global}}
+      # Telemetry measurements are numbers: dollars as floats.
+      assert_received {:event, _, %{spent: 1.0, limit: 1.2}, %{scope: :global}}
       assert {:error, {:budget_exceeded, :global}} = PhoenixKitAI.ask(ep.uuid, "4")
       refute_received {:event, _, _, _}
     end
 
     test "garbage settings fail open, and the warn percent falls back to 80" do
+      # "lots" in the new key is no cap; "lots" in the old key is not a
+      # released cap either (not digits), so it does not refuse.
+      {:ok, _} = PhoenixKit.Settings.update_setting_with_module("ai_daily_cap", "lots", "ai")
       {:ok, _} = PhoenixKit.Settings.update_setting_with_module("ai_daily_budget", "lots", "ai")
 
       {:ok, _} =
         PhoenixKit.Settings.update_setting_with_module("ai_budget_warn_percent", "x", "ai")
 
-      assert Budget.limit(:global) == 0
+      assert dollars?(Budget.limit(:global), "0")
       assert Budget.warn_percent() == 80
 
       {:ok, _} =
@@ -252,6 +298,88 @@ defmodule PhoenixKitAI.BudgetCacheTest do
         PhoenixKit.Settings.update_setting_with_module("ai_budget_warn_percent", "50", "ai")
 
       assert Budget.warn_percent() == 50
+    end
+  end
+
+  describe "Budget in dollars, and the released millionths" do
+    setup do
+      on_exit(fn ->
+        for key <- ~w(ai_daily_budget ai_daily_budget_per_endpoint ai_daily_budget_per_user),
+            do: PhoenixKit.Settings.delete_setting(key)
+      end)
+    end
+
+    test "a released cap in the old key, with no new key, refuses before the provider",
+         %{endpoint: ep} do
+      stub_chat(self())
+      # "5000000" was $5 in millionths; read as dollars it would be $5,000,000.
+      {:ok, _} =
+        PhoenixKit.Settings.update_setting_with_module("ai_daily_budget", "5000000", "ai")
+
+      PhoenixKit.Settings.delete_setting("ai_daily_cap")
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:error, {:budget_unmigrated, :global}} = PhoenixKitAI.ask(ep.uuid, "q")
+        end)
+
+      refute_received :provider_called
+      assert log =~ "ai_daily_budget"
+      assert PhoenixKitAI.Errors.message({:budget_unmigrated, :global}) =~ "update"
+      assert [%{status: "error", metadata: %{"refused" => true}}] = rows(ep)
+
+      # Once the new key exists (the migration ran, or an admin set it), it decides.
+      {:ok, _} = Budget.set_limit(:global, "5")
+      assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "q")
+      assert_received :provider_called
+    end
+
+    test "a new key that is not an amount does not drop a released cap", %{endpoint: ep} do
+      stub_chat(self())
+
+      {:ok, _} =
+        PhoenixKit.Settings.update_setting_with_module("ai_daily_budget", "5000000", "ai")
+
+      for broken <- [" ", "lots"] do
+        {:ok, _} = PhoenixKit.Settings.update_setting_with_module("ai_daily_cap", broken, "ai")
+
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:error, {:budget_unmigrated, :global}} =
+                   PhoenixKitAI.ask(ep.uuid, "q #{inspect(broken)}")
+        end)
+      end
+
+      refute_received :provider_called
+    end
+
+    test "an old key holding no released cap does not refuse", %{endpoint: ep} do
+      stub_chat(self())
+      PhoenixKit.Settings.delete_setting("ai_daily_cap")
+
+      for old <- ["0", "", "lots"] do
+        {:ok, _} = PhoenixKit.Settings.update_setting_with_module("ai_daily_budget", old, "ai")
+        assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "q #{inspect(old)}")
+      end
+    end
+
+    test "set_limit/2 takes dollars and refuses the released integer millionths" do
+      assert {:error, :ambiguous_amount} = Budget.set_limit(:global, 5_000_000)
+      assert {:error, :ambiguous_amount} = Budget.set_limit(:endpoint, 5)
+      assert {:error, :ambiguous_amount} = Budget.set_limit(:user, 0.5)
+      assert {:error, :invalid_amount} = Budget.set_limit(:global, "five")
+      assert {:error, :invalid_amount} = Budget.set_limit(:global, "-1")
+      assert dollars?(Budget.limit(:global), "0")
+
+      assert {:ok, _} = Budget.set_limit(:global, "5")
+      assert PhoenixKit.Settings.get_setting("ai_daily_cap") == "5.00"
+      assert dollars?(Budget.limit(:global), "5")
+
+      assert {:ok, _} = Budget.set_limit(:user, Decimal.new("0.1"))
+      assert PhoenixKit.Settings.get_setting("ai_daily_cap_per_user") == "0.10"
+
+      # A count stays a count.
+      assert {:ok, _} = Budget.set_limit(:user_calls, 3)
+      assert Budget.limit(:user_calls) == 3
     end
   end
 
@@ -278,14 +406,16 @@ defmodule PhoenixKitAI.BudgetCacheTest do
       assert_received {:event, [:phoenix_kit_ai, :cache, :hit], _, meta}
       assert meta == %{verb: :complete, endpoint_uuid: ep.uuid}
 
-      assert {[%{cost_cents: 500_000, metadata: %{"source" => "A"}}],
-              [%{cost_cents: 0, metadata: %{"cached" => true, "source" => "B"}}]} =
+      assert {[%{cost: fresh_cost, metadata: %{"source" => "A"}}],
+              [%{cost: cached_cost, metadata: %{"cached" => true, "source" => "B"}}]} =
                fresh_and_cached(ep)
 
-      assert_received {:event, [:phoenix_kit_ai, :request], %{cost_cents: 500_000},
+      assert dollars?(fresh_cost, "0.5") and dollars?(cached_cost, "0")
+
+      assert_received {:event, [:phoenix_kit_ai, :request], %{cost: 0.5},
                        %{cached: false, request_type: "chat"}}
 
-      assert_received {:event, [:phoenix_kit_ai, :request], %{cost_cents: 0}, %{cached: true}}
+      assert_received {:event, [:phoenix_kit_ai, :request], %{cost: +0.0}, %{cached: true}}
 
       # A different prompt, a different option, or :refresh all call the provider.
       assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "other question", cache: true)
@@ -471,7 +601,7 @@ defmodule PhoenixKitAI.BudgetCacheTest do
                 %{
                   user_uuid: ^user_b,
                   prompt_uuid: puuid,
-                  cost_cents: 0,
+                  cost: cached_cost,
                   metadata: %{
                     "cached" => true,
                     "prompt_snapshot" => %{"hash" => hash},
@@ -481,6 +611,7 @@ defmodule PhoenixKitAI.BudgetCacheTest do
               ]} = fresh_and_cached(ep)
 
       assert puuid == prompt.uuid
+      assert dollars?(cached_cost, "0")
       assert String.length(hash) == 16
 
       # Editing the prompt changes the snapshot.
@@ -497,8 +628,10 @@ defmodule PhoenixKitAI.BudgetCacheTest do
       assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "q", user_uuid: user)
       assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "q")
 
-      assert %{total_requests: 1, total_cost_cents: 500_000} =
+      assert %{total_requests: 1, total_cost: total} =
                PhoenixKitAI.get_usage_stats(user_uuid: user, endpoint_uuid: ep.uuid)
+
+      assert dollars?(total, "0.5")
 
       assert %{total_requests: 0} =
                PhoenixKitAI.get_usage_stats(

@@ -331,18 +331,18 @@ defmodule PhoenixKitAI.Web.Components.RecommendationsPanel do
 
   defp price_cell(_row, _estimate), do: gettext("price not known")
 
-  # Dollars, through the usage tab's format (a millionth of a dollar is its
-  # unit); a price below that says so instead of showing $0.00.
+  # Dollars (a float estimate here), through the usage tab's format; a price
+  # below its last place says so instead of showing $0.00.
   defp format_price(dollars) do
-    micro = round(dollars * 1_000_000)
+    {:ok, decimal} = PhoenixKitAI.Money.to_decimal(dollars)
 
-    if micro == 0 and dollars > 0,
-      do: "<$0.000001",
-      else: Request.format_cost(micro)
+    if dollars > 0 and Decimal.equal?(PhoenixKitAI.Money.round_cost(decimal), 0),
+      do: "<$0.000000000000000001",
+      else: Request.format_cost(decimal)
   end
 
   defp worked_cost(%{avg_cost: nil}), do: "—"
-  defp worked_cost(%{avg_cost: avg}), do: Request.format_cost(round(avg))
+  defp worked_cost(%{avg_cost: avg}), do: Request.format_cost(avg)
 
   defp percent(share), do: "#{round(share * 100)}%"
 

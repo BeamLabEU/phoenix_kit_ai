@@ -139,13 +139,14 @@ defmodule PhoenixKitAI.ChatToolsTest do
 
       assert_received {:post, "/api/v1/chat/completions", raw, _}
 
+      # an OpenRouter call asks for usage accounting (the call's cost)
       assert raw ==
                ~s({"messages":[) <>
                  ~s({"content":"Be brief.","role":"system"},) <>
                  ~s({"content":"Hello","role":"user"},) <>
                  ~s({"content":"Hi","role":"assistant"},) <>
                  ~s({"content":[{"text":"parts","type":"text"}],"role":"user"}) <>
-                 ~s(],"model":"deepseek/deepseek-v4-flash"})
+                 ~s(],"model":"deepseek/deepseek-v4-flash","usage":{"include":true}})
     end
 
     test "keeps tool_calls on assistant and tool_call_id + name on tool messages" do

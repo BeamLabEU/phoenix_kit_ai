@@ -10,8 +10,8 @@ defmodule PhoenixKitAI.TaskLimits do
   | `:task` | every call of the task, with a user or without |
   | `:user` | the calls of one user in the task |
 
-  Units: `:money` (micro-dollars, `$1 = 1_000_000`, the unit of the journal's
-  `cost_cents`), `:requests`, `:tokens`. Periods: `:day`, `:month` — the
+  Units: `:money` (US dollars, a `Decimal`; stored as a decimal string, read
+  through `PhoenixKitAI.Money`), `:requests`, `:tokens`. Periods: `:day`, `:month` — the
   calendar day and month of the site time zone (Settings → `time_zone`,
   `PhoenixKit.Utils.TimeZone`), each from its local midnight to the next.
 
@@ -39,7 +39,7 @@ defmodule PhoenixKitAI.TaskLimits do
   The task's rows of the journal (`phoenix_kit_ai_requests`,
   `metadata->>'task'`), successful ones only (`status = 'success'`): a failed
   call costs nothing and a refusal is an error row, so neither counts. Money
-  is the `cost_cents` sum, tokens the `total_tokens` sum, requests the rows —
+  is the `cost` sum (dollars), tokens the `total_tokens` sum, requests the rows —
   so a cached answer (a zero-cost success row) counts as one request and no
   money or tokens. Money is what a row's cost says (`PhoenixKitAI.CallCost`:
   the provider's own cost, else a catalogue, the endpoint's manual or the
@@ -99,7 +99,7 @@ defmodule PhoenixKitAI.TaskLimits do
   alias PhoenixKit.Settings
   alias PhoenixKit.Users.Auth.User
   alias PhoenixKit.Utils.TimeZone
-  alias PhoenixKitAI.{Endpoint, Guard, GuardEvent, GuardEvents, Request}
+  alias PhoenixKitAI.{Endpoint, Guard, GuardEvent, GuardEvents, Money, Request}
   alias PhoenixKitAI.{Tasks, TaskSetting, TaskSpec, TaskUserLimit}
 
   @scopes [:task, :user]
@@ -114,14 +114,16 @@ defmodule PhoenixKitAI.TaskLimits do
   @type scope :: :task | :user
   @type unit :: :money | :requests | :tokens
   @type period :: :day | :month
-  @type limits :: %{optional(unit()) => %{optional(period()) => non_neg_integer()}}
+  @typedoc "Dollars (a `Decimal`) for `:money`, a whole number for requests and tokens."
+  @type amount :: Decimal.t() | non_neg_integer()
+  @type limits :: %{optional(unit()) => %{optional(period()) => amount() | :unmigrated}}
   @type window :: {DateTime.t(), DateTime.t()}
   @type status :: %{
           scope: scope(),
           unit: unit(),
           period: period(),
-          used: non_neg_integer(),
-          limit: non_neg_integer(),
+          used: amount(),
+          limit: amount() | :unmigrated,
           period_key: String.t(),
           ends_at: DateTime.t(),
           forgiven_at: DateTime.t() | nil
@@ -376,14 +378,18 @@ defmodule PhoenixKitAI.TaskLimits do
   def normalize_scoped(_limits), do: %{task: %{}, user: %{}}
 
   @doc false
-  # `%{unit => %{period => amount}}`: an amount is a whole number ≥ 0 (or a
-  # string of one); a blank or invalid one is left out — no limit.
+  # `%{unit => %{period => amount}}`: requests and tokens are whole numbers ≥ 0
+  # (or a string of one); money is dollars, a `Decimal` (or a dollar string).
+  # A money cell in the released shape — an integer or a digits-only string,
+  # which meant millionths of a dollar — reads as `:unmigrated`, and a task
+  # with one in force refuses its calls (`check/3`) rather than take millionths
+  # for dollars. A blank or invalid amount is left out — no limit.
   @spec normalize(term()) :: limits()
   def normalize(limits) when is_map(limits) do
     for unit <- @units,
         periods = fetch(limits, unit),
         is_map(periods),
-        cells = cells(periods),
+        cells = cells(unit, periods),
         cells != %{},
         into: %{},
         do: {unit, cells}
@@ -391,26 +397,37 @@ defmodule PhoenixKitAI.TaskLimits do
 
   def normalize(_limits), do: %{}
 
-  defp cells(periods) do
+  defp cells(unit, periods) do
     for period <- @periods,
-        amount = amount(fetch(periods, period)),
-        is_integer(amount),
+        amount = amount(unit, fetch(periods, period)),
+        amount != nil,
         into: %{},
         do: {period, amount}
   end
 
   defp fetch(map, key), do: Map.get(map, key) || Map.get(map, Atom.to_string(key))
 
-  defp amount(value) when is_integer(value) and value >= 0, do: value
+  defp amount(:money, value) do
+    if Money.legacy_amount?(value) or is_float(value) do
+      :unmigrated
+    else
+      case Money.amount(value) do
+        {:ok, dollars} -> dollars
+        _ -> nil
+      end
+    end
+  end
 
-  defp amount(value) when is_binary(value) do
+  defp amount(_unit, value) when is_integer(value) and value >= 0, do: value
+
+  defp amount(_unit, value) when is_binary(value) do
     case Integer.parse(String.trim(value)) do
       {int, ""} when int >= 0 -> int
       _ -> nil
     end
   end
 
-  defp amount(_value), do: nil
+  defp amount(_unit, _value), do: nil
 
   # ===========================================
   # USAGE
@@ -424,8 +441,8 @@ defmodule PhoenixKitAI.TaskLimits do
   count limits nothing.
   """
   @spec usage(String.t(), String.t() | nil, DateTime.t()) :: %{
-          task: %{unit() => %{period() => non_neg_integer()}},
-          user: %{unit() => %{period() => non_neg_integer()}} | nil
+          task: %{unit() => %{period() => amount()}},
+          user: %{unit() => %{period() => amount()}} | nil
         }
   def usage(task_key, user_uuid, now \\ DateTime.utc_now()) when is_binary(task_key),
     do: task_key |> usage(user_uuid(user_uuid), now, true) |> Map.delete(:forgiven)
@@ -451,8 +468,8 @@ defmodule PhoenixKitAI.TaskLimits do
     Map.new(@units, fn unit ->
       {unit,
        %{
-         day: to_int(totals && totals[:"day_#{unit}"]),
-         month: to_int(totals && totals[:"month_#{unit}"])
+         day: total(unit, totals && totals[:"day_#{unit}"]),
+         month: total(unit, totals && totals[:"month_#{unit}"])
        }}
     end)
   end
@@ -468,12 +485,15 @@ defmodule PhoenixKitAI.TaskLimits do
             r.inserted_at >= ^lower and r.inserted_at < ^month_to,
         select: %{
           day_money:
-            filter(sum(r.cost_cents), r.inserted_at >= ^day_from and r.inserted_at < ^day_to),
+            filter(
+              sum(r.cost),
+              r.inserted_at >= ^day_from and r.inserted_at < ^day_to
+            ),
           day_requests:
             filter(count(r.uuid), r.inserted_at >= ^day_from and r.inserted_at < ^day_to),
           day_tokens:
             filter(sum(r.total_tokens), r.inserted_at >= ^day_from and r.inserted_at < ^day_to),
-          month_money: filter(sum(r.cost_cents), r.inserted_at >= ^month_from),
+          month_money: filter(sum(r.cost), r.inserted_at >= ^month_from),
           month_requests: filter(count(r.uuid), r.inserted_at >= ^month_from),
           month_tokens: filter(sum(r.total_tokens), r.inserted_at >= ^month_from)
         }
@@ -529,6 +549,10 @@ defmodule PhoenixKitAI.TaskLimits do
 
   defp known(_value, _allowed), do: :error
 
+  # Money is the dollars the rows' `cost` add up to, never rounded.
+  defp total(:money, value), do: Money.sum(value)
+  defp total(_unit, value), do: to_int(value)
+
   defp to_int(nil), do: 0
   defp to_int(%Decimal{} = value), do: value |> Decimal.round(0) |> Decimal.to_integer()
   defp to_int(value) when is_integer(value), do: value
@@ -563,7 +587,7 @@ defmodule PhoenixKitAI.TaskLimits do
           period <- [:month, :day],
           unit <- @units,
           limit = get_in(limits, [scope, unit, period]),
-          is_integer(limit) do
+          limit != nil do
         %{
           scope: scope,
           unit: unit,
@@ -582,10 +606,14 @@ defmodule PhoenixKitAI.TaskLimits do
   Whether a call of `spec` (`opts[:user_uuid]` the user, when any) may go on
   now: `:ok`, or `{:error, {:task_limit_exceeded, scope, unit, period}}` for
   the first limit reached. Tells the watchers and the user (see the
-  moduledoc). `nil` (no declared task) is always `:ok`.
+  moduledoc). A money limit in force that is still in the released shape
+  (`normalize/1`) refuses with `{:error, {:task_limit_unmigrated, task_key}}`.
+  `nil` (no declared task) is always `:ok`.
   """
   @spec check(TaskSpec.t() | nil, keyword(), DateTime.t()) ::
-          :ok | {:error, {:task_limit_exceeded, scope(), unit(), period()}}
+          :ok
+          | {:error, {:task_limit_exceeded, scope(), unit(), period()}}
+          | {:error, {:task_limit_unmigrated, String.t()}}
   def check(spec, opts, now \\ DateTime.utc_now())
 
   def check(nil, _opts, _now), do: :ok
@@ -593,21 +621,15 @@ defmodule PhoenixKitAI.TaskLimits do
   def check(%TaskSpec{} = spec, opts, now) do
     user_uuid = user_uuid(opts[:user_uuid])
     entry = cached(spec.key)
-    statuses = statuses(spec.key, effective(spec, entry, user_uuid), user_uuid, now)
+    limits = effective(spec, entry, user_uuid)
 
-    case Enum.find(statuses, &(&1.used >= &1.limit)) do
-      nil ->
-        percent = warn_percent(entry.setting)
-
-        statuses
-        |> Enum.filter(&(&1.limit > 0 and &1.used * 100 >= &1.limit * percent))
-        |> Enum.each(&GuardEvents.limit_warning(spec, user_for(&1, user_uuid), &1))
-
-        :ok
-
-      reached ->
-        GuardEvents.limit_reached(spec, user_for(reached, user_uuid), reached)
-        {:error, {:task_limit_exceeded, reached.scope, reached.unit, reached.period}}
+    # Before any query: a failing usage read is rescued into `:ok` below, and
+    # a limit in the released unit must refuse whatever the database does.
+    if unmigrated?(limits) do
+      log_unmigrated(spec.key)
+      {:error, {:task_limit_unmigrated, spec.key}}
+    else
+      spec.key |> statuses(limits, user_uuid, now) |> decide(spec, entry, user_uuid)
     end
   rescue
     error ->
@@ -620,6 +642,61 @@ defmodule PhoenixKitAI.TaskLimits do
     :exit, _reason ->
       Logger.warning("[PhoenixKitAI] task limits of #{inspect(spec.key)} not checked: exit")
       :ok
+  end
+
+  defp decide(statuses, spec, entry, user_uuid) do
+    case Enum.find(statuses, &reached?/1) do
+      nil ->
+        percent = warn_percent(entry.setting)
+
+        statuses
+        |> Enum.filter(&warn?(&1, percent))
+        |> Enum.each(&GuardEvents.limit_warning(spec, user_for(&1, user_uuid), &1))
+
+        :ok
+
+      reached ->
+        GuardEvents.limit_reached(spec, user_for(reached, user_uuid), reached)
+        {:error, {:task_limit_exceeded, reached.scope, reached.unit, reached.period}}
+    end
+  end
+
+  # A money limit in force still in the released millionths (`normalize/1`).
+  defp unmigrated?(limits) do
+    Enum.any?([limits.task, limits.user], fn cells ->
+      cells |> Map.get(:money, %{}) |> Map.values() |> Enum.member?(:unmigrated)
+    end)
+  end
+
+  defp reached?(%{used: %Decimal{} = used, limit: %Decimal{} = limit}),
+    do: Decimal.compare(used, limit) != :lt
+
+  defp reached?(%{used: used, limit: limit}) when is_integer(limit), do: used >= limit
+
+  defp warn?(%{used: %Decimal{} = used, limit: %Decimal{} = limit}, percent) do
+    Decimal.compare(limit, 0) == :gt and
+      Decimal.compare(Decimal.mult(used, 100), Decimal.mult(limit, percent)) != :lt
+  end
+
+  defp warn?(%{used: used, limit: limit}, percent) when is_integer(limit),
+    do: limit > 0 and used * 100 >= limit * percent
+
+  # Once per node and task, not on every refused call.
+  defp log_unmigrated(task_key) do
+    key = {__MODULE__, :unmigrated, task_key}
+    table = PhoenixKitAI.RequestCache.flags_table()
+
+    unless :ets.member(table, key) do
+      :ets.insert(table, {key, true})
+
+      Logger.error(
+        "[PhoenixKitAI] task #{inspect(task_key)} has a money limit in millionths of a dollar " <>
+          "(the released shape): its calls are refused until `mix phoenix_kit.update` has run " <>
+          "the module's migrations, or the limit is set again in dollars"
+      )
+    end
+  rescue
+    _ -> :ok
   end
 
   # A caller may pass a visitor's own id as `user_uuid:`; the journal's
@@ -880,11 +957,17 @@ defmodule PhoenixKitAI.TaskLimits do
   defp stringify_scoped(limits),
     do: Map.new(limits, fn {scope, cells} -> {Atom.to_string(scope), stringify(cells)} end)
 
+  # Money as a dollar string (a JSON number would read back as a float, or,
+  # whole, as the released millionths); counts as numbers.
   defp stringify(limits) do
     Map.new(limits, fn {unit, periods} ->
-      {Atom.to_string(unit), Map.new(periods, fn {p, amount} -> {Atom.to_string(p), amount} end)}
+      {Atom.to_string(unit),
+       Map.new(periods, fn {p, amount} -> {Atom.to_string(p), stored(amount)} end)}
     end)
   end
+
+  defp stored(%Decimal{} = dollars), do: Money.to_json(dollars)
+  defp stored(amount), do: amount
 
   defp log({:ok, row} = result, action, scope, metadata) do
     PhoenixKit.Activity.log("ai", action,

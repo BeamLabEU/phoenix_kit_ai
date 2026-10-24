@@ -18,7 +18,7 @@ behaviour for auto-discovery by a parent Phoenix application.
   (DeepSeek-R1, Mistral Magistral, OpenAI o-series, Anthropic extended
   thinking) automatically persisted to request metadata
 - **Usage Tracking** — Every API call logged with tokens, cost
-  (nanodollars), latency, status, and full caller context
+  (US dollars), latency, status, and full caller context
 - **Admin UI** — LiveView pages for Endpoints, Prompts, Usage, and a live
   Playground
 - **Dynamic model selector** — Models auto-load from each provider's
@@ -132,10 +132,11 @@ answer against the schema locally — check the keys you depend on.
 ### Spend caps and the request cache
 
 ```elixir
-# Settings in the unit of cost_cents: millionths of a dollar, 1_000_000 = $1
-# ("nanodollars" in the module's own vocabulary); trailing 24 hours; 0 = no cap
-PhoenixKitAI.Budget.set_limit(:global, 5_000_000)   # $5 per rolling day for the whole install
-PhoenixKitAI.Budget.set_limit(:user, 100_000)       # $0.10 per rolling day per user_uuid
+# Caps in US dollars, as a string or a Decimal; trailing 24 hours; 0 = no cap.
+# An integer other than 0 is refused ({:error, :ambiguous_amount}): releases
+# before this one took integer millionths of a dollar.
+PhoenixKitAI.Budget.set_limit(:global, "5")       # $5 per rolling day for the whole install
+PhoenixKitAI.Budget.set_limit(:user, "0.10")      # $0.10 per rolling day per user_uuid
 
 # user_uuid must be a PhoenixKit user uuid (the usage row has a foreign key on it)
 {:error, {:budget_exceeded, :user}} = PhoenixKitAI.ask(ep, "…", user_uuid: current_user.uuid)
@@ -211,7 +212,7 @@ declaration can give defaults, and a user can have personal limits:
 ```elixir
 %PhoenixKitAI.TaskSpec{
   key: "my_module.photo_count",
-  default_limits: %{user: %{requests: %{day: 50}}, task: %{money: %{month: 20_000_000}}},
+  default_limits: %{user: %{requests: %{day: 50}}, task: %{money: %{month: "20.00"}}},
   watchers: {MyModule.Settings, :limit_watchers, []}   # called with the user uuid appended
 }
 
@@ -224,7 +225,9 @@ PhoenixKitAI.ask(endpoint_uuid, "…", task: "my_module.photo_count", user_uuid:
   guard_admission: token)
 ```
 
-Money is in micro-dollars and counts where a call has a cost: the
+Money is in US dollars (a `Decimal` or a dollar string — never an integer,
+which releases before this one read as millionths of a dollar) and counts
+where a call has a cost: the
 provider's own (OpenRouter), else a catalogue price, the endpoint's manual
 price (`provider_settings["pricing"]`, set by a holder of `ai.manage`) or
 the built-in Anthropic list price — `PhoenixKitAI.reports_cost?/1` says
@@ -349,9 +352,9 @@ files: results come back as bytes for the caller to keep.
 # Text content
 {:ok, text} = PhoenixKitAI.extract_content(response)
 
-# Usage statistics (cost in nanodollars)
+# Usage statistics (cost in US dollars, a Decimal)
 usage = PhoenixKitAI.extract_usage(response)
-# => %{prompt_tokens: 10, completion_tokens: 15, total_tokens: 25, cost_cents: 30}
+# => %{prompt_tokens: 10, completion_tokens: 15, total_tokens: 25, cost: Decimal.new("0.00003")}
 
 # Full response includes latency
 response["latency_ms"] # => 850
@@ -709,16 +712,18 @@ end
 
 ## Cost tracking
 
-Costs are stored in **nanodollars** (1/1,000,000 of a dollar) to
-preserve precision for cheap calls.
+A call's cost is stored as it is, in **US dollars** (column `cost`,
+`numeric(28,18)`, a `Decimal` in Elixir), so cheap calls keep their cost: a
+short embedding at $0.00000004 is `0.00000004`.
 
 ```elixir
-PhoenixKitAI.Request.format_cost(30)         # => "$0.000030"
-PhoenixKitAI.Request.format_cost(1_500_000)  # => "$1.50"
+PhoenixKitAI.Request.format_cost(Decimal.new("0.00000004"))  # => "$0.0000000400"
+PhoenixKitAI.Request.format_cost(Decimal.new("0.00003"))     # => "$0.000030"
+PhoenixKitAI.Request.format_cost(Decimal.new("1.5"))         # => "$1.50"
 ```
 
-`format_cost/1` tiers decimal precision: 2 decimals above $0.01,
-4 decimals above $0.0001, 6 decimals below.
+`format_cost/1` tiers decimal precision: 2 decimals from $0.01, 4 from
+$0.0001, 6 from $0.000001, 10 below.
 
 ## Project structure
 

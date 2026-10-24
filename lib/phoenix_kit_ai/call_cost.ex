@@ -1,7 +1,6 @@
 defmodule PhoenixKitAI.CallCost do
   @moduledoc """
-  What a call cost, in micro-dollars (millionths of a dollar — the unit of
-  `Request.cost_cents`, which the module calls nanodollars), and where the
+  What a call cost, in US dollars (`Request.cost`, a `Decimal`), and where the
   figure came from. The first source that has a price wins:
 
     1. `"provider"` — the cost the provider reports in `usage.cost`
@@ -16,8 +15,10 @@ defmodule PhoenixKitAI.CallCost do
   The model priced is the one the answer names; when no source prices it,
   the endpoint's model is tried — so an answer naming an unknown model is
   still counted when the endpoint's model has a price, and a money limit is
-  not bypassed by it. The sum is in integers: tokens × micro-dollars per 1M,
-  over a million, rounded. A call without tokens (an answer with no usage, or
+  not bypassed by it. A catalogue price is per TOKEN (OpenRouter's `pricing`),
+  a manual price and Anthropic's rates per 1M tokens: each base has its own
+  path (`ManualPrice.cost/3` for the second), and the total is rounded once, to
+  the column's 18 places (`Money.round_cost/1`). A call without tokens (an answer with no usage, or
   an empty one) says nothing about its size and gets no cost, not a priced $0.
 
   Chat, embeddings and the vision verbs (`describe_image/3`, `extract_text/3`,
@@ -28,28 +29,28 @@ defmodule PhoenixKitAI.CallCost do
   provider's own cost.
   """
 
-  alias PhoenixKitAI.{AnthropicPricing, Capabilities, Completion, Endpoint, ManualPrice}
+  alias PhoenixKitAI.{AnthropicPricing, Capabilities, Completion, Endpoint, ManualPrice, Money}
 
   @sources ["catalogue", "manual", "table"]
 
   @type source :: String.t()
 
   @doc """
-  A call's `cost_cents` and what its usage row's metadata gets: `reported`
-  (the provider's cost, micro-dollars) with `cost_source: "provider"`, else
-  the first priced source for `model` then for the endpoint's model, else
-  `{nil, %{}}` — and `{nil, %{}}` for a call without tokens.
+  A call's `cost` and what its usage row's metadata gets: `reported` (the
+  provider's cost, dollars) with `cost_source: "provider"`, else the first
+  priced source for `model` then for the endpoint's model, else `{nil, %{}}` —
+  and `{nil, %{}}` for a call without tokens. The cost is rounded to the
+  column's 18 places.
   """
   @spec for_call(
           Endpoint.t() | map(),
           String.t() | nil,
-          integer() | nil,
+          Decimal.t() | nil,
           integer() | nil,
           integer() | nil
-        ) :: {non_neg_integer() | nil, map()}
-  def for_call(_endpoint, _model, reported, _input_tokens, _output_tokens)
-      when is_integer(reported),
-      do: {reported, %{cost_source: "provider"}}
+        ) :: {Decimal.t() | nil, map()}
+  def for_call(_endpoint, _model, %Decimal{} = reported, _input_tokens, _output_tokens),
+    do: {Money.round_cost(reported), %{cost_source: "provider"}}
 
   def for_call(_endpoint, _model, nil, input_tokens, output_tokens)
       when input_tokens in [nil, 0] and output_tokens in [nil, 0],
@@ -67,16 +68,26 @@ defmodule PhoenixKitAI.CallCost do
 
   defp priced(endpoint, model, input_tokens, output_tokens) do
     Enum.find_value(@sources, fn source ->
-      case ManualPrice.cost(
-             price(source, endpoint, model, input_tokens),
-             input_tokens,
-             output_tokens
-           ) do
+      case cost(price(source, endpoint, model, input_tokens), input_tokens, output_tokens) do
         nil -> nil
-        cost -> {cost, %{cost_source: source}}
+        cost -> {Money.round_cost(cost), %{cost_source: source}}
       end
     end)
   end
+
+  # A catalogue lists dollars per TOKEN; the manual and the table prices are
+  # dollars per 1M tokens. Two bases, two functions: a shared one is how a
+  # factor of a million goes missing.
+  defp cost({:per_token, input, output}, input_tokens, output_tokens) do
+    input
+    |> Decimal.mult(input_tokens)
+    |> Decimal.add(Decimal.mult(output, output_tokens))
+  end
+
+  defp cost({:per_million, pricing}, input_tokens, output_tokens),
+    do: ManualPrice.cost(pricing, input_tokens, output_tokens)
+
+  defp cost(nil, _input_tokens, _output_tokens), do: nil
 
   @doc """
   Whether some source prices calls on the endpoint's model: its provider
@@ -97,24 +108,35 @@ defmodule PhoenixKitAI.CallCost do
   def source(%{metadata: %{cost_source: source}}) when is_binary(source), do: source
   def source(_request), do: nil
 
-  # A source's price for the model, as whole micro-dollars per 1M tokens.
+  # A source's price for the model: `{:per_token, input, output}` or
+  # `{:per_million, %{"input" => _, "output" => _}}`, dollars as `Decimal`s.
   defp price("catalogue", endpoint, model, _input_tokens) when is_binary(model) do
-    case endpoint |> Capabilities.resolved_base_url() |> Capabilities.lookup(model) do
-      %Capabilities{prompt_price: input, completion_price: output}
-      when is_number(input) and is_number(output) ->
-        %{"input" => round(input * 1.0e12), "output" => round(output * 1.0e12)}
-
-      _ ->
-        nil
+    with %Capabilities{prompt_price: input, completion_price: output}
+         when is_number(input) and is_number(output) <-
+           endpoint |> Capabilities.resolved_base_url() |> Capabilities.lookup(model),
+         {:ok, input} <- Money.to_decimal(input),
+         {:ok, output} <- Money.to_decimal(output) do
+      {:per_token, input, output}
+    else
+      _ -> nil
     end
   end
 
-  defp price("manual", endpoint, _model, _input_tokens), do: ManualPrice.get(endpoint)
+  defp price("manual", endpoint, _model, _input_tokens) do
+    case ManualPrice.get(endpoint) do
+      nil -> nil
+      pricing -> {:per_million, pricing}
+    end
+  end
 
   defp price("table", %{provider: provider} = endpoint, model, input_tokens)
        when is_binary(provider) do
-    if Completion.anthropic?(endpoint),
-      do: AnthropicPricing.micro_per_million(model, input_tokens)
+    if Completion.anthropic?(endpoint) do
+      case AnthropicPricing.per_million(model, input_tokens) do
+        nil -> nil
+        pricing -> {:per_million, pricing}
+      end
+    end
   end
 
   defp price(_source, _endpoint, _model, _input_tokens), do: nil

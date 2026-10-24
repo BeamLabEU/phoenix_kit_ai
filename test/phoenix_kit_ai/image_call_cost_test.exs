@@ -23,7 +23,7 @@ defmodule PhoenixKitAI.ImageCallCostTest do
   @png <<0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A>>
   @anthropic "https://api.anthropic.com/v1"
   # $0.60 per 1M input tokens, $2.20 per 1M output tokens.
-  @manual %{"input" => 600_000, "output" => 2_200_000}
+  @manual %{"input" => "0.60", "output" => "2.20"}
   @tokens %{"prompt_tokens" => 1_000, "completion_tokens" => 500, "total_tokens" => 1_500}
 
   setup do
@@ -78,6 +78,9 @@ defmodule PhoenixKitAI.ImageCallCostTest do
     end)
   end
 
+  defp dollars?(%Decimal{} = value, expected), do: Decimal.equal?(value, Decimal.new(expected))
+  defp dollars?(_value, _expected), do: false
+
   defp row(endpoint) do
     TestRepo.one!(from(r in Request, where: r.endpoint_uuid == ^endpoint.uuid))
   end
@@ -89,12 +92,14 @@ defmodule PhoenixKitAI.ImageCallCostTest do
 
       assert {:ok, %{text: "A chair."}} = PhoenixKitAI.describe_image(ep.uuid, @jpeg)
 
-      # 1 000 × 600 000 + 500 × 2 200 000 µ$ per 1M = 1 700 µ$ ($0.0017).
+      # 1 000 × $0.60 + 500 × $2.20 per 1M = $0.0017.
       assert %Request{
                request_type: "vision",
-               cost_cents: 1_700,
+               cost: cost,
                metadata: %{"cost_source" => "manual"}
              } = row(ep)
+
+      assert dollars?(cost, "0.0017")
     end
 
     test "describe_image on Anthropic, from the built-in table" do
@@ -103,8 +108,9 @@ defmodule PhoenixKitAI.ImageCallCostTest do
 
       assert {:ok, _} = PhoenixKitAI.describe_image(ep.uuid, @jpeg)
 
-      # $2 and $10 per 1M: 1 000 in, 500 out = 7 000 µ$.
-      assert %Request{cost_cents: 7_000, metadata: %{"cost_source" => "table"}} = row(ep)
+      # $2 and $10 per 1M: 1 000 in, 500 out = $0.007.
+      assert %Request{cost: cost, metadata: %{"cost_source" => "table"}} = row(ep)
+      assert dollars?(cost, "0.007")
     end
 
     test "the provider's reported cost wins over a manual price" do
@@ -113,7 +119,8 @@ defmodule PhoenixKitAI.ImageCallCostTest do
 
       assert {:ok, _} = PhoenixKitAI.describe_image(ep.uuid, @jpeg)
 
-      assert %Request{cost_cents: 500, metadata: %{"cost_source" => "provider"}} = row(ep)
+      assert %Request{cost: cost, metadata: %{"cost_source" => "provider"}} = row(ep)
+      assert dollars?(cost, "0.0005")
     end
 
     test "an answer without usage, or without tokens, has no cost" do
@@ -123,7 +130,7 @@ defmodule PhoenixKitAI.ImageCallCostTest do
 
         assert {:ok, _} = PhoenixKitAI.describe_image(ep.uuid, @jpeg)
 
-        assert %Request{cost_cents: nil, metadata: metadata} = row(ep)
+        assert %Request{cost: nil, metadata: metadata} = row(ep)
         refute Map.has_key?(metadata, "cost_source")
       end
     end
@@ -140,13 +147,15 @@ defmodule PhoenixKitAI.ImageCallCostTest do
       assert {:ok, _} = PhoenixKitAI.extract_text(ep.uuid, @jpeg)
       assert {:ok, _} = PhoenixKitAI.compare_images(ep.uuid, @jpeg, @jpeg)
 
-      assert [{1_700, "manual"}, {1_700, "manual"}] =
+      assert [{a, "manual"}, {b, "manual"}] =
                TestRepo.all(
                  from(r in Request,
                    where: r.endpoint_uuid == ^ep.uuid,
-                   select: {r.cost_cents, fragment("?->>'cost_source'", r.metadata)}
+                   select: {r.cost, fragment("?->>'cost_source'", r.metadata)}
                  )
                )
+
+      assert dollars?(a, "0.0017") and dollars?(b, "0.0017")
     end
 
     test "a prose answer to a JSON request is priced too" do
@@ -156,7 +165,8 @@ defmodule PhoenixKitAI.ImageCallCostTest do
       assert {:error, {:no_json_in_response, _}} =
                PhoenixKitAI.describe_image(ep.uuid, @jpeg, json: true)
 
-      assert %Request{status: "success", cost_cents: 1_700} = row(ep)
+      assert %Request{status: "success", cost: cost} = row(ep)
+      assert dollars?(cost, "0.0017")
     end
   end
 
@@ -168,7 +178,8 @@ defmodule PhoenixKitAI.ImageCallCostTest do
       assert {:ok, _} = PhoenixKitAI.describe_image(ep.uuid, @jpeg)
 
       # Claude Opus 4.6: $5 and $25 per 1M.
-      assert %Request{cost_cents: 17_500, metadata: %{"cost_source" => "table"}} = row(ep)
+      assert %Request{cost: cost, metadata: %{"cost_source" => "table"}} = row(ep)
+      assert dollars?(cost, "0.0175")
     end
 
     test "else the call's model: override, not the endpoint's" do
@@ -177,7 +188,8 @@ defmodule PhoenixKitAI.ImageCallCostTest do
 
       assert {:ok, _} = PhoenixKitAI.describe_image(ep.uuid, @jpeg, model: "claude-opus-4-6")
 
-      assert %Request{cost_cents: 17_500, metadata: %{"cost_source" => "table"}} = row(ep)
+      assert %Request{cost: cost, metadata: %{"cost_source" => "table"}} = row(ep)
+      assert dollars?(cost, "0.0175")
     end
 
     test "a manual price is its model's: a call sent to another model is not priced by it" do
@@ -186,7 +198,7 @@ defmodule PhoenixKitAI.ImageCallCostTest do
 
       assert {:ok, _} = PhoenixKitAI.describe_image(ep.uuid, @jpeg, model: "glm-4.5v")
 
-      assert %Request{cost_cents: nil} = row(ep)
+      assert %Request{cost: nil} = row(ep)
     end
   end
 
@@ -210,7 +222,7 @@ defmodule PhoenixKitAI.ImageCallCostTest do
 
       assert {:ok, %{images: [_]}} = PhoenixKitAI.generate_image(ep.uuid, "a chair")
 
-      assert %Request{request_type: "image", cost_cents: nil, metadata: metadata} = row(ep)
+      assert %Request{request_type: "image", cost: nil, metadata: metadata} = row(ep)
       refute Map.has_key?(metadata, "cost_source")
     end
   end
@@ -234,7 +246,8 @@ defmodule PhoenixKitAI.ImageCallCostTest do
   describe "the daily budget" do
     test "counts a priced description" do
       ep = manual_endpoint()
-      {:ok, _} = PhoenixKitAI.Budget.set_limit(:endpoint, 1_000)
+      # $0.001: the first description ($0.0017) reaches it
+      {:ok, _} = PhoenixKitAI.Budget.set_limit(:endpoint, "0.001")
       on_exit(fn -> PhoenixKitAI.Budget.set_limit(:endpoint, 0) end)
       stub_answer("A chair.", %{"usage" => @tokens})
 

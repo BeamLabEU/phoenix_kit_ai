@@ -529,8 +529,10 @@ defmodule PhoenixKitAI.ImagesTest do
       assert question =~ "JSON object matching this JSON Schema"
       assert question =~ ~s("brand")
 
-      assert [%{request_type: "vision", cost_cents: 500, input_tokens: 300}] =
+      assert [%{request_type: "vision", cost: cost, input_tokens: 300}] =
                TestRepo.all(from(r in Request, where: r.request_type == "vision"))
+
+      assert Decimal.equal?(cost, Decimal.new("0.0005"))
     end
 
     test "free text needs no response_format; a non-JSON answer to a JSON request is an error" do
@@ -553,13 +555,19 @@ defmodule PhoenixKitAI.ImagesTest do
 
       # Every prose answer was a paid call: it keeps its usage row as a
       # success (the spend caps sum those), and no error row doubles it.
-      assert [{"success", 500}, {"success", 500}, {"success", 500}, {"success", 500}] =
-               TestRepo.all(
-                 from(r in Request,
-                   where: r.request_type == "vision",
-                   select: {r.status, r.cost_cents}
-                 )
-               )
+      rows =
+        TestRepo.all(
+          from(r in Request,
+            where: r.request_type == "vision",
+            select: {r.status, r.cost}
+          )
+        )
+
+      assert length(rows) == 4
+
+      assert Enum.all?(rows, fn {status, cost} ->
+               status == "success" and Decimal.equal?(cost, Decimal.new("0.0005"))
+             end)
     end
 
     test "a model that rejects response_format gets one retry without it" do
@@ -837,8 +845,10 @@ defmodule PhoenixKitAI.ImagesTest do
       # ordering: two paid rows, two zero-cost cached ones, the override on both.
       rows = TestRepo.all(from(r in Request, where: r.request_type == "vision"))
       {fresh, cached} = Enum.split_with(rows, &(&1.metadata["cached"] != true))
-      assert [%{cost_cents: 500}, %{cost_cents: 500}] = fresh
-      assert [%{cost_cents: 0}, %{cost_cents: 0}] = cached
+      assert [%{cost: a}, %{cost: b}] = fresh
+      assert Decimal.equal?(a, Decimal.new("0.0005")) and Decimal.equal?(b, Decimal.new("0.0005"))
+      assert [%{cost: c}, %{cost: d}] = cached
+      assert Decimal.equal?(c, 0) and Decimal.equal?(d, 0)
       assert Enum.count(fresh, &(&1.model == "openai/gpt-4o-mini")) == 1
       assert Enum.count(cached, &(&1.model == "openai/gpt-4o-mini")) == 1
     end
@@ -846,15 +856,16 @@ defmodule PhoenixKitAI.ImagesTest do
     test "a dry run neither spends budget nor touches the cache" do
       stub(image_answer())
       ep = endpoint_fixture()
-      {:ok, _} = PhoenixKitAI.Budget.set_limit(:global, 1)
+      {:ok, _} = PhoenixKitAI.Budget.set_limit(:global, "0.000001")
       on_exit(fn -> PhoenixKitAI.Budget.set_limit(:global, 0) end)
 
+      # $0.000005 spent, past the $0.000001 cap
       TestRepo.insert!(%Request{
         endpoint_uuid: ep.uuid,
         endpoint_name: ep.name,
         model: ep.model,
         request_type: "image",
-        cost_cents: 5,
+        cost: Decimal.new("0.000005"),
         status: "success"
       })
 
@@ -972,16 +983,19 @@ defmodule PhoenixKitAI.ImagesTest do
 
       # A dry run spends nothing, so a spent cap does not refuse it.
       on_exit(fn -> {:ok, _} = PhoenixKitAI.Budget.set_limit(:global, 0) end)
-      {:ok, _} = PhoenixKitAI.Budget.set_limit(:global, 1)
+      {:ok, _} = PhoenixKitAI.Budget.set_limit(:global, "0.000001")
 
+      # $0.00001 spent: the cap is reached (a non-dry call is refused below)
       TestRepo.insert!(%Request{
         endpoint_uuid: ep.uuid,
         endpoint_name: ep.name,
         model: ep.model,
         request_type: "chat",
-        cost_cents: 10,
+        cost: Decimal.new("0.00001"),
         status: "success"
       })
+
+      assert {:error, {:budget_exceeded, :global}} = PhoenixKitAI.Budget.check(ep, [])
 
       assert {:ok,
               %{

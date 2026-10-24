@@ -168,7 +168,7 @@ Repo-local aliases:
   a catch-all `handle_info/2` logs `PhoenixKitAI.Web.MessageShape.describe/1`,
   never `inspect(msg)`; a translation failure is logged and broadcast as
   `TranslateWorker.classify_reason/1`'s pair, never the raw reason.
-- **Costs** are stored in nanodollars.
+- **Money** is US dollars as a `Decimal` everywhere (`PhoenixKitAI.Money`).
 - **Error returns** are atoms or `{atom, detail}` tuples, rendered through
   `PhoenixKitAI.Errors.message/1`.
 - No soft-delete sentinel: endpoints and prompts are hard-deleted.
@@ -201,13 +201,20 @@ Repo-local aliases:
   `phx-mounted` and it bubbles to the container hook, which binds in
   `mounted()` and unbinds in `destroyed()`. A `document.addEventListener` in
   `mounted()` would instead leak one live handler per navigation.
-- The `cost_cents` column holds **nanodollars** (1/1,000,000 of a dollar),
-  not cents — the name is legacy. Reading it as cents is off by seven orders of
-  magnitude. The spend-cap settings use the same unit: `5_000_000` is $5.
+- Money is US dollars as a `Decimal`, stored as it is: a call's `cost`
+  (core's V223, `numeric(28,18)`), the spend caps, task limits and their declared
+  defaults, prices per 1M tokens. Never scale it into integers, and never write
+  it into a JSON map as a number (it reads back as a float): `Money.to_json/1`.
+  An integer where an amount is expected is refused (`Money.amount/1`) — the
+  released versions stored integer millionths of a dollar, and reading one as
+  dollars loosens a cap a million times. A float is refused too. This module
+  needs core's V223 and its own V4: until both have run every call is refused
+  with `:money_migration_required`, `{:budget_unmigrated, scope}` or
+  `{:task_limit_unmigrated, task}`.
 - A chat or embedding row's cost comes from `PhoenixKitAI.CallCost`, the
   first source with a price: the provider's `usage.cost` > the operator's
   catalogue price (OpenRouter `pricing`) > the endpoint's manual price
-  (`provider_settings["pricing"]`, whole µ$ per 1M tokens) > Anthropic's
+  (`provider_settings["pricing"]`, dollars per 1M tokens as decimal strings) > Anthropic's
   built-in rates (`AnthropicPricing`, from BeamLabEU/phoenix_kit_ai#47,
   overridable by `config :phoenix_kit_ai, :anthropic_prices`). The row's
   `metadata.cost_source` says which (`provider` / `catalogue` / `manual` /
@@ -236,6 +243,14 @@ Repo-local aliases:
 - Spend caps read the usage table; concurrent callers overshoot by their
   in-flight calls, and a database error fails open. Treat a cap as a brake
   on a runaway day, not as a hard invoice ceiling.
+- `PhoenixKitAI.Limiter` counts per node: in a cluster each node has its own slots,
+  so a provider sees up to `limit × nodes` concurrent calls. The slot covers the whole
+  call including retries; a retried 429 keeps its slot while it backs off, on purpose.
+- With `request_log_mode: :async`, spend caps read rows that may not be written yet
+  (a few ms behind), and rows still queued when the node is killed are lost. Leave it
+  `:sync` where a cap must hold tightly.
+- `PhoenixKitAI.Cache` drops credentials on core's *system* integrations topic only; a
+  personal connection's change is seen within `credential_cache_ttl`.
 - The request cache is ETS on one node: it empties on restart, is shared
   across users (scope a caller `key:` yourself), and without the module's
   supervisor tree every lookup is a silent miss. Never use it as the store
@@ -265,7 +280,10 @@ Mistral, DeepSeek, OpenAI and xAI also work but are not required.
 lib/phoenix_kit_ai.ex            PhoenixKitAI — Module behaviour + the whole public context
 lib/phoenix_kit_ai/
   endpoint.ex prompt.ex request.ex   Ecto schemas
-  completion.ex                  provider-agnostic HTTP client (chat, embeddings, TTS); image verbs delegate to adapters
+  completion.ex                  provider-agnostic HTTP client (chat, embeddings, TTS) — per-call timeout, retries with backoff; image verbs delegate to adapters
+  limiter.ex                     PhoenixKitAI.Limiter — per-key concurrency slots + FIFO waiting line around provider calls
+  cache.ex                       PhoenixKitAI.Cache — short-lived endpoint + credential lookup cache, dropped on change broadcasts
+  request_log.ex                 PhoenixKitAI.RequestLog — writes usage rows off the caller (request_log_mode: :async)
   provider.ex                    PhoenixKitAI.Provider behaviour + adapter resolution by provider key
   providers/                     adapters: openrouter (unified /images), xai, openai (multipart), openai_compatible (chat parts), http (shared Req door)
   images.ex images/              generic image layer: operations → prompt, option fitting, describe/compare, model-capability cache
@@ -353,9 +371,11 @@ Settings: `ai_enabled` (boolean, default `false`) is the module toggle;
 `ai_legacy_api_key_migration_completed_at` is the idempotency marker for
 `migrate_legacy/0`; `ai_translation_sweep_last_run_<sweep_key>` holds each
 translation sweep's last outcome, written by `PhoenixKitAI.TranslationSweep`.
-Spend caps (`PhoenixKitAI.Budget`): `ai_daily_budget`,
-`ai_daily_budget_per_endpoint`, `ai_daily_budget_per_user` — nanodollars per
-trailing 24 hours, `0` = no cap — plus `ai_daily_calls_per_user` (a count of
+Spend caps (`PhoenixKitAI.Budget`): `ai_daily_cap`,
+`ai_daily_cap_per_endpoint`, `ai_daily_cap_per_user` — dollar strings per
+trailing 24 hours, `0` = no cap (the released `ai_daily_budget*` keys held
+millionths; V4 copies them over and a scope with only its old key refuses
+calls) — plus `ai_daily_calls_per_user` (a count of
 successful calls per user, scope `:user_calls`), and `ai_budget_warn_percent` (default 80),
 read through the settings cache. Every provider-calling verb (not the
 realtime voice session) checks them first and returns
@@ -409,6 +429,14 @@ is now (`PhoenixKitAI.Web.Access`: the session's through core's
 | `:translatables` | `[]` | `[{resource_type, adapter_module}]` a host app registers for the AI-translation pipeline without being a kit module; configured entries win over module-declared ones |
 | `:request_cache` | `[]` | `ttl:` (seconds, default 86 400), `sweep:` (300), `max_entries:` (10 000), `max_value_bytes:` (8 000 000), `default:` (`true` caches every verb unless a call says `cache: false`); read per call by `PhoenixKitAI.RequestCache` |
 | `:task_registry_retry_ms` | `60_000` | How long a task registry built while a module's `ai_tasks/0` failed is kept before the next access builds it again |
+| `:retry` | `false` | Retries for chat / embeddings / TTS calls: `true` (defaults) or `[max_attempts: 3, base_delay: 1_000, max_delay: 30_000, retry_timeouts: false]`; a call's `retry:` wins. Retried: HTTP 408/429/500/502/503/504 (never a 429 about money — an exhausted balance or quota) and transport errors other than a timeout; `Retry-After` honoured up to `max_delay`. Off by default so callers with their own retry/snooze logic (`TranslateWorker`) are unaffected |
+| `:timeout` | `120_000` | Receive/connect timeout (ms) for chat / embeddings / TTS calls; a call's `timeout:` wins |
+| `:concurrency` | `%{}` | Concurrency limits per key, `%{"provider:openrouter" => 8, "endpoint:<name or uuid>" => 2}` — the most specific key wins; a call's `concurrency: [limit:, key:, wait:, notify:]` or `concurrency: false` overrides. See `PhoenixKitAI.Limiter` |
+| `:concurrency_defaults` | `[]` | `wait:` (ms a call waits for a slot, default 30_000) and `max_waiting:` (line length before `:concurrency_queue_full`, default 1_000) |
+| `:endpoint_cache_ttl` / `:credential_cache_ttl` | `300` | Seconds `PhoenixKitAI.Cache` keeps a resolved endpoint / integration credentials; `0` turns that cache off (config/test.exs does). Entries are also dropped on the endpoints broadcast / core's system integrations topic |
+| `:request_log_mode` | `:sync` | `:async` writes usage rows from `PhoenixKitAI.RequestLog` instead of the calling process (same insert, broadcast, telemetry and sinks); `create_request/1` stays synchronous |
+| `:request_log_max_queue` | `10_000` | Async backlog above which callers write synchronously again (no row is dropped) |
+| `:log_cache_hits` | `true` | `false` skips the zero-cost usage row of a cache hit (a call's `log_cache_hit:` wins); the hit telemetry event still fires |
 | `:allow_internal_image_urls` | `false` | Lift the image-fetch host policy (loopback / link-local / RFC 1918 / `.local`, resolved addresses included) — tests and air-gapped installs only; separate from the endpoint base-URL switch |
 
 ### Providers
@@ -485,6 +513,18 @@ provided the API exposes `<base_url>/chat/completions` and `/models`.
 
 ### Completion behaviour
 
+- **Per-call model and fallbacks**: `model:` replaces the endpoint's model for one
+  chat or embedding call — it is the model the guard checks, the cache keys and the
+  usage row names and prices; `models: [...]` is sent to OpenRouter as its
+  model-routing fallback list (the call's model first) and ignored for other
+  providers, and is part of the cache key. A fallback that answered is the row's
+  `metadata.answered_model` (`Request.other_model/2`: a provider prefix on one side,
+  letter case or a dated snapshot of the asked model is the same model).
+- **Usage accounting**: OpenRouter chat calls send `usage: {include: true}` so the
+  response carries `usage.cost` (stored in dollars as it came, so even a
+  $0.00000004 call keeps its cost); other providers don't get it.
+- **Delivery options** — `retry:`, `timeout:`, `concurrency:`, `log_cache_hit:` — change
+  how a call is made, not what is asked, so they are dropped from the cache key.
 - **Endpoints by name**: `get_endpoint_by_name/1` / `resolve_endpoint_by_name/1`
   let an app name an endpoint ("Label reader") instead of carrying its uuid;
   case-insensitive, surrounding spaces ignored on both sides.
@@ -678,7 +718,7 @@ Test database `phoenix_kit_ai_test`.
   module declares is logged once and the call goes on. This module
   declares `ai.translation` and `ai.playground`.
 - Task limits (`PhoenixKitAI.TaskLimits`): scope `:task` (every call of
-  the task) and `:user` (one user in it) × money (micro-dollars) / requests
+  the task) and `:user` (one user in it) × money (dollars) / requests
   / tokens × calendar day / month in the site time zone. In force, cell by
   cell: the user's personal limit, else the task's default for users, else
   the declaration's `default_limits`; the task's own, else the
@@ -895,8 +935,9 @@ folder with no `FOLLOW_UP.md` means "not triaged yet"; a stub file is what
   (today concurrent calls can overshoot); a nullable external-subject
   column on the requests table in core so anonymous visitors can be
   capped per identity (today `user_uuid` is a foreign key); per-source /
-  per-user rate and concurrency limits
-  (spend caps are too coarse against a scrape); one `%Result{}` struct
+  per-user *rate* limits (per-key concurrency exists: `PhoenixKitAI.Limiter`;
+  spend caps are too coarse against a scrape); retries and the limiter for the
+  image adapters (`Providers.HTTP` — today they cover chat, embeddings and TTS only); one `%Result{}` struct
   across verbs instead of provider-shaped maps; streaming chat/TTS with
   cancellation and an async (Oban) mode for slow verbs; provider-neutral
   tool calling; pre- and post-dispatch policy hooks for tenancy and

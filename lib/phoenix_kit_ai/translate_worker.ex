@@ -481,6 +481,8 @@ defmodule PhoenixKitAI.TranslateWorker do
     do: "task_limit_exceeded"
 
   defp classify_ai_detail({:budget_exceeded, _scope}), do: "budget_exceeded"
+  defp classify_ai_detail({:budget_unmigrated, _scope}), do: "budget_unmigrated"
+  defp classify_ai_detail({:task_limit_unmigrated, _task}), do: "task_limit_unmigrated"
   defp classify_ai_detail({:model_unfit, _missing}), do: "model_unfit"
   defp classify_ai_detail({:model_unverified, _unclear}), do: "model_unverified"
   defp classify_ai_detail(detail) when is_atom(detail), do: Atom.to_string(detail)
@@ -518,6 +520,9 @@ defmodule PhoenixKitAI.TranslateWorker do
   # a timeout is transient, so retry rather than discard.
   def retryable?({:ai_error, :timeout}), do: true
   def retryable?({:ai_error, :rate_limited}), do: true
+  # `PhoenixKitAI.Limiter`: too many calls in flight here, not a bad request.
+  def retryable?({:ai_error, :concurrency_limit_timeout}), do: true
+  def retryable?({:ai_error, :concurrency_queue_full}), do: true
   def retryable?({:ai_error, {:connection_error, _}}), do: true
   def retryable?({:ai_error, {:exit, _}}), do: true
 

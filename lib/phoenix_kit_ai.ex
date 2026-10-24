@@ -128,6 +128,7 @@ defmodule PhoenixKitAI do
   alias PhoenixKitAI.GuardEvents
   alias PhoenixKitAI.Images.{ImageModel, ImageModels, Operations}
   alias PhoenixKitAI.ManualPrice
+  alias PhoenixKitAI.Money
   alias PhoenixKitAI.ProviderError
   alias PhoenixKitAI.Request
   alias PhoenixKitAI.TaskLimits
@@ -693,6 +694,8 @@ defmodule PhoenixKitAI do
       from(e in Endpoint, where: e.uuid in ^uuids)
       |> repo().update_all(set: set_clause)
 
+    # `update_all` passes `update_endpoint/3` by, and with it the lookup cache.
+    Enum.each(uuids, &PhoenixKitAI.Cache.invalidate_endpoint/1)
     count
   rescue
     _ -> 0
@@ -858,6 +861,7 @@ defmodule PhoenixKitAI do
           set: [integration_uuid: integration_uuid, updated_at: DateTime.utc_now()]
         )
 
+      PhoenixKitAI.Cache.invalidate_endpoint(endpoint_uuid)
       if count > 0, do: :ok, else: :no_op
     end
   rescue
@@ -1181,7 +1185,10 @@ defmodule PhoenixKitAI do
       {DynamicSupervisor, name: PhoenixKitAI.Realtime.Supervisor, strategy: :one_for_one},
       PhoenixKitAI.RequestCache,
       PhoenixKitAI.Capabilities,
-      PhoenixKitAI.GuardWatch
+      PhoenixKitAI.GuardWatch,
+      PhoenixKitAI.Cache,
+      PhoenixKitAI.Limiter,
+      PhoenixKitAI.RequestLog
     ]
   end
 
@@ -1313,7 +1320,10 @@ defmodule PhoenixKitAI do
       from(r in Request,
         where: not is_nil(r.endpoint_uuid),
         group_by: r.endpoint_uuid,
-        select: %{endpoint_uuid: r.endpoint_uuid, total: coalesce(sum(r.cost_cents), 0)}
+        select: %{
+          endpoint_uuid: r.endpoint_uuid,
+          total: coalesce(sum(r.cost), 0)
+        }
       )
 
     from(e in query,
@@ -1352,7 +1362,8 @@ defmodule PhoenixKitAI do
   @doc """
   Returns usage statistics for each endpoint.
 
-  Returns a map of endpoint_uuid => %{request_count, total_tokens, total_cost, last_used_at}
+  Returns a map of endpoint_uuid => %{request_count, total_tokens, total_cost,
+  last_used_at}; `total_cost` is US dollars, a `Decimal`.
   """
   @spec get_endpoint_usage_stats() :: %{optional(String.t()) => map()}
   def get_endpoint_usage_stats do
@@ -1365,7 +1376,7 @@ defmodule PhoenixKitAI do
           %{
             request_count: count(),
             total_tokens: coalesce(sum(r.total_tokens), 0),
-            total_cost: coalesce(sum(r.cost_cents), 0),
+            total_cost: coalesce(sum(r.cost), 0),
             last_used_at: max(r.inserted_at)
           }
         }
@@ -1465,10 +1476,15 @@ defmodule PhoenixKitAI do
           {:ok, Endpoint.t()}
           | {:error, :endpoint_not_found | :invalid_endpoint_identifier}
   def resolve_endpoint(id) when is_binary(id) do
-    case get_endpoint(id) do
-      nil -> {:error, :endpoint_not_found}
-      endpoint -> {:ok, endpoint}
-    end
+    # Cached briefly (PhoenixKitAI.Cache): every verb resolves its endpoint, and
+    # update_endpoint/delete_endpoint + the endpoints broadcast drop the entry.
+    # Keyed on the lowercase uuid, the form those invalidations name.
+    PhoenixKitAI.Cache.endpoint(String.downcase(id), fn ->
+      case get_endpoint(id) do
+        nil -> {:error, :endpoint_not_found}
+        endpoint -> {:ok, endpoint}
+      end
+    end)
   end
 
   def resolve_endpoint(%Endpoint{} = endpoint), do: {:ok, endpoint}
@@ -1561,6 +1577,7 @@ defmodule PhoenixKitAI do
     # `log: false`: the query log would print the api key.
     changeset
     |> repo().update(log: false)
+    |> tap(fn _ -> PhoenixKitAI.Cache.invalidate_endpoint(endpoint.uuid) end)
     |> broadcast_endpoint_change(:endpoint_updated)
     |> maybe_log_endpoint_update(has_changes, opts)
     |> maybe_log_endpoint_toggle(was_enabled, opts)
@@ -1616,10 +1633,10 @@ defmodule PhoenixKitAI do
   defp log_capabilities_declaration(result, _before, _opts), do: result
 
   # A manual price (`PhoenixKitAI.ManualPrice`) set, changed or removed is
-  # logged with the price before and after, in micro-dollars per 1M tokens.
+  # logged with the price before and after, dollar strings per 1M tokens.
   defp log_pricing_change({:ok, endpoint} = result, before, opts) do
-    old = ManualPrice.get(before) || %{}
-    new = ManualPrice.get(endpoint) || %{}
+    old = before |> ManualPrice.get() |> price_strings()
+    new = endpoint |> ManualPrice.get() |> price_strings()
 
     if old != new do
       log_activity("endpoint.pricing_changed", "endpoint", endpoint.uuid, opts, %{
@@ -1636,6 +1653,11 @@ defmodule PhoenixKitAI do
   end
 
   defp log_pricing_change(result, _before, _opts), do: result
+
+  defp price_strings(nil), do: %{}
+
+  defp price_strings(pricing),
+    do: Map.new(pricing, fn {half, dollars} -> {half, Money.to_json(dollars)} end)
 
   # While only verified models may be used (`Guard.verified_only?/0`), what
   # an admin declares an endpoint's model can do decides which calls go
@@ -1683,7 +1705,21 @@ defmodule PhoenixKitAI do
     end
   end
 
-  defp stored_pricing(%{"pricing" => %{} = pricing}), do: pricing
+  # The halves in one spelling ("0.6" and "0.60" are the same price), so a
+  # re-save of the same price is not a change.
+  defp stored_pricing(%{"pricing" => %{} = pricing}) do
+    Map.new(pricing, fn
+      {half, value} when half in ["input", "output"] ->
+        case Money.to_decimal(value) do
+          {:ok, dollars} when is_binary(value) -> {half, Money.to_json(dollars)}
+          _ -> {half, value}
+        end
+
+      other ->
+        other
+    end)
+  end
+
   defp stored_pricing(_settings), do: nil
 
   defp capabilities_declaration(%Endpoint{provider_settings: %{"capabilities" => declaration}})
@@ -1700,6 +1736,7 @@ defmodule PhoenixKitAI do
           {:ok, Endpoint.t()} | {:error, Ecto.Changeset.t()}
   def delete_endpoint(%Endpoint{} = endpoint, opts \\ []) do
     repo().delete(endpoint)
+    |> tap(fn _ -> PhoenixKitAI.Cache.invalidate_endpoint(endpoint.uuid) end)
     |> broadcast_endpoint_change(:endpoint_deleted)
     |> log_endpoint_activity("endpoint.deleted", opts)
     |> log_failed_endpoint_mutation("endpoint.deleted", opts)
@@ -2496,7 +2533,7 @@ defmodule PhoenixKitAI do
               :model,
               :total_tokens,
               :latency_ms,
-              :cost_cents,
+              :cost,
               :status,
               :endpoint_name
             ] do
@@ -2611,6 +2648,32 @@ defmodule PhoenixKitAI do
     _ -> :ok
   end
 
+  @doc false
+  # The usage loggers' entry point: writes the row now, or hands it to
+  # `PhoenixKitAI.RequestLog` when `request_log_mode: :async` (default `:sync`).
+  # A queued row gets its uuid here, so the answer can name it
+  # (`request_uuid`) before it is written; the struct handed back carries
+  # only that uuid. `create_request/1` itself stays synchronous — it is
+  # public and returns the row.
+  @spec log_usage(map()) :: {:ok, Request.t()} | {:error, term()}
+  def log_usage(attrs) do
+    # A row that would not insert is written now instead, where
+    # `create_request/1` logs why and the answer names no row.
+    if PhoenixKitAI.RequestLog.async?() and Request.changeset(%Request{}, attrs).valid? do
+      uuid = UUIDv7.generate()
+      :ok = PhoenixKitAI.RequestLog.enqueue({uuid, attrs})
+      {:ok, %Request{uuid: uuid}}
+    else
+      create_request(attrs)
+    end
+  end
+
+  @doc false
+  # Used by `PhoenixKitAI.RequestLog` to write a queued row under the uuid
+  # `log_usage/1` gave it.
+  @spec write_request(Ecto.UUID.t(), map()) :: {:ok, Request.t()} | {:error, term()}
+  def write_request(uuid, attrs), do: do_create_request(attrs, uuid)
+
   @doc """
   Creates a new AI request record.
 
@@ -2631,10 +2694,12 @@ defmodule PhoenixKitAI do
   Any other validation failure still returns `{:error, changeset}`.
   """
   @spec create_request(map()) :: {:ok, Request.t()} | {:error, term()}
-  def create_request(attrs) do
+  def create_request(attrs), do: do_create_request(attrs, nil)
+
+  defp do_create_request(attrs, uuid) do
     result =
       attrs
-      |> insert_request([])
+      |> insert_request(uuid, [])
       |> broadcast_request_change(:request_created)
 
     case result do
@@ -2664,12 +2729,12 @@ defmodule PhoenixKitAI do
   # dangling references reports one per attempt: retry, dropping what has been
   # refused so far, until the insert succeeds or fails for another reason. At
   # most one retry per reference.
-  defp insert_request(attrs, dropped) do
-    case attrs |> without_refs(dropped) |> insert_row() do
+  defp insert_request(attrs, uuid, dropped) do
+    case attrs |> without_refs(dropped) |> insert_row(uuid) do
       {:error, %Ecto.Changeset{} = changeset} = error ->
         case unresolved_refs(changeset) -- dropped do
           [] -> error
-          fields -> insert_request(attrs, dropped ++ fields)
+          fields -> insert_request(attrs, uuid, dropped ++ fields)
         end
 
       {:ok, _} = ok when dropped != [] ->
@@ -2690,10 +2755,10 @@ defmodule PhoenixKitAI do
   # with `in_failed_sql_transaction`. A savepoint confines the failure to this
   # statement. Outside a transaction there is nothing to protect.
   # `log: false`: the query log would print the captured messages and reply.
-  defp insert_row(attrs) do
+  defp insert_row(attrs, uuid) do
     opts = if repo().in_transaction?(), do: [mode: :savepoint, log: false], else: [log: false]
 
-    %Request{}
+    %Request{uuid: uuid}
     |> Request.changeset(attrs)
     |> repo().insert(opts)
   end
@@ -2743,7 +2808,8 @@ defmodule PhoenixKitAI do
       %{
         input_tokens: request.input_tokens || 0,
         output_tokens: request.output_tokens || 0,
-        cost_cents: request.cost_cents || 0,
+        # dollars; a measurement must be a number, so a float here only
+        cost: if(request.cost, do: Decimal.to_float(request.cost), else: 0.0),
         latency_ms: request.latency_ms || 0
       },
       %{
@@ -2992,7 +3058,7 @@ defmodule PhoenixKitAI do
     RequestCache.fetch(key, opts, fun, %{
       verb: verb,
       endpoint_uuid: endpoint.uuid,
-      on_hit: cached_row(endpoint, verb, model, row)
+      on_hit: cached_row(endpoint, verb, model, row, log_cache_hit?(opts))
     })
   end
 
@@ -3021,6 +3087,18 @@ defmodule PhoenixKitAI do
 
   defp put_request_uuid(result, _key, _logged), do: result
 
+  # `log_cache_hit: false` on the call, or `config :phoenix_kit_ai, log_cache_hits: false`,
+  # skips the zero-cost row of a hit — for hot paths (search queries) where a write per
+  # hit costs more than the report is worth. The telemetry hit event still fires.
+  # Unlogged hits are not counted anywhere a row is counted (`ai_daily_calls_per_user`,
+  # a task's request limit).
+  defp log_cache_hit?(opts) do
+    case Keyword.get(opts, :log_cache_hit) do
+      nil -> Application.get_env(:phoenix_kit_ai, :log_cache_hits, true) != false
+      value -> value != false
+    end
+  end
+
   # A cache hit is still a logical request the host made: a zero-cost row
   # marked cached, with the same attribution, prompt link and task as a
   # fresh one, keeps reports truthful without pretending a provider was
@@ -3028,7 +3106,16 @@ defmodule PhoenixKitAI do
   # answer was first logged under — and names no row (`nil`) when this one
   # could not be written, since the stored uuid is another call's, perhaps
   # another user's.
-  defp cached_row(endpoint, verb, model, row) do
+  #
+  # With `log_cache_hit?/1` false no row is written, and the answer names no
+  # row either.
+  defp cached_row(_endpoint, verb, _model, _row, false) do
+    fn value ->
+      {:replace, if(is_map(value), do: Map.put(value, request_uuid_key(verb), nil), else: value)}
+    end
+  end
+
+  defp cached_row(endpoint, verb, model, row, true) do
     prompt_info = row[:prompt_info] || %{}
 
     fn value ->
@@ -3040,7 +3127,7 @@ defmodule PhoenixKitAI do
         |> Map.merge(row[:guard] || %{})
 
       logged =
-        safe_create_request(%{
+        safe_log_usage(%{
           endpoint_uuid: endpoint.uuid,
           endpoint_name: endpoint.name,
           prompt_uuid: prompt_info[:prompt_uuid],
@@ -3050,7 +3137,7 @@ defmodule PhoenixKitAI do
           input_tokens: 0,
           output_tokens: 0,
           total_tokens: 0,
-          cost_cents: 0,
+          cost: Decimal.new(0),
           latency_ms: 0,
           status: "success",
           user_uuid: row.caller_context[:user_uuid],
@@ -3069,8 +3156,8 @@ defmodule PhoenixKitAI do
 
   # A hit's row must never fail the hit: a database error is logged and
   # read as "no row".
-  defp safe_create_request(attrs) do
-    create_request(attrs)
+  defp safe_log_usage(attrs) do
+    log_usage(attrs)
   rescue
     error ->
       Logger.warning(
@@ -3220,7 +3307,9 @@ defmodule PhoenixKitAI do
 
     total_requests = repo().aggregate(base_query, :count)
     total_tokens = repo().aggregate(base_query, :sum, :total_tokens) || 0
-    total_cost = repo().aggregate(base_query, :sum, :cost_cents) || 0
+    # dollars, a Decimal (the sum of a numeric column)
+    total_cost = repo().one(from(r in base_query, select: coalesce(sum(r.cost), 0)))
+
     avg_latency = repo().aggregate(base_query, :avg, :latency_ms)
 
     success_query = where(base_query, [r], r.status == "success")
@@ -3236,7 +3325,7 @@ defmodule PhoenixKitAI do
     %{
       total_requests: total_requests,
       total_tokens: total_tokens,
-      total_cost_cents: total_cost,
+      total_cost: total_cost,
       success_count: success_count,
       error_count: total_requests - success_count,
       success_rate: success_rate,
@@ -3343,6 +3432,28 @@ defmodule PhoenixKitAI do
   - `:capture_request_content` - `false` keeps this call's content out of its
     usage row. It only narrows: `true` does not override a global
     `config :phoenix_kit_ai, capture_request_content: false`.
+  - `:model` - send this model instead of the endpoint's. It is the model the
+    guard checks, the cache keys and the usage row names and prices.
+  - `:models` - OpenRouter only: fallback models tried in order when the
+    first is down, rate-limited or refuses (OpenRouter's model routing); the
+    model that answered is recorded as the row's `answered_model`. Each is
+    checked by the guard like `:model`; one that does not fit refuses the call.
+
+  ## Delivery options
+
+  How the call is made, never part of the request cache key (also on
+  `embed/3` and `speak/3`):
+
+  - `:timeout` - receive/connect timeout in ms (default the app env
+    `:timeout`, else 120 000).
+  - `:retry` - `true` or `[max_attempts:, base_delay:, max_delay:,
+    retry_timeouts:]` retries HTTP 408, 429 (not one about money: an
+    exhausted balance or quota), 500, 502, 503, 504 and transport errors with
+    exponential backoff, honouring `Retry-After` up to `max_delay`. Off unless asked for (or
+    set in the app env `:retry`).
+  - `:concurrency` - `[limit:, key:, wait:, max_waiting:, notify:]` or
+    `false`; see `PhoenixKitAI.Limiter`.
+  - `:log_cache_hit` - `false` writes no usage row for a cache hit.
 
   ## Examples
 
@@ -3391,9 +3502,14 @@ defmodule PhoenixKitAI do
   @spec complete(String.t() | Endpoint.t(), list(map()), keyword()) ::
           {:ok, map()} | {:error, term()}
   def complete(endpoint_uuid, messages, opts \\ []) do
+    opts = call_model_opts(opts)
+
     with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
+         opts = fallbacks_for(endpoint, opts),
          {:ok, admission} <-
            authorize(endpoint, opts, :complete, Guard.implied_needs(:complete, opts, messages)) do
+      # A call's `model:` is the model sent, checked, cached and logged.
+      endpoint = with_call_model(endpoint, opts)
       # Capture caller info (source + stacktrace + context)
       {auto_source, stacktrace, caller_context} = capture_caller_info()
       # Allow manual override of source, but all debug info is always captured
@@ -3503,7 +3619,12 @@ defmodule PhoenixKitAI do
       :unbound_placeholders,
       :verify,
       :task,
-      :guard_admission
+      :guard_admission,
+      # delivery options: how the call is made, not what is asked
+      :retry,
+      :timeout,
+      :concurrency,
+      :log_cache_hit
     ])
     |> Enum.sort()
   end
@@ -3626,8 +3747,13 @@ defmodule PhoenixKitAI do
   @spec embed(String.t() | Endpoint.t(), String.t() | list(String.t()), keyword()) ::
           {:ok, map()} | {:error, term()}
   def embed(endpoint_uuid, input, opts \\ []) do
+    # `models:` is an OpenRouter chat option; an embedding never sends it
+    opts = opts |> call_model_opts() |> Keyword.delete(:models)
+
     with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
          {:ok, admission} <- authorize(endpoint, opts, :embed, []) do
+      # A call's `model:` is the model sent, checked, cached and logged.
+      endpoint = with_call_model(endpoint, opts)
       # Capture caller info (source + stacktrace + context)
       {auto_source, stacktrace, caller_context} = capture_caller_info()
       # Allow manual override of source, but all debug info is always captured
@@ -4290,7 +4416,7 @@ defmodule PhoenixKitAI do
       |> maybe_add_content(:response, capture_content, fn -> result[:text] end)
       |> Map.merge(cost_metadata)
 
-    create_request(%{
+    log_usage(%{
       endpoint_uuid: endpoint.uuid,
       endpoint_name: endpoint.name,
       model: result[:model] || trace[:model] || endpoint.model,
@@ -4298,7 +4424,7 @@ defmodule PhoenixKitAI do
       input_tokens: usage[:prompt_tokens] || 0,
       output_tokens: usage[:completion_tokens] || 0,
       total_tokens: usage[:total_tokens] || 0,
-      cost_cents: cost,
+      cost: cost,
       latency_ms: result[:latency_ms],
       status: "success",
       user_uuid: trace[:user_uuid],
@@ -4316,13 +4442,14 @@ defmodule PhoenixKitAI do
     CallCost.for_call(
       %{endpoint | model: trace[:model] || endpoint.model},
       result[:model],
-      usage[:cost_cents],
+      usage[:cost],
       usage[:prompt_tokens],
       usage[:completion_tokens]
     )
   end
 
-  defp image_op_cost(_type, _endpoint, _result, usage, _trace), do: {usage[:cost_cents], %{}}
+  defp image_op_cost(_type, _endpoint, _result, usage, _trace),
+    do: {Money.round_cost(usage[:cost]), %{}}
 
   defp log_failed_image_op_request(endpoint, type, prompt, images, reason, trace) do
     capture_content = capture_request_content?(trace[:capture])
@@ -4356,7 +4483,7 @@ defmodule PhoenixKitAI do
       metadata: base_metadata |> maybe_add_content(:input, capture_content, fn -> prompt end)
     }
     |> with_provider_error()
-    |> create_request()
+    |> log_usage()
   end
 
   # `[:phoenix_kit_ai, :image, :request]` — one event per provider call the
@@ -4436,6 +4563,8 @@ defmodule PhoenixKitAI do
 
   # The verbs that send a call's `model:` instead of the endpoint's model.
   @model_override_verbs [
+    :complete,
+    :embed,
     :describe_image,
     :extract_text,
     :compare_images,
@@ -4443,6 +4572,57 @@ defmodule PhoenixKitAI do
     :edit_image,
     :process_image
   ]
+
+  # A `model:` that names no model (empty, not a string) is no override, and
+  # `models:` keeps only names: either would otherwise reach the provider
+  # while the guard, the cache and the row went by another model.
+  defp call_model_opts(opts) do
+    opts =
+      case opts[:model] do
+        model when is_binary(model) and model != "" -> opts
+        _ -> Keyword.delete(opts, :model)
+      end
+
+    case opts[:models] do
+      models when is_list(models) ->
+        Keyword.put(opts, :models, Enum.filter(models, &(is_binary(&1) and &1 != "")))
+
+      _ ->
+        Keyword.delete(opts, :models)
+    end
+  end
+
+  # `models:` is OpenRouter's model routing; no other provider is sent it, so
+  # elsewhere it is dropped before the guard checks it or the cache keys on it.
+  defp fallbacks_for(endpoint, opts) do
+    if Endpoint.openrouter?(endpoint), do: opts, else: Keyword.delete(opts, :models)
+  end
+
+  # Every OpenRouter fallback in `models:` may answer the call, so each is
+  # checked as the call's own model is; the first that does not fit refuses
+  # the call.
+  defp check_fallbacks(endpoint, opts, task, implied) do
+    sent = opts[:model] || endpoint.model
+
+    (opts[:models] || [])
+    |> Enum.reject(&(&1 == sent))
+    |> Enum.find_value(:ok, fn model ->
+      case Guard.check(endpoint, Keyword.put(opts, :model, model), task, implied) do
+        {:ok, _admission} -> nil
+        {:error, _reason} = refused -> refused
+      end
+    end)
+  end
+
+  # Chat and embeddings send a call's `model:` instead of the endpoint's; the
+  # endpoint then stands for that model everywhere after the guard (the
+  # request body's provider rules, the cache key, the usage row, the price).
+  defp with_call_model(endpoint, opts) do
+    case opts[:model] do
+      model when is_binary(model) and model != "" -> %{endpoint | model: model}
+      _ -> endpoint
+    end
+  end
 
   defp sent_model(endpoint, opts, verb) do
     if verb in @model_override_verbs, do: opts[:model] || endpoint.model, else: endpoint.model
@@ -4472,7 +4652,8 @@ defmodule PhoenixKitAI do
   defp authorize(endpoint, opts, verb, implied, spends? \\ true) do
     with {:ok, endpoint} <- validate_endpoint(endpoint) do
       # The model checked (and named on a refusal row) is the one the verb
-      # sends: chat, embeddings and speech always send the endpoint's.
+      # sends: speech always sends the endpoint's; chat, embeddings and the
+      # image verbs send a call's `model:` when it names one.
       opts = if verb in @model_override_verbs, do: opts, else: Keyword.delete(opts, :model)
 
       case admit(endpoint, opts, implied, spends?) do
@@ -4485,12 +4666,24 @@ defmodule PhoenixKitAI do
   defp admit(endpoint, opts, implied, spends?) do
     task = Tasks.for_call(opts[:task])
 
-    with :ok <- if(spends?, do: blocks(task, opts), else: :ok),
+    with :ok <- money_ready(endpoint),
+         :ok <- if(spends?, do: blocks(task, opts), else: :ok),
          {:ok, admission} <- Guard.check(endpoint, opts, task, implied),
+         :ok <- check_fallbacks(endpoint, opts, task, implied),
          :ok <- if(spends?, do: task_limits(task, opts), else: :ok),
          :ok <- if(spends?, do: budget(endpoint, opts), else: :ok) do
       {:ok, admission}
     end
+  end
+
+  # Money is dollars from core's V223 and this module's V4 on: before both
+  # have run (the `cost` column missing, or an endpoint's manual price still
+  # in millionths), no call is made — a cap or a price read in the wrong unit
+  # would be off by a million.
+  defp money_ready(endpoint) do
+    if Money.ready?() and not ManualPrice.legacy?(endpoint),
+      do: :ok,
+      else: {:error, :money_migration_required}
   end
 
   defp blocks(nil, _opts), do: :ok
@@ -4534,7 +4727,7 @@ defmodule PhoenixKitAI do
       |> Map.merge(Guard.task_metadata(opts))
       |> maybe_put_attribution(normalize_attribution(opts[:attribution]))
 
-    create_request(%{
+    log_usage(%{
       endpoint_uuid: endpoint.uuid,
       endpoint_name: endpoint.name,
       prompt_uuid: opts[:prompt_uuid],
@@ -4621,7 +4814,7 @@ defmodule PhoenixKitAI do
   defp lookup_credentials(""), do: {:error, :not_configured}
 
   defp lookup_credentials(key) when is_binary(key) do
-    PhoenixKit.Integrations.get_credentials(key)
+    PhoenixKitAI.Cache.credentials(key, fn -> PhoenixKit.Integrations.get_credentials(key) end)
   end
 
   defp merge_endpoint_opts(endpoint, opts) do
@@ -4833,7 +5026,7 @@ defmodule PhoenixKitAI do
     # model the answer names (`CallCost`).
     {cost, cost_metadata} = call_cost(endpoint, response, usage, usage.completion_tokens)
 
-    create_request(%{
+    log_usage(%{
       endpoint_uuid: endpoint.uuid,
       endpoint_name: endpoint.name,
       prompt_uuid: prompt_info[:prompt_uuid],
@@ -4843,7 +5036,7 @@ defmodule PhoenixKitAI do
       input_tokens: usage.prompt_tokens,
       output_tokens: usage.completion_tokens,
       total_tokens: usage.total_tokens,
-      cost_cents: cost,
+      cost: cost,
       latency_ms: response["latency_ms"],
       status: "success",
       user_uuid: caller_context[:user_uuid],
@@ -4897,7 +5090,7 @@ defmodule PhoenixKitAI do
       metadata: metadata
     }
     |> with_provider_error()
-    |> create_request()
+    |> log_usage()
   end
 
   # What the provider said on the call that just failed
@@ -4971,14 +5164,14 @@ defmodule PhoenixKitAI do
 
     {cost, cost_metadata} = call_cost(endpoint, response, usage, 0)
 
-    create_request(%{
+    log_usage(%{
       endpoint_uuid: endpoint.uuid,
       endpoint_name: endpoint.name,
       model: endpoint.model,
       request_type: "embedding",
       input_tokens: usage.prompt_tokens,
       total_tokens: usage.total_tokens,
-      cost_cents: cost,
+      cost: cost,
       latency_ms: response["latency_ms"],
       status: "success",
       user_uuid: caller_context[:user_uuid],
@@ -5004,7 +5197,7 @@ defmodule PhoenixKitAI do
     CallCost.for_call(
       endpoint,
       response["model"],
-      usage.cost_cents,
+      usage.cost,
       usage.prompt_tokens,
       output_tokens
     )
@@ -5034,12 +5227,12 @@ defmodule PhoenixKitAI do
         )
     }
     |> with_provider_error()
-    |> create_request()
+    |> log_usage()
   end
 
   # TTS responses carry no token usage — billing is per-character (or per-token with
   # no usage object to read back, for OpenAI) — so input_tokens/output_tokens/
-  # total_tokens stay unset, same as before. cost_cents is now estimated from a
+  # total_tokens stay unset, same as before. cost is now estimated from a
   # hand-maintained rate table (see TtsPricing) instead of staying unset, since no
   # TTS provider self-reports cost the way OpenRouter's chat completions do. The input
   # text is gated by `capture_request_content?/0` like chat/embedding.
@@ -5059,7 +5252,7 @@ defmodule PhoenixKitAI do
       caller_context: caller_context
     }
 
-    create_request(%{
+    log_usage(%{
       endpoint_uuid: endpoint.uuid,
       endpoint_name: endpoint.name,
       model: endpoint.model,
@@ -5067,7 +5260,7 @@ defmodule PhoenixKitAI do
       latency_ms: result[:latency_ms],
       status: "success",
       user_uuid: caller_context[:user_uuid],
-      cost_cents: TtsPricing.cost_nanodollars(endpoint.provider, input_chars, audio_bytes),
+      cost: TtsPricing.cost(endpoint.provider, input_chars, audio_bytes),
       metadata:
         base_metadata
         |> Map.merge(guard)
@@ -5141,6 +5334,6 @@ defmodule PhoenixKitAI do
         |> maybe_add_content(:input, capture_content, fn -> text end)
     }
     |> with_provider_error()
-    |> create_request()
+    |> log_usage()
   end
 end

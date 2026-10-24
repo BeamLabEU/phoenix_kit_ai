@@ -33,7 +33,7 @@ defmodule PhoenixKitAI.Web.Endpoints do
 
   @usage_refresh_ms 500
 
-  @valid_usage_sort_fields ~w(inserted_at endpoint_name model total_tokens latency_ms cost_cents status)
+  @valid_usage_sort_fields ~w(inserted_at endpoint_name model total_tokens latency_ms cost status)
 
   # Static field list (atoms only) — used for compile-time validation
   # of incoming `?sort=…` params. Labels live in `sort_options/0` below

@@ -465,9 +465,15 @@ defmodule PhoenixKitAI.Web.Tasks do
     for user_uuid <-
           spec.key |> GuardEvents.reached_users() |> Enum.map(& &1.user_uuid) |> Enum.uniq(),
         status <- TaskLimits.statuses(spec, user_uuid),
-        status.scope == :user and status.used >= status.limit,
+        status.scope == :user and reached?(status),
         do: Map.put(status, :user_uuid, user_uuid)
   end
+
+  defp reached?(%{used: %Decimal{} = used, limit: %Decimal{} = limit}),
+    do: Decimal.compare(used, limit) != :lt
+
+  defp reached?(%{used: used, limit: limit}) when is_integer(limit), do: used >= limit
+  defp reached?(_status), do: false
 
   defp load_guard(socket) do
     watchers = GuardEvents.configured_watchers()
@@ -501,7 +507,7 @@ defmodule PhoenixKitAI.Web.Tasks do
     end
   end
 
-  # The limits of a submitted form: money in dollars (to micro-dollars),
+  # The limits of a submitted form: money in dollars (a `Decimal`),
   # requests and tokens whole numbers; a blank field is no limit.
   defp form_limits(params) when is_map(params) do
     if Enum.all?(params, fn {scope, units} ->
@@ -556,7 +562,7 @@ defmodule PhoenixKitAI.Web.Tasks do
   # allows nothing.
   defp amount("money", value) when is_binary(value) do
     case Money.parse_dollars(value) do
-      {:ok, micro} -> micro
+      {:ok, dollars} -> dollars
       :error -> :error
     end
   end
@@ -1292,7 +1298,9 @@ defmodule PhoenixKitAI.Web.Tasks do
 
   # Money in dollars, the rest as it is; nil for no limit.
   defp display_amount(_unit, nil), do: nil
-  defp display_amount(:money, micro), do: GuardEvents.format_usd(micro)
+  # a money limit still in millionths (`TaskLimits.normalize/1`) shows as none
+  defp display_amount(:money, :unmigrated), do: nil
+  defp display_amount(:money, dollars), do: GuardEvents.format_usd(dollars)
   defp display_amount(_unit, amount), do: Integer.to_string(amount)
 
   defp limits_summary(limits) do

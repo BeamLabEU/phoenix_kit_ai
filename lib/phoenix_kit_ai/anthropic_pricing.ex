@@ -87,19 +87,19 @@ defmodule PhoenixKitAI.AnthropicPricing do
   def cost(_model, _prompt_tokens, _completion_tokens), do: nil
 
   @doc """
-  The rate for a call of `prompt_tokens` input tokens as whole micro-dollars
-  per 1M tokens (`%{"input" => µ$, "output" => µ$}`, the shape of a manual
+  The rate for a call of `prompt_tokens` input tokens in US dollars per 1M
+  tokens (`%{"input" => Decimal, "output" => Decimal}`, the shape of a manual
   price), or `nil` when the model has no price here.
   """
-  @spec micro_per_million(String.t() | nil, non_neg_integer()) ::
-          %{String.t() => non_neg_integer()} | nil
-  def micro_per_million(model, prompt_tokens) do
-    case rate(model, prompt_tokens) do
-      {input, output} ->
-        %{"input" => round(input * 1_000_000), "output" => round(output * 1_000_000)}
-
-      nil ->
-        nil
+  @spec per_million(String.t() | nil, non_neg_integer()) ::
+          %{String.t() => Decimal.t()} | nil
+  def per_million(model, prompt_tokens) do
+    with {input, output} <- rate(model, prompt_tokens),
+         {:ok, input} <- PhoenixKitAI.Money.to_decimal(input),
+         {:ok, output} <- PhoenixKitAI.Money.to_decimal(output) do
+      %{"input" => input, "output" => output}
+    else
+      _ -> nil
     end
   end
 

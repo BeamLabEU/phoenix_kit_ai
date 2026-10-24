@@ -97,7 +97,8 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPickerTest do
             model: "google/gemini-flash",
             provider: "openrouter",
             calls: 12,
-            avg_cost: 1_500.0,
+            # dollars
+            avg_cost: Decimal.new("0.0015"),
             error_share: 0.25,
             avg_latency_ms: 840.0,
             cost_reported?: true,
@@ -221,6 +222,7 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPickerTest do
       assert text =~ "12"
       assert text =~ "25%"
       assert text =~ "840"
+      assert text =~ "$0.0015"
     end
 
     test "stays open when the page re-renders" do

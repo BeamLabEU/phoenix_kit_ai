@@ -27,7 +27,9 @@ defmodule PhoenixKitAI.TaskSpec do
 
   `default_limits` are the task's limits when an admin has set none
   (`%{task: %{unit => %{period => amount}}, user: …}`, units `:money` in
-  micro-dollars, `:requests`, `:tokens`, periods `:day`, `:month` — see
+  dollars — a `Decimal` or a dollar string like `"20.00"`, never an integer,
+  which the released versions read as millionths and which now refuses the
+  task's calls —, `:requests`, `:tokens`, periods `:day`, `:month` — see
   `PhoenixKitAI.TaskLimits`). `watchers` is an `{module, function, args}`
   called with the user uuid (or nil) appended, returning the uuids of more
   people to tell about the task's limits (`PhoenixKitAI.GuardEvents`); the

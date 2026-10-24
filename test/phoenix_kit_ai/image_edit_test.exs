@@ -165,13 +165,13 @@ defmodule PhoenixKitAI.ImageEditTest do
       assert first == data_url(@jpeg, "image/jpeg")
       assert second == data_url(@png, "image/png")
 
-      # Logged as its own request type, with the provider-reported cost in nanodollars.
+      # Logged as its own request type, with the provider-reported cost in dollars.
       assert [req] = logged_requests()
       assert req.status == "success"
       assert req.model == "google/gemini-2.5-flash-image"
       assert req.input_tokens == 1290
       assert req.output_tokens == 1300
-      assert req.cost_cents == 12_300
+      assert Decimal.equal?(req.cost, Decimal.new("0.0123"))
       assert req.metadata["input_image_count"] == 2
       assert req.metadata["input_bytes"] == byte_size(@jpeg) + byte_size(@png)
       assert req.metadata["output_image_count"] == 1

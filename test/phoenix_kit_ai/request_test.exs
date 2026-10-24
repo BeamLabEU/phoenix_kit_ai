@@ -5,41 +5,40 @@ defmodule PhoenixKitAI.RequestTest do
   alias PhoenixKitAI.Request
 
   describe "format_cost/1" do
+    defp cost(dollars), do: Request.format_cost(Decimal.new(dollars))
+
     test "returns a dash for nil cost" do
       assert Request.format_cost(nil) == "-"
     end
 
-    test "returns exact $0.00 for zero" do
-      assert Request.format_cost(0) == "$0.00"
-    end
-
-    test "returns $0.00 for negative nanodollars (cond `true` fallback)" do
-      # Pin the `true -> "$0.00"` clause of format_cost/1's cond.
-      # The head `format_cost(0)` short-circuits zero exactly; the
-      # cond's earlier branches all gate on positive thresholds. A
-      # negative integer falls through to the `true` branch.
-      assert Request.format_cost(-1) == "$0.00"
-      assert Request.format_cost(-1_000_000) == "$0.00"
+    test "returns $0.00 for zero" do
+      assert cost("0") == "$0.00"
+      assert cost("0.0000000000") == "$0.00"
     end
 
     test "uses 2 decimals for amounts >= $0.01" do
-      # 1_000_000 nanodollars = $1.00
-      assert Request.format_cost(1_000_000) == "$1.00"
-      # 10_000 nanodollars = $0.01
-      assert Request.format_cost(10_000) == "$0.01"
+      assert cost("1") == "$1.00"
+      assert cost("1.5") == "$1.50"
+      assert cost("0.01") == "$0.01"
     end
 
     test "uses 4 decimals for amounts between $0.0001 and $0.01" do
-      # 1_000 nanodollars = $0.001
-      result = Request.format_cost(1_000)
-      assert result =~ "$0.00"
-      assert String.length(result) >= 6
+      assert cost("0.001") == "$0.0010"
+      assert cost("0.0017") == "$0.0017"
     end
 
-    test "uses 6 decimals for sub-microdollar amounts" do
-      # 30 nanodollars = $0.00003
-      result = Request.format_cost(30)
-      assert result == "$0.000030"
+    test "uses 6 decimals for amounts between $0.000001 and $0.0001" do
+      assert cost("0.00003") == "$0.000030"
+    end
+
+    test "uses at least 10 decimals below a millionth, more for three significant digits" do
+      # a 2-token embedding at $0.00000004
+      assert cost("0.00000004") == "$0.0000000400"
+      assert cost("0.0000000001") == "$0.000000000100"
+      # one cached token at $0.0014 per 1M, and smaller: never shown as $0.0000000000
+      assert cost("0.0000000014") == "$0.00000000140"
+      assert cost("0.000000000001414") == "$0.00000000000141"
+      assert cost("0.000000000000000001") == "$0.000000000000000001"
     end
   end
 
@@ -65,6 +64,32 @@ defmodule PhoenixKitAI.RequestTest do
 
       changeset = Request.changeset(%Request{}, attrs)
       assert changeset.valid?
+    end
+
+    test "a cost is dollars, not negative, at most 18 decimal places" do
+      valid? = fn cost ->
+        Request.changeset(%Request{}, %{status: "success", cost: cost}).valid?
+      end
+
+      assert valid?.(Decimal.new("0.000000000000000001"))
+      assert valid?.(Decimal.new("0.00003"))
+      assert valid?.("1.50")
+      assert valid?.(nil)
+      refute valid?.(Decimal.new("-0.01"))
+      # past the column's scale: refused, not silently rounded
+      refute valid?.(Decimal.new("0.0000000000000000001"))
+      # a bare number is ambiguous: the released API took integer millionths
+      refute valid?.(5_000_000)
+      refute valid?.(0.00003)
+      assert valid?.(0)
+      assert valid?.("0")
+    end
+
+    test "create_request/1 refuses a cost given as integer millionths" do
+      assert {:error, %Ecto.Changeset{errors: errors}} =
+               PhoenixKitAI.create_request(%{status: "success", cost: 5_000_000})
+
+      assert Keyword.has_key?(errors, :cost)
     end
 
     test "rejects unknown status values" do

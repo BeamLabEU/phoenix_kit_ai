@@ -507,9 +507,11 @@ defmodule PhoenixKitAI.CompletionCoverageTest do
   end
 
   describe "Completion.extract_content/1 + extract_usage/1 — extra branches" do
-    test "extract_usage with parse_cost(non-number) returns nil cost_cents" do
-      response = %{"usage" => %{"prompt_tokens" => 0, "cost" => "weird"}}
-      assert %{cost_cents: nil} = Completion.extract_usage(response)
+    test "extract_usage with parse_cost(non-number) returns nil cost" do
+      for weird <- ["weird", -0.01, %{}] do
+        response = %{"usage" => %{"prompt_tokens" => 0, "cost" => weird}}
+        assert %{cost: nil} = Completion.extract_usage(response), inspect(weird)
+      end
     end
 
     test "build_url respects endpoint.base_url with trailing slash" do

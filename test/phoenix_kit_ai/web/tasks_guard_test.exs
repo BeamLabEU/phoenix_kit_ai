@@ -160,7 +160,9 @@ defmodule PhoenixKitAI.Web.TasksGuardTest do
       assert by == user.uuid
 
       assert limits == %{
-               "task" => %{"money" => %{"day" => 1_500_000}, "requests" => %{"month" => 100}},
+               # money as a dollar string, never a JSON number (it would read
+               # back as a float, or, whole, as the released millionths)
+               "task" => %{"money" => %{"day" => "1.50"}, "requests" => %{"month" => 100}},
                "user" => %{"tokens" => %{"day" => 2000}}
              }
 
@@ -226,12 +228,12 @@ defmodule PhoenixKitAI.Web.TasksGuardTest do
                TestRepo.get_by(TaskSetting, task_key: "test.limited")
     end
 
-    test "money that is not a finite amount, is negative, too large or rounds to nothing is a form error",
+    test "money that is not a finite amount, is negative or too large is a form error",
          %{conn: conn} do
       {user, _role} = admin(["ai", "ai.manage"])
       view = open(conn, user)
 
-      for value <- ["NaN", "nan", "inf", "-Infinity", "1e400", "1000000001", "-1", "0.0000001"] do
+      for value <- ["NaN", "nan", "inf", "-Infinity", "1e400", "1000000001", "-1"] do
         params = %{
           "task" => "test.limited",
           "limits" => %{"task" => %{"money" => %{"day" => value}}}
@@ -245,13 +247,14 @@ defmodule PhoenixKitAI.Web.TasksGuardTest do
 
       assert TestRepo.aggregate(TaskSetting, :count) == 0
 
-      # A blank field is no limit, not an error; a small real amount is kept.
+      # A blank field is no limit, not an error; an amount below a millionth
+      # of a dollar is kept as it is (the released millionths made it 0).
       render_hook(view, "save_limits", %{
         "task" => "test.limited",
-        "limits" => %{"task" => %{"money" => %{"day" => "", "month" => "0.000001"}}}
+        "limits" => %{"task" => %{"money" => %{"day" => "", "month" => "0.0000001"}}}
       })
 
-      assert %TaskSetting{limits: %{"task" => %{"money" => %{"month" => 1}}}} =
+      assert %TaskSetting{limits: %{"task" => %{"money" => %{"month" => "0.0000001"}}}} =
                TestRepo.get_by(TaskSetting, task_key: "test.limited")
     end
 
@@ -280,7 +283,7 @@ defmodule PhoenixKitAI.Web.TasksGuardTest do
         request_type: "chat",
         status: "success",
         total_tokens: 42,
-        cost_cents: 0,
+        cost: Decimal.new(0),
         metadata: %{"task" => "test.limited"},
         inserted_at: now,
         updated_at: now
@@ -377,6 +380,22 @@ defmodule PhoenixKitAI.Web.TasksGuardTest do
 
       view |> element("#{@card} [data-remove-personal='#{person.uuid}']") |> render_click()
       assert TestRepo.aggregate(TaskUserLimit, :count) == 0
+    end
+
+    test "a personal money limit still in millionths shows, and the page still opens",
+         %{conn: conn} do
+      {user, _role} = admin(["ai", "ai.manage"])
+      person = Fixtures.user_fixture()
+
+      TestRepo.insert!(%TaskUserLimit{
+        task_key: "test.limited",
+        user_uuid: person.uuid,
+        limits: %{"money" => %{"day" => 5_000_000}}
+      })
+
+      view = open(conn, user)
+      assert has_element?(view, "#{@card} [data-personal-user='#{person.uuid}']")
+      assert render(view) =~ "needs to be set again in dollars"
     end
 
     test "watchers are added and removed, and each change is in the Activity log",

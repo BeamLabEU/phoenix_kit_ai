@@ -43,6 +43,13 @@ defmodule PhoenixKitAI.Errors do
   def message(:insufficient_credits), do: gettext("Insufficient credits")
   def message(:rate_limited), do: gettext("Rate limited")
   def message(:request_timeout), do: gettext("Request timeout")
+
+  def message(:concurrency_limit_timeout),
+    do: gettext("Too many AI requests are running; this one waited too long for its turn")
+
+  def message(:concurrency_queue_full),
+    do: gettext("Too many AI requests are waiting; try again shortly")
+
   def message(:invalid_json_response), do: gettext("Invalid JSON response")
   def message(:no_choices_in_response), do: gettext("No choices in response")
   def message(:invalid_response_format), do: gettext("Invalid response format")
@@ -138,6 +145,15 @@ defmodule PhoenixKitAI.Errors do
 
   def message({:budget_exceeded, :user_calls}),
     do: gettext("You have made as many AI requests as allowed for the last 24 hours")
+
+  def message({:budget_unmigrated, _scope}),
+    do: gettext("AI spending limits need an update before AI requests can run again")
+
+  def message({:task_limit_unmigrated, _task}),
+    do: gettext("This task's spending limit needs an update before it can run again")
+
+  def message(:money_migration_required),
+    do: gettext("AI requests are paused until the latest database update has run")
 
   def message({:task_limit_exceeded, :task, unit, period}) do
     gettext("This AI task has reached its %{name}",

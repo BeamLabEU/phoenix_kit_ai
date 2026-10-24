@@ -97,7 +97,8 @@ defmodule PhoenixKitAI.TaskLimitsTest do
       input_tokens: 0,
       output_tokens: 0,
       total_tokens: Map.get(attrs, :tokens, 10),
-      cost_cents: Map.get(attrs, :cost, 1_000),
+      # `:cost` is dollars (a string), the unit of the journal and of a limit
+      cost: attrs |> Map.get(:cost, "0.001") |> Decimal.new(),
       latency_ms: 1,
       user_uuid: Map.get(attrs, :user_uuid),
       metadata: metadata,
@@ -106,6 +107,9 @@ defmodule PhoenixKitAI.TaskLimitsTest do
     }
     |> TestRepo.insert!()
   end
+
+  defp dollars?(%Decimal{} = value, expected), do: Decimal.equal?(value, Decimal.new(expected))
+  defp dollars?(_value, _expected), do: false
 
   defp set_limits(owner, limits, extra \\ %{}) do
     {:ok, _} =
@@ -219,12 +223,21 @@ defmodule PhoenixKitAI.TaskLimitsTest do
 
       assert TaskLimits.period_keys(now) == %{day: "2026-11-01", month: "2026-11"}
 
-      row(ep, ~U[2026-10-31 20:00:00Z], cost: 7, tokens: 3)
-      row(ep, ~U[2026-10-31 21:10:00Z], cost: 11, tokens: 5)
+      row(ep, ~U[2026-10-31 20:00:00Z], cost: "7", tokens: 3)
+      row(ep, ~U[2026-10-31 21:10:00Z], cost: "11", tokens: 5)
 
       usage = TaskLimits.usage("test.limited", nil, now)
-      assert usage.task.money == %{day: 11, month: 11}
+      assert dollars?(usage.task.money.day, "11") and dollars?(usage.task.money.month, "11")
       assert usage.task.tokens == %{day: 5, month: 5}
+    end
+
+    test "money is the dollar sum, never rounded, so calls under a micro-dollar count",
+         %{endpoint: ep} do
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      for _ <- 1..3, do: row(ep, now, cost: "0.0000006")
+
+      # 3 × $0.0000006 = $0.0000018, which whole micro-dollars would make 2 µ$.
+      assert dollars?(TaskLimits.usage("test.limited", nil, now).task.money.day, "0.0000018")
     end
   end
 
@@ -345,8 +358,10 @@ defmodule PhoenixKitAI.TaskLimitsTest do
       row(ep, now, status: "error", metadata: %{"refused" => true})
       row(ep, now, status: "error")
 
-      assert %{task: %{requests: %{day: 0, month: 0}, money: %{day: 0}}} =
+      assert %{task: %{requests: %{day: 0, month: 0}, money: %{day: money}}} =
                TaskLimits.usage("test.limited", nil, now)
+
+      assert dollars?(money, "0")
     end
 
     test "a cache hit counts as one request and no money or tokens",
@@ -363,7 +378,7 @@ defmodule PhoenixKitAI.TaskLimitsTest do
 
       usage = TaskLimits.usage("test.limited", user, DateTime.utc_now())
       assert usage.user.requests.day == 2
-      assert usage.user.money.day == 500_000
+      assert dollars?(usage.user.money.day, "0.5")
       assert usage.user.tokens.day == 12
 
       assert {:error, {:task_limit_exceeded, :user, :requests, :day}} =
@@ -389,6 +404,96 @@ defmodule PhoenixKitAI.TaskLimitsTest do
     test "a dry run of process_image is not checked against the limits" do
       # The dry run is the one verb that skips the caps; the limits follow it.
       assert TaskLimits.check(nil, []) == :ok
+    end
+  end
+
+  describe "money limits in dollars" do
+    test "a dollar limit is stored as a dollar string and holds against the cost sum",
+         %{owner: owner, endpoint: ep} do
+      set_limits(owner, %{"task" => %{"money" => %{"day" => "0.001", "month" => "1.5"}}})
+
+      assert %PhoenixKitAI.TaskSetting{
+               limits: %{"task" => %{"money" => %{"day" => "0.001", "month" => "1.50"}}}
+             } = TestRepo.get_by!(PhoenixKitAI.TaskSetting, task_key: "test.limited")
+
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      row(ep, now, cost: "0.0006")
+      assert :ok = TaskLimits.check(spec(), [])
+
+      row(ep, now, cost: "0.0006")
+
+      assert {:error, {:task_limit_exceeded, :task, :money, :day}} =
+               TaskLimits.check(spec(), [])
+
+      assert [%{unit: :money, period: :day, used: used, limit: limit} | _] =
+               spec() |> TaskLimits.statuses(nil) |> Enum.filter(&(&1.period == :day))
+
+      assert dollars?(used, "0.0012") and dollars?(limit, "0.001")
+    end
+
+    test "a stored money cell in the released millionths refuses the task's calls",
+         %{endpoint: ep} do
+      stub_chat(self())
+
+      for legacy <- [1_500_000, "1500000"] do
+        TestRepo.delete_all(PhoenixKitAI.TaskSetting)
+
+        TestRepo.insert!(%PhoenixKitAI.TaskSetting{
+          task_key: "test.unlimited",
+          limits: %{"task" => %{"money" => %{"day" => legacy}}}
+        })
+
+        TaskLimits.forget("test.unlimited")
+
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:error, {:task_limit_unmigrated, "test.unlimited"}} =
+                   TaskLimits.check(spec("test.unlimited"), [])
+
+          assert {:error, {:task_limit_unmigrated, "test.unlimited"}} =
+                   PhoenixKitAI.ask(ep.uuid, "q #{inspect(legacy)}", task: "test.unlimited")
+        end)
+
+        refute_received :provider_called
+      end
+
+      assert PhoenixKitAI.Errors.message({:task_limit_unmigrated, "test.unlimited"}) =~
+               "update"
+    end
+
+    # The unit check comes before any query: `check/3` rescues a failing usage
+    # read into `:ok`, which must not let a millionths limit through.
+    test "a millionths limit refuses even when the usage read would fail" do
+      TestRepo.delete_all(PhoenixKitAI.TaskSetting)
+
+      TestRepo.insert!(%PhoenixKitAI.TaskSetting{
+        task_key: "test.unlimited",
+        limits: %{"task" => %{"money" => %{"day" => 1_500_000}}}
+      })
+
+      TaskLimits.forget("test.unlimited")
+      TestRepo.query!("ALTER TABLE phoenix_kit_ai_requests RENAME COLUMN cost TO cost_hidden")
+
+      ExUnit.CaptureLog.capture_log(fn ->
+        assert {:error, {:task_limit_unmigrated, "test.unlimited"}} =
+                 TaskLimits.check(spec("test.unlimited"), [])
+      end)
+    end
+
+    test "a declared money default in integer millionths refuses too" do
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:error, {:task_limit_unmigrated, "test.legacy_money"}} =
+                   TaskLimits.check(spec("test.legacy_money"), [])
+        end)
+
+      assert log =~ "millionths"
+    end
+
+    test "zero dollars allows nothing, in either shape" do
+      for zero <- [0, "0", "0.00"] do
+        limits = TaskLimits.normalize(%{"money" => %{"day" => zero}})
+        assert dollars?(limits.money.day, "0"), inspect(zero)
+      end
     end
   end
 

@@ -55,13 +55,18 @@ defmodule PhoenixKitAI.AnthropicPricingTest do
     assert AnthropicPricing.cost("claude-new-1", 1_000_000, 1_000_000) == 3.0
   end
 
-  test "the rate in whole micro-dollars per 1M tokens, by the call's size" do
-    assert AnthropicPricing.micro_per_million("claude-sonnet-5-5-20261001", 0) ==
-             %{"input" => 2_000_000, "output" => 10_000_000}
+  test "the rate in dollars per 1M tokens, by the call's size" do
+    assert %{"input" => input, "output" => output} =
+             AnthropicPricing.per_million("claude-sonnet-5-5-20261001", 0)
 
-    assert AnthropicPricing.micro_per_million("claude-haiku-5-5", 100_001) ==
-             %{"input" => 500_000, "output" => 2_500_000}
+    assert Decimal.equal?(input, 2) and Decimal.equal?(output, 10)
 
-    assert AnthropicPricing.micro_per_million("claude-unknown-9", 0) == nil
+    assert %{"input" => input, "output" => output} =
+             AnthropicPricing.per_million("claude-haiku-5-5", 100_001)
+
+    assert Decimal.equal?(input, Decimal.new("0.5")) and
+             Decimal.equal?(output, Decimal.new("2.5"))
+
+    assert AnthropicPricing.per_million("claude-unknown-9", 0) == nil
   end
 end
