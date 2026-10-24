@@ -122,7 +122,7 @@ defmodule PhoenixKitAI.Request do
     field(:input_tokens, :integer, default: 0)
     field(:output_tokens, :integer, default: 0)
     field(:total_tokens, :integer, default: 0)
-    # US dollars (core's V223, numeric(20,10)); see `PhoenixKitAI.Money`.
+    # US dollars (core's V223, numeric(28,18)); see `PhoenixKitAI.Money`.
     field(:cost, :decimal)
     field(:latency_ms, :integer)
     field(:status, :string, default: "success")
@@ -273,7 +273,9 @@ defmodule PhoenixKitAI.Request do
   - >= $0.01: 2 decimal places ($0.05, $1.23)
   - >= $0.0001: 4 decimal places ($0.0012)
   - >= $0.000001: 6 decimal places ($0.000030)
-  - > $0: 10 decimal places ($0.0000000400)
+  - > $0: at least 10 decimal places, more for an amount that needs them to
+    show three significant digits, up to the column's 18 ($0.0000000400,
+    $0.00000000000141)
   """
   @spec format_cost(Decimal.t() | 0 | nil) :: String.t()
   def format_cost(nil), do: "-"
@@ -285,12 +287,20 @@ defmodule PhoenixKitAI.Request do
         Decimal.compare(dollars, "0.01") != :lt -> 2
         Decimal.compare(dollars, "0.0001") != :lt -> 4
         Decimal.compare(dollars, "0.000001") != :lt -> 6
-        Decimal.compare(dollars, 0) == :gt -> 10
+        Decimal.compare(dollars, 0) == :gt -> tiny_places(dollars)
         true -> 2
       end
 
     "$" <>
       (dollars |> Decimal.round(places, :half_up) |> Decimal.to_string(:normal) |> pad(places))
+  end
+
+  # Three significant digits of an amount below a millionth: its first one is at
+  # decimal place `-(exp + digits - 1)`.
+  defp tiny_places(%Decimal{} = dollars) do
+    %Decimal{coef: coef, exp: exp} = Decimal.normalize(dollars)
+    first = -(exp + length(Integer.digits(coef)) - 1)
+    first |> Kernel.+(2) |> max(10) |> min(18)
   end
 
   # `Decimal.round/3` keeps the places it was given, except for a whole number
@@ -362,7 +372,7 @@ defmodule PhoenixKitAI.Request do
 
   # Private functions
 
-  # A cost is dollars, not negative, and fits the column: at most 10 decimal
+  # A cost is dollars, not negative, and fits the column: at most 18 decimal
   # places (a caller passing more is refused, not silently rounded). Given as
   # an integer (other than 0) or a float it is refused like any amount
   # (`PhoenixKitAI.Money.amount/1`): the released API took integer millionths,
@@ -384,8 +394,8 @@ defmodule PhoenixKitAI.Request do
           Decimal.negative?(cost) ->
             add_error(changeset, :cost, "must be greater than or equal to 0")
 
-          Decimal.normalize(cost).exp < -10 ->
-            add_error(changeset, :cost, "has more than 10 decimal places")
+          Decimal.normalize(cost).exp < -18 ->
+            add_error(changeset, :cost, "has more than 18 decimal places")
 
           true ->
             changeset

@@ -321,18 +321,19 @@ defmodule PhoenixKitAI.CallCostTest do
       end
     end
 
-    test "a provider's cost past the column's 10 places is rounded once, half up" do
+    test "a provider's tiny cost is kept to the column's 18 places, rounded once" do
       ep = endpoint(%{})
 
       stub_answer("claude-sonnet-5-5", %{
         "prompt_tokens" => 1,
         "completion_tokens" => 1,
-        "cost" => 1.5e-10
+        "cost" => 1.5e-18
       })
 
       assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "hi")
       assert %Request{cost: cost} = row(ep)
-      assert dollars?(cost, "0.0000000002")
+      # 1.5e-18 is half a step past 18 places: half up to 2e-18 (was 0 at 10 places)
+      assert dollars?(cost, "0.000000000000000002")
     end
   end
 end

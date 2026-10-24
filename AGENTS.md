@@ -202,7 +202,7 @@ Repo-local aliases:
   `mounted()` and unbinds in `destroyed()`. A `document.addEventListener` in
   `mounted()` would instead leak one live handler per navigation.
 - Money is US dollars as a `Decimal`, stored as it is: a call's `cost`
-  (core's V223, `numeric(20,10)`), the spend caps, task limits and their declared
+  (core's V223, `numeric(28,18)`), the spend caps, task limits and their declared
   defaults, prices per 1M tokens. Never scale it into integers, and never write
   it into a JSON map as a number (it reads back as a float): `Money.to_json/1`.
   An integer where an amount is expected is refused (`Money.amount/1`) — the

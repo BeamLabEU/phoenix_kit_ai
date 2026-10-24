@@ -18,7 +18,7 @@ defmodule PhoenixKitAI.CallCost do
   not bypassed by it. A catalogue price is per TOKEN (OpenRouter's `pricing`),
   a manual price and Anthropic's rates per 1M tokens: each base has its own
   path (`ManualPrice.cost/3` for the second), and the total is rounded once, to
-  the column's 10 places (`Money.round_cost/1`). A call without tokens (an answer with no usage, or
+  the column's 18 places (`Money.round_cost/1`). A call without tokens (an answer with no usage, or
   an empty one) says nothing about its size and gets no cost, not a priced $0.
 
   Chat, embeddings and the vision verbs (`describe_image/3`, `extract_text/3`,
@@ -40,7 +40,7 @@ defmodule PhoenixKitAI.CallCost do
   provider's cost, dollars) with `cost_source: "provider"`, else the first
   priced source for `model` then for the endpoint's model, else `{nil, %{}}` —
   and `{nil, %{}}` for a call without tokens. The cost is rounded to the
-  column's 10 places.
+  column's 18 places.
   """
   @spec for_call(
           Endpoint.t() | map(),

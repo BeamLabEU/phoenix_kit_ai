@@ -14,14 +14,14 @@ defmodule PhoenixKitAI.Money do
     the released versions stored those amounts as integer millionths of a dollar
     (`5_000_000` meant $5), and reading one as dollars would loosen a cap a
     million times over. `0` is the one integer accepted (no amount).
-  * `round_cost/1` is the only rounding: a call's total cost, to the 10 decimal
-    places of the `cost` column.
+  * `round_cost/1` is the only rounding: a call's total cost, to the 18 decimal
+    places of the `cost` column (an attodollar — far below the cheapest token).
   * `to_json/1` is how an amount is written into a JSON map: a string, so it reads
     back as the same decimal and never as a float.
   """
 
   @max_dollars Decimal.new(1_000_000_000)
-  @cost_places 10
+  @cost_places 18
 
   @doc """
   A number as a `Decimal`: a `Decimal`, an integer, a finite float (through its
@@ -99,7 +99,7 @@ defmodule PhoenixKitAI.Money do
 
   def legacy_amount?(_value), do: false
 
-  @doc "A call's total cost rounded to the 10 decimal places of the `cost` column."
+  @doc "A call's total cost rounded to the 18 decimal places of the `cost` column."
   @spec round_cost(Decimal.t() | nil) :: Decimal.t() | nil
   def round_cost(nil), do: nil
   def round_cost(%Decimal{} = cost), do: Decimal.round(cost, @cost_places, :half_up)

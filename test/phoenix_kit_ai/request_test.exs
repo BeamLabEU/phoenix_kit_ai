@@ -31,10 +31,14 @@ defmodule PhoenixKitAI.RequestTest do
       assert cost("0.00003") == "$0.000030"
     end
 
-    test "uses 10 decimals below a millionth of a dollar" do
+    test "uses at least 10 decimals below a millionth, more for three significant digits" do
       # a 2-token embedding at $0.00000004
       assert cost("0.00000004") == "$0.0000000400"
-      assert cost("0.0000000001") == "$0.0000000001"
+      assert cost("0.0000000001") == "$0.000000000100"
+      # one cached token at $0.0014 per 1M, and smaller: never shown as $0.0000000000
+      assert cost("0.0000000014") == "$0.00000000140"
+      assert cost("0.000000000001414") == "$0.00000000000141"
+      assert cost("0.000000000000000001") == "$0.000000000000000001"
     end
   end
 
@@ -62,18 +66,18 @@ defmodule PhoenixKitAI.RequestTest do
       assert changeset.valid?
     end
 
-    test "a cost is dollars, not negative, at most 10 decimal places" do
+    test "a cost is dollars, not negative, at most 18 decimal places" do
       valid? = fn cost ->
         Request.changeset(%Request{}, %{status: "success", cost: cost}).valid?
       end
 
-      assert valid?.(Decimal.new("0.0000000001"))
+      assert valid?.(Decimal.new("0.000000000000000001"))
       assert valid?.(Decimal.new("0.00003"))
       assert valid?.("1.50")
       assert valid?.(nil)
       refute valid?.(Decimal.new("-0.01"))
       # past the column's scale: refused, not silently rounded
-      refute valid?.(Decimal.new("0.00000000001"))
+      refute valid?.(Decimal.new("0.0000000000000000001"))
       # a bare number is ambiguous: the released API took integer millionths
       refute valid?.(5_000_000)
       refute valid?.(0.00003)

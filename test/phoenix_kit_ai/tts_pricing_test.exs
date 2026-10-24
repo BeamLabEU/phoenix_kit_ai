@@ -42,9 +42,11 @@ defmodule PhoenixKitAI.TtsPricingTest do
       assert dollars?(TtsPricing.cost("openai", 0, one_minute_bytes), "0.015")
     end
 
-    test "rounded once to the column's 10 places" do
-      # 1 byte = 8 / 128 000 / 60 minutes × $0.015 = $0.000000015625 → 10 places
-      assert dollars?(TtsPricing.cost("openai", 0, 1), "0.0000000156")
+    test "kept to the column's 18 places, rounded once" do
+      # 1 byte = 8 / 128 000 / 60 minutes × $0.015 = $0.000000015625, exact in 18 places
+      assert dollars?(TtsPricing.cost("openai", 0, 1), "0.000000015625")
+      # 3 bytes = $0.000000046875
+      assert dollars?(TtsPricing.cost("openai", 0, 3), "0.000000046875")
     end
 
     test "input_chars is ignored — the blended rate already covers both legs" do

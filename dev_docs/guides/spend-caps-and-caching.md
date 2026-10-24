@@ -8,7 +8,7 @@ what they deliberately do not. The code is `PhoenixKitAI.Budget`,
 ## Units
 
 Everything is **US dollars**, as a `Decimal` (`PhoenixKitAI.Money`): a usage
-row's `cost` (`numeric(20,10)`), every cap, every number `Budget` returns,
+row's `cost` (`numeric(28,18)`), every cap, every number `Budget` returns,
 task limits and prices per 1M tokens. `set_limit(:global, "5")` is a
 five-dollar cap; the sum of `cost` is compared with it as it is, so a
 thousand calls of $0.0000006 count as $0.0006. No amount is ever scaled

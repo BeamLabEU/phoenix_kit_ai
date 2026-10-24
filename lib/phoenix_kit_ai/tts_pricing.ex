@@ -52,7 +52,7 @@ defmodule PhoenixKitAI.TtsPricing do
 
   @doc """
   Estimated cost in dollars for a completed TTS request, rounded to the `cost`
-  column's 10 places, or `nil` if `provider` isn't in the rate table — same as
+  column's 18 places, or `nil` if `provider` isn't in the rate table — same as
   no cost being available today, not a new failure mode. `input_chars` and
   `audio_bytes` are exactly what `PhoenixKitAI.speak/3` already records in the
   request's metadata.

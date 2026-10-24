@@ -337,7 +337,7 @@ defmodule PhoenixKitAI.Web.Components.RecommendationsPanel do
     {:ok, decimal} = PhoenixKitAI.Money.to_decimal(dollars)
 
     if dollars > 0 and Decimal.equal?(PhoenixKitAI.Money.round_cost(decimal), 0),
-      do: "<$0.0000000001",
+      do: "<$0.000000000000000001",
       else: Request.format_cost(decimal)
   end
 

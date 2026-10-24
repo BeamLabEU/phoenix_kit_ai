@@ -93,15 +93,21 @@ defmodule PhoenixKitAI.MoneyTest do
   end
 
   describe "round_cost/1" do
-    test "rounds to the cost column's 10 places, half up" do
+    test "rounds to the cost column's 18 places, half up" do
       assert Decimal.equal?(
-               Money.round_cost(Decimal.new("0.00000000015")),
-               Decimal.new("0.0000000002")
+               Money.round_cost(Decimal.new("0.0000000000000000015")),
+               Decimal.new("0.000000000000000002")
              )
 
       assert Decimal.equal?(
-               Money.round_cost(Decimal.new("0.00000000014")),
-               Decimal.new("0.0000000001")
+               Money.round_cost(Decimal.new("0.0000000000000000014")),
+               Decimal.new("0.000000000000000001")
+             )
+
+      # the cheapest cached token today ($0.0014 per 1M) keeps every digit
+      assert Decimal.equal?(
+               Money.round_cost(Decimal.new("0.0000000014")),
+               Decimal.new("0.0000000014")
              )
 
       assert Decimal.equal?(Money.round_cost(Decimal.new("0.00003")), Decimal.new("0.00003"))

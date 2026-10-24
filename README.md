@@ -713,7 +713,7 @@ end
 ## Cost tracking
 
 A call's cost is stored as it is, in **US dollars** (column `cost`,
-`numeric(20,10)`, a `Decimal` in Elixir), so cheap calls keep their cost: a
+`numeric(28,18)`, a `Decimal` in Elixir), so cheap calls keep their cost: a
 short embedding at $0.00000004 is `0.00000004`.
 
 ```elixir
