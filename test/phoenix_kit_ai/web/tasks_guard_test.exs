@@ -13,6 +13,7 @@ defmodule PhoenixKitAI.Web.TasksGuardTest do
 
   alias PhoenixKit.ModuleRegistry
   alias PhoenixKit.Test.Fixtures
+  alias PhoenixKit.Users.Auth
   alias PhoenixKit.Users.Auth.Scope
   alias PhoenixKit.Users.{Permissions, Roles}
   alias PhoenixKitAI.{Guard, GuardEvent, GuardEvents, Request, TaskLimits, TaskSetting}
@@ -139,6 +140,23 @@ defmodule PhoenixKitAI.Web.TasksGuardTest do
   end
 
   describe "with ai.manage" do
+    test "a session revoked while the page is open cannot save limits", %{conn: conn} do
+      {user, _role_uuid} = admin(["ai", "ai.manage"])
+      conn = put_test_scope(conn, Scope.for_user(user))
+      token = get_session(conn, :user_token)
+      {:ok, view, _html} = live(conn, "/en/admin/ai/tasks")
+      assert has_element?(view, "#{@card} button[type=submit]")
+
+      token
+      |> Auth.get_session_token_record()
+      |> TestRepo.delete!()
+
+      assert render_hook(view, "save_limits", limits_params("3")) =~
+               "You may not change the AI task guard"
+
+      assert TestRepo.aggregate(TaskSetting, :count) == 0
+    end
+
     test "the limits are saved, in dollars for money, and written to the Activity log",
          %{conn: conn} do
       {user, _role} = admin(["ai", "ai.manage"])

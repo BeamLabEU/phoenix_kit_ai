@@ -1,7 +1,7 @@
 defmodule PhoenixKitAI.MixProject do
   use Mix.Project
 
-  @version "0.25.5"
+  @version "0.26.0"
   @source_url "https://github.com/BeamLabEU/phoenix_kit_ai"
 
   def project do
@@ -144,7 +144,7 @@ defmodule PhoenixKitAI.MixProject do
       # UndefinedFunctionError on each endpoint/prompt mutation.
       # 2.63+ required: `oban_crons/0` schedules guard-event pruning through
       # the module registry. Earlier cores never install that cron.
-      pk_dep(:phoenix_kit, "~> 2.63"),
+      pk_dep(:phoenix_kit, "~> 2.64"),
 
       # LiveView is needed for the admin pages.
       {:phoenix_live_view, "~> 1.1"},

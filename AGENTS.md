@@ -13,8 +13,9 @@ is no hardcoded provider whitelist. Implements the `PhoenixKit.Module`
 behaviour for auto-discovery by the host application; it is a library, and the
 host supplies endpoint and router (`config/` exists only for tests).
 
-- **Depends on:** `phoenix_kit` `~> 2.63` (Hex; the floor is where
-  `PhoenixKit.Module.oban_crons/0` ships, needed for guard-event pruning;
+- **Depends on:** `phoenix_kit` `~> 2.64` (Hex; the floor carries V223's
+  dollar-valued request cost and removes the legacy account reference;
+  `PhoenixKit.Module.oban_crons/0` ships in 2.63, needed for guard-event pruning;
   Activity and Actor also need at least 2.38). No sibling
   `phoenix_kit_*` deps. Non-kit deps: `phoenix_live_view` `~> 1.1`, `gettext` `~> 1.0`, `xai`
   `~> 0.2` (realtime voice only — `Xai.Realtime`; `gun`/`mint` are deliberately

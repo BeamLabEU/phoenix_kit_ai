@@ -1,3 +1,47 @@
+## 0.26.0 - 2026-10-24
+
+Requires PhoenixKit `~> 2.64`. Upgrade both packages together, then run
+`mix phoenix_kit.update`: core V223 converts the request journal and this module's
+V4 converts spend caps, task money limits and manual prices from legacy
+millionths into dollar strings. Custom callers must pass dollar strings or
+`Decimal` amounts instead of scaled integers.
+
+### Added
+
+- AI tasks declare required model capabilities, with model recommendations,
+  endpoint declarations and a cached capability catalogue.
+- Task guard checks capabilities before calling a provider, supports verified-only
+  operation, private off-purpose flags, blocks, watchers and activity notifications.
+  `ai.manage` controls guard changes and sensitive reasons.
+- Task and per-user limits track requests, tokens and dollars across calendar
+  periods, with warnings, overrides and explicit forgiveness. A task may disable
+  its per-user limits.
+- Chat tool calling preserves tool calls and tool results across rounds, including
+  JSON/schema response modes, and records the calls in the usage journal.
+- Concurrency limits with queued admission, retry backoff, per-call model selection,
+  endpoint/credential lookup caches and optional asynchronous request logging.
+- Manual per-million-token pricing for models whose catalogue has no price.
+
+### Changed
+
+- Costs, prices and spend caps use decimal dollars throughout. Usage costs retain
+  18 decimal places; ambiguous legacy numeric settings fail closed until migrated.
+- Provider models, headers and capability rules follow core's integration registry.
+  Endpoint forms follow the selected provider and connection, and the Playground
+  shows estimated cost where available.
+- Journal writes suppress database query logging so request content is not logged.
+
+### Fixed
+
+- Provider errors expose safe classifications instead of response bodies or credentials.
+- Endpoint ordering uses the name as a deterministic tie-breaker; connection-change
+  form parameters preserve intent and invalidate stale discovery state.
+- Guard identity checks, native provider model filters, alert routing and stale
+  permission checks were corrected during the merged PR reviews.
+- The core dependency floor now requires V223. LiveView tests authenticate real
+  fixture sessions, exercising current session rights, and the Anthropic header
+  fixture no longer relies on overriding a built-in through a module contribution.
+
 ## 0.25.5 - 2026-10-13
 
 ### Fixed

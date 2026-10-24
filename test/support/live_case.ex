@@ -35,6 +35,9 @@ defmodule PhoenixKitAI.LiveCase do
   end
 
   alias Ecto.Adapters.SQL.Sandbox
+  alias PhoenixKit.Test.Fixtures
+  alias PhoenixKit.Users.Auth
+  alias PhoenixKit.Users.Auth.{Scope, User}
   alias PhoenixKitAI.Test.Repo, as: TestRepo
 
   setup tags do
@@ -84,10 +87,23 @@ defmodule PhoenixKitAI.LiveCase do
   end
 
   @doc """
-  Plugs a fake scope into the test conn's session so the
+  Plugs a scope into the test conn's session so the
   `:assign_scope` `on_mount` hook can put it on socket assigns at
-  mount time. Pair with `fake_scope/1`.
+  mount time. Real user scopes also receive a confirmed browser session,
+  so event-time access checks exercise core's session loader. Bare fake
+  scopes remain available for display-only tests.
   """
+  def put_test_scope(
+        conn,
+        %Scope{user: %User{} = user}
+      ) do
+    {:ok, user} = Auth.admin_confirm_user(user)
+
+    conn
+    |> Plug.Test.init_test_session(%{})
+    |> Fixtures.log_in_user(user)
+  end
+
   def put_test_scope(conn, scope) do
     Plug.Test.init_test_session(conn, %{"phoenix_kit_test_scope" => scope})
   end

@@ -12,14 +12,15 @@ defmodule PhoenixKitAI.CorePinConformanceTest do
   outright, with no degraded mode. Nothing else in this repo's own test run
   would notice, which is why the check is a test rather than a convention.
 
-  The floor is 2.63: the optional `PhoenixKit.Module.oban_crons/0` callback
-  ships there and schedules guard-event pruning. Activity logging and actor
+  The floor is 2.64: V223 stores request costs as decimal dollars and removes
+  the legacy account reference. The optional `PhoenixKit.Module.oban_crons/0`
+  callback ships in 2.63 and schedules guard-event pruning. Activity logging and actor
   resolution also require at least 2.38. Core 1.7 is excluded as well: core 2.0.0 squashed the migration chain
   to a V135 floor.
   """
 
-  @must_admit ["2.63.0", "2.63.4", "2.64.0", "2.99.1"]
-  @must_reject ["1.7.236", "2.0.0", "2.38.0", "2.62.5", "3.0.0"]
+  @must_admit ["2.64.0", "2.64.4", "2.65.0", "2.99.1"]
+  @must_reject ["1.7.236", "2.0.0", "2.38.0", "2.62.5", "2.63.0", "2.63.4", "3.0.0"]
 
   test "the :phoenix_kit requirement admits every core 2.x from the floor and nothing else" do
     requirement = core_requirement()
