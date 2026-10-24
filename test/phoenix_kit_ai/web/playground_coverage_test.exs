@@ -11,6 +11,7 @@ defmodule PhoenixKitAI.Web.PlaygroundCoverageTest do
 
   alias PhoenixKit.Test.Fixtures
   alias PhoenixKit.Users.Auth.Scope
+  alias PhoenixKitAI.RequestLog
   alias PhoenixKitAI.Web.Playground
 
   setup do
@@ -276,6 +277,24 @@ defmodule PhoenixKitAI.Web.PlaygroundCoverageTest do
       send_and_render(view)
     end
 
+    # Resume a held process once `queued` messages wait for it. A process that
+    # is gone by then (the test failed first) has nothing to resume.
+    defp resume_when_queued(pid, queued, tries \\ 500) do
+      case Process.info(pid, :message_queue_len) do
+        {:message_queue_len, len} when len >= queued ->
+          :sys.resume(pid)
+
+        {:message_queue_len, _len} when tries > 0 ->
+          Process.sleep(10)
+          resume_when_queued(pid, queued, tries - 1)
+
+        _ ->
+          :ok
+      end
+    catch
+      :exit, _reason -> :ok
+    end
+
     test "an Anthropic call shows the cost its rate table gives", %{conn: conn} do
       stub_response(200, payload_without_cost("claude-opus-5-5", 100_000, 50_000))
 
@@ -351,6 +370,33 @@ defmodule PhoenixKitAI.Web.PlaygroundCoverageTest do
       assert %{cost: nil} = Playground.response_usage(response, mine.uuid)
       assert %{cost: cost} = Playground.response_usage(response, other.uuid)
       assert Decimal.equal?(cost, "1.4")
+    end
+
+    test "with an asynchronous usage log the cost waits for the row", %{conn: conn} do
+      stub_response(200, payload_without_cost("claude-opus-5-5", 100_000, 50_000))
+
+      ep =
+        fixture_endpoint(%{
+          provider: "anthropic",
+          model: "claude-opus-5-5",
+          api_key: "sk-ant-test"
+        })
+
+      start_supervised!(RequestLog)
+      Application.put_env(:phoenix_kit_ai, :request_log_mode, :async)
+      on_exit(fn -> Application.delete_env(:phoenix_kit_ai, :request_log_mode) end)
+
+      # The queue is held, so the row is only queued when the answer comes back;
+      # it is let go once the row and the Playground's wait for it are both in
+      # the queue.
+      writer = Process.whereis(RequestLog)
+      :ok = :sys.suspend(writer)
+      Task.start(fn -> resume_when_queued(writer, 2) end)
+
+      html = ask(conn, ep)
+
+      assert html =~ "hero-currency-dollar"
+      assert html =~ "$1.40"
     end
 
     test "a call nothing prices shows no cost", %{conn: conn} do

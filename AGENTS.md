@@ -249,7 +249,8 @@ Repo-local aliases:
   call including retries; a retried 429 keeps its slot while it backs off, on purpose.
 - With `request_log_mode: :async`, spend caps read rows that may not be written yet
   (a few ms behind), and rows still queued when the node is killed are lost. Leave it
-  `:sync` where a cap must hold tightly.
+  `:sync` where a cap must hold tightly. The Playground, which reads the call's row for
+  its cost chip, waits for the queue once, up to 2 s, when the row is not there yet.
 - `PhoenixKitAI.Cache` drops credentials on core's *system* integrations topic only; a
   personal connection's change is seen within `credential_cache_ttl`.
 - The request cache is ETS on one node: it empties on restart, is shared

@@ -23,6 +23,7 @@ defmodule PhoenixKitAI.Web.Playground do
   alias PhoenixKitAI.OpenRouterClient
   alias PhoenixKitAI.Prompt
   alias PhoenixKitAI.Realtime.Session
+  alias PhoenixKitAI.RequestLog
   alias PhoenixKitAI.Web.MessageShape
 
   # Fallback shown until the live `GET /v1/tts/voices` fetch resolves (or
@@ -691,7 +692,9 @@ defmodule PhoenixKitAI.Web.Playground do
   # The others — a catalogue price, one entered on the endpoint, Anthropic's
   # built-in rates — are only in the usage row the call wrote
   # (`PhoenixKitAI.CallCost`), so that row is read when the answer has none,
-  # and only if it is a row of the endpoint the call went to. No row or no
+  # and only if it is a row of the endpoint the call went to. With an
+  # asynchronous usage log (`request_log_mode: :async`) the row may only be
+  # queued yet, so it is waited for once, two seconds at most. No row or no
   # price: no cost, as for an answer without one. With the request cache on, a
   # repeat shows "$0.00" (the cache hit's row has cost 0), while an OpenRouter
   # answer keeps the `usage.cost` of the original one.
@@ -708,13 +711,34 @@ defmodule PhoenixKitAI.Web.Playground do
   end
 
   defp logged_cost(uuid, endpoint_uuid) when is_binary(uuid) do
-    case AI.get_request(uuid) do
+    case logged_row(uuid) do
       %{cost: cost, endpoint_uuid: ^endpoint_uuid} -> cost
       _ -> nil
     end
   end
 
   defp logged_cost(_uuid, _endpoint_uuid), do: nil
+
+  # The row is there when the verb returns, unless the usage log is
+  # asynchronous: the answer then names a row that is only queued. When it is
+  # not there yet, wait once for the queue to be written and read again. A log
+  # written by the caller itself, or whose queue is full (`RequestLog.async?/0`
+  # is false), is not waited for.
+  defp logged_row(uuid) do
+    case AI.get_request(uuid) do
+      nil -> if RequestLog.async?(), do: flush_then_get(uuid)
+      row -> row
+    end
+  end
+
+  # A timeout or a dead writer still gets one more read: the insert comes
+  # before the sinks, so the row may be there already.
+  defp flush_then_get(uuid) do
+    RequestLog.flush(2_000)
+    AI.get_request(uuid)
+  catch
+    :exit, _reason -> AI.get_request(uuid)
+  end
 
   defp maybe_add_system(opts, nil), do: opts
   defp maybe_add_system(opts, system), do: Keyword.put(opts, :system, system)

@@ -56,7 +56,10 @@ defmodule PhoenixKitAI.RequestLog do
   @spec enqueue({Ecto.UUID.t(), map()}) :: :ok
   def enqueue({uuid, attrs}), do: GenServer.cast(__MODULE__, {:write, uuid, attrs})
 
-  @doc "Wait until every row queued so far is written (tests, graceful shutdown)."
+  @doc """
+  Wait until every row queued so far is written (tests, graceful shutdown, and
+  the Playground before it reads a call's cost).
+  """
   @spec flush(timeout()) :: :ok
   def flush(timeout \\ 30_000) do
     if Process.whereis(__MODULE__), do: GenServer.call(__MODULE__, :flush, timeout)
