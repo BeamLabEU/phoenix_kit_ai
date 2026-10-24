@@ -1,3 +1,17 @@
+## 0.26.1 - 2026-10-24
+
+### Fixed
+
+- The Playground shows a call's logged cost under `request_log_mode: :async` too
+  (#56). A cost known only from the usage row (Anthropic's list price, a catalogue
+  or manual price) used to vanish because the row was still queued; the Playground
+  now waits once, up to 2 s, for the queue before reading it. Synchronous logging
+  and a full queue take the old path.
+
+### Changed
+
+- Dependencies updated: PhoenixKit 2.64.1.
+
 ## 0.26.0 - 2026-10-24
 
 Requires PhoenixKit `~> 2.64`. Upgrade both packages together, then run
