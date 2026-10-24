@@ -132,7 +132,6 @@ defmodule PhoenixKitAI.Request do
     # Associations
     belongs_to(:endpoint, Endpoint, foreign_key: :endpoint_uuid, references: :uuid, type: UUIDv7)
     belongs_to(:prompt, Prompt, foreign_key: :prompt_uuid, references: :uuid, type: UUIDv7)
-    field(:account_uuid, UUIDv7)
     belongs_to(:user, User, foreign_key: :user_uuid, references: :uuid, type: UUIDv7)
 
     timestamps(type: :utc_datetime)
@@ -148,7 +147,6 @@ defmodule PhoenixKitAI.Request do
       :endpoint_name,
       :prompt_uuid,
       :prompt_name,
-      :account_uuid,
       :user_uuid,
       :slot_index,
       :model,
