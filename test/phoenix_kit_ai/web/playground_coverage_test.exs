@@ -277,6 +277,24 @@ defmodule PhoenixKitAI.Web.PlaygroundCoverageTest do
       send_and_render(view)
     end
 
+    # Resume a held process once `queued` messages wait for it. A process that
+    # is gone by then (the test failed first) has nothing to resume.
+    defp resume_when_queued(pid, queued, tries \\ 500) do
+      case Process.info(pid, :message_queue_len) do
+        {:message_queue_len, len} when len >= queued ->
+          :sys.resume(pid)
+
+        {:message_queue_len, _len} when tries > 0 ->
+          Process.sleep(10)
+          resume_when_queued(pid, queued, tries - 1)
+
+        _ ->
+          :ok
+      end
+    catch
+      :exit, _reason -> :ok
+    end
+
     test "an Anthropic call shows the cost its rate table gives", %{conn: conn} do
       stub_response(200, payload_without_cost("claude-opus-5-5", 100_000, 50_000))
 
@@ -369,14 +387,11 @@ defmodule PhoenixKitAI.Web.PlaygroundCoverageTest do
       on_exit(fn -> Application.delete_env(:phoenix_kit_ai, :request_log_mode) end)
 
       # The queue is held, so the row is only queued when the answer comes back;
-      # it is let go while the Playground waits for it.
+      # it is let go once the row and the Playground's wait for it are both in
+      # the queue.
       writer = Process.whereis(RequestLog)
       :ok = :sys.suspend(writer)
-
-      Task.start(fn ->
-        Process.sleep(200)
-        :sys.resume(writer)
-      end)
+      Task.start(fn -> resume_when_queued(writer, 2) end)
 
       html = ask(conn, ep)
 

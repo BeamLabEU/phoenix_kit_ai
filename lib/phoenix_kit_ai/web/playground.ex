@@ -720,9 +720,10 @@ defmodule PhoenixKitAI.Web.Playground do
   defp logged_cost(_uuid, _endpoint_uuid), do: nil
 
   # The row is there when the verb returns, unless the usage log is
-  # asynchronous: the answer then names a row that is only queued. Only when it
-  # is not there yet and the log is asynchronous, wait once for the queue to be
-  # written and read again; a timeout or a dead writer is no row.
+  # asynchronous: the answer then names a row that is only queued. When it is
+  # not there yet, wait once for the queue to be written and read again. A log
+  # written by the caller itself, or whose queue is full (`RequestLog.async?/0`
+  # is false), is not waited for.
   defp logged_row(uuid) do
     case AI.get_request(uuid) do
       nil -> if RequestLog.async?(), do: flush_then_get(uuid)
@@ -730,11 +731,13 @@ defmodule PhoenixKitAI.Web.Playground do
     end
   end
 
+  # A timeout or a dead writer still gets one more read: the insert comes
+  # before the sinks, so the row may be there already.
   defp flush_then_get(uuid) do
     RequestLog.flush(2_000)
     AI.get_request(uuid)
   catch
-    :exit, _reason -> nil
+    :exit, _reason -> AI.get_request(uuid)
   end
 
   defp maybe_add_system(opts, nil), do: opts
