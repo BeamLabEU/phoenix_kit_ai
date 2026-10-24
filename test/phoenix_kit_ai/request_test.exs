@@ -74,6 +74,18 @@ defmodule PhoenixKitAI.RequestTest do
       refute valid?.(Decimal.new("-0.01"))
       # past the column's scale: refused, not silently rounded
       refute valid?.(Decimal.new("0.00000000001"))
+      # a bare number is ambiguous: the released API took integer millionths
+      refute valid?.(5_000_000)
+      refute valid?.(0.00003)
+      assert valid?.(0)
+      assert valid?.("0")
+    end
+
+    test "create_request/1 refuses a cost given as integer millionths" do
+      assert {:error, %Ecto.Changeset{errors: errors}} =
+               PhoenixKitAI.create_request(%{status: "success", cost: 5_000_000})
+
+      assert Keyword.has_key?(errors, :cost)
     end
 
     test "rejects unknown status values" do

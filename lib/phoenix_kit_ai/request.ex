@@ -169,7 +169,7 @@ defmodule PhoenixKitAI.Request do
     |> validate_number(:output_tokens, greater_than_or_equal_to: 0)
     |> validate_number(:total_tokens, greater_than_or_equal_to: 0)
     |> validate_number(:latency_ms, greater_than_or_equal_to: 0)
-    |> validate_cost()
+    |> validate_cost(attrs)
     |> calculate_total_tokens()
     # Core names these constraints `fk_ai_requests_*` (v135), not the
     # `phoenix_kit_ai_requests_<field>_fkey` that `foreign_key_constraint/2`
@@ -365,7 +365,20 @@ defmodule PhoenixKitAI.Request do
   # Private functions
 
   # A cost is dollars, not negative, and fits the column: at most 10 decimal
-  # places (a caller passing more is refused, not silently rounded).
+  # places (a caller passing more is refused, not silently rounded). Given as
+  # an integer (other than 0) or a float it is refused like any amount
+  # (`PhoenixKitAI.Money.amount/1`): the released API took integer millionths,
+  # and `cost: 5_000_000` must not be stored as $5,000,000.
+  defp validate_cost(changeset, attrs) do
+    given = if is_map(attrs), do: Map.get(attrs, :cost, Map.get(attrs, "cost"))
+
+    if (is_integer(given) and given != 0) or is_float(given) do
+      add_error(changeset, :cost, "must be dollars as a Decimal or a string, not a bare number")
+    else
+      validate_cost(changeset)
+    end
+  end
+
   defp validate_cost(changeset) do
     case get_change(changeset, :cost) do
       %Decimal{} = cost ->
