@@ -1,3 +1,19 @@
+## Unreleased
+
+### Changed
+
+- The migration chain is now V5 and adopts `phoenix_kit_ai_endpoints`,
+  `phoenix_kit_ai_prompts` and `phoenix_kit_ai_requests`, which core's chain
+  created before the module had one (core's V135 baseline plus V164, V169,
+  V193 and V223). `CREATE TABLE IF NOT EXISTS`, guarded constraints and
+  indexes, identical to what a fresh core builds: a no-op on every existing
+  install. The adoption runs ahead of V2's statements, because V2 and V4 touch
+  those tables. `down/1` never drops them. With it the chain builds all eight
+  tables without core (`test/integration/migrations_build_alone_test.exs`,
+  core's `ModuleChainCheck`). A change to these tables is now a version here,
+  never a core migration. See core's
+  `dev_docs/plans/2026-10-25-module-table-ownership.md`.
+
 ## 0.26.1 - 2026-10-24
 
 ### Fixed

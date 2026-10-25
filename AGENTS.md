@@ -32,11 +32,12 @@ host supplies endpoint and router (`config/` exists only for tests).
 
 ## What this module does NOT do
 
-- **No migrations for core's tables.** `phoenix_kit_ai_endpoints`,
-  `_prompts` and `_requests` are created by core's versioned chain; adding a
-  column to one is a core migration first, then schema + changeset edits
-  here. The module's own chain (`PhoenixKitAI.Migrations`) holds only new
-  tables core does not know — see "Database & migrations".
+- **No column change for `phoenix_kit_ai_endpoints`, `_prompts` or
+  `_requests` in core.** Core's chain still creates them first (history), but
+  since V5 of this module's chain adopts them and owns their shape; core
+  refuses a migration that touches a module table (V223 was the last). A
+  change is a new version in `PhoenixKitAI.Migrations`, then schema +
+  changeset edits here — see "Database & migrations".
 - **No per-completion Activity logging.** `PhoenixKit.Activity.log/3` runs on
   endpoint/prompt CRUD and enable/disable toggles, on both the success and
   failure branches, via the `log_failed_*_mutation/3` pipe-step helpers with
@@ -339,7 +340,7 @@ Notes on the less obvious modules:
 
 | Table | Schema | Notes |
 |---|---|---|
-| `phoenix_kit_ai_endpoints` | `PhoenixKitAI.Endpoint` | provider credentials, model, generation params, `provider_settings` |
+| `phoenix_kit_ai_endpoints` | `PhoenixKitAI.Endpoint` | (module chain V5, adopted from core) provider credentials, model, generation params, `provider_settings` |
 | `phoenix_kit_ai_prompts` | `PhoenixKitAI.Prompt` | `{{Variable}}` templates |
 | `phoenix_kit_ai_requests` | `PhoenixKitAI.Request` | per-request usage log |
 | `phoenix_kit_ai_model_capabilities` | `PhoenixKitAI.ModelCapability` | capability snapshot of the endpoints' models (module chain) |
@@ -583,13 +584,14 @@ provided the API exposes `<base_url>/chat/completions` and `/models`.
 ## Database & migrations
 
 Tables `phoenix_kit_ai_endpoints`, `phoenix_kit_ai_prompts` and
-`phoenix_kit_ai_requests` ship in core's versioned chain; a schema change to
-one of them is a core migration first, then the schema and changeset edits
-here. The module does not adopt them.
+`phoenix_kit_ai_requests` were created by core's versioned chain before this
+module had one. **V5 adopts them** (see below): the chain owns their shape, so
+a schema change to one is a new version here, never a core migration (core
+refuses them since V223). Core's V135 baseline plus V164, V169, V193 and V223
+shaped them; the floor `~> 2.64` carries all of those.
 
 `migration_module/0` returns `PhoenixKitAI.Migrations`, the module's own
-chain for tables core does not create (`mix phoenix_kit.update` runs it after
-core's). Version marker: `COMMENT ON TABLE phoenix_kit_ai_model_capabilities
+chain for all of its tables (`mix phoenix_kit.update` runs it after core's). Version marker: `COMMENT ON TABLE phoenix_kit_ai_model_capabilities
 IS 'ai_schema:<N>'`. Every statement guards itself, so the chain re-runs
 cleanly; additive only. V1 creates `phoenix_kit_ai_model_capabilities`
 (unique `(base_url, model)`, flags `yes`/`no`/`unknown`), the snapshot
@@ -606,8 +608,15 @@ schema repair reports extra columns of its tables, not extra indexes), and
 later version fills them). V3 creates `phoenix_kit_ai_guard_blocks`
 (user `CASCADE`; origin event, blocker and lifter `SET NULL`; reason and
 lift note ≤ 500; one active block per group and person — unique
-`(block_group, user_uuid) WHERE lifted_at IS NULL`). Down to 2 drops it;
-down to 1 drops what V2 added; down to 0 also the snapshot, which the next
+`(block_group, user_uuid) WHERE lifted_at IS NULL`). V4 converts money to dollar strings (needs core's V223 `cost`). V5 adopts
+the three core-created tables: `CREATE TABLE IF NOT EXISTS`, guarded
+constraints and indexes, exactly as a fresh core builds them, a no-op on
+every existing install. **It is emitted ahead of V2's statements, not last**
+(`version_up/3`): V2's foreign keys and its journal index, and V4's
+conversions, touch those tables, and without core's copy only V5 creates
+them. The number is still the next one; a target below 5 builds the old chain.
+Down from 5 only moves the marker and never drops an adopted table. Down to 2
+drops it (V3's table); down to 1 drops what V2 added; down to 0 also the snapshot, which the next
 refresh rebuilds.
 
 **Before V2 on a host with a large journal, measure it**

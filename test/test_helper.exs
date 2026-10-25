@@ -244,4 +244,12 @@ exclude =
   ]
   |> Enum.reject(&is_nil/1)
 
+# `migrations_build_alone_test.exs` uses core's
+# `PhoenixKit.TestSupport.ModuleChainCheck`, which the first core release after
+# 2.64.1 ships; against an older core in `deps/` it is excluded.
+exclude =
+  if Code.ensure_loaded?(PhoenixKit.TestSupport.ModuleChainCheck),
+    do: exclude,
+    else: [:requires_module_chain_check | exclude]
+
 ExUnit.start(exclude: exclude)

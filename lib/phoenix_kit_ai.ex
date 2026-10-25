@@ -1194,8 +1194,9 @@ defmodule PhoenixKitAI do
 
   @doc """
   The module's own migration chain (`PhoenixKitAI.Migrations`), run by
-  `mix phoenix_kit.update` after core's. It holds only tables core does not
-  create; the endpoint, prompt and request tables stay in core's chain.
+  `mix phoenix_kit.update` after core's. It owns every table of the module;
+  V5 adopted the endpoint, prompt and request tables core's chain used to
+  create first.
   """
   @impl PhoenixKit.Module
   @spec migration_module() :: module()

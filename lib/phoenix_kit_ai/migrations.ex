@@ -7,9 +7,25 @@ defmodule PhoenixKitAI.Migrations do
   re-reading the version before it changes anything, the SQL kept as data
   (`up_statements/2`, `down_statements/2`).
 
-  This chain holds only objects core does not create. The tables
-  `phoenix_kit_ai_endpoints`, `phoenix_kit_ai_prompts` and
-  `phoenix_kit_ai_requests` stay in core's chain and are never touched here.
+  This chain owns all of the module's tables. `phoenix_kit_ai_endpoints`,
+  `phoenix_kit_ai_prompts` and `phoenix_kit_ai_requests` were created by core's
+  chain before the module had one; V5 adopts them (below), and from there on a
+  change to their shape is a new version here, never a core migration (core
+  enforces that since V223; see core's
+  `dev_docs/plans/2026-10-25-module-table-ownership.md`).
+
+  ## V5: adoption of the three core-created tables
+
+  `CREATE TABLE IF NOT EXISTS`, guarded constraints and `CREATE INDEX IF NOT
+  EXISTS` for the three tables, identical to what a fresh core builds today
+  (core's V135 baseline plus V164, V169, V193 and V223, `cost` included). A
+  no-op on every existing install. **Emitted ahead of V2's statements**, not
+  after V4: V2 puts foreign keys and an index on those tables and V4 converts
+  rows in them, so on a database without core's copy they must exist first.
+  A target below 5 builds the chain as it was. `down/1` never drops them.
+  V4's guard (core's V223 `cost` column) is satisfied by this chain's own copy;
+  on a database whose core copy predates V223 it still stops, as before.
+  The core floor stays `~> 2.64`, which carries every version above.
 
   ## Tables (V1)
 
@@ -90,7 +106,7 @@ defmodule PhoenixKitAI.Migrations do
 
   alias PhoenixKit.Migrations.Postgres.Helpers
 
-  @current_version 4
+  @current_version 5
   @default_prefix "public"
   @marker_prefix "ai_schema:"
   @version_table "phoenix_kit_ai_model_capabilities"
@@ -185,7 +201,8 @@ defmodule PhoenixKitAI.Migrations do
     if target == 0 do
       []
     else
-      Enum.flat_map(1..target, &version_up(&1, prefix)) ++ [marker_statement(prefix, target)]
+      Enum.flat_map(1..target, &version_up(&1, prefix, target)) ++
+        [marker_statement(prefix, target)]
     end
   end
 
@@ -204,10 +221,18 @@ defmodule PhoenixKitAI.Migrations do
     if target == 0, do: later, else: later ++ [marker_statement(prefix, target)]
   end
 
-  defp version_up(1, prefix), do: v1_statements(prefix)
-  defp version_up(2, prefix), do: v2_statements(prefix)
-  defp version_up(3, prefix), do: v3_statements(prefix)
-  defp version_up(4, prefix), do: v4_statements(prefix)
+  defp version_up(1, prefix, _target), do: v1_statements(prefix)
+
+  # V5's adoption goes here, before the first statement that touches core's
+  # tables, when the target includes V5; a target below 5 builds what it did
+  # before.
+  defp version_up(2, prefix, target) when target >= 5,
+    do: v5_adoption_statements(prefix) ++ v2_statements(prefix)
+
+  defp version_up(2, prefix, _target), do: v2_statements(prefix)
+  defp version_up(3, prefix, _target), do: v3_statements(prefix)
+  defp version_up(4, prefix, _target), do: v4_statements(prefix)
+  defp version_up(5, _prefix, _target), do: []
 
   defp version_down(1, prefix),
     do: [
@@ -220,6 +245,192 @@ defmodule PhoenixKitAI.Migrations do
     do: ["DROP TABLE IF EXISTS #{Helpers.qualify_table("phoenix_kit_ai_guard_blocks", prefix)}"]
 
   defp version_down(4, prefix), do: v4_down_statements(prefix)
+
+  # V5 adopted core's tables; undoing it drops nothing (the rows are people's
+  # endpoints, prompts and usage history).
+  defp version_down(5, _prefix), do: []
+
+  # ── V5: adoption of core's tables ─────────────────────────────────────
+  #
+  # The three tables core's chain created for this module, re-stated as a fresh
+  # core builds them today (core's V135 baseline plus V164, V169, V193, V223),
+  # with core's object names. On every existing install each statement finds
+  # its target and does nothing.
+  #
+  # Emitted AHEAD of V2 (see `version_up/3`), not as the last version: V2's
+  # foreign keys and its index on the journal, and V4's conversions, touch
+  # these tables, and on a database without core's copy only this step creates
+  # them. The number is still the next one, so hosts at V4 run it once.
+
+  defp v5_adoption_statements(prefix) do
+    p = "#{prefix}."
+    uuid7 = Helpers.uuid_v7_call(prefix)
+
+    adoption_tables(p, uuid7) ++ adoption_constraints(p, prefix) ++ adoption_indexes(p)
+  end
+
+  defp adoption_tables(p, uuid7) do
+    [
+      """
+      CREATE TABLE IF NOT EXISTS #{p}phoenix_kit_ai_endpoints (
+        "name" character varying(100) NOT NULL,
+        "description" character varying(500),
+        "provider" character varying(50) DEFAULT 'openrouter'::character varying NOT NULL,
+        "api_key" text NOT NULL,
+        "base_url" character varying(255),
+        "provider_settings" jsonb DEFAULT '{}'::jsonb,
+        "model" character varying(150) NOT NULL,
+        "temperature" double precision DEFAULT 0.7,
+        "max_tokens" integer,
+        "top_p" double precision,
+        "top_k" integer,
+        "frequency_penalty" double precision,
+        "presence_penalty" double precision,
+        "repetition_penalty" double precision,
+        "stop" character varying(255)[],
+        "seed" integer,
+        "image_size" character varying(20),
+        "image_quality" character varying(20),
+        "dimensions" integer,
+        "enabled" boolean DEFAULT true NOT NULL,
+        "sort_order" integer DEFAULT 0 NOT NULL,
+        "last_validated_at" timestamp with time zone,
+        "inserted_at" timestamp with time zone NOT NULL,
+        "updated_at" timestamp with time zone NOT NULL,
+        "uuid" uuid DEFAULT #{uuid7} NOT NULL,
+        "reasoning_enabled" boolean,
+        "reasoning_effort" character varying(20),
+        "reasoning_max_tokens" integer,
+        "reasoning_exclude" boolean,
+        "integration_uuid" uuid
+      )
+      """,
+      """
+      CREATE TABLE IF NOT EXISTS #{p}phoenix_kit_ai_prompts (
+        "name" character varying(255) NOT NULL,
+        "slug" character varying(255) NOT NULL,
+        "description" text,
+        "content" text NOT NULL,
+        "variables" character varying(255)[] DEFAULT ARRAY[]::character varying[] NOT NULL,
+        "enabled" boolean DEFAULT true NOT NULL,
+        "sort_order" integer DEFAULT 0 NOT NULL,
+        "usage_count" integer DEFAULT 0 NOT NULL,
+        "last_used_at" timestamp with time zone,
+        "metadata" jsonb DEFAULT '{}'::jsonb NOT NULL,
+        "inserted_at" timestamp with time zone NOT NULL,
+        "updated_at" timestamp with time zone NOT NULL,
+        "uuid" uuid DEFAULT #{uuid7} NOT NULL,
+        "system_prompt" text
+      )
+      """,
+      """
+      CREATE TABLE IF NOT EXISTS #{p}phoenix_kit_ai_requests (
+        "slot_index" integer,
+        "model" character varying(150),
+        "request_type" character varying(50) DEFAULT 'text_completion'::character varying NOT NULL,
+        "input_tokens" integer DEFAULT 0 NOT NULL,
+        "output_tokens" integer DEFAULT 0 NOT NULL,
+        "total_tokens" integer DEFAULT 0 NOT NULL,
+        "cost" numeric(28,18),
+        "latency_ms" integer,
+        "status" character varying(20) DEFAULT 'success'::character varying NOT NULL,
+        "error_message" text,
+        "metadata" jsonb DEFAULT '{}'::jsonb,
+        "inserted_at" timestamp with time zone NOT NULL,
+        "updated_at" timestamp with time zone NOT NULL,
+        "endpoint_name" character varying(100),
+        "uuid" uuid DEFAULT #{uuid7} NOT NULL,
+        "prompt_name" character varying(255),
+        "user_uuid" uuid,
+        "endpoint_uuid" uuid,
+        "prompt_uuid" uuid
+      )
+      """
+    ]
+  end
+
+  defp adoption_constraints(p, prefix) do
+    [
+      guarded_constraint(
+        prefix,
+        "phoenix_kit_ai_endpoints",
+        "phoenix_kit_ai_endpoints_pkey",
+        "ALTER TABLE #{p}phoenix_kit_ai_endpoints ADD CONSTRAINT phoenix_kit_ai_endpoints_pkey PRIMARY KEY (uuid)"
+      ),
+      guarded_constraint(
+        prefix,
+        "phoenix_kit_ai_prompts",
+        "phoenix_kit_ai_prompts_pkey",
+        "ALTER TABLE #{p}phoenix_kit_ai_prompts ADD CONSTRAINT phoenix_kit_ai_prompts_pkey PRIMARY KEY (uuid)"
+      ),
+      guarded_constraint(
+        prefix,
+        "phoenix_kit_ai_requests",
+        "phoenix_kit_ai_requests_pkey",
+        "ALTER TABLE #{p}phoenix_kit_ai_requests ADD CONSTRAINT phoenix_kit_ai_requests_pkey PRIMARY KEY (uuid)"
+      ),
+      guarded_constraint(
+        prefix,
+        "phoenix_kit_ai_requests",
+        "fk_ai_requests_endpoint_uuid",
+        "ALTER TABLE #{p}phoenix_kit_ai_requests ADD CONSTRAINT fk_ai_requests_endpoint_uuid FOREIGN KEY (endpoint_uuid) REFERENCES #{p}phoenix_kit_ai_endpoints(uuid) ON DELETE SET NULL"
+      ),
+      guarded_constraint(
+        prefix,
+        "phoenix_kit_ai_requests",
+        "fk_ai_requests_user_uuid",
+        "ALTER TABLE #{p}phoenix_kit_ai_requests ADD CONSTRAINT fk_ai_requests_user_uuid FOREIGN KEY (user_uuid) REFERENCES #{p}phoenix_kit_users(uuid) ON DELETE SET NULL"
+      ),
+      guarded_constraint(
+        prefix,
+        "phoenix_kit_ai_requests",
+        "phoenix_kit_ai_requests_prompt_uuid_fkey",
+        "ALTER TABLE #{p}phoenix_kit_ai_requests ADD CONSTRAINT phoenix_kit_ai_requests_prompt_uuid_fkey FOREIGN KEY (prompt_uuid) REFERENCES #{p}phoenix_kit_ai_prompts(uuid) ON DELETE SET NULL"
+      )
+    ]
+  end
+
+  defp adoption_indexes(p) do
+    [
+      "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_endpoints_enabled_idx ON #{p}phoenix_kit_ai_endpoints USING btree (enabled)",
+      "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_endpoints_integration_uuid_index ON #{p}phoenix_kit_ai_endpoints USING btree (integration_uuid)",
+      "CREATE UNIQUE INDEX IF NOT EXISTS phoenix_kit_ai_endpoints_name_index ON #{p}phoenix_kit_ai_endpoints USING btree (lower((name)::text))",
+      "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_endpoints_sort_order_idx ON #{p}phoenix_kit_ai_endpoints USING btree (sort_order)",
+      "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_prompts_enabled_idx ON #{p}phoenix_kit_ai_prompts USING btree (enabled)",
+      "CREATE UNIQUE INDEX IF NOT EXISTS phoenix_kit_ai_prompts_name_uidx ON #{p}phoenix_kit_ai_prompts USING btree (name)",
+      "CREATE UNIQUE INDEX IF NOT EXISTS phoenix_kit_ai_prompts_slug_uidx ON #{p}phoenix_kit_ai_prompts USING btree (slug)",
+      "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_prompts_sort_order_idx ON #{p}phoenix_kit_ai_prompts USING btree (sort_order)",
+      "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_prompts_usage_count_idx ON #{p}phoenix_kit_ai_prompts USING btree (usage_count)",
+      "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_requests_endpoint_spend_idx ON #{p}phoenix_kit_ai_requests USING btree (endpoint_uuid, inserted_at) INCLUDE (cost) WHERE ((status)::text = 'success'::text)",
+      "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_requests_endpoint_uuid_idx ON #{p}phoenix_kit_ai_requests USING btree (endpoint_uuid)",
+      "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_requests_inserted_at_idx ON #{p}phoenix_kit_ai_requests USING btree (inserted_at)",
+      "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_requests_model_idx ON #{p}phoenix_kit_ai_requests USING btree (model)",
+      "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_requests_prompt_uuid_idx ON #{p}phoenix_kit_ai_requests USING btree (prompt_uuid)",
+      "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_requests_status_idx ON #{p}phoenix_kit_ai_requests USING btree (status)",
+      "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_requests_user_spend_idx ON #{p}phoenix_kit_ai_requests USING btree (user_uuid, inserted_at) INCLUDE (cost) WHERE ((status)::text = 'success'::text)",
+      "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_requests_user_uuid_idx ON #{p}phoenix_kit_ai_requests USING btree (user_uuid)"
+    ]
+  end
+
+  defp guarded_constraint(prefix, table, constraint_name, add_sql) do
+    """
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint c
+        JOIN pg_class t ON t.oid = c.conrelid
+        JOIN pg_namespace n ON n.oid = t.relnamespace
+        WHERE c.conname = '#{constraint_name}'
+          AND t.relname = '#{table}'
+          AND n.nspname = '#{prefix}'
+      ) THEN
+        #{add_sql};
+      END IF;
+    END
+    $$
+    """
+  end
 
   # ── V1 ────────────────────────────────────────────────────────────────
 
