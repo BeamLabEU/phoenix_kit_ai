@@ -406,9 +406,11 @@ defmodule PhoenixKitAI.RetentionDDLTest do
         end
 
       # windows of the rows that stay, each run going on from where the last
-      # stopped (the stretch kept as cleared between runs), then the tail in
-      # the run that finishes them; the kept rows are always "more left"
-      assert Enum.map(results, &elem(&1, 0)) == [2, 1, 1, 1, 3, 0]
+      # stopped (the stretch kept as cleared between runs); the run that
+      # finishes them is past its slice and leaves the tail to the next one
+      # (no later range starts after the slice); the kept rows are always
+      # "more left"
+      assert Enum.map(results, &elem(&1, 0)) == [2, 1, 1, 1, 1, 2]
       assert Enum.all?(results, &elem(&1, 1))
 
       for row <- tail ++ rows do

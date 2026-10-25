@@ -473,17 +473,29 @@ defmodule PhoenixKitAI.Web.Components.JournalRetentionCard do
     first =
       for kind <- settling do
         {"first-#{kind}", :info,
-         gettext("The first cleanup of %{kind} runs no earlier than %{date}",
-           kind: String.downcase(kind_label(kind)),
-           date: datetime_text(DateTime.add(settings.changed_at[kind], @settle_hours * 3600))
+         first_cleanup_text(
+           kind,
+           datetime_text(DateTime.add(settings.changed_at[kind], @settle_hours * 3600))
          )}
       end
 
     off ++
       first ++
       night_lines(last_run.scheduled, finite -- settling, now) ++
-      manual_lines(last_run.manual) ++ unconfirmed_lines(settings.unconfirmed)
+      manual_lines(last_run.manual) ++ unconfirmed_lines(settings)
   end
+
+  defp first_cleanup_text(:content, date),
+    do:
+      gettext("The first cleanup of the content of journal entries runs no earlier than %{date}",
+        date: date
+      )
+
+  defp first_cleanup_text(:requests, date),
+    do: gettext("The first cleanup of journal entries runs no earlier than %{date}", date: date)
+
+  defp first_cleanup_text(:guard_events, date),
+    do: gettext("The first cleanup of guard events runs no earlier than %{date}", date: date)
 
   defp settling?(%DateTime{} = changed_at, now),
     do: DateTime.diff(now, changed_at, :second) < @settle_hours * 3600
@@ -589,15 +601,35 @@ defmodule PhoenixKitAI.Web.Components.JournalRetentionCard do
     [{id, :ok, done} | more]
   end
 
-  defp unconfirmed_lines(kinds) do
-    for kind <- kinds do
-      {"unconfirmed-#{kind}", :warning,
-       gettext(
-         "The period of %{kind} is stored without the time it was set and is read as kept forever: save the period again",
-         kind: String.downcase(kind_label(kind))
-       )}
+  # The stored period is what the form shows (`unconfirmed_periods`):
+  # saving it as it is applies it.
+  defp unconfirmed_lines(settings) do
+    for kind <- settings.unconfirmed do
+      period = period_text(Map.get(settings.unconfirmed_periods, kind, :forever))
+      {"unconfirmed-#{kind}", :warning, unconfirmed_text(kind, period)}
     end
   end
+
+  defp unconfirmed_text(:content, period),
+    do:
+      gettext(
+        "The period for the content of journal entries (%{period}) is stored without the time it was set: the content is kept forever until it is saved again",
+        period: period
+      )
+
+  defp unconfirmed_text(:requests, period),
+    do:
+      gettext(
+        "The period for journal entries (%{period}) is stored without the time it was set: the entries are kept forever until it is saved again",
+        period: period
+      )
+
+  defp unconfirmed_text(:guard_events, period),
+    do:
+      gettext(
+        "The period for guard events (%{period}) is stored without the time it was set: the events are kept forever until it is saved again",
+        period: period
+      )
 
   # ===========================================
   # THE PREVIEW
@@ -655,7 +687,9 @@ defmodule PhoenixKitAI.Web.Components.JournalRetentionCard do
 
   defp kind_messages(:content, counts) do
     cut = counts.cutoffs.content
-    from = counts.cutoffs.requests
+    # where the count starts: the later of the requests boundary and the
+    # point already cleared
+    from = counts.content_from
 
     text =
       if from && DateTime.compare(from, cut) == :lt do

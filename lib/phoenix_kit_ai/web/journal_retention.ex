@@ -30,6 +30,7 @@ defmodule PhoenixKitAI.Web.JournalRetention do
   @form_only ~w(retention_validate retention_save_cancel retention_run_change retention_run_open
                 retention_run_cancel)
   @events @acting ++ @form_only
+  @job_reread_ms 2_000
 
   @doc "The events of the card, for the LiveView's dispatch."
   @spec events() :: [String.t()]
@@ -46,6 +47,7 @@ defmodule PhoenixKitAI.Web.JournalRetention do
     |> assign(:retention_job, nil)
     |> assign(:retention_can_manage, false)
     |> assign(:retention_retained_since, nil)
+    |> assign(:retention_retained_since_read, false)
     |> reset_forms(settings)
   end
 
@@ -61,17 +63,30 @@ defmodule PhoenixKitAI.Web.JournalRetention do
     |> assign(:retention_job, Retention.pending_job())
     |> assign(:retention_can_manage, Access.may_manage?(socket))
     |> assign(:retention_retained_since, retained_since(settings, last_run))
+    |> assign(:retention_retained_since_read, true)
     |> reset_forms(settings)
   end
 
-  @doc "Reads where the totals \"for all time\" start (the endpoints tab)."
+  @doc """
+  Reads where the totals "for all time" start (the endpoints tab), once
+  per mount, with the periods and the last runs it is judged by: later
+  the broadcasts of the two settings keep it (`handle_setting/3`), so
+  moving through the list reads nothing again. `load/1` reads it too.
+  """
   @spec assign_retained_since(Phoenix.LiveView.Socket.t()) :: Phoenix.LiveView.Socket.t()
+  def assign_retained_since(%{assigns: %{retention_retained_since_read: true}} = socket),
+    do: socket
+
   def assign_retained_since(socket) do
-    assign(
-      socket,
-      :retention_retained_since,
-      retained_since(Retention.settings(), Retention.last_run())
-    )
+    settings = Retention.settings()
+    last_run = Retention.last_run()
+
+    socket
+    |> assign(:retention, settings)
+    |> assign(:retention_last_run, last_run)
+    |> assign(:retention_retained_since, retained_since(settings, last_run))
+    |> assign(:retention_retained_since_read, true)
+    |> reset_forms(settings)
   end
 
   @doc """
@@ -104,14 +119,47 @@ defmodule PhoenixKitAI.Web.JournalRetention do
       {:periods, put_settings_shown(socket, settings)}
     else
       last_run = Retention.last_run_from(value)
+      Process.send_after(self(), :retention_job_reread, @job_reread_ms)
 
       {:last_run,
        socket
        |> assign(:retention_last_run, last_run)
-       |> assign(:retention_job, Retention.pending_job())
+       |> assign(:retention_job, job_after_stamp(Retention.pending_job(), last_run))
        |> assign(:retention_retained_since, retained_since(socket.assigns.retention, last_run))}
     end
   end
+
+  @doc """
+  The pending job read again `#{@job_reread_ms}` ms after a stamp's
+  broadcast (`:retention_job_reread`), as it is: by then Oban has closed
+  the attempt that wrote the stamp (completed, or retryable when it
+  failed), so a job still `executing` is stuck — its node died after the
+  stamp — and shows.
+  """
+  @spec reread_job(Phoenix.LiveView.Socket.t()) :: Phoenix.LiveView.Socket.t()
+  def reread_job(socket), do: assign(socket, :retention_job, Retention.pending_job())
+
+  # The stamp is a run's last act, written while its job is still
+  # `executing`: an attempt that started no later than the newest entry
+  # is the one that wrote it, and is over. (`at` is cut to the second.)
+  defp job_after_stamp(
+         %{state: "executing", attempted_at: %DateTime{} = attempted} = job,
+         last_run
+       ) do
+    stamped =
+      [last_run.scheduled, last_run.manual]
+      |> Enum.flat_map(fn
+        %{at: %DateTime{} = at} -> [at]
+        _ -> []
+      end)
+      |> Enum.max(DateTime, fn -> nil end)
+
+    if stamped && DateTime.compare(DateTime.truncate(attempted, :second), stamped) != :gt,
+      do: nil,
+      else: job
+  end
+
+  defp job_after_stamp(job, _last_run), do: job
 
   defp put_settings_shown(%{assigns: %{retention: settings}} = socket, settings), do: socket
 
@@ -140,7 +188,7 @@ defmodule PhoenixKitAI.Web.JournalRetention do
     assigns.retention_save != nil or assigns.retention_run != nil or
       assigns.retention_run_form != default_run_form() or
       Enum.any?(Retention.kinds(), fn kind ->
-        parse_period(assigns.retention_form[kind]) != {:ok, assigns.retention[kind]}
+        parse_period(assigns.retention_form[kind]) != {:ok, shown(assigns.retention, kind)}
       end)
   end
 
@@ -243,7 +291,7 @@ defmodule PhoenixKitAI.Web.JournalRetention do
 
   # The kinds to save: those the form changed against what it loaded, and
   # those stored without their change time (read as forever until saved:
-  # saving writes what the card shows).
+  # saving writes what the form shows, the stored period unless changed).
   defp changed_periods(form, loaded) do
     for kind <- Retention.kinds(),
         {:ok, period} <- [parse_period(form[kind])],
@@ -393,15 +441,23 @@ defmodule PhoenixKitAI.Web.JournalRetention do
   # ===========================================
 
   defp reset_forms(socket, settings) do
+    form = Map.new(Retention.kinds(), &{&1, form_value(shown(settings, &1))})
+
     socket
-    |> assign(:retention_form, Map.new(Retention.kinds(), &{&1, form_value(settings[&1])}))
+    |> assign(:retention_form, form)
     |> assign(:retention_form_errors, %{})
-    |> assign(:retention_warnings, warnings(settings))
+    |> assign(:retention_warnings, warnings_of(form, settings))
     |> assign(:retention_save, nil)
     |> assign(:retention_run_form, default_run_form())
     |> assign(:retention_run_errors, %{})
     |> assign(:retention_run, nil)
   end
+
+  # What the form shows of a kind: the period in force, or the stored one
+  # of a kind read as forever for want of its change time — saving the
+  # form as it is then confirms what was stored (through the preview: it
+  # is shorter than the forever in force).
+  defp shown(settings, kind), do: Map.get(settings.unconfirmed_periods, kind, settings[kind])
 
   defp form_value(:forever), do: %{"forever" => true, "n" => "", "unit" => "month"}
 
@@ -542,8 +598,6 @@ defmodule PhoenixKitAI.Web.JournalRetention do
 
   # The warnings of each kind for the periods shown: the form's where they
   # read, else the stored ones.
-  defp warnings(settings), do: warnings_of(Map.new(Retention.kinds(), &{&1, nil}), settings)
-
   defp warnings_of(form, settings) do
     now = DateTime.utc_now()
     period = fn kind -> period_or(form[kind], settings[kind]) end

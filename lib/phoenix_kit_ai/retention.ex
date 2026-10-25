@@ -99,10 +99,14 @@ defmodule PhoenixKitAI.Retention do
   # database's own timeout (a clean, recordable error) always comes first.
   @client_margin_ms 5_000
   @preview_timeout_ms 60_000
-  # Each counter may run past its slice by one chunk and then one probe
-  # (two statements, each with the client's margin); this is the room left
+  # Each counter may run past its slice by one pause, one chunk and then
+  # one probe (two statements, each with the client's margin; the content
+  # step starts no later range past its slice); this is the room left
   # in the job's timeout besides those: the checks before, the stamp after.
   @run_margin_ms 60_000
+  # The longest pause between two chunks; each counter may wait one past
+  # its slice, so the budget counts it once per counter.
+  @max_pause_ms 5_000
   @failure_log_hours 20
 
   @type kind :: :content | :requests | :guard_events
@@ -207,8 +211,10 @@ defmodule PhoenixKitAI.Retention do
   @doc """
   The periods in force: `%{content:, requests:, guard_events:}`, each
   `:forever` or `{n, unit}`, plus `changed_at` (each kind's last change,
-  `nil` when unknown) and `unconfirmed` (the kinds stored with a period but
-  no `changed_at`, read as `:forever` until saved again).
+  `nil` when unknown), `unconfirmed` (the kinds stored with a period but
+  no `changed_at`, read as `:forever` until saved again) and
+  `unconfirmed_periods` (those kinds' stored periods, for a form to show
+  what saving again would confirm; never in force).
 
   Read without the cache. Anything in doubt reads as `:forever`, with a
   warning in the log: a database error, a value of the wrong form or out of
@@ -217,7 +223,8 @@ defmodule PhoenixKitAI.Retention do
   @spec settings() :: %{
           required(kind()) => period(),
           required(:changed_at) => %{kind() => DateTime.t() | nil},
-          required(:unconfirmed) => [kind()]
+          required(:unconfirmed) => [kind()],
+          required(:unconfirmed_periods) => %{kind() => period()}
         }
   def settings do
     @setting_key |> Settings.get_json_setting() |> parse_settings()
@@ -237,7 +244,11 @@ defmodule PhoenixKitAI.Retention do
   defp forever do
     @kinds
     |> Map.new(&{&1, :forever})
-    |> Map.merge(%{changed_at: Map.new(@kinds, &{&1, nil}), unconfirmed: []})
+    |> Map.merge(%{
+      changed_at: Map.new(@kinds, &{&1, nil}),
+      unconfirmed: [],
+      unconfirmed_periods: %{}
+    })
   end
 
   @doc """
@@ -281,12 +292,14 @@ defmodule PhoenixKitAI.Retention do
       {:ok, period} when is_struct(changed_at, DateTime) ->
         Map.put(acc, kind, period)
 
-      {:ok, _period} ->
+      {:ok, period} ->
         Logger.warning(
           "[PhoenixKitAI.Retention] #{name} has a period but no changed_at; kept forever until saved again"
         )
 
-        Map.update!(acc, :unconfirmed, &(&1 ++ [kind]))
+        acc
+        |> Map.update!(:unconfirmed, &(&1 ++ [kind]))
+        |> put_in([:unconfirmed_periods, kind], period)
 
       :error ->
         Logger.warning("[PhoenixKitAI.Retention] #{name} holds an invalid period; kept forever")
@@ -947,15 +960,17 @@ defmodule PhoenixKitAI.Retention do
 
   @doc """
   What a run with `cutoffs` would do now: `{:ok, %{content:, requests:,
-  guard_events:, clamped:, cutoffs:}}`.
+  guard_events:, clamped:, cutoffs:, content_from:}}`.
 
   Each boundary goes through `effective_cutoff/3` first; `clamped` names
   the kinds held at the floor and `cutoffs` holds the boundaries used.
   `requests` and `guard_events` are the rows and events older than their
   boundaries (an active block's event left out); `content` is "up to": the
   rows in the range the content step would walk that stay (from the
-  requests boundary or the point already cleared, to the content
-  boundary), counted by the time index without reading the metadata. A
+  requests boundary or the point already cleared, whichever is later —
+  `content_from`, `nil` when the walk starts at the oldest row or there
+  is no content boundary — to the content boundary), counted by the time
+  index without reading the metadata. A
   kind without a boundary counts 0. The foreign keys are checked first; a
   count over 60 s (`preview_timeout_ms:` of `config :phoenix_kit_ai,
   :journal_prune`) is `{:error, :preview_timeout}`. No rights are checked:
@@ -1088,17 +1103,19 @@ defmodule PhoenixKitAI.Retention do
     with {:ok, effective, clamped} <- effective_cutoffs(cutoffs, now),
          :ok <- check_foreign_keys(deleting_kinds(effective)) do
       done_before = last_run().content_done_before
+      content_from = if effective.content, do: later(effective.requests, done_before)
 
       counts =
         in_transaction(timeout, timeout, fn qo ->
           %{
             requests: count_requests(effective.requests, qo),
-            content: count_content(effective.content, effective.requests, done_before, qo),
+            content: count_content(effective.content, content_from, qo),
             guard_events: count_events(effective.guard_events, qo)
           }
         end)
 
-      {:ok, Map.merge(counts, %{clamped: clamped, cutoffs: effective})}
+      {:ok,
+       Map.merge(counts, %{clamped: clamped, cutoffs: effective, content_from: content_from})}
     end
   rescue
     error ->
@@ -1117,10 +1134,10 @@ defmodule PhoenixKitAI.Retention do
     scalar("SELECT count(*) FROM #{table(Request)} WHERE inserted_at < $1", [cut], qo)
   end
 
-  defp count_content(nil, _requests_cut, _done_before, _qo), do: 0
+  defp count_content(nil, _from, _qo), do: 0
 
-  defp count_content(cut, requests_cut, done_before, qo) do
-    case later(requests_cut, done_before) do
+  defp count_content(cut, from, qo) do
+    case from do
       nil ->
         scalar("SELECT count(*) FROM #{table(Request)} WHERE inserted_at < $1", [cut], qo)
 
@@ -1173,8 +1190,9 @@ defmodule PhoenixKitAI.Retention do
   guard_reasons:, guard_events:}` in ms), `statement_timeout_ms:`,
   `lock_timeout_ms:`. A value that is not a fitting integer, or time slices
   that would not fit in the job's timeout, are replaced by the defaults
-  with a warning; a statement timeout too long for even the default slices
-  is lowered, with a warning, to the largest that fits.
+  with a warning; a pause above 5 000 ms is 5 000, with a warning; a
+  statement timeout too long for even the default slices is lowered, with
+  a warning, to the largest that fits.
   """
   @spec run(mode(), cutoffs(), keyword()) ::
           {:ok, map()} | {:cancel, term()} | {:error, {:prune_failed, String.t()}}
@@ -1427,25 +1445,41 @@ defmodule PhoenixKitAI.Retention do
         {key, checked(opts, key, &(is_integer(&1) and &1 > 0))}
       end)
 
-    base = [{:pause_ms, checked(opts, :pause_ms, &(is_integer(&1) and &1 >= 0))} | base]
+    base = [{:pause_ms, pause_ms(opts)} | base]
     base = Keyword.update!(base, :content_min_batch, &min(&1, base[:content_batch]))
 
     base
-    |> Keyword.put(:time_limits, time_limits(opts[:time_limits], base[:statement_timeout_ms]))
+    |> Keyword.put(:time_limits, time_limits(opts[:time_limits], base))
     |> fit_statement_timeout()
   end
 
   @doc false
   # The longest a run with `opts` may take: every counter's time slice,
-  # plus per counter one chunk and one probe past it (each a statement
-  # with the client's margin), plus the room for the checks and the stamp.
+  # plus per counter one pause, one chunk and one probe past it (each a
+  # statement with the client's margin), plus the room for the checks and
+  # the stamp.
   @spec run_budget_ms(keyword()) :: non_neg_integer()
   def run_budget_ms(opts),
-    do: budget_ms(opts[:time_limits], opts[:statement_timeout_ms])
+    do: budget_ms(opts[:time_limits], opts[:statement_timeout_ms], opts[:pause_ms])
 
-  defp budget_ms(limits, statement_ms) do
+  defp budget_ms(limits, statement_ms, pause_ms) do
     Enum.sum(Map.values(limits)) +
-      length(@counters) * 2 * (statement_ms + @client_margin_ms) + @run_margin_ms
+      length(@counters) * (pause_ms + 2 * (statement_ms + @client_margin_ms)) + @run_margin_ms
+  end
+
+  # The pause before each chunk: a valid one longer than the cap is the cap.
+  defp pause_ms(opts) do
+    case checked(opts, :pause_ms, &(is_integer(&1) and &1 >= 0)) do
+      ms when ms > @max_pause_ms ->
+        Logger.warning(
+          "[PhoenixKitAI.Retention] option pause_ms is longer than #{@max_pause_ms}; #{@max_pause_ms} is used"
+        )
+
+        @max_pause_ms
+
+      ms ->
+        ms
+    end
   end
 
   # The default slices with a statement timeout too long for them: the
@@ -1454,7 +1488,10 @@ defmodule PhoenixKitAI.Retention do
     if run_budget_ms(opts) < @job_timeout_ms do
       opts
     else
-      room = @job_timeout_ms - Enum.sum(Map.values(opts[:time_limits])) - @run_margin_ms
+      room =
+        @job_timeout_ms - Enum.sum(Map.values(opts[:time_limits])) - @run_margin_ms -
+          length(@counters) * opts[:pause_ms]
+
       statement_ms = div(room - 1, length(@counters) * 2) - @client_margin_ms
 
       Logger.warning(
@@ -1498,9 +1535,9 @@ defmodule PhoenixKitAI.Retention do
   defp warn_invalid(key),
     do: Logger.warning("[PhoenixKitAI.Retention] option #{key} is invalid; the default is used")
 
-  defp time_limits(nil, statement_ms), do: fit_limits(@default_opts[:time_limits], statement_ms)
+  defp time_limits(nil, base), do: fit_limits(@default_opts[:time_limits], base)
 
-  defp time_limits(given, statement_ms) when is_map(given) do
+  defp time_limits(given, base) when is_map(given) do
     limits =
       Map.new(@default_opts[:time_limits], fn {counter, default} ->
         case Map.get(given, counter) do
@@ -1510,18 +1547,19 @@ defmodule PhoenixKitAI.Retention do
         end
       end)
 
-    fit_limits(limits, statement_ms)
+    fit_limits(limits, base)
   end
 
-  defp time_limits(_given, statement_ms) do
+  defp time_limits(_given, base) do
     invalid_option(:time_limits)
-    fit_limits(@default_opts[:time_limits], statement_ms)
+    fit_limits(@default_opts[:time_limits], base)
   end
 
   # Already the defaults: nothing to fall back to (`fit_statement_timeout/1`
   # lowers the statement timeout instead).
-  defp fit_limits(limits, statement_ms) do
-    if limits == @default_opts[:time_limits] or budget_ms(limits, statement_ms) < @job_timeout_ms do
+  defp fit_limits(limits, base) do
+    if limits == @default_opts[:time_limits] or
+         budget_ms(limits, base[:statement_timeout_ms], base[:pause_ms]) < @job_timeout_ms do
       limits
     else
       Logger.warning(
@@ -1637,8 +1675,10 @@ defmodule PhoenixKitAI.Retention do
       end)
 
     outcome =
-      Enum.reduce_while(ranges, {:done, state}, fn range, {:done, st} ->
-        case content_range(range, stamp, st, opts, deadline) do
+      ranges
+      |> Enum.with_index()
+      |> Enum.reduce_while({:done, state}, fn {range, index}, {:done, st} ->
+        case next_range(range, index, stamp, st, opts, deadline) do
           {:done, st} -> {:cont, {:done, st}}
           other -> {:halt, other}
         end
@@ -1695,6 +1735,15 @@ defmodule PhoenixKitAI.Retention do
   defp starts_within?(lower, from, to) do
     (from == nil or (lower != nil and DateTime.compare(from, lower) != :gt)) and
       (lower == nil or DateTime.compare(lower, to) == :lt)
+  end
+
+  # A later range does not start past the slice: its first chunk would run
+  # whatever the time (`chunks/6`), a second overrun of the slice. What the
+  # earlier ranges cleared is kept, as for any stop.
+  defp next_range(range, index, stamp, state, opts, deadline) do
+    if index > 0 and now_ms() >= deadline,
+      do: {:stopped, state},
+      else: content_range(range, stamp, state, opts, deadline)
   end
 
   # One range, to its end or until stopped. Stopped with no row with

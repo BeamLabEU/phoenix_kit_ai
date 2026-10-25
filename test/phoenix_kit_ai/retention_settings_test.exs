@@ -280,10 +280,12 @@ defmodule PhoenixKitAI.RetentionSettingsTest do
       {:ok, _} = Retention.write_settings(%{"content" => %{"n" => 30, "unit" => "day"}})
       loaded = Retention.settings()
       assert %{content: :forever, unconfirmed: [:content]} = loaded
+      # the period as stored, for the form to show
+      assert loaded.unconfirmed_periods == %{content: {30, :day}}
 
       # the form shows forever; saved as it is, it is now forever on purpose
       assert {:ok, saved} = Retention.put_settings(owner, %{content: :forever}, loaded)
-      assert %{content: :forever, unconfirmed: []} = saved
+      assert %{content: :forever, unconfirmed: [], unconfirmed_periods: %{}} = saved
       assert %DateTime{} = saved.changed_at.content
       assert Settings.get_json_setting(@key)["content"] == "forever"
       assert Retention.settings() == saved

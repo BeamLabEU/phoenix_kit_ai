@@ -57,6 +57,16 @@ defmodule PhoenixKitAI.Web.UsageRetentionTest do
   defp jobs,
     do: TestRepo.all(from(j in Oban.Job, where: j.worker == "PhoenixKitAI.JournalPruneWorker"))
 
+  defp executing_job!(attempted_at) do
+    job = Oban.insert!(PhoenixKitAI.JournalPruneWorker.manual_job(%{}, nil))
+
+    TestRepo.update_all(from(j in Oban.Job, where: j.id == ^job.id),
+      set: [state: "executing", attempted_at: attempted_at]
+    )
+
+    job
+  end
+
   defp request!(at, metadata \\ %{"messages" => [%{"content" => "x"}], "task" => "t"}) do
     TestRepo.insert!(%Request{
       model: "m",
@@ -483,23 +493,35 @@ defmodule PhoenixKitAI.Web.UsageRetentionTest do
     end
 
     @tag capture_log: true
-    test "a period stored without its change time: save it again", %{conn: conn, owner: owner} do
+    test "a period stored without its change time: the form shows it, saving it applies it",
+         %{conn: conn, owner: owner} do
       write_periods!(%{"content" => %{"n" => 30, "unit" => "day"}})
       view = open(conn, owner)
 
       assert has_element?(
                view,
                "#ai-retention-status-unconfirmed-content",
-               "save the period again"
+               "kept forever until it is saved again"
              )
 
+      assert has_element?(view, "#ai-retention-status-unconfirmed-content", "(30 days)")
       assert has_element?(view, "#ai-retention-status-off")
+      # the form holds what is stored, not the forever in force
+      assert has_element?(view, "#ai-retention-content-n[value='30']")
+      refute has_element?(view, "#ai-retention-content-forever[checked]")
 
-      # saved as the card shows it (unchanged): confirmed, the line goes
-      view |> form("#ai-retention-form") |> render_submit()
+      # another kind saved elsewhere: nothing was typed here, no notice
+      save_periods(owner, %{requests: {12, :month}})
+      refute render(view) =~ "Someone else changed the retention periods"
+      assert has_element?(view, "#ai-retention-content-n[value='30']")
 
-      assert Retention.settings().unconfirmed == []
-      assert Retention.settings().content == :forever
+      # saved as the card shows it: a first finite period, through the preview
+      html = view |> form("#ai-retention-form") |> render_submit()
+      assert html =~ "Counting…"
+      render_async(view, @async_ms)
+      render_click(view, "retention_save_confirm", %{})
+
+      assert %{content: {30, :day}, unconfirmed: []} = Retention.settings()
       refute has_element?(view, "#ai-retention-status-unconfirmed-content")
     end
 
@@ -590,6 +612,68 @@ defmodule PhoenixKitAI.Web.UsageRetentionTest do
 
       assert render(view) =~ "A journal cleanup is already running"
       assert length(jobs()) == 1
+    end
+
+    test "the job's own stamp ends the running line; a retry after it keeps it",
+         %{conn: conn, owner: owner} do
+      # the job writes its stamp while its row is still `executing`
+      started = DateTime.add(DateTime.utc_now(), -5)
+      job = executing_job!(started)
+      view = open(conn, owner)
+      assert has_element?(view, "#ai-retention-job", "running")
+
+      write_last_run!(%{"manual" => %{"at" => iso(DateTime.utc_now()), "status" => "ok"}})
+      refute has_element?(view, "#ai-retention-job")
+
+      # an attempt started after the stamp is still running
+      TestRepo.update_all(from(j in Oban.Job, where: j.id == ^job.id),
+        set: [attempted_at: DateTime.add(DateTime.utc_now(), 60)]
+      )
+
+      write_last_run!(%{"manual" => %{"at" => iso(DateTime.utc_now()), "status" => "failed"}})
+      assert has_element?(view, "#ai-retention-job", "running")
+    end
+
+    test "the job is read again after the stamp: a retry it scheduled shows",
+         %{conn: conn, owner: owner} do
+      job = executing_job!(DateTime.add(DateTime.utc_now(), -5))
+      view = open(conn, owner)
+
+      write_last_run!(%{"manual" => %{"at" => iso(DateTime.utc_now()), "status" => "failed"}})
+      refute has_element?(view, "#ai-retention-job")
+
+      # Oban marks the failed attempt retryable after perform/1 returns
+      TestRepo.update_all(from(j in Oban.Job, where: j.id == ^job.id),
+        set: [state: "retryable"]
+      )
+
+      send(view.pid, :retention_job_reread)
+      assert has_element?(view, "#ai-retention-job")
+    end
+
+    test "the content count's text starts where the count does: the point already cleared",
+         %{conn: conn, owner: owner} do
+      write_last_run!(%{"content_done_before" => iso(long_ago(10))})
+      view = open(conn, owner)
+
+      count_run(view, "content", "5", "day")
+      render_async(view, @async_ms)
+
+      assert has_element?(view, "#ai-retention-run-preview", "journal entries from")
+      refute has_element?(view, "#ai-retention-run-preview", "journal entries older than")
+    end
+
+    test "a job still executing after its stamp shows again when read again",
+         %{conn: conn, owner: owner} do
+      # the node died after the stamp: Oban never closed the attempt
+      executing_job!(DateTime.add(DateTime.utc_now(), -5))
+      view = open(conn, owner)
+
+      write_last_run!(%{"manual" => %{"at" => iso(DateTime.utc_now()), "status" => "ok"}})
+      refute has_element?(view, "#ai-retention-job")
+
+      send(view.pid, :retention_job_reread)
+      assert has_element?(view, "#ai-retention-job", "running")
     end
 
     test "nothing to delete: the delete button stays off", %{conn: conn, owner: owner} do
@@ -709,6 +793,24 @@ defmodule PhoenixKitAI.Web.UsageRetentionTest do
       fixture_endpoint()
       endpoints = open(conn, owner, "/en/admin/ai/endpoints")
       assert has_element?(endpoints, "#ai-endpoints-retained-since", "since")
+    end
+
+    test "the endpoints tab reads where the totals start once, then follows the broadcasts",
+         %{conn: conn, owner: owner} do
+      request!(long_ago(40))
+      save_periods(owner, %{requests: {12, :month}})
+      fixture_endpoint()
+      view = open(conn, owner, "/en/admin/ai/endpoints")
+      caption = view |> element("#ai-endpoints-retained-since") |> render()
+
+      # an older row, with no broadcast: sorting the list does not read it
+      request!(long_ago(800))
+      render_patch(view, "/en/admin/ai/endpoints?sort=name&dir=asc")
+      assert view |> element("#ai-endpoints-retained-since") |> render() == caption
+
+      # the next cleanup's stamp does
+      write_last_run!(%{"manual" => %{"at" => iso(long_ago(0)), "status" => "ok"}})
+      refute view |> element("#ai-endpoints-retained-since") |> render() == caption
     end
 
     test "a row whose content was removed says so", %{conn: conn, owner: owner} do

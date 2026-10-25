@@ -560,6 +560,37 @@ defmodule PhoenixKitAI.RetentionTest do
                Retention.run(:manual, %{content: content_cut}, @fast)
     end
 
+    test "with a tail, the tail's range does not start once the content slice is over" do
+      requests_cut = floor_cut(:requests)
+      content_cut = floor_cut(:content)
+      tail = for n <- 1..5, do: request!(DateTime.add(requests_cut, -n * 3600))
+      kept = request!(DateTime.add(requests_cut, 86_400))
+
+      # the rows that stay are done in one chunk, past the slice: the tail waits
+      assert {:ok, %{counts: %{requests: 2, content: 1}, more_left: true}} =
+               Retention.run(
+                 :manual,
+                 %{requests: requests_cut, content: content_cut},
+                 @fast ++
+                   [content_batch: 10, time_limits: %{requests: 0, content: 0}]
+               )
+
+      refute Map.has_key?(reload(kept).metadata, "messages")
+      left = tail |> Enum.map(&reload/1) |> Enum.reject(&is_nil/1)
+      assert length(left) == 3
+      assert Enum.all?(left, &Map.has_key?(&1.metadata, "messages"))
+
+      last = Retention.last_run()
+      assert last.content_done_before == nil
+      assert last.content_resume == %{lower: requests_cut, upper: content_cut}
+
+      # the next run skips what is cleared and does the tail
+      assert {:ok, %{counts: %{content: 3}, more_left: false}} =
+               Retention.run(:manual, %{content: content_cut}, @fast)
+
+      assert Retention.last_run().content_done_before == content_cut
+    end
+
     test "the reason of an off-purpose flag is cleared, others and an active block's are not" do
       at = years_ago(1)
       user = Fixtures.user_fixture()
@@ -823,6 +854,34 @@ defmodule PhoenixKitAI.RetentionTest do
       refute log =~ "the time limits do not fit"
     end
 
+    test "the pause is capped, with a warning, and counted once per counter in the budget" do
+      log =
+        capture_log(fn ->
+          assert Retention.run_options(pause_ms: 60_000)[:pause_ms] == 5_000
+        end)
+
+      assert log =~ "option pause_ms"
+      assert log =~ "5000"
+      refute capture_log(fn -> Retention.run_options(pause_ms: 5_000) end) =~ "pause_ms"
+
+      opts = Retention.run_options(pause_ms: 0)
+
+      assert Retention.run_budget_ms(Keyword.put(opts, :pause_ms, 5_000)) -
+               Retention.run_budget_ms(opts) == 4 * 5_000
+    end
+
+    test "with the longest pause, a too long statement timeout is lowered until it fits" do
+      capture_log(fn ->
+        opts = Retention.run_options(pause_ms: 5_000, statement_timeout_ms: 60_000)
+
+        assert opts[:pause_ms] == 5_000
+        assert Retention.run_budget_ms(opts) < Retention.job_timeout_ms()
+
+        refute Retention.run_budget_ms(Keyword.update!(opts, :statement_timeout_ms, &(&1 + 1))) <
+                 Retention.job_timeout_ms()
+      end)
+    end
+
     test "a statement timeout that fits is kept" do
       refute capture_log(fn ->
                assert Retention.run_options(statement_timeout_ms: 20_000)[:statement_timeout_ms] ==
@@ -932,6 +991,31 @@ defmodule PhoenixKitAI.RetentionTest do
 
       # nothing was deleted
       assert TestRepo.aggregate(Request, :count) == 6
+    end
+
+    test "names where the content count starts: the requests boundary or the point cleared" do
+      requests_cut = floor_cut(:requests)
+      content_cut = floor_cut(:content)
+      done_before = DateTime.add(requests_cut, 3 * 86_400)
+
+      assert {:ok, %{content_from: nil}} = Retention.preview(%{content: content_cut})
+
+      assert {:ok, %{content_from: ^requests_cut}} =
+               Retention.preview(%{requests: requests_cut, content: content_cut})
+
+      {:ok, _} =
+        PhoenixKit.Settings.update_json_setting_with_module(
+          Retention.last_run_key(),
+          %{"content_done_before" => DateTime.to_iso8601(done_before)},
+          "ai",
+          history: false
+        )
+
+      for cutoffs <- [%{content: content_cut}, %{requests: requests_cut, content: content_cut}] do
+        assert {:ok, %{content_from: ^done_before}} = Retention.preview(cutoffs)
+      end
+
+      assert {:ok, %{content_from: nil}} = Retention.preview(%{requests: requests_cut})
     end
 
     test "names the kinds held at the floor, and counts by the floor" do

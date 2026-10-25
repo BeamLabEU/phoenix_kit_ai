@@ -601,6 +601,12 @@ defmodule PhoenixKitAI.Web.Endpoints do
       else: {:noreply, socket}
   end
 
+  # A stamp's broadcast asks for the cleanup job to be read again once its
+  # attempt is closed (`JournalRetention.handle_setting/3`).
+  @impl true
+  def handle_info(:retention_job_reread, socket),
+    do: {:noreply, JournalRetention.reread_job(socket)}
+
   # Catch-all for unmatched messages (PubSub from other modules, late
   # replies after navigation, etc.). Log at :debug per the workspace
   # sync precedent — never silently swallow a message we didn't expect.

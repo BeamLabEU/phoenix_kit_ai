@@ -820,7 +820,7 @@ create:
 - **`phoenix_kit_ai_guard_events`** — what the task guard noticed (limits,
   models that stopped fitting), deduplicated per window; kept until a
   retention period is set for them (forever by default, see "Journal
-  retention" below)
+  retention" above)
 - **`phoenix_kit_ai_guard_blocks`** — people blocked from a group of AI
   tasks, with who set and lifted each block; one active per group and person
 

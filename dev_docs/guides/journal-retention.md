@@ -148,10 +148,16 @@ event_batch: …, pause_ms: …, max_rows: …, statement_timeout_ms: …,
 lock_timeout_ms: …, time_limits: %{requests: …, content: …, guard_reasons:
 …, guard_events: …}` (ms), plus `preview_timeout_ms:` (60 000) for the
 preview's counts. An invalid value falls back to its default with a
-warning, and time slices that would not fit in the 25-minute timeout fall
-back as a whole. A `statement_timeout_ms` too long for even the default
-slices (32 500 or more) is lowered to the largest that fits, with a warning
-naming the option, so a run never outlasts the job's timeout.
+warning, and a `pause_ms` above 5 000 is 5 000, with a warning. Each
+counter may run past its slice by one pause, one chunk and one probe (and
+the content step starts no later range of its walk once its slice is
+over), so the budget is the slices plus, per counter, one pause and two
+statements at `statement_timeout_ms` + 5 s, plus a minute for the checks
+and the stamp. Time slices that would not fit in the 25-minute timeout
+that way fall back as a whole. A `statement_timeout_ms` too long for even
+the default slices (32 500 − `pause_ms` / 2 or more: 32 475 at the default
+pause) is lowered to the largest that fits, with a warning naming the
+option, so a run's budget stays under the job's timeout.
 
 A failed check (a foreign key, a boundary in the future) cancels the job
 without retries and records `failed`. A failed chunk is an error: Oban
@@ -164,7 +170,8 @@ committed before the failure stay done.
 or a value for this run only (not saved; the floor applies the same way).
 "Count" runs the preview in the background — rows and events older than
 each boundary, and "up to" N rows whose content would be removed (counted
-by time, without reading `metadata`). "Delete" opens a confirmation with
+by time, without reading `metadata`, from the later of the rows' boundary
+and the point already cleared — the date the line names). "Delete" opens a confirmation with
 the same numbers and dates; the job gets the boundaries the preview used,
 held at the floor again when it runs. If the count does not finish within
 60 s the card says so and still lets the run go ahead: the boundaries are
@@ -224,7 +231,9 @@ The outcome of the last nightly and manual runs is also the setting
   `oban_jobs`, so a job stuck in `executing` on a host without Lifeline
   shows instead of only refusing the next run).
 - A period stored without the time it was set (edited by hand) is read as
-  "keep forever" and the card asks to save it again.
+  "keep forever"; the line names the stored period, and the form shows it,
+  so saving the form as it is applies that period (through the preview, as
+  any first finite period) — or change it before saving.
 
 Once rows may have been deleted, the totals on the Endpoints and Usage tabs
 say "For the retained period, since <date>", and a request whose content was
