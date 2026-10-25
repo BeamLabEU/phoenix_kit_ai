@@ -258,7 +258,7 @@ defmodule PhoenixKitAI.Web.JournalRetention do
 
   # --- the form's own: the page's assigns only ---
 
-  defp form_event("retention_validate", params, socket), do: put_form(socket, params)
+  defp form_event("retention_validate", params, socket), do: put_form(socket, params, true)
 
   defp form_event("retention_save_cancel", _params, socket),
     do: assign(socket, :retention_save, nil)
@@ -467,7 +467,11 @@ defmodule PhoenixKitAI.Web.JournalRetention do
   defp default_run_form,
     do: Map.new(Retention.kinds(), &{&1, %{"mode" => "skip", "n" => "", "unit" => "month"}})
 
-  defp put_form(socket, %{"retention" => %{} = params}) do
+  # `blank_ok`: while typing (validate) an empty number is not yet an
+  # error; saving reads it as one.
+  defp put_form(socket, params, blank_ok \\ false)
+
+  defp put_form(socket, %{"retention" => %{} = params}, blank_ok) do
     form =
       Map.new(Retention.kinds(), fn kind ->
         old = socket.assigns.retention_form[kind]
@@ -484,11 +488,11 @@ defmodule PhoenixKitAI.Web.JournalRetention do
 
     socket
     |> assign(:retention_form, form)
-    |> assign(:retention_form_errors, errors(form, &parse_period/1))
+    |> assign(:retention_form_errors, errors(form, &parse_period(&1, blank_ok)))
     |> assign(:retention_warnings, warnings_of(form, socket.assigns.retention))
   end
 
-  defp put_form(socket, _params), do: socket
+  defp put_form(socket, _params, _blank_ok), do: socket
 
   # A kind the event did not send keeps its box as it was.
   defp forever(%{"forever" => given}, _old), do: given in ["true", true]
@@ -538,6 +542,12 @@ defmodule PhoenixKitAI.Web.JournalRetention do
   @spec parse_period(map()) :: {:ok, Retention.period()} | {:error, String.t()}
   def parse_period(%{"forever" => true}), do: {:ok, :forever}
   def parse_period(value), do: parse_n_unit(value)
+
+  defp parse_period(%{"forever" => false, "n" => n} = value, true) when is_binary(n) do
+    if String.trim(n) == "", do: {:ok, :forever}, else: parse_period(value)
+  end
+
+  defp parse_period(value, _blank_ok), do: parse_period(value)
 
   defp parse_n_unit(%{"n" => n, "unit" => unit_text}) do
     with {:ok, unit} <- unit(unit_text),

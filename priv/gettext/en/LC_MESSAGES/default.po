@@ -374,8 +374,8 @@ msgstr "Defaults to project_title (%{title}) from"
 msgid "Defaults to site_url from"
 msgstr "Defaults to site_url from"
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:148
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:336
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:147
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:334
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:200
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:355
 #: lib/phoenix_kit_ai/web/prompts.html.heex:125
@@ -2850,7 +2850,7 @@ msgstr "Personal limits:"
 msgid "Reached: %{limit}"
 msgstr "Reached: %{limit}"
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:133
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:132
 #: lib/phoenix_kit_ai/web/tasks.ex:994
 #, elixir-autogen, elixir-format
 msgid "Save"
@@ -3807,56 +3807,56 @@ msgstr ""
 msgid "Unknown kind of journal retention"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:370
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:368
 #, elixir-autogen, elixir-format
 msgid "%{count} day"
 msgid_plural "%{count} days"
 msgstr[0] ""
 msgstr[1] ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:584
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:582
 #, elixir-autogen, elixir-format
 msgid "%{count} guard event deleted"
 msgid_plural "%{count} guard events deleted"
 msgstr[0] ""
 msgstr[1] ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:721
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:719
 #, elixir-autogen, elixir-format
 msgid "%{count} guard event older than %{date} will be deleted."
 msgid_plural "%{count} guard events older than %{date} will be deleted."
 msgstr[0] ""
 msgstr[1] ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:574
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:572
 #, elixir-autogen, elixir-format
 msgid "%{count} journal entry deleted"
 msgid_plural "%{count} journal entries deleted"
 msgstr[0] ""
 msgstr[1] ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:679
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:677
 #, elixir-autogen, elixir-format
 msgid "%{count} journal entry older than %{date} will be deleted."
 msgid_plural "%{count} journal entries older than %{date} will be deleted."
 msgstr[0] ""
 msgstr[1] ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:371
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:369
 #, elixir-autogen, elixir-format
 msgid "%{count} month"
 msgid_plural "%{count} months"
 msgstr[0] ""
 msgstr[1] ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:372
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:370
 #, elixir-autogen, elixir-format
 msgid "%{count} year"
 msgid_plural "%{count} years"
 msgstr[0] ""
 msgstr[1] ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:71
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:70
 #, elixir-autogen, elixir-format
 msgid "A cleanup job is %{state}"
 msgstr ""
@@ -3866,17 +3866,17 @@ msgstr ""
 msgid "A whole number from 1 to %{max}"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:470
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:468
 #, elixir-autogen, elixir-format
 msgid "Automatic cleanup is off: the journal is kept forever"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:59
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:58
 #, elixir-autogen, elixir-format
 msgid "By default nothing is deleted. A period you choose is applied by the nightly cleanup, no earlier than a day after you save it."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:394
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:392
 #, elixir-autogen, elixir-format
 msgid "By the saved period (%{period})"
 msgstr ""
@@ -3886,43 +3886,43 @@ msgstr ""
 msgid "Choose days, months or years"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:264
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:262
 #, elixir-autogen, elixir-format
 msgid "Clean up now"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:144
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:143
 #, elixir-autogen, elixir-format
 msgid "Clean up the journal now"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:115
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:114
 #, elixir-autogen, elixir-format
 msgid "Clearing the content keeps each entry's cost, tokens and model. An entry's error message (which may quote the provider's answer) leaves only with the entry; the reasons and notes of blocks are not covered here."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:357
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:355
 #, elixir-autogen, elixir-format
 msgid "Content of journal entries"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:325
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:323
 #, elixir-autogen, elixir-format
 msgid "Count"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:266
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:264
 #, elixir-autogen, elixir-format
 msgid "Count first, then confirm. A value here applies to this run only and is not saved."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:324
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:657
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:322
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:655
 #, elixir-autogen, elixir-format
 msgid "Counting…"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:432
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:430
 #, elixir-autogen, elixir-format
 msgid "Deleting does not shrink the table files: the space is reused after autovacuum. A large first run writes a lot of WAL (replicas, backups)."
 msgstr ""
@@ -3932,67 +3932,67 @@ msgstr ""
 msgid "Enter a whole number, or choose to keep forever"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:401
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:399
 #, elixir-autogen, elixir-format
 msgid "Entries before %{date} will be deleted: there will be nothing to check the provider's invoice against for the months before it"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:414
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:412
 #, elixir-autogen, elixir-format
 msgid "Flags and forgiven limits before %{date} will be deleted"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:365
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:363
 #, elixir-autogen, elixir-format
 msgid "Flags, blocks and forgiven limits of the AI guard"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:164
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:163
 #, elixir-autogen, elixir-format
 msgid "For the retained period, since %{date}"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:359
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:357
 #, elixir-autogen, elixir-format
 msgid "Guard events"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:358
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:356
 #, elixir-autogen, elixir-format
 msgid "Journal entries"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:53
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:52
 #, elixir-autogen, elixir-format
 msgid "Journal retention"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:236
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:213
 #, elixir-autogen, elixir-format
 msgid "Keep forever"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:369
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:367
 #, elixir-autogen, elixir-format
 msgid "Kept forever"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:553
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:551
 #, elixir-autogen, elixir-format
 msgid "Last manual cleanup: %{date}"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:521
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:519
 #, elixir-autogen, elixir-format
 msgid "Last nightly cleanup: %{date}"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:391
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:389
 #, elixir-autogen, elixir-format
 msgid "Leave as it is"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:597
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:595
 #, elixir-autogen, elixir-format
 msgid "More is left: the next run continues where this one stopped"
 msgstr ""
@@ -4007,23 +4007,23 @@ msgstr ""
 msgid "Nothing to save: the periods are as stored"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:217
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:302
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:223
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:300
 #, elixir-autogen, elixir-format
 msgid "Number"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:396
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:394
 #, elixir-autogen, elixir-format
 msgid "Older than…"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:362
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:360
 #, elixir-autogen, elixir-format
 msgid "Prompts, answers and reasoning are removed; the entry, its cost and tokens stay"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:55
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:54
 #, elixir-autogen, elixir-format
 msgid "Read only"
 msgstr ""
@@ -4033,56 +4033,56 @@ msgstr ""
 msgid "Retention periods saved"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:129
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:128
 #, elixir-autogen, elixir-format
 msgid "Save a shorter period"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:92
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:91
 #, elixir-autogen, elixir-format
 msgid "Save periods"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:91
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:90
 #, elixir-autogen, elixir-format
 msgid "Saving…"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:408
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:406
 #, elixir-autogen, elixir-format
 msgid "The 30-day windows (model recommendations, token medians, flags of the last 30 days, the 30-day totals on this page) will see less"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:749
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:747
 #, elixir-autogen, elixir-format
 msgid "The content of the last 24 hours is never removed."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:696
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:694
 #, elixir-autogen, elixir-format
 msgid "The content of up to %{count} journal entry from %{from} to %{date} will be removed."
 msgid_plural "The content of up to %{count} journal entries from %{from} to %{date} will be removed."
 msgstr[0] ""
 msgstr[1] ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:704
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:702
 #, elixir-autogen, elixir-format
 msgid "The content of up to %{count} journal entry older than %{date} will be removed."
 msgid_plural "The content of up to %{count} journal entries older than %{date} will be removed."
 msgstr[0] ""
 msgstr[1] ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:177
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:176
 #, elixir-autogen, elixir-format
 msgid "The content was removed by the retention period on %{date}"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:419
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:417
 #, elixir-autogen, elixir-format
 msgid "The content will live as long as its entry does"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:643
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:641
 #, elixir-autogen, elixir-format
 msgid "The first nightly cleanup runs no earlier than %{date}."
 msgstr ""
@@ -4092,89 +4092,89 @@ msgstr ""
 msgid "The journal cleanup is queued"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:560
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:558
 #, elixir-autogen, elixir-format
 msgid "The last manual cleanup failed on %{date}: %{error}"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:508
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:506
 #, elixir-autogen, elixir-format
 msgid "The nightly cleanup failed on %{date}: %{error}"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:543
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:541
 #, elixir-autogen, elixir-format
 msgid "The nightly cleanup has not run. Check that PhoenixKitAI.JournalPruneWorker is in Oban's crontab (mix phoenix_kit.update adds it), or clean up by hand."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:736
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:734
 #, elixir-autogen, elixir-format
 msgid "The period is shorter than the current month: entries from %{date} on are not deleted — the spend limits read them."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:743
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:741
 #, elixir-autogen, elixir-format
 msgid "The period is shorter than the current month: guard events from %{date} on are not deleted — this month's forgiven limits read them."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:364
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:362
 #, elixir-autogen, elixir-format
 msgid "The whole entry is deleted, with its cost"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:228
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:312
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:233
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:310
 #, elixir-autogen, elixir-format
 msgid "Unit"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:665
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:663
 #, elixir-autogen, elixir-format
 msgid "You can still go on: the boundaries are checked again, and the numbers will be in the outcome."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:384
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:382
 #, elixir-autogen, elixir-format
 msgid "day"
 msgid_plural "days"
 msgstr[0] ""
 msgstr[1] ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:385
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:383
 #, elixir-autogen, elixir-format
 msgid "month"
 msgid_plural "months"
 msgstr[0] ""
 msgstr[1] ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:438
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:436
 #, elixir-autogen, elixir-format
 msgid "running"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:437
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:435
 #, elixir-autogen, elixir-format
 msgid "scheduled"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:579
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:577
 #, elixir-autogen, elixir-format
 msgid "the content of %{count} entry cleared"
 msgid_plural "the content of %{count} entries cleared"
 msgstr[0] ""
 msgstr[1] ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:436
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:434
 #, elixir-autogen, elixir-format
 msgid "waiting in the queue"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:439
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:437
 #, elixir-autogen, elixir-format
 msgid "waiting to retry"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:386
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:384
 #, elixir-autogen, elixir-format
 msgid "year"
 msgid_plural "years"
@@ -4211,32 +4211,109 @@ msgstr ""
 msgid "The cleanup job's arguments could not be read; nothing was deleted"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:498
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:496
 #, elixir-autogen, elixir-format
 msgid "The first cleanup of guard events runs no earlier than %{date}"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:495
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:493
 #, elixir-autogen, elixir-format
 msgid "The first cleanup of journal entries runs no earlier than %{date}"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:490
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:488
 #, elixir-autogen, elixir-format
 msgid "The first cleanup of the content of journal entries runs no earlier than %{date}"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:629
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:627
 #, elixir-autogen, elixir-format
 msgid "The period for guard events (%{period}) is stored without the time it was set: the events are kept forever until it is saved again"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:622
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:620
 #, elixir-autogen, elixir-format
 msgid "The period for journal entries (%{period}) is stored without the time it was set: the entries are kept forever until it is saved again"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:615
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:613
 #, elixir-autogen, elixir-format
 msgid "The period for the content of journal entries (%{period}) is stored without the time it was set: the content is kept forever until it is saved again"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:777
+#, elixir-autogen, elixir-format
+msgid "%{day} %{month} %{year}"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:785
+#, elixir-autogen, elixir-format
+msgctxt "date"
+msgid "April"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:789
+#, elixir-autogen, elixir-format
+msgctxt "date"
+msgid "August"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:793
+#, elixir-autogen, elixir-format
+msgctxt "date"
+msgid "December"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:783
+#, elixir-autogen, elixir-format
+msgctxt "date"
+msgid "February"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:782
+#, elixir-autogen, elixir-format
+msgctxt "date"
+msgid "January"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:788
+#, elixir-autogen, elixir-format
+msgctxt "date"
+msgid "July"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:787
+#, elixir-autogen, elixir-format
+msgctxt "date"
+msgid "June"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:784
+#, elixir-autogen, elixir-format
+msgctxt "date"
+msgid "March"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:786
+#, elixir-autogen, elixir-format
+msgctxt "date"
+msgid "May"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:792
+#, elixir-autogen, elixir-format
+msgctxt "date"
+msgid "November"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:791
+#, elixir-autogen, elixir-format
+msgctxt "date"
+msgid "October"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:790
+#, elixir-autogen, elixir-format
+msgctxt "date"
+msgid "September"
 msgstr ""

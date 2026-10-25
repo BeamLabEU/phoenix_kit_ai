@@ -18,7 +18,6 @@ defmodule PhoenixKitAI.Web.Components.JournalRetentionCard do
   import PhoenixKitWeb.Components.Core.TimeDisplay, only: [time_ago: 1]
 
   alias PhoenixKit.Settings
-  alias PhoenixKit.Utils.Date, as: UtilsDate
   alias PhoenixKit.Utils.TimeZone
   alias PhoenixKitAI.{Errors, Retention}
   alias PhoenixKitAI.Web.JournalRetention
@@ -207,35 +206,35 @@ defmodule PhoenixKitAI.Web.Components.JournalRetentionCard do
       </div>
       <div class="space-y-1">
         <div class="flex flex-wrap items-center gap-3">
-          <.input
-            id={"ai-retention-#{@kind}-n"}
-            name={"retention[#{@kind}][n]"}
-            value={@value["n"]}
-            disabled={@forever}
-            inputmode="numeric"
-            autocomplete="off"
-            aria-label={gettext("Number")}
-            class={["input-sm", @error && "input-error"]}
-            wrapper_class="w-24"
-          />
-          <div class="w-36">
-            <.select
-              id={"ai-retention-#{@kind}-unit"}
-              name={"retention[#{@kind}][unit]"}
-              value={@value["unit"]}
-              options={unit_options(@value["n"])}
-              disabled={@forever}
-              aria-label={gettext("Unit")}
-              class="select-sm"
-            />
-          </div>
           <.checkbox
             id={"ai-retention-#{@kind}-forever"}
             name={"retention[#{@kind}][forever]"}
             checked={@forever}
             label={gettext("Keep forever")}
             class="checkbox-sm"
+            aria-controls={"ai-retention-#{@kind}-n ai-retention-#{@kind}-unit"}
           />
+          <.input
+            :if={!@forever}
+            id={"ai-retention-#{@kind}-n"}
+            name={"retention[#{@kind}][n]"}
+            value={@value["n"]}
+            inputmode="numeric"
+            autocomplete="off"
+            aria-label={gettext("Number")}
+            class={["input-sm", @error && "input-error"]}
+            wrapper_class="w-24"
+          />
+          <div :if={!@forever} class="w-36">
+            <.select
+              id={"ai-retention-#{@kind}-unit"}
+              name={"retention[#{@kind}][unit]"}
+              value={@value["unit"]}
+              options={unit_options(@value["n"])}
+              aria-label={gettext("Unit")}
+              class="select-sm"
+            />
+          </div>
         </div>
         <p :if={@error} class="text-error text-xs" data-retention-error={@kind}>{@error}</p>
         <p
@@ -756,7 +755,7 @@ defmodule PhoenixKitAI.Web.Components.JournalRetentionCard do
   # midnight.
   defp date_text(%DateTime{} = at) do
     local = TimeZone.shift(at, zone())
-    date = UtilsDate.short_with_year(local)
+    date = format_date(local)
 
     if Time.truncate(DateTime.to_time(local), :second) == ~T[00:00:00],
       do: date,
@@ -765,15 +764,34 @@ defmodule PhoenixKitAI.Web.Components.JournalRetentionCard do
 
   defp date_text(_at), do: "?"
 
-  defp date_only(%DateTime{} = at), do: UtilsDate.short_with_year(TimeZone.shift(at, zone()))
+  defp date_only(%DateTime{} = at), do: format_date(TimeZone.shift(at, zone()))
   defp date_only(_at), do: "?"
 
   defp datetime_text(%DateTime{} = at) do
     local = TimeZone.shift(at, zone())
-    UtilsDate.short_with_year(local) <> " " <> Calendar.strftime(local, "%H:%M")
+    format_date(local) <> " " <> Calendar.strftime(local, "%H:%M")
   end
 
   defp datetime_text(_at), do: "?"
+
+  defp format_date(%{year: year, month: month, day: day}) do
+    gettext("%{day} %{month} %{year}", day: day, month: month_name(month), year: year)
+  end
+
+  # The month as it reads after a day number ("25 октября"), which is not
+  # the nominative a calendar header uses.
+  defp month_name(1), do: pgettext("date", "January")
+  defp month_name(2), do: pgettext("date", "February")
+  defp month_name(3), do: pgettext("date", "March")
+  defp month_name(4), do: pgettext("date", "April")
+  defp month_name(5), do: pgettext("date", "May")
+  defp month_name(6), do: pgettext("date", "June")
+  defp month_name(7), do: pgettext("date", "July")
+  defp month_name(8), do: pgettext("date", "August")
+  defp month_name(9), do: pgettext("date", "September")
+  defp month_name(10), do: pgettext("date", "October")
+  defp month_name(11), do: pgettext("date", "November")
+  defp month_name(12), do: pgettext("date", "December")
 
   defp zone, do: Settings.get_setting("time_zone", "0")
 end

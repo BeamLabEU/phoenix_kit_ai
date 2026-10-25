@@ -200,6 +200,36 @@ defmodule PhoenixKitAI.Web.UsageRetentionTest do
   end
 
   describe "saving the periods" do
+    test "unticking brings back the period the kind had", %{conn: conn, owner: owner} do
+      save_periods(owner, %{requests: {3, :month}})
+      view = open(conn, owner)
+
+      render_hook(view, "retention_validate", %{
+        "retention" => %{"requests" => %{"forever" => "true"}}
+      })
+
+      refute has_element?(view, "#ai-retention-requests-n")
+      refute has_element?(view, "#ai-retention-requests-unit")
+
+      untick(view, "requests")
+      assert has_element?(view, "#ai-retention-requests-n[value='3']")
+      assert has_element?(view, "#ai-retention-requests-unit option[value=month][selected]")
+    end
+
+    test "unticking a kind that was forever shows no error until it is saved",
+         %{conn: conn, owner: owner} do
+      view = open(conn, owner)
+      untick(view, "requests")
+
+      assert has_element?(view, "#ai-retention-requests-n")
+      refute render(view) =~ "Enter a whole number"
+      assert has_element?(view, "#ai-retention-requests-forever[aria-controls]")
+
+      view |> form("#ai-retention-form") |> render_submit()
+      assert has_element?(view, "[data-retention-error=requests]", "Enter a whole number")
+      assert Retention.settings().requests == :forever
+    end
+
     test "a longer period is saved at once, without a preview", %{conn: conn, owner: owner} do
       save_periods(owner, %{requests: {3, :month}})
       view = open(conn, owner)
@@ -228,6 +258,8 @@ defmodule PhoenixKitAI.Web.UsageRetentionTest do
 
       html = render_async(view, @async_ms)
       assert html =~ "2 journal entries older than"
+      # a boundary is local midnight: the date alone, no time
+      assert html =~ ~r/older than \d{1,2} [A-Z][a-z]+ \d{4}[^\d:]/
       assert html =~ "not deleted — the spend limits read them"
       assert html =~ "The first nightly cleanup runs no earlier than"
 
@@ -253,7 +285,6 @@ defmodule PhoenixKitAI.Web.UsageRetentionTest do
       for {n, message} <- [
             {"abc", "Enter a whole number"},
             {"2.5", "Enter a whole number"},
-            {"", "Enter a whole number"},
             {"0", "A whole number from 1 to 1200"},
             {"1201", "A whole number from 1 to 1200"}
           ] do
@@ -263,6 +294,12 @@ defmodule PhoenixKitAI.Web.UsageRetentionTest do
         submit_period(view, "requests", n, "month")
         assert Settings.get_json_setting(@key) == nil
       end
+
+      # an empty number is no error while typing, only when saving
+      change_period(view, "requests", "", "month")
+      refute has_element?(view, "[data-retention-error=requests]")
+      submit_period(view, "requests", "", "month")
+      assert has_element?(view, "[data-retention-error=requests]", "Enter a whole number")
     end
 
     test "the warnings under the field", %{conn: conn, owner: owner} do
@@ -353,11 +390,11 @@ defmodule PhoenixKitAI.Web.UsageRetentionTest do
       })
 
       refute has_element?(view, "#ai-retention-requests-forever[checked]")
-      refute has_element?(view, "#ai-retention-requests-n[disabled]")
+      assert has_element?(view, "#ai-retention-requests-n")
 
       for kind <- ~w(content guard_events) do
         assert has_element?(view, "#ai-retention-#{kind}-forever[checked]"), kind
-        assert has_element?(view, "#ai-retention-#{kind}-n[disabled]"), kind
+        refute has_element?(view, "#ai-retention-#{kind}-n"), kind
         refute has_element?(view, "[data-retention-error=#{kind}]"), kind
       end
     end
