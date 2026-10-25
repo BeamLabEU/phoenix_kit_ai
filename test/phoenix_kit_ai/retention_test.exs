@@ -804,6 +804,47 @@ defmodule PhoenixKitAI.RetentionTest do
 
       assert log =~ "do not fit in the job's timeout"
     end
+
+    test "a statement timeout too long for even the default slices is lowered until they fit" do
+      log =
+        capture_log(fn ->
+          opts = Retention.run_options(statement_timeout_ms: 60_000)
+
+          assert opts[:statement_timeout_ms] < 60_000
+          assert opts[:time_limits] == Retention.run_options([])[:time_limits]
+          assert Retention.run_budget_ms(opts) < Retention.job_timeout_ms()
+          # the largest that fits: one more millisecond would not
+          refute Retention.run_budget_ms(Keyword.update!(opts, :statement_timeout_ms, &(&1 + 1))) <
+                   Retention.job_timeout_ms()
+        end)
+
+      assert log =~ "option statement_timeout_ms does not fit in the job's timeout"
+      # the slices were the defaults already: no fallback to report
+      refute log =~ "the time limits do not fit"
+    end
+
+    test "a statement timeout that fits is kept" do
+      refute capture_log(fn ->
+               assert Retention.run_options(statement_timeout_ms: 20_000)[:statement_timeout_ms] ==
+                        20_000
+             end) =~ "statement_timeout_ms"
+    end
+
+    test "a run with a too long statement timeout still runs, within the job's timeout" do
+      request!(years_ago(10))
+
+      log =
+        capture_log(fn ->
+          assert {:ok, %{counts: %{requests: 1}}} =
+                   Retention.run(
+                     :manual,
+                     %{requests: floor_cut(:requests)},
+                     @fast ++ [statement_timeout_ms: 600_000]
+                   )
+        end)
+
+      assert log =~ "option statement_timeout_ms does not fit in the job's timeout"
+    end
   end
 
   describe "run/3 — stamp and Activity" do

@@ -1173,7 +1173,8 @@ defmodule PhoenixKitAI.Retention do
   guard_reasons:, guard_events:}` in ms), `statement_timeout_ms:`,
   `lock_timeout_ms:`. A value that is not a fitting integer, or time slices
   that would not fit in the job's timeout, are replaced by the defaults
-  with a warning.
+  with a warning; a statement timeout too long for even the default slices
+  is lowered, with a warning, to the largest that fits.
   """
   @spec run(mode(), cutoffs(), keyword()) ::
           {:ok, map()} | {:cancel, term()} | {:error, {:prune_failed, String.t()}}
@@ -1181,7 +1182,7 @@ defmodule PhoenixKitAI.Retention do
     opts = keyword_or_empty(opts)
     now = clamp_now(Keyword.get(opts, :now))
     raw = Map.new(@kinds, &{&1, cutoffs[&1]})
-    prune_opts = options(opts)
+    prune_opts = run_options(opts)
 
     case checks(raw, now) do
       {:ok, effective} ->
@@ -1410,11 +1411,15 @@ defmodule PhoenixKitAI.Retention do
     :lock_timeout_ms
   ]
 
+  @doc false
   # The run's options: each one that is not a fitting integer falls back to
   # its default, and time slices (with a chunk's and a probe's overrun
-  # each) that would not fit in the job's timeout fall back as a whole. The
-  # last of a repeated option wins.
-  defp options(opts) do
+  # each) that would not fit in the job's timeout fall back as a whole; if
+  # even the default slices do not fit, the statement timeout is lowered to
+  # the largest that does. Either way `run_budget_ms/1` of the result stays
+  # under the job's timeout. The last of a repeated option wins.
+  @spec run_options(keyword()) :: keyword()
+  def run_options(opts) do
     opts = Keyword.new(opts)
 
     base =
@@ -1424,7 +1429,40 @@ defmodule PhoenixKitAI.Retention do
 
     base = [{:pause_ms, checked(opts, :pause_ms, &(is_integer(&1) and &1 >= 0))} | base]
     base = Keyword.update!(base, :content_min_batch, &min(&1, base[:content_batch]))
-    Keyword.put(base, :time_limits, time_limits(opts[:time_limits], base[:statement_timeout_ms]))
+
+    base
+    |> Keyword.put(:time_limits, time_limits(opts[:time_limits], base[:statement_timeout_ms]))
+    |> fit_statement_timeout()
+  end
+
+  @doc false
+  # The longest a run with `opts` may take: every counter's time slice,
+  # plus per counter one chunk and one probe past it (each a statement
+  # with the client's margin), plus the room for the checks and the stamp.
+  @spec run_budget_ms(keyword()) :: non_neg_integer()
+  def run_budget_ms(opts),
+    do: budget_ms(opts[:time_limits], opts[:statement_timeout_ms])
+
+  defp budget_ms(limits, statement_ms) do
+    Enum.sum(Map.values(limits)) +
+      length(@counters) * 2 * (statement_ms + @client_margin_ms) + @run_margin_ms
+  end
+
+  # The default slices with a statement timeout too long for them: the
+  # largest statement timeout that fits instead.
+  defp fit_statement_timeout(opts) do
+    if run_budget_ms(opts) < @job_timeout_ms do
+      opts
+    else
+      room = @job_timeout_ms - Enum.sum(Map.values(opts[:time_limits])) - @run_margin_ms
+      statement_ms = div(room - 1, length(@counters) * 2) - @client_margin_ms
+
+      Logger.warning(
+        "[PhoenixKitAI.Retention] option statement_timeout_ms does not fit in the job's timeout with the time limits; #{statement_ms} is used"
+      )
+
+      Keyword.put(opts, :statement_timeout_ms, statement_ms)
+    end
   end
 
   # Options that are not a keyword list are none, with a warning.
@@ -1480,12 +1518,10 @@ defmodule PhoenixKitAI.Retention do
     fit_limits(@default_opts[:time_limits], statement_ms)
   end
 
+  # Already the defaults: nothing to fall back to (`fit_statement_timeout/1`
+  # lowers the statement timeout instead).
   defp fit_limits(limits, statement_ms) do
-    total =
-      Enum.sum(Map.values(limits)) +
-        length(@counters) * 2 * (statement_ms + @client_margin_ms) + @run_margin_ms
-
-    if total < @job_timeout_ms do
+    if limits == @default_opts[:time_limits] or budget_ms(limits, statement_ms) < @job_timeout_ms do
       limits
     else
       Logger.warning(
