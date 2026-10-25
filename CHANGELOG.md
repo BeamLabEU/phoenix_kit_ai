@@ -1,3 +1,45 @@
+## Unreleased
+
+### Added
+
+- Journal retention (`PhoenixKitAI.Retention`): a period for each of three
+  kinds — the content of journal entries (cleared from `metadata`; the row,
+  cost and tokens stay), journal entries (deleted) and guard events
+  (deleted) — in days, months or years, or kept forever, the default. Set on
+  a new "Journal retention" card on AI → Usage with warnings, a preview and
+  a confirmation before a shorter period; applied nightly by the new
+  `PhoenixKitAI.JournalPruneWorker`, no earlier than a day after a change.
+  Rows of the current month (from two days before its first day) and the
+  last 24 hours of content are never removed, so spend caps and task limits
+  count as before.
+- "Clean up now" on the same card: per kind, by the saved period or a value
+  for one run, counted first and confirmed.
+- Changing periods, previews and manual runs need `ai.manage` (or an Owner),
+  checked again on every event of the page. Each manual run and each night
+  that removed something is logged to Activity as `journal.pruned`, failures
+  as `journal.prune_failed`, both permanent; the last runs are kept in the
+  `ai_journal_retention_last_run` setting.
+- Totals on the Endpoints and Usage tabs say "for the retained period, since
+  <date>" once rows may have been deleted; a request's details say when its
+  content was removed.
+- `config :phoenix_kit_ai, :journal_prune` tunes the cleanup's chunk sizes,
+  pauses, time slices and the preview's timeout.
+- `dev_docs/guides/journal-retention.md` — the host's guide.
+
+### Changed
+
+- Guard events are no longer deleted after 180 days. They are kept until a
+  period is set for them; an install that relied on the old pruning sets
+  one on AI → Usage.
+- `oban_crons/0` now declares `PhoenixKitAI.JournalPruneWorker` (03:17
+  nightly) instead of `PhoenixKitAI.GuardEventsPruneWorker`;
+  `mix phoenix_kit.update` adds the new entry. It deletes nothing until a
+  period is set.
+- `PhoenixKitAI.GuardEventsPruneWorker` is a shim: it only queues
+  `JournalPruneWorker` and deletes nothing, so a crontab entry or a queued
+  job of it keeps working without a second cleanup.
+  `GuardEventsPruneWorker.retention_days/0` is deprecated.
+
 ## 0.26.1 - 2026-10-24
 
 ### Fixed
