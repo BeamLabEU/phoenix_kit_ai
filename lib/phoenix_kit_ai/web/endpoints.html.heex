@@ -3,6 +3,11 @@
       <%!-- Endpoints List --%>
       <%= if @has_endpoints do %>
         <% manual_sort? = @sort_by == :sort_order %>
+        <JournalRetentionCard.retained_since
+          :if={@retention_retained_since}
+          id="ai-endpoints-retained-since"
+          at={@retention_retained_since}
+        />
         <.table_default
           id="ai-endpoints"
           toggleable
@@ -481,10 +486,30 @@
                     )}
                   </div>
                 </div>
+                <JournalRetentionCard.retained_since
+                  :if={@retention_retained_since}
+                  id="ai-usage-retained-since"
+                  at={@retention_retained_since}
+                />
               </div>
             </div>
           </div>
         </div>
+
+        <%!-- Journal retention: periods, nightly outcome, cleanup by hand --%>
+        <JournalRetentionCard.card
+          settings={@retention}
+          last_run={@retention_last_run}
+          job={@retention_job}
+          can_manage={@retention_can_manage}
+          form={@retention_form}
+          form_errors={@retention_form_errors}
+          warnings={@retention_warnings}
+          run_form={@retention_run_form}
+          run_errors={@retention_run_errors}
+          run={@retention_run}
+          save={@retention_save}
+        />
 
         <%!-- Recent Requests --%>
         <div class="card bg-base-200">
@@ -858,6 +883,11 @@
             {Calendar.strftime(@selected_request.inserted_at, "%Y-%m-%d %H:%M:%S UTC")}
           </div>
         </div>
+
+        <JournalRetentionCard.content_pruned
+          :if={@selected_request.metadata["content_pruned_at"]}
+          at={@selected_request.metadata["content_pruned_at"]}
+        />
 
         <%!-- Error Message (if any) --%>
         <%= if @selected_request.error_message do %>

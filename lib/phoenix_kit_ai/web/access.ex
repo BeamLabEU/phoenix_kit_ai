@@ -50,12 +50,22 @@ defmodule PhoenixKitAI.Web.Access do
 
   @doc "Whether the signed-in person may change the AI task guard now (see the moduledoc)."
   @spec may_manage?(Phoenix.LiveView.Socket.t()) :: boolean()
-  def may_manage?(socket) do
+  def may_manage?(socket), do: match?({:ok, _scope}, manage_scope(socket))
+
+  @doc """
+  `may_manage?/1` that also hands back the scope it checked: `{:ok, scope}`
+  with the scope as it is now (`session_scope/1`), the one to give a
+  context function, so the check and the call read the same scope (rebuilt
+  once); `:error` when the person may not.
+  """
+  @spec manage_scope(Phoenix.LiveView.Socket.t()) :: {:ok, Scope.t()} | :error
+  def manage_scope(socket) do
     with %Scope{} = scope <- socket.assigns[:phoenix_kit_current_scope],
-         %Scope{} = now <- session_scope(socket) do
-      Guard.may_manage?(scope) and Guard.may_manage?(now)
+         %Scope{} = now <- session_scope(socket),
+         true <- Guard.may_manage?(scope) and Guard.may_manage?(now) do
+      {:ok, now}
     else
-      _ -> false
+      _ -> :error
     end
   end
 

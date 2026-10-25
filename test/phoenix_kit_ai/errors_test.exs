@@ -198,7 +198,12 @@ defmodule PhoenixKitAI.ErrorsTest do
       :retention_busy,
       :enqueue_failed,
       :nothing_to_run,
-      {:prune_failed, "undefined_column"}
+      {:prune_failed, "undefined_column"},
+      :preview_failed,
+      {:prune_failed, "foreign_key_blocks"},
+      {:prune_failed, "cutoff_in_future"},
+      {:prune_failed, "invalid_cutoff"},
+      {:prune_failed, "invalid_args"}
     ]
 
     test "each has its own sentence, naming the kind or the table" do
@@ -210,6 +215,15 @@ defmodule PhoenixKitAI.ErrorsTest do
       assert Errors.message({:invalid_retention, :guard_events}) =~ "guard events"
       assert Errors.message({:foreign_key_blocks, "other_table"}) =~ "other_table"
       assert Errors.message({:foreign_key_blocks, "other_table"}) =~ "the guard events"
+    end
+
+    test "a known class of a failed run has its own sentence; any other the general one" do
+      general = Errors.message({:prune_failed, "undefined_column"})
+
+      for class <- ~w(foreign_key_blocks cutoff_in_future invalid_cutoff invalid_args) do
+        assert Errors.message({:prune_failed, class}) =~ "nothing was deleted"
+        refute Errors.message({:prune_failed, class}) == general
+      end
     end
 
     test "they are translated" do

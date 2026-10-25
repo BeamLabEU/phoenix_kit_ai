@@ -191,6 +191,28 @@ defmodule PhoenixKitAI.I18nTest do
     end
   end
 
+  describe "translated catalogues" do
+    test "no et or ru entry is left with an empty msgstr" do
+      for locale <- ["ru", "et"] do
+        path = Path.join(["priv", "gettext", locale, "LC_MESSAGES", "default.po"])
+        {:ok, po} = Expo.PO.parse_file(path)
+
+        empty =
+          for message <- po.messages,
+              strings = msgstrs(message),
+              Enum.any?(strings, &(String.trim(&1) == "")),
+              do: message.msgid |> IO.iodata_to_binary()
+
+        assert empty == [], "#{locale}: untranslated #{inspect(empty)}"
+      end
+    end
+  end
+
+  defp msgstrs(%Expo.Message.Singular{msgstr: msgstr}), do: [IO.iodata_to_binary(msgstr)]
+
+  defp msgstrs(%Expo.Message.Plural{msgstr: msgstr}),
+    do: Enum.map(msgstr, fn {_n, text} -> IO.iodata_to_binary(text) end)
+
   # Reads the msgstr for `msgid` straight out of the locale's parsed `.po`
   # file (nil if the entry is missing), bypassing Gettext's fallback-to-msgid
   # behavior so a deleted/never-added entry actually fails the assertion.

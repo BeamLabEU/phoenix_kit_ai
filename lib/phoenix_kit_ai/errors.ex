@@ -261,6 +261,25 @@ defmodule PhoenixKitAI.Errors do
 
   def message(:enqueue_failed), do: gettext("The journal cleanup could not be queued")
   def message(:nothing_to_run), do: gettext("Choose what to clean up")
+
+  def message(:preview_failed),
+    do: gettext("Counting what would be deleted failed")
+
+  def message({:prune_failed, "foreign_key_blocks"}),
+    do:
+      gettext(
+        "A table references the AI journal or the guard events in a way that would block or spread the deletion; nothing was deleted"
+      )
+
+  def message({:prune_failed, "cutoff_in_future"}),
+    do: gettext("A cleanup boundary was in the future; nothing was deleted")
+
+  def message({:prune_failed, "invalid_cutoff"}),
+    do: gettext("A cleanup boundary was not a date and time; nothing was deleted")
+
+  def message({:prune_failed, "invalid_args"}),
+    do: gettext("The cleanup job's arguments could not be read; nothing was deleted")
+
   def message({:prune_failed, _class}), do: gettext("The journal cleanup failed")
 
   # Passthrough for strings so legacy callers returning {:error, "..."}

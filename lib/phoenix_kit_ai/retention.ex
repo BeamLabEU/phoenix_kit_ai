@@ -240,6 +240,15 @@ defmodule PhoenixKitAI.Retention do
     |> Map.merge(%{changed_at: Map.new(@kinds, &{&1, nil}), unconfirmed: []})
   end
 
+  @doc """
+  `settings/0` read from a stored document instead of the database: the
+  value core broadcasts in `{:setting_changed, key, value}` for
+  `setting_key/0`, read with the same rules (anything in doubt is
+  `:forever`).
+  """
+  @spec settings_from(term()) :: map()
+  def settings_from(doc), do: parse_settings(doc)
+
   defp parse_settings(nil), do: forever()
 
   defp parse_settings(%{} = doc) do
@@ -547,32 +556,96 @@ defmodule PhoenixKitAI.Retention do
   `content_done_before` is the boundary below which content is already
   cleared; `content_resume` (`%{lower:, upper:}` or `nil`) an interval
   above it already cleared, which a stopped content step skips next time.
+  `rows_deleted_before` is the earliest boundary below which a run, nightly
+  or manual, deleted journal rows (`nil` while none has): written by every
+  run that deleted some, never cleared, so a later run that deletes none
+  does not hide that rows are gone.
   Read without the cache; a database error reads as no runs.
   """
   @spec last_run() :: %{
           scheduled: map() | nil,
           manual: map() | nil,
           content_done_before: DateTime.t() | nil,
-          content_resume: %{lower: DateTime.t() | nil, upper: DateTime.t()} | nil
+          content_resume: %{lower: DateTime.t() | nil, upper: DateTime.t()} | nil,
+          rows_deleted_before: DateTime.t() | nil
         }
   def last_run do
-    doc = Settings.get_json_setting(@last_run_key)
-    doc = if is_map(doc), do: doc, else: %{}
-
-    %{
-      scheduled: parse_entry(doc["scheduled"]),
-      manual: parse_entry(doc["manual"]),
-      content_done_before: parse_datetime(doc["content_done_before"]),
-      content_resume: parse_resume(doc["content_resume"])
-    }
+    @last_run_key |> Settings.get_json_setting() |> last_run_from()
   rescue
     _error -> no_runs()
   catch
     :exit, _reason -> no_runs()
   end
 
+  @doc """
+  `last_run/0` read from a stored document instead of the database: the
+  value core broadcasts in `{:setting_changed, key, value}` for
+  `last_run_key/0`. Anything but a map reads as no runs.
+  """
+  @spec last_run_from(term()) :: map()
+  def last_run_from(%{} = doc) do
+    %{
+      scheduled: parse_entry(doc["scheduled"]),
+      manual: parse_entry(doc["manual"]),
+      content_done_before: parse_datetime(doc["content_done_before"]),
+      content_resume: parse_resume(doc["content_resume"]),
+      rows_deleted_before: parse_datetime(doc["rows_deleted_before"])
+    }
+  end
+
+  def last_run_from(_doc), do: no_runs()
+
+  @pending_states ~w(available scheduled executing retryable)
+
+  @doc """
+  The cleanup job not finished yet, if any: `%{state: "available" |
+  "scheduled" | "executing" | "retryable", inserted_at:, attempted_at:}`
+  of the newest such `PhoenixKitAI.JournalPruneWorker` job in Oban's
+  table, else `nil`. A job stuck in `executing` (a host without Lifeline)
+  shows here instead of only refusing the next run. `nil` too when Oban
+  or the database cannot be read.
+  """
+  @spec pending_job() :: map() | nil
+  def pending_job do
+    worker = JournalPruneWorker |> Module.split() |> Enum.join(".")
+
+    query =
+      from(j in Oban.Job,
+        where: j.worker == ^worker and j.state in @pending_states,
+        order_by: [desc: j.id],
+        limit: 1,
+        select: %{state: j.state, inserted_at: j.inserted_at, attempted_at: j.attempted_at}
+      )
+
+    repo().one(query, prefix: Oban.config(Oban).prefix, log: false)
+  rescue
+    _error -> nil
+  catch
+    :exit, _reason -> nil
+  end
+
+  @doc """
+  When the oldest journal row was written, or `nil` with an empty journal
+  (or a database error): where the totals "for all time" start once rows
+  are deleted.
+  """
+  @spec oldest_request_at() :: DateTime.t() | nil
+  def oldest_request_at do
+    repo().one(from(r in Request, select: min(r.inserted_at)), log: false)
+  rescue
+    _error -> nil
+  catch
+    :exit, _reason -> nil
+  end
+
   defp no_runs,
-    do: %{scheduled: nil, manual: nil, content_done_before: nil, content_resume: nil}
+    do: %{
+      scheduled: nil,
+      manual: nil,
+      content_done_before: nil,
+      content_resume: nil,
+      rows_deleted_before: nil
+    }
 
   defp parse_resume(%{"upper" => upper} = resume) do
     case parse_datetime(upper) do
@@ -884,14 +957,16 @@ defmodule PhoenixKitAI.Retention do
   requests boundary or the point already cleared, to the content
   boundary), counted by the time index without reading the metadata. A
   kind without a boundary counts 0. The foreign keys are checked first; a
-  count over 60 s is `{:error, :preview_timeout}`. No rights are checked:
+  count over 60 s (`preview_timeout_ms:` of `config :phoenix_kit_ai,
+  :journal_prune`) is `{:error, :preview_timeout}`. No rights are checked:
   `preview/2` is the same for a person.
   """
   @spec preview(cutoffs()) ::
           {:ok, map()}
           | {:error,
              {:foreign_key_blocks, String.t()} | {:cutoff_in_future, kind()} | :preview_timeout}
-  def preview(cutoffs) when is_map(cutoffs), do: preview_counts(cutoffs, [])
+  def preview(cutoffs) when is_map(cutoffs),
+    do: preview_counts(cutoffs, timeout_ms: preview_timeout_ms())
 
   @doc """
   `preview/1` for a person: `{:error, :forbidden}` unless `scope` may run
@@ -907,7 +982,20 @@ defmodule PhoenixKitAI.Retention do
              | :preview_timeout}
   def preview(scope, cutoffs) when is_map(cutoffs) do
     with :ok <- authorize(scope, requested_kinds(cutoffs), &may_run?/2),
-         do: preview_counts(cutoffs, [])
+         do: preview_counts(cutoffs, timeout_ms: preview_timeout_ms())
+  end
+
+  # The counts' statement timeout: `preview_timeout_ms:` of
+  # `config :phoenix_kit_ai, :journal_prune` when it is a positive integer,
+  # else 60 s.
+  defp preview_timeout_ms do
+    with opts when is_list(opts) <- Application.get_env(:phoenix_kit_ai, :journal_prune, []),
+         true <- Keyword.keyword?(opts),
+         ms when is_integer(ms) and ms > 0 <- opts[:preview_timeout_ms] do
+      ms
+    else
+      _ -> @preview_timeout_ms
+    end
   end
 
   defp requested_kinds(cutoffs), do: Enum.filter(@kinds, &(cutoffs[&1] != nil))
@@ -1149,7 +1237,7 @@ defmodule PhoenixKitAI.Retention do
   end
 
   defp finish(mode, cutoffs, state, nil = _error, opts) do
-    record(mode, entry("ok", nil, state, opts, nil), state)
+    record(mode, entry("ok", nil, state, opts, nil), state, deleted_before(cutoffs, state))
 
     if mode == :manual or Enum.any?(state.counts, fn {_counter, n} -> n > 0 end),
       do: log_activity("journal.pruned", mode, cutoffs, state, %{}, opts)
@@ -1160,7 +1248,13 @@ defmodule PhoenixKitAI.Retention do
   defp finish(mode, cutoffs, state, error, opts) do
     log? = log_failure?(mode, error, opts)
     logged_at = if log?, do: DateTime.utc_now(), else: previous_logged_at(mode, error)
-    record(mode, entry("failed", error, state, opts, logged_at), state)
+
+    record(
+      mode,
+      entry("failed", error, state, opts, logged_at),
+      state,
+      deleted_before(cutoffs, state)
+    )
 
     if log?,
       do: log_activity("journal.prune_failed", mode, cutoffs, state, %{"error" => error}, opts)
@@ -1203,6 +1297,13 @@ defmodule PhoenixKitAI.Retention do
     |> put_actor(opts[:actor_uuid])
   end
 
+  # The journal boundary of a run that deleted rows (a failed one too: its
+  # chunks are committed one by one), else nil.
+  defp deleted_before(%{requests: %DateTime{} = cut}, %{counts: %{requests: n}}) when n > 0,
+    do: cut
+
+  defp deleted_before(_cutoffs, _state), do: nil
+
   defp put_actor(entry, actor) when is_binary(actor), do: Map.put(entry, "actor_uuid", actor)
   defp put_actor(entry, _actor), do: entry
 
@@ -1211,7 +1312,8 @@ defmodule PhoenixKitAI.Retention do
   # From a run's state: `content_done_before` only moves forward (`nil`
   # keeps the stored one); `content_resume` is replaced when the content
   # step ran (`:keep` otherwise). Without a state both stay.
-  defp record(mode, entry, state) do
+  # `rows_deleted_before` only moves back, and only when rows were deleted.
+  defp record(mode, entry, state, deleted_before \\ nil) do
     {done_before, resume} =
       case state do
         %{content_done_before: done_before, content_resume: resume} -> {done_before, resume}
@@ -1229,6 +1331,7 @@ defmodule PhoenixKitAI.Retention do
       |> Map.put(Atom.to_string(mode), entry)
       |> Map.put("content_done_before", iso(done_before) || doc["content_done_before"])
       |> put_resume(resume)
+      |> put_deleted_before(deleted_before)
 
     case Settings.update_json_setting_with_module(@last_run_key, doc, "ai", history: false) do
       {:ok, _setting} ->
@@ -1249,6 +1352,15 @@ defmodule PhoenixKitAI.Retention do
     :exit, _reason ->
       Logger.warning("[PhoenixKitAI.Retention] the last-run stamp could not be written (exit)")
       :ok
+  end
+
+  defp put_deleted_before(doc, nil), do: doc
+
+  defp put_deleted_before(doc, %DateTime{} = cut) do
+    case parse_datetime(doc["rows_deleted_before"]) do
+      nil -> Map.put(doc, "rows_deleted_before", iso(cut))
+      stored -> Map.put(doc, "rows_deleted_before", iso(earlier(stored, cut)))
+    end
   end
 
   defp put_resume(doc, :keep), do: doc

@@ -311,6 +311,37 @@ defmodule PhoenixKitAI.RetentionTest do
       assert reload(recent)
     end
 
+    test "a run that deleted rows leaves a marker no later run removes" do
+      assert Retention.last_run().rows_deleted_before == nil
+      cut = floor_cut(:requests)
+      earlier = DateTime.add(cut, -10 * 86_400)
+
+      # nothing deleted: no marker
+      assert {:ok, %{counts: %{requests: 0}}} = Retention.run(:manual, %{requests: cut}, @fast)
+      assert Retention.last_run().rows_deleted_before == nil
+
+      request!(DateTime.add(cut, -3600))
+      assert {:ok, %{counts: %{requests: 1}}} = Retention.run(:scheduled, %{requests: cut}, @fast)
+      assert Retention.last_run().rows_deleted_before == cut
+
+      # a later run that deletes nothing, then one with no journal boundary
+      assert {:ok, _} = Retention.run(:scheduled, %{requests: cut}, @fast)
+      assert {:ok, _} = Retention.run(:manual, %{content: floor_cut(:content)}, @fast)
+      assert Retention.last_run().rows_deleted_before == cut
+
+      # it moves back to an earlier boundary, never forward
+      request!(DateTime.add(earlier, -3600))
+
+      assert {:ok, %{counts: %{requests: 1}}} =
+               Retention.run(:manual, %{requests: earlier}, @fast)
+
+      assert Retention.last_run().rows_deleted_before == earlier
+
+      request!(DateTime.add(cut, -3600))
+      assert {:ok, %{counts: %{requests: 1}}} = Retention.run(:manual, %{requests: cut}, @fast)
+      assert Retention.last_run().rows_deleted_before == earlier
+    end
+
     test "the keyset walks to the end in small chunks" do
       cut = floor_cut(:requests)
       for n <- 1..7, do: request!(DateTime.add(cut, -n * 3600))
