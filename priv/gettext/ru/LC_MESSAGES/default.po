@@ -1483,7 +1483,7 @@ msgstr "Введите текст для озвучивания…"
 msgid "Type your message to the AI..."
 msgstr "Введите сообщение для AI…"
 
-#: lib/phoenix_kit_ai/errors.ex:259
+#: lib/phoenix_kit_ai/errors.ex:271
 #, elixir-autogen, elixir-format
 msgid "Unexpected error: %{reason}"
 msgstr "Неожиданная ошибка: %{reason}"
@@ -3756,17 +3756,17 @@ msgstr "Сроки хранения изменил кто-то другой; о�
 msgid "You are not allowed to do this"
 msgstr "У вас нет прав на это действие"
 
-#: lib/phoenix_kit_ai/errors.ex:264
+#: lib/phoenix_kit_ai/errors.ex:276
 #, elixir-autogen, elixir-format
 msgid "guard events"
 msgstr "события охраны задач"
 
-#: lib/phoenix_kit_ai/errors.ex:263
+#: lib/phoenix_kit_ai/errors.ex:275
 #, elixir-autogen, elixir-format
 msgid "journal entries"
 msgstr "записи журнала"
 
-#: lib/phoenix_kit_ai/errors.ex:262
+#: lib/phoenix_kit_ai/errors.ex:274
 #, elixir-autogen, elixir-format
 msgid "the content of journal entries"
 msgstr "содержимое записей журнала"
@@ -3785,3 +3785,33 @@ msgstr "Таблица %{table} ссылается на журнал ИИ или
 #, elixir-autogen, elixir-format
 msgid "The cleanup boundary for %{kind} is not a date and time"
 msgstr "Граница очистки (%{kind}) — не дата и время"
+
+#: lib/phoenix_kit_ai/errors.ex:263
+#, elixir-autogen, elixir-format
+msgid "Choose what to clean up"
+msgstr "Выберите, что очистить"
+
+#: lib/phoenix_kit_ai/errors.ex:262
+#, elixir-autogen, elixir-format
+msgid "The journal cleanup could not be queued"
+msgstr "Не удалось поставить очистку журнала в очередь"
+
+#: lib/phoenix_kit_ai/errors.ex:264
+#, elixir-autogen, elixir-format
+msgid "The journal cleanup failed"
+msgstr "Очистка журнала не удалась"
+
+#: lib/phoenix_kit_ai/errors.ex:260
+#, elixir-autogen, elixir-format
+msgid "The retention periods are being saved by someone else; try again"
+msgstr "Сроки хранения сейчас сохраняет кто-то другой; попробуйте ещё раз"
+
+#: lib/phoenix_kit_ai/errors.ex:257
+#, elixir-autogen, elixir-format
+msgid "The retention periods could not be saved"
+msgstr "Не удалось сохранить сроки хранения"
+
+#: lib/phoenix_kit_ai/errors.ex:254
+#, elixir-autogen, elixir-format
+msgid "Unknown kind of journal retention"
+msgstr "Неизвестный вид хранения журнала"

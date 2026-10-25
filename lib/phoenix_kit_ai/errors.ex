@@ -251,6 +251,18 @@ defmodule PhoenixKitAI.Errors do
   def message(:preview_timeout),
     do: gettext("Counting what would be deleted took too long")
 
+  def message({:unknown_kind, _key}), do: gettext("Unknown kind of journal retention")
+
+  def message(:settings_write_failed),
+    do: gettext("The retention periods could not be saved")
+
+  def message(:retention_busy),
+    do: gettext("The retention periods are being saved by someone else; try again")
+
+  def message(:enqueue_failed), do: gettext("The journal cleanup could not be queued")
+  def message(:nothing_to_run), do: gettext("Choose what to clean up")
+  def message({:prune_failed, _class}), do: gettext("The journal cleanup failed")
+
   # Passthrough for strings so legacy callers returning {:error, "..."}
   # still render something. New code should return atoms/tuples.
   def message(reason) when is_binary(reason), do: reason

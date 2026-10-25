@@ -1481,7 +1481,7 @@ msgstr ""
 msgid "Type your message to the AI..."
 msgstr ""
 
-#: lib/phoenix_kit_ai/errors.ex:259
+#: lib/phoenix_kit_ai/errors.ex:271
 #, elixir-autogen, elixir-format
 msgid "Unexpected error: %{reason}"
 msgstr ""
@@ -3744,17 +3744,17 @@ msgstr ""
 msgid "You are not allowed to do this"
 msgstr ""
 
-#: lib/phoenix_kit_ai/errors.ex:264
+#: lib/phoenix_kit_ai/errors.ex:276
 #, elixir-autogen, elixir-format
 msgid "guard events"
 msgstr ""
 
-#: lib/phoenix_kit_ai/errors.ex:263
+#: lib/phoenix_kit_ai/errors.ex:275
 #, elixir-autogen, elixir-format
 msgid "journal entries"
 msgstr ""
 
-#: lib/phoenix_kit_ai/errors.ex:262
+#: lib/phoenix_kit_ai/errors.ex:274
 #, elixir-autogen, elixir-format
 msgid "the content of journal entries"
 msgstr ""
@@ -3772,4 +3772,34 @@ msgstr ""
 #: lib/phoenix_kit_ai/errors.ex:232
 #, elixir-autogen, elixir-format
 msgid "The cleanup boundary for %{kind} is not a date and time"
+msgstr ""
+
+#: lib/phoenix_kit_ai/errors.ex:263
+#, elixir-autogen, elixir-format
+msgid "Choose what to clean up"
+msgstr ""
+
+#: lib/phoenix_kit_ai/errors.ex:262
+#, elixir-autogen, elixir-format
+msgid "The journal cleanup could not be queued"
+msgstr ""
+
+#: lib/phoenix_kit_ai/errors.ex:264
+#, elixir-autogen, elixir-format
+msgid "The journal cleanup failed"
+msgstr ""
+
+#: lib/phoenix_kit_ai/errors.ex:260
+#, elixir-autogen, elixir-format
+msgid "The retention periods are being saved by someone else; try again"
+msgstr ""
+
+#: lib/phoenix_kit_ai/errors.ex:257
+#, elixir-autogen, elixir-format
+msgid "The retention periods could not be saved"
+msgstr ""
+
+#: lib/phoenix_kit_ai/errors.ex:254
+#, elixir-autogen, elixir-format
+msgid "Unknown kind of journal retention"
 msgstr ""

@@ -192,7 +192,13 @@ defmodule PhoenixKitAI.ErrorsTest do
       :prune_running,
       :stale_retention,
       {:foreign_key_blocks, "other_table"},
-      :preview_timeout
+      :preview_timeout,
+      {:unknown_kind, "rows"},
+      :settings_write_failed,
+      :retention_busy,
+      :enqueue_failed,
+      :nothing_to_run,
+      {:prune_failed, "undefined_column"}
     ]
 
     test "each has its own sentence, naming the kind or the table" do

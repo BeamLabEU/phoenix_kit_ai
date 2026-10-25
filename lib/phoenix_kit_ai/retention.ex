@@ -31,12 +31,15 @@ defmodule PhoenixKitAI.Retention do
   `PhoenixKitAI.JournalPruneWorker`, in short chunks (`run/3`).
   """
 
+  import Ecto.Query, only: [from: 2]
+
   require Logger
 
   alias PhoenixKit.Settings
+  alias PhoenixKit.Settings.Setting
   alias PhoenixKit.Users.Auth.Scope
   alias PhoenixKit.Utils.TimeZone
-  alias PhoenixKitAI.{GuardBlock, GuardEvent, Request}
+  alias PhoenixKitAI.{Guard, GuardBlock, GuardEvent, JournalPruneWorker, Request}
 
   # ===========================================
   # POLICY
@@ -85,7 +88,7 @@ defmodule PhoenixKitAI.Retention do
     statement_timeout_ms: 30_000,
     lock_timeout_ms: 5_000,
     time_limits: %{
-      requests: 12 * 60_000,
+      requests: 10 * 60_000,
       content: 6 * 60_000,
       guard_reasons: 60_000,
       guard_events: 2 * 60_000
@@ -96,8 +99,9 @@ defmodule PhoenixKitAI.Retention do
   # database's own timeout (a clean, recordable error) always comes first.
   @client_margin_ms 5_000
   @preview_timeout_ms 60_000
-  # Room left in the job's timeout besides the time slices and one chunk's
-  # overrun per counter: the probes, the stamp.
+  # Each counter may run past its slice by one chunk and then one probe
+  # (two statements, each with the client's margin); this is the room left
+  # in the job's timeout besides those: the checks before, the stamp after.
   @run_margin_ms 60_000
   @failure_log_hours 20
 
@@ -291,6 +295,250 @@ defmodule PhoenixKitAI.Retention do
   end
 
   @doc """
+  Saves the periods a person changed: `{:ok, settings}` in the form of
+  `settings/0`.
+
+  `attrs` maps kinds — `:content` or `"content"`, and so on — to periods:
+  `:forever` or `{n, unit}`, or their stored form (`"forever"`,
+  `%{"n" => n, "unit" => "day"}`). Any other key is
+  `{:error, {:unknown_kind, key}}`, a kind given twice (atom and string)
+  `{:invalid_retention, kind}`. A kind left out, or given as `loaded` has
+  it, is not changed. `loaded` is what `settings/0` gave the form when it
+  was loaded (from the page's assigns, never from the form's parameters);
+  its periods are read the same way as `attrs`. A kind `loaded` lacks, or
+  holds in no form a period has, is unknown: given the period stored it
+  is unchanged, given another it is `:stale_retention` — what the form saw
+  cannot be checked. A kind stored with a period but no `changed_at`
+  (`unconfirmed` in `settings/0`, read as `:forever`) counts as changed
+  whenever it is given, so saving it confirms it — `:forever` included.
+
+  In one transaction (lock timeout 5 s, statement timeout 10 s): the
+  setting's row is locked and read again; only the changed kinds are
+  merged, each with `changed_at` set here. A changed kind whose stored
+  period is no longer what the form loaded is `{:error, :stale_retention}`,
+  and so is a first write that meets another's (the setting's unique
+  key). A row held elsewhere past the lock timeout is
+  `{:error, :retention_busy}`. Core's writer comes last and records
+  `setting.changed` with the actor (`source: "settings"`); it broadcasts
+  the document before the transaction commits, so subscribers render from
+  the message rather than reading the setting again. Core's writer
+  refusing the write is `{:error, :settings_write_failed}`, logged with
+  the failing fields only.
+
+  `{:error, :forbidden}` without `may_set?/2` for a changed kind (or for
+  every kind); `{:error, {:invalid_retention, kind}}` for a period of the
+  wrong form, N out of range or an unknown unit. Nothing is written then,
+  nor when nothing changed.
+  """
+  @spec put_settings(term(), map(), map()) ::
+          {:ok, map()}
+          | {:error,
+             :forbidden
+             | :stale_retention
+             | :retention_busy
+             | :settings_write_failed
+             | {:invalid_retention, kind()}
+             | {:unknown_kind, term()}}
+  def put_settings(scope, attrs, loaded) when is_map(attrs) and is_map(loaded) do
+    with :ok <- authorize(scope, [], &may_set?/2),
+         {:ok, given} <- by_kind(attrs),
+         {:ok, periods} <- attr_periods(given),
+         seen = Map.new(@kinds, &{&1, loaded_period(loaded, &1)}),
+         touched = Enum.filter(@kinds, &touched?(periods, seen, &1)),
+         :ok <- authorize(scope, touched, &may_set?/2) do
+      if periods == %{},
+        do: {:ok, settings()},
+        else: write_changes(scope, periods, seen)
+    end
+  end
+
+  @kind_names Map.new(@kinds, &{Atom.to_string(&1), &1})
+
+  # `attrs` keyed by kind: atoms or their strings, nothing else, once each.
+  defp by_kind(attrs) do
+    Enum.reduce_while(attrs, {:ok, %{}}, fn {key, value}, {:ok, acc} ->
+      case kind_of(key) do
+        nil -> {:halt, {:error, {:unknown_kind, key}}}
+        kind when is_map_key(acc, kind) -> {:halt, {:error, {:invalid_retention, kind}}}
+        kind -> {:cont, {:ok, Map.put(acc, kind, value)}}
+      end
+    end)
+  end
+
+  defp kind_of(key) when key in @kinds, do: key
+  defp kind_of(key) when is_binary(key), do: Map.get(@kind_names, key)
+  defp kind_of(_key), do: nil
+
+  defp attr_periods(given) do
+    Enum.reduce_while(@kinds, {:ok, %{}}, fn kind, {:ok, acc} ->
+      case given |> Map.fetch(kind) |> attr_period() do
+        :absent -> {:cont, {:ok, acc}}
+        {:ok, period} -> {:cont, {:ok, Map.put(acc, kind, period)}}
+        :error -> {:halt, {:error, {:invalid_retention, kind}}}
+      end
+    end)
+  end
+
+  defp attr_period(:error), do: :absent
+  defp attr_period({:ok, :forever}), do: {:ok, :forever}
+
+  defp attr_period({:ok, {_n, _unit} = period}),
+    do: if(valid_period?(period), do: {:ok, period}, else: :error)
+
+  defp attr_period({:ok, value}), do: parse_period(value)
+
+  # What the form loaded for `kind`: `{:ok, period}`, or `:unknown`.
+  defp loaded_period(loaded, kind) do
+    found =
+      case Map.fetch(loaded, kind) do
+        :error -> Map.fetch(loaded, Atom.to_string(kind))
+        found -> found
+      end
+
+    case attr_period(found) do
+      {:ok, period} -> {:ok, period}
+      _absent_or_invalid -> :unknown
+    end
+  end
+
+  # Given, and not as loaded: the rights are checked for these before the
+  # transaction; what is written is decided in it, against the stored row.
+  defp touched?(periods, seen, kind),
+    do: Map.has_key?(periods, kind) and seen[kind] != {:ok, periods[kind]}
+
+  @settings_statement_ms 10_000
+  @settings_lock_ms 5_000
+
+  defp write_changes(scope, periods, seen) do
+    query_opts = [timeout: @settings_statement_ms + @client_margin_ms]
+
+    repo().transaction(
+      fn ->
+        set_timeouts(@settings_statement_ms, @settings_lock_ms, query_opts)
+        raw = locked_document(query_opts)
+        stored = parse_settings(raw)
+
+        changed =
+          Enum.filter(@kinds, fn kind ->
+            Map.has_key?(periods, kind) and changes?(seen[kind], stored, kind, periods[kind])
+          end)
+
+        if Enum.any?(changed, &stale?(seen[&1], stored[&1], periods[&1])),
+          do: repo().rollback(:stale_retention)
+
+        # A stored period read as forever until saved again, saved: decided
+        # here, so checked here.
+        with {:error, reason} <- authorize(scope, changed, &may_set?/2),
+             do: repo().rollback(reason)
+
+        # The last statement of the transaction: core's writer announces
+        # the change before the commit.
+        if changed == [],
+          do: stored,
+          else: write_merged(raw, periods, changed, Guard.actor_uuid(scope))
+      end,
+      query_opts
+    )
+  rescue
+    error ->
+      if timed_out?(error), do: {:error, :retention_busy}, else: reraise(error, __STACKTRACE__)
+  end
+
+  # A kind given is written when the stored period has no changed_at (read
+  # as forever until saved again: saving it confirms it, forever
+  # included), when it is not what the form loaded, or — the loaded value
+  # unknown — when it is not what is stored.
+  defp changes?(seen, stored, kind, given) do
+    kind in stored.unconfirmed or
+      case seen do
+        {:ok, loaded} -> given != loaded
+        :unknown -> given != stored[kind]
+      end
+  end
+
+  # Loaded and stored differ; or unknown what was loaded, and the period
+  # given is not the stored one.
+  defp stale?({:ok, loaded}, stored, _given), do: stored != loaded
+  defp stale?(:unknown, stored, given), do: stored != given
+
+  defp write_merged(raw, periods, changed, actor_uuid) do
+    doc = merge_changes(raw, periods, changed)
+
+    case write_settings(doc, actor_uuid: actor_uuid, source: "settings") do
+      {:ok, _setting} -> parse_settings(doc)
+      {:error, changeset} -> repo().rollback(write_error(changeset))
+    end
+  end
+
+  defp locked_document(query_opts) do
+    query =
+      from(s in Setting, where: s.key == ^@setting_key, lock: "FOR UPDATE", select: s.value_json)
+
+    case repo().one(query, [log: false] ++ query_opts) do
+      %{} = doc -> doc
+      _ -> %{}
+    end
+  end
+
+  # The stored document with the changed kinds replaced and stamped; a kind
+  # missing from it is written out as its default, so a later change of the
+  # default does not move it.
+  defp merge_changes(raw, periods, changed) do
+    stamp = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+    changed_at = if is_map(raw["changed_at"]), do: raw["changed_at"], else: %{}
+
+    @kinds
+    |> Enum.reduce(raw, fn kind, doc ->
+      name = Atom.to_string(kind)
+
+      cond do
+        kind in changed -> Map.put(doc, name, period_to_json(periods[kind]))
+        Map.has_key?(doc, name) -> doc
+        true -> Map.put(doc, name, period_to_json(Map.fetch!(@defaults, kind)))
+      end
+    end)
+    |> Map.put(
+      "changed_at",
+      Map.merge(changed_at, Map.new(changed, &{Atom.to_string(&1), stamp}))
+    )
+  end
+
+  # Another first write got in between: the setting's unique key. Anything
+  # else core refused is logged by its fields, never their values.
+  defp write_error(%Ecto.Changeset{errors: errors} = changeset) do
+    case Keyword.get(errors, :key) do
+      {_message, details} when is_list(details) ->
+        if details[:constraint] == :unique, do: :stale_retention, else: write_failed(changeset)
+
+      _other ->
+        write_failed(changeset)
+    end
+  end
+
+  defp write_failed(changeset) do
+    Logger.warning(
+      "[PhoenixKitAI.Retention] the periods could not be saved: #{inspect(error_fields(changeset))}"
+    )
+
+    :settings_write_failed
+  end
+
+  # A changeset's failing fields with the constraint or validation named,
+  # without messages (they can quote values).
+  defp error_fields(%Ecto.Changeset{errors: errors}) do
+    Enum.map(errors, fn {field, {_message, details}} ->
+      {field, Keyword.take(details, [:constraint, :constraint_name, :validation])}
+    end)
+  end
+
+  # `scope` may act on each of `kinds`, and on at least one kind at all.
+  defp authorize(scope, kinds, may?) do
+    if Enum.any?(@kinds, &may?.(scope, &1)) and Enum.all?(kinds, &may?.(scope, &1)),
+      do: :ok,
+      else: {:error, :forbidden}
+  end
+
+  @doc """
   The outcome of the last runs: `%{scheduled: entry | nil, manual: entry |
   nil, content_done_before: DateTime.t() | nil}`. An entry is `%{at:,
   status: :ok | :failed | :skipped, error:, counts:, more_left:,
@@ -460,6 +708,74 @@ defmodule PhoenixKitAI.Retention do
   # Not a moment: refused, never guessed.
   def effective_cutoff(kind, _cutoff, _now), do: {:error, {:invalid_cutoff, kind}}
 
+  @doc """
+  Whether `period` keeps `kind` for less than `saved` does: its boundary
+  (`cutoff/3`, before the floor) at `now` is later than the saved one's.
+  Equal boundaries, a first finite period and anything in doubt (a period
+  `cutoff/3` refuses) count as shorter; `:forever` never is. Saving a
+  shorter period goes through the preview.
+  """
+  @spec shorter?(kind(), term(), term(), DateTime.t()) :: boolean()
+  def shorter?(kind, period, saved, now \\ DateTime.utc_now()) when kind in @kinds do
+    case {cutoff(kind, period, now), cutoff(kind, saved, now)} do
+      {:keep, _saved} -> false
+      {{:ok, new}, {:ok, old}} -> DateTime.compare(new, old) != :lt
+      _in_doubt -> true
+    end
+  end
+
+  @doc """
+  What the form warns of for `period` of `kind` at `now`, in this order
+  (a list of atoms; the page words them):
+
+    * `:previous_months_deleted` — journal rows kept less than 3 months;
+    * `:short_windows` — any kind kept less than 30 days (the 30-day
+      windows see less);
+    * `:guard_history_deleted` — guard events kept less than 3 months;
+    * `:content_outlives_row` — content kept longer than the rows
+      (`requests_period`, `:forever` by default), or forever while the rows
+      are not: it lives as long as its row.
+
+  "Less than" compares the boundaries before the floor (`cutoff/3`). A
+  period `cutoff/3` refuses has no warnings.
+  """
+  @spec warnings(kind(), term(), DateTime.t(), term()) :: [atom()]
+  def warnings(kind, period, %DateTime{} = now, requests_period \\ :forever)
+      when kind in @kinds do
+    case cutoff(kind, period, now) do
+      {:ok, cut} ->
+        [
+          previous_months_deleted: kind == :requests and later_than?(cut, kind, {3, :month}, now),
+          short_windows: later_than?(cut, kind, {30, :day}, now),
+          guard_history_deleted:
+            kind == :guard_events and later_than?(cut, kind, {3, :month}, now),
+          content_outlives_row: kind == :content and outlives_rows?(cut, requests_period, now)
+        ]
+        |> Enum.filter(fn {_warning, on?} -> on? end)
+        |> Enum.map(fn {warning, _on?} -> warning end)
+
+      :keep ->
+        if kind == :content and match?({:ok, _}, cutoff(:requests, requests_period, now)),
+          do: [:content_outlives_row],
+          else: []
+
+      {:error, _reason} ->
+        []
+    end
+  end
+
+  defp later_than?(cut, kind, reference, now) do
+    {:ok, reference_cut} = cutoff(kind, reference, now)
+    DateTime.compare(cut, reference_cut) == :gt
+  end
+
+  defp outlives_rows?(content_cut, requests_period, now) do
+    case cutoff(:requests, requests_period, now) do
+      {:ok, requests_cut} -> DateTime.compare(content_cut, requests_cut) == :lt
+      _keep_or_invalid -> false
+    end
+  end
+
   # The moment a cleanup takes its floor at: the one given if it is not
   # later than now, else now — a later one would move the floor forward.
   defp clamp_now(%DateTime{} = given), do: earlier(given, DateTime.utc_now())
@@ -568,13 +884,110 @@ defmodule PhoenixKitAI.Retention do
   requests boundary or the point already cleared, to the content
   boundary), counted by the time index without reading the metadata. A
   kind without a boundary counts 0. The foreign keys are checked first; a
-  count over 60 s is `{:error, :preview_timeout}`.
+  count over 60 s is `{:error, :preview_timeout}`. No rights are checked:
+  `preview/2` is the same for a person.
   """
   @spec preview(cutoffs()) ::
           {:ok, map()}
           | {:error,
              {:foreign_key_blocks, String.t()} | {:cutoff_in_future, kind()} | :preview_timeout}
   def preview(cutoffs) when is_map(cutoffs), do: preview_counts(cutoffs, [])
+
+  @doc """
+  `preview/1` for a person: `{:error, :forbidden}` unless `scope` may run
+  each kind given a boundary (`may_run?/2`), and some kind at all.
+  """
+  @spec preview(term(), cutoffs()) ::
+          {:ok, map()}
+          | {:error,
+             :forbidden
+             | {:foreign_key_blocks, String.t()}
+             | {:cutoff_in_future, kind()}
+             | {:invalid_cutoff, kind()}
+             | :preview_timeout}
+  def preview(scope, cutoffs) when is_map(cutoffs) do
+    with :ok <- authorize(scope, requested_kinds(cutoffs), &may_run?/2),
+         do: preview_counts(cutoffs, [])
+  end
+
+  defp requested_kinds(cutoffs), do: Enum.filter(@kinds, &(cutoffs[&1] != nil))
+
+  @doc """
+  Queues a manual cleanup with `cutoffs` (`nil` or a missing kind: not
+  touched) for `scope`'s person: `{:ok, job}`.
+
+  Refused, nothing queued: `{:error, :module_disabled}` with the module
+  off (checked first: the rights of a holder of `ai.manage` lapse with
+  it); `:forbidden` unless `scope` may run each kind given a boundary
+  (`may_run?/2`); `:nothing_to_run` without any; `{:cutoff_in_future,
+  kind}` / `{:invalid_cutoff, kind}` from `effective_cutoff/3`;
+  `{:foreign_key_blocks, table}` from `check_foreign_keys/1`, and
+  `{:prune_failed, class}` when the database fails that check;
+  `:prune_running` while a cleanup, nightly or manual, is queued or
+  running; `:enqueue_failed` when the job cannot be inserted (logged by
+  class). The boundaries are queued held at the
+  floor, and the job holds them at the floor again when it runs.
+  """
+  @spec run_now(term(), cutoffs()) ::
+          {:ok, Oban.Job.t()}
+          | {:error,
+             :forbidden
+             | :module_disabled
+             | :nothing_to_run
+             | :prune_running
+             | :enqueue_failed
+             | {:cutoff_in_future, kind()}
+             | {:invalid_cutoff, kind()}
+             | {:foreign_key_blocks, String.t()}
+             | {:prune_failed, String.t()}}
+  def run_now(scope, cutoffs) when is_map(cutoffs) do
+    requested = requested_kinds(cutoffs)
+
+    with :ok <- module_enabled(),
+         :ok <- authorize(scope, requested, &may_run?/2),
+         :ok <- if(requested == [], do: {:error, :nothing_to_run}, else: :ok),
+         {:ok, effective, _clamped} <- effective_cutoffs(cutoffs, DateTime.utc_now()),
+         :ok <- foreign_keys_for_run(deleting_kinds(effective)) do
+      enqueue(JournalPruneWorker.manual_job(effective, Guard.actor_uuid(scope)))
+    end
+  end
+
+  defp module_enabled, do: if(PhoenixKitAI.enabled?(), do: :ok, else: {:error, :module_disabled})
+
+  # As in `run/3`: a database error during the check is the run failing,
+  # by its class.
+  defp foreign_keys_for_run(kinds) do
+    check_foreign_keys(kinds)
+  rescue
+    error -> {:error, {:prune_failed, error_class(error)}}
+  catch
+    :exit, _reason -> {:error, {:prune_failed, "exit"}}
+  end
+
+  defp enqueue(changeset) do
+    case Oban.insert(changeset) do
+      {:ok, %Oban.Job{conflict?: true}} -> {:error, :prune_running}
+      {:ok, job} -> {:ok, job}
+      {:error, reason} -> enqueue_failed(reason)
+    end
+  rescue
+    error -> enqueue_failed(error)
+  catch
+    :exit, _reason -> enqueue_failed(:exit)
+  end
+
+  defp enqueue_failed(reason) do
+    detail =
+      case reason do
+        %Ecto.Changeset{} = changeset -> inspect(error_fields(changeset))
+        %{__struct__: module} -> inspect(module)
+        other when is_atom(other) -> inspect(other)
+        _other -> "error"
+      end
+
+    Logger.warning("[PhoenixKitAI.Retention] the cleanup could not be queued: #{detail}")
+    {:error, :enqueue_failed}
+  end
 
   @doc false
   # `preview/1` with `now:` and `timeout_ms:` (the statement timeout of the
@@ -886,9 +1299,9 @@ defmodule PhoenixKitAI.Retention do
   ]
 
   # The run's options: each one that is not a fitting integer falls back to
-  # its default, and time slices (with a chunk's overrun each) that would
-  # not fit in the job's timeout fall back as a whole. The last of a
-  # repeated option wins.
+  # its default, and time slices (with a chunk's and a probe's overrun
+  # each) that would not fit in the job's timeout fall back as a whole. The
+  # last of a repeated option wins.
   defp options(opts) do
     opts = Keyword.new(opts)
 
@@ -957,8 +1370,8 @@ defmodule PhoenixKitAI.Retention do
 
   defp fit_limits(limits, statement_ms) do
     total =
-      Enum.sum(Map.values(limits)) + length(@counters) * (statement_ms + @client_margin_ms) +
-        @run_margin_ms
+      Enum.sum(Map.values(limits)) +
+        length(@counters) * 2 * (statement_ms + @client_margin_ms) + @run_margin_ms
 
     if total < @job_timeout_ms do
       limits
@@ -1284,7 +1697,9 @@ defmodule PhoenixKitAI.Retention do
   end
 
   # Chunks of a small table without an order: until a chunk comes back
-  # short, or stopped — then more is left only if the probe finds some.
+  # short, or stopped. Either way more is left only if the probe finds
+  # some: a short chunk is not proof (a row another transaction deleted or
+  # changed in the meantime makes it short too).
   defp unordered(counter, state, sql, probe, cut, opts) do
     cut = naive(cut)
 
@@ -1293,10 +1708,7 @@ defmodule PhoenixKitAI.Retention do
     end
 
     case chunks(counter, state, opts, nil, chunk, deadline(opts, counter)) do
-      {:done, state, _cursor} ->
-        {:ok, state}
-
-      {:stopped, state, _cursor} ->
+      {ended, state, _cursor} when ended in [:done, :stopped] ->
         case exists?(probe, [cut], opts) do
           {:ok, left?} -> {:ok, %{state | more_left: state.more_left or left?}}
           {:error, class} -> {:error, class, state}
@@ -1406,14 +1818,19 @@ defmodule PhoenixKitAI.Retention do
     {:ok, result} =
       repo().transaction(
         fn ->
-          repo().query!("SET LOCAL statement_timeout = #{statement_ms}", [], query_opts)
-          repo().query!("SET LOCAL lock_timeout = #{lock_ms}", [], query_opts)
+          set_timeouts(statement_ms, lock_ms, query_opts)
           fun.(query_opts)
         end,
         query_opts
       )
 
     result
+  end
+
+  defp set_timeouts(statement_ms, lock_ms, query_opts)
+       when is_integer(statement_ms) and is_integer(lock_ms) do
+    repo().query!("SET LOCAL statement_timeout = #{statement_ms}", [], query_opts)
+    repo().query!("SET LOCAL lock_timeout = #{lock_ms}", [], query_opts)
   end
 
   # The class of a failure, never the database's message.

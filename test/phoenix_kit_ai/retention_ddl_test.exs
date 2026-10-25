@@ -14,6 +14,8 @@ defmodule PhoenixKitAI.RetentionDDLTest do
 
   import ExUnit.CaptureLog
 
+  alias PhoenixKit.Test.Fixtures
+  alias PhoenixKit.Users.Auth.Scope
   alias PhoenixKitAI.{GuardEvent, Request, Retention}
   alias PhoenixKitAI.Test.Repo, as: TestRepo
 
@@ -42,6 +44,9 @@ defmodule PhoenixKitAI.RetentionDDLTest do
   defp old(n), do: DateTime.add(min_cutoff(:requests), -n * 3600)
 
   defp sql!(statement), do: TestRepo.query!(statement, [])
+
+  defp jobs,
+    do: TestRepo.all(from(j in Oban.Job, where: j.worker == "PhoenixKitAI.JournalPruneWorker"))
 
   defp entries(action),
     do: TestRepo.all(from(e in PhoenixKit.Activity.Entry, where: e.action == ^action))
@@ -273,6 +278,38 @@ defmodule PhoenixKitAI.RetentionDDLTest do
     end
   end
 
+  describe "a first write of the periods" do
+    # Another first write lands between the lock (no row to lock yet) and
+    # this one's insert: the trigger inserts the same key first.
+    setup do
+      sql!("""
+      CREATE FUNCTION retention_test_first() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN
+        IF pg_trigger_depth() = 1 AND NEW.key = 'ai_journal_retention' THEN
+          INSERT INTO phoenix_kit_settings (key, value_json, module)
+          VALUES (NEW.key, '{"requests": {"n": 12, "unit": "month"}}', 'ai');
+        END IF;
+        RETURN NEW;
+      END $$
+      """)
+
+      sql!(
+        "CREATE TRIGGER retention_test_first BEFORE INSERT ON phoenix_kit_settings FOR EACH ROW EXECUTE FUNCTION retention_test_first()"
+      )
+
+      :ok
+    end
+
+    test "meeting another first write is stale, and nothing is recorded" do
+      owner = Scope.for_user(Fixtures.user_fixture())
+
+      assert Retention.put_settings(owner, %{content: {30, :day}}, Retention.settings()) ==
+               {:error, :stale_retention}
+
+      assert PhoenixKit.Settings.history("ai_journal_retention") == []
+    end
+  end
+
   test "events: the guard events table is not touched by a journal-only failure" do
     event =
       TestRepo.insert!(%GuardEvent{
@@ -382,6 +419,81 @@ defmodule PhoenixKitAI.RetentionDDLTest do
     end
   end
 
+  describe "the guard events' probe" do
+    # A row the statement leaves behind makes a chunk short without the
+    # step being through: only the probe can tell.
+    setup do
+      sql!("""
+      CREATE FUNCTION retention_test_keep_event() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN
+        IF OLD.task_key = 'keep' THEN RETURN NULL; END IF;
+        IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+        RETURN NEW;
+      END $$
+      """)
+
+      sql!(
+        "CREATE TRIGGER retention_test_keep_event BEFORE DELETE OR UPDATE ON phoenix_kit_ai_guard_events FOR EACH ROW EXECUTE FUNCTION retention_test_keep_event()"
+      )
+
+      :ok
+    end
+
+    for {counter, cutoffs} <- [
+          guard_events: [:guard_events],
+          guard_reasons: [:content]
+        ] do
+      test "#{counter}: a short chunk with a row left says more is left" do
+        TestRepo.insert!(%GuardEvent{
+          kind: "off_purpose",
+          task_key: "keep",
+          reason: "r",
+          inserted_at: DateTime.add(min_cutoff(:guard_events), -3600)
+        })
+
+        cutoffs = Map.new(unquote(cutoffs), &{&1, min_cutoff(&1)})
+
+        assert {:ok, %{counts: %{unquote(counter) => 0}, more_left: true}} =
+                 Retention.run(:manual, cutoffs, @fast)
+      end
+    end
+  end
+
+  describe "run_now/2's checks" do
+    setup do
+      start_supervised!({Oban, name: Oban, repo: TestRepo, testing: :manual})
+      PhoenixKitAI.enable_system()
+      %{owner: Scope.for_user(Fixtures.user_fixture())}
+    end
+
+    test "a key that blocks: refused, nothing queued", %{owner: owner} do
+      sql!(
+        "CREATE TABLE retention_fk_test (uuid uuid PRIMARY KEY, ref uuid REFERENCES phoenix_kit_ai_requests(uuid) ON DELETE RESTRICT)"
+      )
+
+      sql!("CREATE INDEX ON retention_fk_test (ref)")
+
+      assert Retention.run_now(owner, %{requests: min_cutoff(:requests)}) ==
+               {:error, {:foreign_key_blocks, "retention_fk_test"}}
+
+      assert jobs() == []
+    end
+
+    test "a database error during the check: prune_failed with its class, nothing queued", %{
+      owner: owner
+    } do
+      sql!("CREATE SCHEMA retention_shadow")
+      sql!("CREATE TABLE retention_shadow.pg_constraint (x int)")
+      sql!("SET search_path TO retention_shadow, pg_catalog, public")
+
+      assert Retention.run_now(owner, %{requests: min_cutoff(:requests)}) ==
+               {:error, {:prune_failed, "undefined_column"}}
+
+      sql!("SET search_path TO public")
+      assert jobs() == []
+    end
+  end
+
   test "a database error during the checks: a failed stamp and prune_failed with its class" do
     row = request!(old(1))
 
@@ -438,5 +550,103 @@ defmodule PhoenixKitAI.RetentionDDLTest do
       assert TestRepo.aggregate(Request, :count) == 18
       assert TestRepo.aggregate(GuardEvent, :count) == 18
     end
+
+    # Without a lock to skip, a rescan of the events' and reasons' chunk
+    # finds the same rows, so the count above cannot tell a rescanned chunk
+    # from one taken once; the plan can. Every chunk statement of a run,
+    # explained against the rows left, takes its LIMIT once.
+    test "every chunk statement takes its LIMIT once" do
+      for n <- 20..1//-1, do: request!(old(n))
+
+      for n <- 20..1//-1 do
+        TestRepo.insert!(%GuardEvent{
+          kind: "off_purpose",
+          task_key: "t",
+          reason: "r",
+          inserted_at: DateTime.add(min_cutoff(:guard_events), -n * 3600)
+        })
+      end
+
+      statements =
+        capture_statements(fn ->
+          Retention.run(
+            :manual,
+            %{
+              requests: min_cutoff(:requests),
+              content: min_cutoff(:content),
+              guard_events: min_cutoff(:guard_events)
+            },
+            @fast ++ [max_rows: 2]
+          )
+        end)
+
+      # journal rows, content (the rows that stay, then the tail), reasons, events
+      sqls = Enum.map(statements, &elem(&1, 0))
+      assert length(sqls) == 5
+      assert Enum.any?(sqls, &(&1 =~ ~s(DELETE FROM "phoenix_kit_ai_requests")))
+      assert Enum.any?(sqls, &(&1 =~ "SET reason = NULL"))
+      assert Enum.any?(sqls, &(&1 =~ ~s(DELETE FROM "phoenix_kit_ai_guard_events")))
+
+      for {sql, params} <- statements do
+        loops = limit_loops(sql, params)
+        assert loops != [], "no LIMIT in the plan of: #{sql}"
+        assert Enum.all?(loops, &(&1 <= 1)), "a LIMIT taken #{inspect(loops)} times: #{sql}"
+      end
+    end
+  end
+
+  # The chunk statements a run sent (a LIMIT, then a DELETE or an UPDATE),
+  # each once, with the parameters of its first use.
+  defp capture_statements(fun) do
+    test = self()
+    handler = "retention-statements-#{System.unique_integer([:positive])}"
+
+    :telemetry.attach(
+      handler,
+      [:phoenix_kit_ai, :test, :repo, :query],
+      fn _event, _measurements, %{query: sql, params: params}, _config ->
+        if sql =~ "LIMIT $" and sql =~ ~r/\b(DELETE|UPDATE)\b/,
+          do: send(test, {:sql, sql, params})
+      end,
+      nil
+    )
+
+    try do
+      fun.()
+    after
+      :telemetry.detach(handler)
+    end
+
+    collect_statements([])
+  end
+
+  defp collect_statements(acc) do
+    receive do
+      {:sql, sql, params} ->
+        if List.keymember?(acc, sql, 0),
+          do: collect_statements(acc),
+          else: collect_statements(acc ++ [{sql, params}])
+    after
+      0 -> acc
+    end
+  end
+
+  # How many times each Limit node of the statement's plan ran, the
+  # statement run (and rolled back) under EXPLAIN ANALYZE.
+  defp limit_loops(sql, params) do
+    {:error, loops} =
+      TestRepo.transaction(fn ->
+        %{rows: [[[%{"Plan" => plan}]]]} =
+          TestRepo.query!("EXPLAIN (ANALYZE, FORMAT JSON) " <> sql, params)
+
+        TestRepo.rollback(plan_limits(plan))
+      end)
+
+    loops
+  end
+
+  defp plan_limits(node) do
+    own = if node["Node Type"] == "Limit", do: [node["Actual Loops"]], else: []
+    own ++ Enum.flat_map(node["Plans"] || [], &plan_limits/1)
   end
 end

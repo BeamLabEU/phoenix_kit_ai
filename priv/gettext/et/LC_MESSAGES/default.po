@@ -1481,7 +1481,7 @@ msgstr "Sisesta tekst, mida ette lugeda…"
 msgid "Type your message to the AI..."
 msgstr "Sisesta oma sõnum AI-le…"
 
-#: lib/phoenix_kit_ai/errors.ex:259
+#: lib/phoenix_kit_ai/errors.ex:271
 #, elixir-autogen, elixir-format
 msgid "Unexpected error: %{reason}"
 msgstr "Ootamatu viga: %{reason}"
@@ -3744,17 +3744,17 @@ msgstr "Säilitusaegu muutis keegi teine; laadige leht uuesti"
 msgid "You are not allowed to do this"
 msgstr "Teil pole selleks õigust"
 
-#: lib/phoenix_kit_ai/errors.ex:264
+#: lib/phoenix_kit_ai/errors.ex:276
 #, elixir-autogen, elixir-format
 msgid "guard events"
 msgstr "valve sündmused"
 
-#: lib/phoenix_kit_ai/errors.ex:263
+#: lib/phoenix_kit_ai/errors.ex:275
 #, elixir-autogen, elixir-format
 msgid "journal entries"
 msgstr "logikirjed"
 
-#: lib/phoenix_kit_ai/errors.ex:262
+#: lib/phoenix_kit_ai/errors.ex:274
 #, elixir-autogen, elixir-format
 msgid "the content of journal entries"
 msgstr "logikirjete sisu"
@@ -3773,3 +3773,33 @@ msgstr "Tabel %{table} viitab AI-logile või valve sündmustele viisil, mis taki
 #, elixir-autogen, elixir-format
 msgid "The cleanup boundary for %{kind} is not a date and time"
 msgstr "Puhastuse piir (%{kind}) ei ole kuupäev ja kellaaeg"
+
+#: lib/phoenix_kit_ai/errors.ex:263
+#, elixir-autogen, elixir-format
+msgid "Choose what to clean up"
+msgstr "Valige, mida puhastada"
+
+#: lib/phoenix_kit_ai/errors.ex:262
+#, elixir-autogen, elixir-format
+msgid "The journal cleanup could not be queued"
+msgstr "Logi puhastamist ei õnnestunud järjekorda panna"
+
+#: lib/phoenix_kit_ai/errors.ex:264
+#, elixir-autogen, elixir-format
+msgid "The journal cleanup failed"
+msgstr "Logi puhastamine ebaõnnestus"
+
+#: lib/phoenix_kit_ai/errors.ex:260
+#, elixir-autogen, elixir-format
+msgid "The retention periods are being saved by someone else; try again"
+msgstr "Säilitusaegu salvestab praegu keegi teine; proovige uuesti"
+
+#: lib/phoenix_kit_ai/errors.ex:257
+#, elixir-autogen, elixir-format
+msgid "The retention periods could not be saved"
+msgstr "Säilitusaegu ei õnnestunud salvestada"
+
+#: lib/phoenix_kit_ai/errors.ex:254
+#, elixir-autogen, elixir-format
+msgid "Unknown kind of journal retention"
+msgstr "Tundmatu logi säilitamise liik"

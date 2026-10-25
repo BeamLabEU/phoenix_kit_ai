@@ -760,6 +760,19 @@ defmodule PhoenixKitAI.RetentionTest do
 
       assert log =~ "do not fit in the job's timeout"
     end
+
+    test "each counter's slice leaves room for one chunk and one probe past it" do
+      # 4 counters × 2 × (30 s + 5 s) + 60 s: the defaults fit in 25 minutes
+      refute capture_log(fn -> Retention.run(:manual, %{}) end) =~ "do not fit"
+
+      # 20 minutes of slices fit with one statement per counter, not with two
+      log =
+        capture_log(fn ->
+          assert {:ok, _} = Retention.run(:manual, %{}, time_limits: %{requests: 11 * 60_000})
+        end)
+
+      assert log =~ "do not fit in the job's timeout"
+    end
   end
 
   describe "run/3 — stamp and Activity" do
