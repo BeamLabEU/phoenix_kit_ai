@@ -9,6 +9,10 @@ defmodule PhoenixKitAI.Web.Components.JournalRetentionCardDatesTest do
     on_exit(fn -> Gettext.put_locale(PhoenixKitAI.Gettext, "en") end)
   end
 
+  # How each locale writes the day before the month: Estonian puts a full
+  # stop after the day number ("25. oktoober 2026").
+  @day %{"en" => "25", "ru" => "25", "et" => "25."}
+
   @months %{
     "en" =>
       ~w(January February March April May June July August September October November December),
@@ -39,8 +43,9 @@ defmodule PhoenixKitAI.Web.Components.JournalRetentionCardDatesTest do
 
   test "every month is spelled out in the form used after a day number" do
     for {locale, names} <- @months, {name, index} <- Enum.with_index(names, 1) do
-      assert since(locale, index) =~ "25 #{name} 2026", "#{locale} #{index}"
-      assert pruned(locale, index) =~ "25 #{name} 2026 14:05", "#{locale} #{index}"
+      day = @day[locale]
+      assert since(locale, index) =~ "#{day} #{name} 2026", "#{locale} #{index}"
+      assert pruned(locale, index) =~ "#{day} #{name} 2026 14:05", "#{locale} #{index}"
     end
   end
 end
