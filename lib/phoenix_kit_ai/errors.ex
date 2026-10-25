@@ -221,6 +221,36 @@ defmodule PhoenixKitAI.Errors do
   def message({:fetch_failed, _url, _reason}), do: gettext("The image could not be downloaded")
   def message({:fetch_failed, _reason}), do: gettext("The image could not be downloaded")
 
+  def message(:forbidden), do: gettext("You are not allowed to do this")
+  def message(:module_disabled), do: gettext("The AI module is disabled")
+
+  def message({:cutoff_in_future, kind}) do
+    gettext("The cleanup boundary for %{kind} is in the future", kind: retention_kind(kind))
+  end
+
+  def message({:invalid_cutoff, kind}) do
+    gettext("The cleanup boundary for %{kind} is not a date and time", kind: retention_kind(kind))
+  end
+
+  def message({:invalid_retention, kind}) do
+    gettext("Invalid retention period for %{kind}", kind: retention_kind(kind))
+  end
+
+  def message(:prune_running), do: gettext("A journal cleanup is already running")
+
+  def message(:stale_retention),
+    do: gettext("The retention periods were changed by someone else; reload the page")
+
+  def message({:foreign_key_blocks, table}) do
+    gettext(
+      "The table %{table} references the AI journal or the guard events in a way that would block or spread the deletion; nothing was deleted",
+      table: table
+    )
+  end
+
+  def message(:preview_timeout),
+    do: gettext("Counting what would be deleted took too long")
+
   # Passthrough for strings so legacy callers returning {:error, "..."}
   # still render something. New code should return atoms/tuples.
   def message(reason) when is_binary(reason), do: reason
@@ -228,4 +258,9 @@ defmodule PhoenixKitAI.Errors do
   def message(reason) do
     gettext("Unexpected error: %{reason}", reason: inspect(reason))
   end
+
+  defp retention_kind(:content), do: gettext("the content of journal entries")
+  defp retention_kind(:requests), do: gettext("journal entries")
+  defp retention_kind(:guard_events), do: gettext("guard events")
+  defp retention_kind(other), do: inspect(other)
 end
