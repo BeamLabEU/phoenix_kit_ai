@@ -772,6 +772,30 @@ defmodule PhoenixKitAI.Web.Endpoints do
     {:noreply, assign(socket, :selected_request, request)}
   end
 
+  @doc """
+  Core calls this when the viewer's scope changes under the open page (a
+  grant or revoke, a role switch) and it decides the page may stay — which it
+  does for a lost `ai.view_usage`, since the page is on the base `ai` key.
+  Every sub-key gate is recomputed here; a lost `ai.view_usage` on the Usage
+  tab drops the loaded requests and the open request and leaves the tab.
+  """
+  @spec phoenix_kit_scope_changed(Phoenix.LiveView.Socket.t()) :: Phoenix.LiveView.Socket.t()
+  def phoenix_kit_scope_changed(socket) do
+    can_view_usage = Access.can?(socket, @view_usage)
+    socket = assign(socket, :can_manage_endpoints, Access.can?(socket, @manage_endpoints))
+
+    cond do
+      can_view_usage ->
+        assign(socket, :can_view_usage, true)
+
+      socket.assigns.active_tab == "usage" ->
+        leave_usage(socket)
+
+      true ->
+        assign(socket, can_view_usage: false, usage_requests: [], selected_request: nil)
+    end
+  end
+
   # Drops every loaded request (the template renders the tab only while
   # `@can_view_usage` holds) and goes to the endpoint list.
   defp leave_usage(socket) do

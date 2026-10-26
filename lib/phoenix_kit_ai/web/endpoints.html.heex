@@ -771,7 +771,7 @@
 
   <%!-- Request Details Modal --%>
   <.modal
-    :if={@selected_request}
+    :if={@selected_request && @can_view_usage}
     show
     on_close="close_request_details"
     id="ai-request-details"

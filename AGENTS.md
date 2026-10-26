@@ -412,7 +412,11 @@ recommendations panel's create link needs this key. Both are checked by
 `Web.Access.can?/2` (an Owner always) at mount or patch and again in every
 event that reads or writes what they gate: the tabs declare `path:`, so
 core's route gate admits any `ai` holder and the tab `permission:` only
-hides the sidebar entry. `migrate_legacy/0` grants each once to every role
+hides the sidebar entry. Core keeps a viewer on the page when only a
+sub-key is revoked, so `Web.Endpoints` implements core's
+`phoenix_kit_scope_changed/1` to recompute both gates and leave the Usage
+tab (dropping loaded requests) the moment `ai.view_usage` is lost; any new
+page with a sub-key gate needs the same callback. `migrate_legacy/0` grants each once to every role
 that held `ai` (flags `ai_view_usage_backfilled`,
 `ai_manage_endpoints_backfilled`, set only after every grant succeeded; the
 roles' keys are read with the module's own query, which raises, because

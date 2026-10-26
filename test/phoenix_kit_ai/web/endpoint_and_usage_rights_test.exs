@@ -12,7 +12,9 @@ defmodule PhoenixKitAI.Web.EndpointAndUsageRightsTest do
 
   alias PhoenixKit.ModuleRegistry
   alias PhoenixKit.Settings
-  alias PhoenixKit.Users.{Permissions, Role}
+  alias PhoenixKit.Test.Fixtures
+  alias PhoenixKit.Users.Auth.Scope
+  alias PhoenixKit.Users.{Permissions, Role, Roles}
   alias PhoenixKitAI.Test.Repo, as: TestRepo
 
   @usage_flag "ai_view_usage_backfilled"
@@ -87,6 +89,35 @@ defmodule PhoenixKitAI.Web.EndpointAndUsageRightsTest do
 
       swap_scope(view, scope_with(["ai"]))
       send(view.pid, :refresh_usage)
+
+      assert {path, flash} = assert_redirect(view)
+      assert path =~ "/admin/ai/endpoints"
+      assert flash["error"] =~ "permission"
+    end
+
+    test "a revoke through core's scope refresh closes the open request and leaves the tab",
+         %{conn: conn} do
+      request = request_fixture(fixture_endpoint())
+
+      # The first user registered becomes the Owner, who holds every key.
+      _owner = Fixtures.user_fixture()
+      user = Fixtures.user_fixture()
+
+      {:ok, role} =
+        Roles.create_role(%{name: "Usage #{System.unique_integer([:positive])}"})
+
+      {:ok, _} = Roles.assign_role(user, role.name)
+      :ok = Permissions.set_permissions(role.uuid, ["ai", "ai.view_usage"])
+
+      # Mounted under core's own scope hook (see the test router), so the
+      # revoke below reaches the page the way it does in production.
+      conn = put_test_scope(conn, Scope.for_user(user))
+      {:ok, view, _html} = live(conn, "/core-scope/admin/ai/usage")
+
+      render_click(view, "show_request_details", %{"uuid" => request.uuid})
+      assert has_element?(view, "#ai-request-details")
+
+      :ok = Permissions.revoke_permission(role.uuid, "ai.view_usage")
 
       assert {path, flash} = assert_redirect(view)
       assert path =~ "/admin/ai/endpoints"
