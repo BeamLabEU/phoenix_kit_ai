@@ -17,6 +17,14 @@ defmodule PhoenixKitAI.Realtime.Session do
   away) is handled by monitoring `live_view_pid`: LiveView's own
   `terminate/2` isn't reliably called without `trap_exit`, so closing the
   connection is driven from here via the `:DOWN` message instead.
+
+  ## The module switch
+
+  A voice session runs no task, so the call-time task check never sees it.
+  Off is off: every send asks whether the AI module is on (`enabled?:`
+  option, default `PhoenixKitAI.enabled?/0`, a cached settings read) and,
+  when it is not, closes the connection and stops instead — the owning
+  LiveView sees the `:DOWN` and goes back to idle.
   """
 
   use GenServer
@@ -32,7 +40,8 @@ defmodule PhoenixKitAI.Realtime.Session do
           language: String.t(),
           codec: String.t(),
           sample_rate: pos_integer(),
-          realtime_module: module()
+          realtime_module: module(),
+          enabled?: (-> boolean())
         ]
 
   @spec start_link(start_opts()) :: GenServer.on_start()
@@ -83,7 +92,13 @@ defmodule PhoenixKitAI.Realtime.Session do
 
     case realtime_module.connect_tts(connect_opts) do
       {:ok, ws_pid} ->
-        {:ok, %{live_view_pid: live_view_pid, realtime_module: realtime_module, ws_pid: ws_pid}}
+        {:ok,
+         %{
+           live_view_pid: live_view_pid,
+           realtime_module: realtime_module,
+           ws_pid: ws_pid,
+           enabled?: Keyword.get(opts, :enabled?, &PhoenixKitAI.enabled?/0)
+         }}
 
       {:error, reason} ->
         {:stop, reason}
@@ -92,13 +107,21 @@ defmodule PhoenixKitAI.Realtime.Session do
 
   @impl true
   def handle_cast({:send_text, text}, state) do
-    log_send_error("send_text", state.realtime_module.send_text(state.ws_pid, text))
-    {:noreply, state}
+    if ai_on?(state) do
+      log_send_error("send_text", state.realtime_module.send_text(state.ws_pid, text))
+      {:noreply, state}
+    else
+      switched_off(state)
+    end
   end
 
   def handle_cast(:finish, state) do
-    log_send_error("send_text_done", state.realtime_module.send_text_done(state.ws_pid))
-    {:noreply, state}
+    if ai_on?(state) do
+      log_send_error("send_text_done", state.realtime_module.send_text_done(state.ws_pid))
+      {:noreply, state}
+    else
+      switched_off(state)
+    end
   end
 
   def handle_cast(:close, state) do
@@ -120,6 +143,13 @@ defmodule PhoenixKitAI.Realtime.Session do
     end)
 
     {:noreply, state}
+  end
+
+  defp ai_on?(%{enabled?: enabled?}), do: enabled?.() == true
+
+  defp switched_off(state) do
+    state.realtime_module.close(state.ws_pid)
+    {:stop, :normal, state}
   end
 
   # `Xai.Realtime.send_text/2` and `send_text_done/1` return :ok | {:error, _},

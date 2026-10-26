@@ -202,6 +202,57 @@ refused. Each usage row carries
 `:request_uuid`). «AI → Tasks» lists the declared tasks with their
 endpoints and fitness.
 
+### Tasks from your own app
+
+An app that calls PhoenixKitAI directly, without being a PhoenixKit
+module, declares its tasks in a module of its own and lists it in config
+(read at run time):
+
+```elixir
+# config/config.exs
+config :phoenix_kit_ai, task_providers: [MyApp.AI]
+```
+
+```elixir
+defmodule MyApp.AI do
+  alias PhoenixKitAI.TaskSpec
+
+  def ai_tasks do
+    [
+      %TaskSpec{
+        key: "myapp.photo_fix",
+        label: "Read a product photo",
+        needs: [:vision, :json_schema],
+        default_limits: %{task: %{requests: %{day: 500}}}
+      }
+    ]
+  end
+end
+
+PhoenixKitAI.describe_image(endpoint_uuid, photos, task: "myapp.photo_fix", schema: schema)
+```
+
+A provider's tasks work like a module's — limits and personal limits,
+`user_limits: false`, watchers, the model check, `metadata.task` on every
+usage row, «AI → Tasks» (marked as declared by your app) — and are always
+enabled, since a provider has no module switch. Notes:
+
+- **Namespace the keys** (`"myapp.photo_fix"`). A key a PhoenixKit module
+  already declares stays the module's: the provider's task is dropped, with
+  a warning naming both and a notice on «AI → Tasks». Between providers the
+  first in the list wins.
+- `ai_tasks/0` is read once and cached until the list of modules or of
+  providers changes, so keep feature flags out of it.
+- Registered PhoenixKit modules are found on their own — don't list them.
+  One listed anyway counts as a module (its switch applies).
+- A listed module that is not loaded, has no `ai_tasks/0` or raises is
+  warned about and skipped; a raising one is tried again a minute later.
+- A task of a module that is switched off refuses calls with
+  `{:error, {:task_disabled, key}}` (a refusal row; a cached answer does not
+  bypass it). With the AI module itself off, its own `ai.translation` and
+  `ai.playground` are refused the same way. Calls without `task:`, or naming
+  a key nobody declares, are not affected.
+
 ### Task limits
 
 A task can be limited — the whole task, and each user in it — in money,
@@ -682,6 +733,7 @@ All public functions return `{:ok, result}` or `{:error, reason}` where
 |------|-------|-----|
 | `:endpoint_not_found` | Endpoint UUID does not exist | "Endpoint not found" |
 | `:endpoint_disabled` | Endpoint exists but `enabled: false` | "Endpoint is disabled" |
+| `{:task_disabled, key}` | The call names a task whose module is switched off | "This AI task's module is switched off, so the task cannot run" |
 | `:invalid_endpoint_identifier` | Caller passed a non-UUID value | "Invalid endpoint identifier" |
 | `:invalid_api_key` | OpenRouter returned 401 | "Invalid API key" |
 | `:insufficient_credits` | OpenRouter returned 402 | "Insufficient credits" |

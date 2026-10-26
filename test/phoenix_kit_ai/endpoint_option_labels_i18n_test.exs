@@ -61,6 +61,6 @@ defmodule PhoenixKitAI.EndpointOptionLabelsI18nTest do
     assert in_locale("ru", fn -> Endpoint.masked_api_key(:not_a_key) end) == "Не задан"
 
     assert in_locale("ru", fn -> Endpoint.masked_api_key("sk-or-v1-1234567890abcdef") end) ==
-             "sk-or-v1…cdef"
+             "•••cdef"
   end
 end

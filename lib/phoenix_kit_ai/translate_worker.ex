@@ -481,6 +481,7 @@ defmodule PhoenixKitAI.TranslateWorker do
     do: "task_limit_exceeded"
 
   defp classify_ai_detail({:budget_exceeded, _scope}), do: "budget_exceeded"
+  defp classify_ai_detail({:task_disabled, _key}), do: "task_disabled"
   defp classify_ai_detail({:budget_unmigrated, _scope}), do: "budget_unmigrated"
   defp classify_ai_detail({:task_limit_unmigrated, _task}), do: "task_limit_unmigrated"
   defp classify_ai_detail({:model_unfit, _missing}), do: "model_unfit"

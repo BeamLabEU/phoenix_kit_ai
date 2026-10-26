@@ -26,6 +26,25 @@ defmodule PhoenixKitAI.Components.AITranslate.Embed do
 
       # render the button/progress/hint/modal from FormGlue.ai_translate_config(assigns)
 
+  ## Authorization — pass `authorize:`
+
+      use PhoenixKitAI.Components.AITranslate.Embed,
+        authorize: &MyAppWeb.ProductForm.can_edit?/1
+        # or an MFA, called as apply(m, f, [socket | args]):
+        # authorize: {MyApp.Authz, :can_edit_product?, []}
+
+  `authorize` is evaluated against the **live socket** for every one of the
+  six modal events, BEFORE anything is dispatched. A falsy answer halts the
+  event with an error flash: nothing is selected, nothing is enqueued. It runs per event, not once at mount, so a person
+  whose write right was revoked while the form stayed open cannot start a
+  translation with it — the hook halts the event before any host
+  `handle_event` clause could re-check.
+
+  **Hosts should always pass it.** It is optional only so existing hosts
+  keep compiling; without it every modal event is dispatched for anyone the
+  page let mount. Use a remote capture (`&Mod.fun/1`) or an MFA — an
+  anonymous `fn` cannot be stored by `on_mount`.
+
   ## How it composes
 
   The handlers are attached as `:handle_event` / `:handle_info` lifecycle
@@ -55,20 +74,31 @@ defmodule PhoenixKitAI.Components.AITranslate.Embed do
 
   alias PhoenixKitAI.Components.AITranslate.FormGlue
 
-  defmacro __using__(_opts) do
+  use Gettext, backend: PhoenixKitAI.Gettext
+
+  @modal_events ~w(ai_translate_lang ai_toggle_modal ai_select_endpoint ai_select_prompt
+                   ai_select_scope ai_generate_prompt)
+
+  defmacro __using__(opts) do
+    authorize = Keyword.get(opts, :authorize)
+
     quote do
-      on_mount(PhoenixKitAI.Components.AITranslate.Embed)
+      on_mount({PhoenixKitAI.Components.AITranslate.Embed, [authorize: unquote(authorize)]})
     end
   end
 
   @doc false
-  def on_mount(:default, _params, _session, socket) do
+  def on_mount(:default, params, session, socket), do: on_mount([], params, session, socket)
+
+  def on_mount(opts, _params, _session, socket) when is_list(opts) do
+    authorize = validate_authorize!(Keyword.get(opts, :authorize))
+
     socket =
       socket
       |> Phoenix.LiveView.attach_hook(
         :phoenix_kit_ai_translate_events,
         :handle_event,
-        &__handle_event__/3
+        fn event, params, socket -> __gate_event__(authorize, event, params, socket) end
       )
       |> Phoenix.LiveView.attach_hook(
         :phoenix_kit_ai_translate_info,
@@ -77,6 +107,43 @@ defmodule PhoenixKitAI.Components.AITranslate.Embed do
       )
 
     {:cont, socket}
+  end
+
+  @doc false
+  # The modal's events pass only while `authorize` (when given) answers
+  # truthy for the socket as it is now; everything else passes through.
+  def __gate_event__(authorize, event, params, socket) when event in @modal_events do
+    if authorized?(authorize, socket) do
+      __handle_event__(event, params, socket)
+    else
+      {:halt,
+       Phoenix.LiveView.put_flash(
+         socket,
+         :error,
+         gettext("You don't have permission to translate this.")
+       )}
+    end
+  end
+
+  def __gate_event__(_authorize, event, params, socket),
+    do: __handle_event__(event, params, socket)
+
+  defp authorized?(nil, _socket), do: true
+  defp authorized?(fun, socket) when is_function(fun, 1), do: truthy?(fun.(socket))
+  defp authorized?({m, f, a}, socket), do: truthy?(apply(m, f, [socket | a]))
+
+  defp truthy?(value), do: value not in [nil, false]
+
+  defp validate_authorize!(nil), do: nil
+  defp validate_authorize!(fun) when is_function(fun, 1), do: fun
+
+  defp validate_authorize!({m, f, a} = mfa) when is_atom(m) and is_atom(f) and is_list(a),
+    do: mfa
+
+  defp validate_authorize!(other) do
+    raise ArgumentError,
+          "AITranslate.Embed :authorize must be a 1-arity function or {module, fun, args}, " <>
+            "got: #{inspect(other)}"
   end
 
   @doc false

@@ -479,14 +479,31 @@ journal rows; never cleared, so the "retained since" notes stay after a
 run that deletes nothing).
 
 Permissions: the module permission `"ai"` from `permission_metadata/0`,
-checked with `Scope.has_module_access?/2`, and one sub-permission,
+checked with `Scope.has_module_access?/2`, and three sub-permissions.
+`"ai.view_usage"`: the Usage tab (every request with its prompt and
+response). `"ai.manage_endpoints"`: creating, editing, enabling,
+reordering and deleting endpoints — the base key still lists them, and the
+recommendations panel's create link needs this key. Both are checked by
+`Web.Access.can?/2` (an Owner always) at mount or patch and again in every
+event that reads or writes what they gate: the tabs declare `path:`, so
+core's route gate admits any `ai` holder and the tab `permission:` only
+hides the sidebar entry. Core keeps a viewer on the page when only a
+sub-key is revoked, so `Web.Endpoints` implements core's
+`phoenix_kit_scope_changed/1` to recompute both gates and leave the Usage
+tab (dropping loaded requests) the moment `ai.view_usage` is lost; any new
+page with a sub-key gate needs the same callback. `migrate_legacy/0` grants each once to every role
+that held `ai` (flags `ai_view_usage_backfilled`,
+`ai_manage_endpoints_backfilled`, set only after every grant succeeded; the
+roles' keys are read with the module's own query, which raises, because
+core's `get_permissions_for_role/1` reads a failed lookup as "no keys").
 `"ai.manage"`: changing the task guard (limits, personal limits, forgiving,
 watchers, "only verified models", declaring capabilities while that is on,
 a task's self-flag mode, blocking and lifting), seeing the reasons of a private task's flags and
 blocks, and the journal's retention — the periods of all three kinds, their
 preview and a cleanup by hand (`Retention.may_set?/2` / `may_run?/2`, the
 policy kept in one block at the top of `Retention`; `owner_only_kinds/0`
-is empty). Seeing the periods and the runs' outcome needs only `ai`.
+is empty). Seeing the periods and the runs' outcome on the Usage tab
+needs `ai.view_usage` as well as the base `ai` permission.
 An Owner always may (`Guard.may_manage?/1`); core grants a new
 sub-permission to Admin once while Admin holds `ai`. Every context function
 that changes the guard or the retention takes the actor's scope and checks
@@ -513,6 +530,9 @@ so the context function gets that same, current scope.
 | `:translatables` | `[]` | `[{resource_type, adapter_module}]` a host app registers for the AI-translation pipeline without being a kit module; configured entries win over module-declared ones |
 | `:request_cache` | `[]` | `ttl:` (seconds, default 86 400), `sweep:` (300), `max_entries:` (10 000), `max_value_bytes:` (8 000 000), `default:` (`true` caches every verb unless a call says `cache: false`); read per call by `PhoenixKitAI.RequestCache` |
 | `:task_registry_retry_ms` | `60_000` | How long a task registry built while a module's `ai_tasks/0` failed is kept before the next access builds it again |
+| `:task_providers` | `[]` | A host app's own modules whose `ai_tasks/0` declares AI tasks (see Feature notes) |
+| `:task_registry_callback_timeout_ms` | `5_000` | How long the registry builder waits for one module's `ai_tasks/0`; a timeout counts as a failure |
+| `:task_registry_build_timeout_ms` | `30_000` | How long a caller waits for the builder before answering from the last cached registry |
 | `:retry` | `false` | Retries for chat / embeddings / TTS calls: `true` (defaults) or `[max_attempts: 3, base_delay: 1_000, max_delay: 30_000, retry_timeouts: false]`; a call's `retry:` wins. Retried: HTTP 408/429/500/502/503/504 (never a 429 about money — an exhausted balance or quota) and transport errors other than a timeout; `Retry-After` honoured up to `max_delay`. Off by default so callers with their own retry/snooze logic (`TranslateWorker`) are unaffected |
 | `:timeout` | `120_000` | Receive/connect timeout (ms) for chat / embeddings / TTS calls; a call's `timeout:` wins |
 | `:concurrency` | `%{}` | Concurrency limits per key, `%{"provider:openrouter" => 8, "endpoint:<name or uuid>" => 2}` — the most specific key wins; a call's `concurrency: [limit:, key:, wait:, notify:]` or `concurrency: false` overrides. See `PhoenixKitAI.Limiter` |
@@ -556,7 +576,10 @@ provided the API exposes `<base_url>/chat/completions` and `/models`.
   embeddings together, and its `/audio/voices` feeds the TTS voice picker.
 - Endpoint cards show an enabled badge, an integration-health badge
   (missing/error/not-connected), and a masked key via
-  `Endpoint.masked_api_key/1`. `integrations_by_uuid` is loaded once per render
+  `Endpoint.masked_api_key/1` (the last 4 characters only — every base
+  `ai` holder sees the list). A stored key is never rendered in clear,
+  the legacy `api_key` notice on the form included — it shows the masked
+  form and asks for an Integration instead. `integrations_by_uuid` is loaded once per render
   to avoid an N+1.
 - **Image verbs pick an adapter by provider key** (`PhoenixKitAI.Provider.for_endpoint/1`):
   OpenRouter, xAI and OpenAI have their own; everything else gets the
@@ -794,7 +817,7 @@ Test database `phoenix_kit_ai_test`.
   (key, lookup, zero-cost hit row). A new verb joins both or it is not a
   verb — `dev_docs/guides/spend-caps-and-caching.md` holds the semantics
   of caps, cache, structured output and telemetry. A refusal past the
-  endpoint check (`{:task_blocked, group}`, `{:model_unfit, missing}`,
+  endpoint check (`{:task_disabled, key}`, `{:task_blocked, group}`, `{:model_unfit, missing}`,
   `{:model_unverified, unclear}`,
   `{:task_limit_exceeded, scope, unit, period}`, `{:budget_exceeded,
   scope}`) writes an error row through `refuse/4`,
@@ -803,13 +826,54 @@ Test database `phoenix_kit_ai_test`.
   (duck-typed); `PhoenixKitAI.Tasks` keeps the registry, `fitness/2`,
   `endpoint_options/1` and `check_selection/2`. The registry is rebuilt
   only when the module set changes, or a minute after a build in which a
-  module's `ai_tasks/0` failed (raised, exited or threw) — not when code
+  module's `ai_tasks/0` failed (raised, exited or threw; meanwhile the
+  module keeps the tasks it declared when it last answered, so a failure
+  never hands its keys to a later declarer — before a first answer it has
+  none) — not when code
   is hot-reloaded: a changed `ai_tasks/0` with the same modules needs a
   restart to show. Every verb takes `task:`; every row it writes
   (success, error, refusal, cache hit, unparsed JSON) carries
   `metadata.task`, and `:task` is not part of the cache key. A key no
   module declares is logged once and the call goes on. This module
-  declares `ai.translation` and `ai.playground`.
+  declares `ai.translation` and `ai.playground`. A host app that is not a
+  kit module lists its own modules in `config :phoenix_kit_ai,
+  task_providers:` (run time; part of the registry's rebuild key): read
+  after the registered modules, always `enabled: true` (`enabled?/0` is
+  never asked of a provider — `Tasks.provider?/1`), a module listed both
+  ways counts as a kit module. A colliding key keeps the first declaration
+  (kit modules first, then providers in config order); the dropped one is
+  warned about naming both and listed by `Tasks.collisions/0` on AI →
+  Tasks. `spec.module` may therefore be a plain host module: never call a
+  `PhoenixKit.Module` callback on it. One writer: `PhoenixKitAI.Tasks.Builder` (in
+  `children/0`) builds, serially and always for the current config; reads
+  stay a lock-free `:persistent_term` hit, and a miss asks the builder.
+  Each `ai_tasks/0` runs in its own UNLINKED process
+  (`spawn_monitor`) bounded by `:task_registry_callback_timeout_ms`
+  (default 5 s): a crash, a crashing linked child or a timeout is that
+  module's failure and never reaches the builder. Its reply goes to a
+  process alias dropped when the wait ends (no stray late message), and a
+  watchdog kills it at its deadline or when its caller dies. A call from
+  inside a build (the builder, a process mid-inline-build, a callback, or
+  anything a callback starts — callback processes are marked, found
+  through `$callers`) answers from the last cached registry; an unrelated
+  task of the builder's caller reads normally. Without the builder (a host not
+  starting the kit's children) a caller builds a state for itself only —
+  never cached, same runner and timeout. The test helper starts
+  the builder (unlinked), so tests see caching as a host does. Read one snapshot per lookup (`Tasks.overview/0` for a page).
+  An improper `task_providers` list is bad config (warned, its proper part
+  used). A switched-off module's task refuses calls: `for_call/1`
+  carries `enabled` from the same snapshot (the module's `enabled?/0` is a
+  cached settings read), and `authorize/5` (and `Guard.admit/4`) refuse
+  with `{:error, {:task_disabled, key}}` first, before blocks, the model
+  check and the request cache, as a refusal row. With the AI module off
+  that includes `ai.translation` and `ai.playground` — no other gate in
+  the call path checked `ai_enabled` before. `TranslateWorker` does not
+  retry it (not in `retryable?/1`): the job is discarded with a terminal
+  `task_disabled` event. No task and an undeclared key are unaffected.
+  The realtime voice session runs no task, so it checks the switch itself:
+  the Playground refuses to start or speak while the AI module is off
+  (closing an open session, with a flash), and `Realtime.Session` closes
+  and stops on any send while it is off (`enabled?:` option).
 - Task limits (`PhoenixKitAI.TaskLimits`): scope `:task` (every call of
   the task) and `:user` (one user in it) × money (dollars) / requests
   / tokens × calendar day / month in the site time zone. In force, cell by
@@ -1022,8 +1086,8 @@ Test database `phoenix_kit_ai_test`.
   (`picker/1` for a consumer's form field, `recommendations/1` for the
   panel alone, as on AI → Tasks); the panel is the live component
   `Web.Components.RecommendationsPanel` (its filters are its own state,
-  kept over the page's re-renders); its create link needs the `ai`
-  permission in the `scope` attr and opens the new-endpoint form with
+  kept over the page's re-renders); its create link needs
+  `ai.manage_endpoints` in the `scope` attr and opens the new-endpoint form with
   `?name=&model=&integration_uuid=` prefilled — never saved by the link.
 - Every verb's result names its usage row: `"request_uuid"` in the chat and
   embedding responses, `:request_uuid` in the other verbs' maps; a cache
@@ -1075,6 +1139,13 @@ Test database `phoenix_kit_ai_test`.
   doubling); after that a 429 is an ordinary retryable failure, so an
   exhausted quota ends in `ai.translation_failed` instead of holding its
   in-flight slot.
+- `use PhoenixKitAI.Components.AITranslate.Embed, authorize: …` gates the
+  translate modal: a 1-arity remote capture or `{m, f, args}` (called with
+  the socket first), evaluated against the live socket for each of the six
+  `ai_*` events before anything is dispatched; falsy halts with an error
+  flash and enqueues nothing. Omitted, every event is dispatched (kept for
+  existing hosts) — a host should always pass it, since the hook halts
+  those events before any host `handle_event` could re-check.
 - Host translatables (`config :phoenix_kit_ai, translatables:`) implement
   `PhoenixKitAI.Translatable` (`fetch/2`, `source_fields/2`,
   `put_translation/4`); a configured entry wins over a module's adapter

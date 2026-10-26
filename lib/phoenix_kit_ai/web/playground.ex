@@ -296,6 +296,23 @@ defmodule PhoenixKitAI.Web.Playground do
 
   @impl true
   def handle_event("start_voice", _params, socket) do
+    if PhoenixKitAI.enabled?(),
+      do: start_voice(socket),
+      else: {:noreply, ai_off(socket)}
+  end
+
+  @impl true
+  def handle_event("speak_voice", %{"text" => text}, socket) do
+    speak_voice(socket, text)
+  end
+
+  @impl true
+  def handle_event("stop_voice", _params, socket) do
+    if pid = socket.assigns.voice_session_pid, do: Session.close(pid)
+    {:noreply, socket}
+  end
+
+  defp start_voice(socket) do
     case socket.assigns.selected_endpoint do
       nil ->
         {:noreply, put_flash(socket, :error, gettext("Please select an endpoint"))}
@@ -310,20 +327,27 @@ defmodule PhoenixKitAI.Web.Playground do
     end
   end
 
-  @impl true
-  def handle_event("speak_voice", %{"text" => text}, socket) do
-    if socket.assigns.voice_status == :connected and socket.assigns.voice_session_pid do
-      Session.send_text(socket.assigns.voice_session_pid, text)
-      Session.finish(socket.assigns.voice_session_pid)
-    end
+  defp speak_voice(socket, text) do
+    cond do
+      not PhoenixKitAI.enabled?() ->
+        {:noreply, ai_off(socket)}
 
-    {:noreply, socket}
+      socket.assigns.voice_status == :connected and socket.assigns.voice_session_pid ->
+        Session.send_text(socket.assigns.voice_session_pid, text)
+        Session.finish(socket.assigns.voice_session_pid)
+        {:noreply, socket}
+
+      true ->
+        {:noreply, socket}
+    end
   end
 
-  @impl true
-  def handle_event("stop_voice", _params, socket) do
+  # Off is off: the realtime voice session runs no AI task, so the module
+  # switch is checked here (and again by the session on every send). An
+  # open session is closed; its `:DOWN` resets the panel to idle.
+  defp ai_off(socket) do
     if pid = socket.assigns.voice_session_pid, do: Session.close(pid)
-    {:noreply, socket}
+    put_flash(socket, :error, gettext("The AI module is switched off."))
   end
 
   defp start_voice_session(socket, endpoint) do

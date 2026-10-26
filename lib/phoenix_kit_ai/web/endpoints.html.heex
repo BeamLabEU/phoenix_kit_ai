@@ -2,7 +2,7 @@
     <%= if @active_tab == "endpoints" do %>
       <%!-- Endpoints List --%>
       <%= if @has_endpoints do %>
-        <% manual_sort? = @sort_by == :sort_order %>
+        <% manual_sort? = @sort_by == :sort_order and @can_manage_endpoints %>
         <JournalRetentionCard.retained_since
           :if={@retention_retained_since}
           id="ai-endpoints-retained-since"
@@ -34,6 +34,7 @@
 
           <:toolbar_actions>
             <.link
+              :if={@can_manage_endpoints}
               navigate={PhoenixKitAI.Routes.ai_path() <> "/endpoints/new"}
               class="btn btn-primary btn-sm"
             >
@@ -69,11 +70,15 @@
                     />
                   </span>
                   <.link
+                    :if={@can_manage_endpoints}
                     navigate={PhoenixKitAI.Routes.ai_path() <> "/endpoints/#{endpoint.uuid}/edit"}
                     class="font-semibold text-lg hover:text-primary hover:underline"
                   >
                     {endpoint.name}
                   </.link>
+                  <span :if={!@can_manage_endpoints} class="font-semibold text-lg">
+                    {endpoint.name}
+                  </span>
                   <.enabled_badge enabled={endpoint.enabled} />
                   <%= cond do %>
                     <% endpoint.integration_uuid && is_nil(integration) -> %>
@@ -177,7 +182,11 @@
               </div>
 
               <div class="flex-shrink-0">
-                <.table_row_menu mode="auto" id={"endpoint-menu-#{endpoint.uuid}"}>
+                <.table_row_menu
+                  :if={@can_manage_endpoints}
+                  mode="auto"
+                  id={"endpoint-menu-#{endpoint.uuid}"}
+                >
                   <.table_row_menu_link
                     navigate={PhoenixKitAI.Routes.ai_path() <> "/endpoints/#{endpoint.uuid}/edit"}
                     icon="hero-pencil"
@@ -289,11 +298,15 @@
                     </.table_default_cell>
                     <.table_default_cell>
                       <.link
+                        :if={@can_manage_endpoints}
                         navigate={PhoenixKitAI.Routes.ai_path() <> "/endpoints/#{endpoint.uuid}/edit"}
                         class="link link-hover font-medium"
                       >
                         {endpoint.name}
                       </.link>
+                      <span :if={!@can_manage_endpoints} class="font-medium">
+                        {endpoint.name}
+                      </span>
                       <%= cond do %>
                         <% endpoint.integration_uuid && is_nil(integration) -> %>
                           <span class="badge badge-error badge-xs ml-1" title={gettext("Integration missing")}>!</span>
@@ -332,7 +345,11 @@
                       <% end %>
                     </.table_default_cell>
                     <.table_default_cell class="text-right whitespace-nowrap">
-                      <.table_row_menu mode="auto" id={"endpoint-tbl-menu-#{endpoint.uuid}"}>
+                      <.table_row_menu
+                        :if={@can_manage_endpoints}
+                        mode="auto"
+                        id={"endpoint-tbl-menu-#{endpoint.uuid}"}
+                      >
                         <.table_row_menu_link
                           navigate={PhoenixKitAI.Routes.ai_path() <> "/endpoints/#{endpoint.uuid}/edit"}
                           icon="hero-pencil"
@@ -388,6 +405,7 @@
           description={gettext("Create your first AI endpoint to get started.")}
         >
           <.link
+            :if={@can_manage_endpoints}
             navigate={PhoenixKitAI.Routes.ai_path() <> "/endpoints/new"}
             class="btn btn-primary btn-lg"
           >
@@ -397,7 +415,7 @@
       <% end %>
     <% end %>
 
-    <%= if @active_tab == "usage" do %>
+    <%= if @active_tab == "usage" and @can_view_usage do %>
       <%!-- Usage Statistics --%>
       <%= if @usage_loaded do %>
         <%!-- Usage Stats --%>
@@ -778,7 +796,7 @@
 
   <%!-- Request Details Modal --%>
   <.modal
-    :if={@selected_request}
+    :if={@selected_request && @can_view_usage}
     show
     on_close="close_request_details"
     id="ai-request-details"

@@ -171,6 +171,13 @@ end
 
 {:ok, _pid} = PhoenixKit.ModuleRegistry.start_link([])
 
+# The task registry's one writer (`PhoenixKitAI.Tasks.Builder`, one of
+# `PhoenixKitAI.children/0`): without it a lookup builds for itself only and
+# never caches. Started unlinked so a test that stops it to exercise that
+# fallback can start it again (`PhoenixKitAI.Test.restart_task_builder/0`).
+{:ok, _pid} =
+  GenServer.start(PhoenixKitAI.Tasks.Builder, :ok, name: PhoenixKitAI.Tasks.Builder)
+
 # `PhoenixKit.Test.Fixtures.user_fixture/1` and friends register through
 # `PhoenixKit.Users.Auth.register_user/2`, which calls the Hammer-backed rate
 # limiter — without this its ETS table does not exist and the fixture dies with

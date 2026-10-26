@@ -131,7 +131,7 @@ defmodule PhoenixKitAI.Web.UsageRetentionTest do
   describe "without ai.manage" do
     test "the card is read only: the periods, no forms", %{conn: conn, owner: owner} do
       save_periods(owner, %{requests: {12, :month}})
-      {user, _role} = admin(["ai"])
+      {user, _role} = admin(["ai", "ai.view_usage"])
       view = open(conn, user)
 
       assert has_element?(view, "#ai-retention-read-only")
@@ -147,7 +147,9 @@ defmodule PhoenixKitAI.Web.UsageRetentionTest do
 
       for keys <- [[], ["ai"]] do
         {user, _role} = admin(keys)
-        view = open(conn, user)
+        # Crafted retention events must also be refused from the endpoint
+        # list, which does not require the Usage tab's ai.view_usage key.
+        view = open(conn, user, "/en/admin/ai/endpoints")
 
         for {event, params} <- [
               {"retention_save", period_params("requests", "1", "day")},
@@ -166,7 +168,7 @@ defmodule PhoenixKitAI.Web.UsageRetentionTest do
 
     test "the form's own events read no rights and change nothing stored", %{conn: conn} do
       start_oban()
-      {user, _role} = admin(["ai"])
+      {user, _role} = admin(["ai", "ai.view_usage"])
       view = open(conn, user)
 
       for {event, params} <- [
@@ -186,11 +188,11 @@ defmodule PhoenixKitAI.Web.UsageRetentionTest do
 
     test "a permission taken away while the page is open is refused at the next event",
          %{conn: conn} do
-      {user, role_uuid} = admin(["ai", "ai.manage"])
+      {user, role_uuid} = admin(["ai", "ai.view_usage", "ai.manage"])
       view = open(conn, user)
       assert has_element?(view, "#ai-retention-form")
 
-      :ok = Permissions.set_permissions(role_uuid, ["ai"])
+      :ok = Permissions.set_permissions(role_uuid, ["ai", "ai.view_usage"])
 
       html = render_hook(view, "retention_save", period_params("requests", "24", "month"))
       assert html =~ "You are not allowed to do this"
@@ -348,7 +350,7 @@ defmodule PhoenixKitAI.Web.UsageRetentionTest do
          %{conn: conn, owner: owner} do
       save_periods(owner, %{requests: {3, :month}})
       first = open(conn, owner)
-      {user, _role} = admin(["ai"])
+      {user, _role} = admin(["ai", "ai.view_usage"])
       second = open(build_conn(), user)
       assert has_element?(second, "[data-period=requests]", "3 months")
 
@@ -361,7 +363,7 @@ defmodule PhoenixKitAI.Web.UsageRetentionTest do
          %{conn: conn, owner: owner} do
       save_periods(owner, %{requests: {3, :month}})
       first = open(conn, owner)
-      {user, _role} = admin(["ai", "ai.manage"])
+      {user, _role} = admin(["ai", "ai.view_usage", "ai.manage"])
       second = open(build_conn(), user)
       untouched = open(build_conn(), user)
 

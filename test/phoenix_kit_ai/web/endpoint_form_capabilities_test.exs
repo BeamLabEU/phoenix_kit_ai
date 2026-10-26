@@ -255,7 +255,7 @@ defmodule PhoenixKitAI.Web.EndpointFormCapabilitiesTest do
       user = Fixtures.user_fixture()
       {:ok, _} = Roles.assign_role(user, "Admin")
       %{uuid: role} = Roles.get_role_by_name("Admin")
-      :ok = Permissions.set_permissions(role, ["ai"])
+      :ok = Permissions.set_permissions(role, ["ai", "ai.manage_endpoints"])
 
       {:ok, view, _html} =
         conn
@@ -273,7 +273,7 @@ defmodule PhoenixKitAI.Web.EndpointFormCapabilitiesTest do
                PhoenixKitAI.get_endpoint!(endpoint.uuid).provider_settings["capabilities"]
 
       # Holding ai.manage, the checkboxes are back.
-      :ok = Permissions.set_permissions(role, ["ai", "ai.manage"])
+      :ok = Permissions.set_permissions(role, ["ai", "ai.manage", "ai.manage_endpoints"])
 
       {:ok, view, _html} =
         conn

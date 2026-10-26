@@ -114,8 +114,8 @@ defmodule PhoenixKitAI.SchemaCoverageTest do
       assert Endpoint.masked_api_key("0123456789012") == "•••"
     end
 
-    test "masked_api_key/1 — long keys render head+tail with ellipsis" do
-      assert Endpoint.masked_api_key("sk-or-v1-abcdef123456") == "sk-or-v1…3456"
+    test "masked_api_key/1 — long keys render only their last 4 characters" do
+      assert Endpoint.masked_api_key("sk-or-v1-abcdef123456") == "•••3456"
     end
   end
 

@@ -235,7 +235,7 @@ defmodule PhoenixKitAI.GuardRightsTest do
     end
 
     test "the sub-permission is declared on the module" do
-      assert %{sub_permissions: [%{key: "manage"}]} = PhoenixKitAI.permission_metadata()
+      assert %{sub_permissions: [%{key: "manage"} | _]} = PhoenixKitAI.permission_metadata()
       assert "ai.manage" in Permissions.sub_permission_keys()
     end
 

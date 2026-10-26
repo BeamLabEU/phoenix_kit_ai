@@ -126,8 +126,7 @@ defmodule PhoenixKitAI.Web.EndpointFormTest do
   describe "edit — legacy api_key recovery field" do
     # When the migration hasn't completed for this endpoint
     # (api_key column populated, integration_uuid still NULL), the
-    # form surfaces the legacy key in a read-only password field with
-    # a copy button so the operator can paste it into a new
+    # form shows the legacy key masked and asks for a new
     # Integration. Once an integration is selected and saved, the
     # changeset clears api_key in the same write so the field
     # disappears and stays gone.
@@ -139,11 +138,10 @@ defmodule PhoenixKitAI.Web.EndpointFormTest do
       {:ok, _view, html} = live(conn, "/en/admin/ai/endpoints/#{endpoint.uuid}/edit")
 
       assert html =~ "Legacy API key (recovery)"
-      # Field is rendered with the legacy value (masked via type=password
-      # client-side, but the value attr is in the markup so the copy
-      # button can grab it).
-      assert html =~ ~s(value="sk-or-recovery-test")
-      assert html =~ "data-copy-target=\"#legacy-api-key-field\""
+      # The stored key never reaches the browser in clear: only its
+      # masked form is rendered.
+      refute html =~ "sk-or-recovery-test"
+      assert html =~ PhoenixKitAI.Endpoint.masked_api_key("sk-or-recovery-test")
     end
 
     test "does NOT render the recovery card when integration_uuid is set",

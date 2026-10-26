@@ -16,9 +16,12 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPickerTest do
 
   setup do
     :ok = ModuleRegistry.register(FakeAITasks)
+    # The create link's ai.manage_endpoints check resolves through the registry.
+    :ok = ModuleRegistry.register(PhoenixKitAI)
 
     on_exit(fn ->
       :persistent_term.erase({PhoenixKitAI.Tasks, :registry})
+      ModuleRegistry.unregister(PhoenixKitAI)
       ModuleRegistry.unregister(FakeAITasks)
     end)
 
@@ -340,8 +343,8 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPickerTest do
   end
 
   describe "the create button" do
-    test "is hidden without the ai permission" do
-      for scope <- [nil, scope(["staff"]), scope([])] do
+    test "is hidden without ai.manage_endpoints" do
+      for scope <- [nil, scope(["staff"]), scope([]), scope(["ai"])] do
         html = render_picker(%{scope: scope})
 
         refute present?(html, "[data-create-endpoint]"),
@@ -352,7 +355,7 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPickerTest do
     end
 
     test "links to the endpoint form with the model, the integration and a name" do
-      html = render_picker(%{scope: scope(["ai"])})
+      html = render_picker(%{scope: scope(["ai", "ai.manage_endpoints"])})
 
       link =
         doc(html)
@@ -374,7 +377,7 @@ defmodule PhoenixKitAI.Web.Components.TaskModelPickerTest do
     end
 
     test "is shown for a model with no known integration too, without one in the link" do
-      html = render_picker(%{scope: scope(["ai"])})
+      html = render_picker(%{scope: scope(["ai", "ai.manage_endpoints"])})
 
       [href] =
         doc(html)

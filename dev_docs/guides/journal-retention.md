@@ -190,7 +190,8 @@ scope's right and answers an error atom rendered by
 
 Changing the periods, the preview and a cleanup by hand — all three kinds —
 need `ai.manage` or an Owner. Seeing the periods and the outcome of the
-runs needs only the `ai` module permission; without `ai.manage` the card is
+runs on the Usage tab needs `ai.view_usage` as well as the `ai` module
+permission; without `ai.manage` the card is
 read-only. The context functions check the right, and the card checks it
 again on every acting event against the scope as it is now, so a right
 withdrawn while the page is open stops working at the next click.
