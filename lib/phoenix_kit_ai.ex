@@ -1292,6 +1292,8 @@ defmodule PhoenixKitAI do
     [
       {DynamicSupervisor, name: PhoenixKitAI.Realtime.Supervisor, strategy: :one_for_one},
       PhoenixKitAI.RequestCache,
+      # The task registry's one writer, before anything that reads tasks.
+      PhoenixKitAI.Tasks.Builder,
       PhoenixKitAI.Capabilities,
       PhoenixKitAI.GuardWatch,
       PhoenixKitAI.Cache,

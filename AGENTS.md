@@ -448,6 +448,9 @@ is now (`PhoenixKitAI.Web.Access`: the session's through core's
 | `:translatables` | `[]` | `[{resource_type, adapter_module}]` a host app registers for the AI-translation pipeline without being a kit module; configured entries win over module-declared ones |
 | `:request_cache` | `[]` | `ttl:` (seconds, default 86 400), `sweep:` (300), `max_entries:` (10 000), `max_value_bytes:` (8 000 000), `default:` (`true` caches every verb unless a call says `cache: false`); read per call by `PhoenixKitAI.RequestCache` |
 | `:task_registry_retry_ms` | `60_000` | How long a task registry built while a module's `ai_tasks/0` failed is kept before the next access builds it again |
+| `:task_providers` | `[]` | A host app's own modules whose `ai_tasks/0` declares AI tasks (see Feature notes) |
+| `:task_registry_callback_timeout_ms` | `5_000` | How long the registry builder waits for one module's `ai_tasks/0`; a timeout counts as a failure |
+| `:task_registry_build_timeout_ms` | `30_000` | How long a caller waits for the builder before answering from the last cached registry |
 | `:retry` | `false` | Retries for chat / embeddings / TTS calls: `true` (defaults) or `[max_attempts: 3, base_delay: 1_000, max_delay: 30_000, retry_timeouts: false]`; a call's `retry:` wins. Retried: HTTP 408/429/500/502/503/504 (never a 429 about money — an exhausted balance or quota) and transport errors other than a timeout; `Retry-After` honoured up to `max_delay`. Off by default so callers with their own retry/snooze logic (`TranslateWorker`) are unaffected |
 | `:timeout` | `120_000` | Receive/connect timeout (ms) for chat / embeddings / TTS calls; a call's `timeout:` wins |
 | `:concurrency` | `%{}` | Concurrency limits per key, `%{"provider:openrouter" => 8, "endpoint:<name or uuid>" => 2}` — the most specific key wins; a call's `concurrency: [limit:, key:, wait:, notify:]` or `concurrency: false` overrides. See `PhoenixKitAI.Limiter` |
@@ -758,12 +761,15 @@ Test database `phoenix_kit_ai_test`.
   (kit modules first, then providers in config order); the dropped one is
   warned about naming both and listed by `Tasks.collisions/0` on AI →
   Tasks. `spec.module` may therefore be a plain host module: never call a
-  `PhoenixKit.Module` callback on it. No lock is held while any `ai_tasks/0`
-  runs (a hanging or re-entrant one must block only its own caller):
-  builds may run at once, and before putting, a failed build that finds a
-  good state stored for the same lists uses that instead; an `ai_tasks/0`
-  that calls back into `Tasks` gets the last cached registry, never a
-  nested build. Read one snapshot per lookup (`Tasks.overview/0` for a page).
+  `PhoenixKit.Module` callback on it. One writer: `PhoenixKitAI.Tasks.Builder` (in
+  `children/0`) builds, serially and always for the current config; reads
+  stay a lock-free `:persistent_term` hit, and a miss asks the builder.
+  Each `ai_tasks/0` runs in its own task bounded by
+  `:task_registry_callback_timeout_ms` (default 5 s; a timeout is a
+  failure). A call from inside a build (the builder, a callback task or its
+  `Task.async` children, by `$callers`) answers from the last cached
+  registry. Without the builder (a test, a host not starting the kit's
+  children) a caller builds inline. Read one snapshot per lookup (`Tasks.overview/0` for a page).
   An improper `task_providers` list is bad config (warned, its proper part
   used). `enabled` is display only —
   `for_call/1` does not consult it.

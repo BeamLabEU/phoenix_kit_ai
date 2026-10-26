@@ -84,6 +84,18 @@ defmodule PhoenixKitAI.TaskProvidersTest do
     end
   end
 
+  defmodule AsyncReentrantProvider do
+    @moduledoc false
+    alias PhoenixKitAI.TaskSpec
+
+    # Calls back into the registry from a child it awaits.
+    def ai_tasks do
+      send(Application.fetch_env!(:phoenix_kit_ai, :blocking_provider_test), {:called, self()})
+      _ = fn -> PhoenixKitAI.Tasks.list() end |> Task.async() |> Task.await(2_000)
+      [%TaskSpec{key: "myapp.async_reentrant", label: "Async re-entrant"}]
+    end
+  end
+
   defmodule HangingProvider do
     @moduledoc false
     def ai_tasks do
@@ -195,25 +207,10 @@ defmodule PhoenixKitAI.TaskProvidersTest do
       assert %{key: "test.photo", kept: FakeAITasks, dropped: AppTasks} in Tasks.collisions()
     end
 
-    test "a slow failing build finishing after a good one does not overwrite it" do
-      Application.put_env(:phoenix_kit_ai, :blocking_provider_test, self())
-      on_exit(fn -> Application.delete_env(:phoenix_kit_ai, :blocking_provider_test) end)
-      :persistent_term.erase({Tasks, :registry})
-      providers([BlockingProvider])
-
-      slow = Task.async(fn -> Tasks.get("myapp.slow") end)
-      assert_receive {:called, slow_builder}, 1_000
-
-      quick = Task.async(fn -> Tasks.get("myapp.slow") end)
-      assert_receive {:called, quick_builder}, 1_000
-
-      send(quick_builder, {:go, :ok})
-      assert %TaskSpec{} = Task.await(quick)
-
-      send(slow_builder, {:go, :raise})
-      capture_log(fn -> Task.await(slow) end)
-
-      assert %TaskSpec{module: BlockingProvider} = Tasks.get("myapp.slow")
+    test "without the builder a call builds inline" do
+      refute Process.whereis(PhoenixKitAI.Tasks.Builder)
+      providers([AppTasks])
+      assert %TaskSpec{module: AppTasks} = Tasks.get("myapp.photo_fix")
     end
 
     test "a re-entrant ai_tasks/0 neither deadlocks nor recurses" do
@@ -268,6 +265,92 @@ defmodule PhoenixKitAI.TaskProvidersTest do
       providers([NoTasksProvider])
       assert capture_log(fn -> keys() end) =~ "does not export ai_tasks/0"
       refute capture_log(fn -> keys() end) =~ "does not export ai_tasks/0"
+    end
+  end
+
+  describe "with the builder (the one writer)" do
+    setup do
+      :persistent_term.erase({Tasks, :registry})
+      Application.put_env(:phoenix_kit_ai, :blocking_provider_test, self())
+      start_supervised!(PhoenixKitAI.Tasks.Builder)
+
+      on_exit(fn ->
+        Application.delete_env(:phoenix_kit_ai, :blocking_provider_test)
+        Application.delete_env(:phoenix_kit_ai, :task_registry_callback_timeout_ms)
+      end)
+
+      :ok
+    end
+
+    test "concurrent callers share one build: ai_tasks/0 is called once" do
+      providers([BlockingProvider])
+
+      first = Task.async(fn -> Tasks.get("myapp.slow") end)
+      assert_receive {:called, builder_task}, 1_000
+      second = Task.async(fn -> Tasks.get("myapp.slow") end)
+      refute_receive {:called, _}, 200
+
+      send(builder_task, {:go, :ok})
+      assert %TaskSpec{module: BlockingProvider} = Task.await(first)
+      assert %TaskSpec{module: BlockingProvider} = Task.await(second)
+      refute_received {:called, _}
+    end
+
+    test "a failing build after a good one keeps the declared task" do
+      providers([BlockingProvider])
+      first = Task.async(fn -> Tasks.get("myapp.slow") end)
+      assert_receive {:called, cb}, 1_000
+      send(cb, {:go, :ok})
+      assert %TaskSpec{} = Task.await(first)
+
+      # A config change rebuilds; the provider now fails.
+      providers([BlockingProvider, NoTasksProvider])
+      again = Task.async(fn -> capture_log(fn -> Tasks.get("myapp.slow") end) end)
+      assert_receive {:called, cb2}, 1_000
+      send(cb2, {:go, :raise})
+      Task.await(again)
+
+      assert %TaskSpec{module: BlockingProvider} = Tasks.get("myapp.slow")
+    end
+
+    test "a build stalled on an old config never outlives the new one" do
+      providers([BlockingProvider])
+      stalled = Task.async(fn -> Tasks.get("myapp.slow") end)
+      assert_receive {:called, cb}, 1_000
+
+      providers([AppTasks])
+      current = Task.async(fn -> Tasks.get("myapp.photo_fix") end)
+
+      send(cb, {:go, :ok})
+      Task.await(stalled)
+      assert %TaskSpec{module: AppTasks} = Task.await(current)
+
+      assert Tasks.get("myapp.photo_fix")
+      refute Tasks.get("myapp.slow")
+      refute_received {:called, _}
+    end
+
+    test "a hanging provider times out and the rest of the registry is served" do
+      Application.put_env(:phoenix_kit_ai, :task_registry_callback_timeout_ms, 300)
+      providers([HangingProvider, AppTasks])
+
+      log =
+        capture_log(fn ->
+          task = Task.async(fn -> Tasks.get("myapp.photo_fix") end)
+          assert {:ok, %TaskSpec{module: AppTasks}} = Task.yield(task, 3_000)
+        end)
+
+      assert log =~ "did not answer within 300 ms"
+      assert Tasks.get("test.photo")
+    end
+
+    test "re-entry from a Task.async child neither deadlocks nor builds twice" do
+      providers([AsyncReentrantProvider])
+
+      task = Task.async(fn -> Tasks.get("myapp.async_reentrant") end)
+      assert {:ok, %TaskSpec{module: AsyncReentrantProvider}} = Task.yield(task, 3_000)
+      assert_received {:called, _}
+      refute_received {:called, _}
     end
   end
 

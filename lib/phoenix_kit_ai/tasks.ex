@@ -20,11 +20,11 @@ defmodule PhoenixKitAI.Tasks do
   (`provider?/1`). A listed provider that cannot be loaded or exports no
   `ai_tasks/0` is warned about; a bad config entry is ignored with a
   warning. A change to the registered modules or to the provider list
-  rebuilds the registry. No lock is held while `ai_tasks/0` runs: builds may
-  run at once, and a failed build never replaces a good one stored for the
-  same lists meanwhile; an `ai_tasks/0` that calls back into this module gets
-  the last cached registry. A module whose `ai_tasks/0` fails keeps the tasks
-  it last declared until it answers.
+  rebuilds the registry. `PhoenixKitAI.Tasks.Builder` is the one writer:
+  builds are serial and for the current config, each `ai_tasks/0` runs in
+  its own task with a timeout, and a call from inside a build answers from
+  the last cached registry. A module whose `ai_tasks/0` fails or times out
+  keeps the tasks it last declared until it answers.
 
   Two declarations of one key: the first wins (kit modules before
   providers, providers in config order), with a warning naming both; the
@@ -144,41 +144,95 @@ defmodule PhoenixKitAI.Tasks do
   def provider?(%TaskSpec{module: module}), do: MapSet.member?(state().providers, module)
 
   # A build where a module's `ai_tasks/0` failed is kept only for the retry
-  # interval; the next access after that builds again (and puts again, so
-  # at most once per interval while the callback keeps failing). The cache
-  # key is the registered modules AND the raw `task_providers` config, so a
-  # change to either rebuilds; the config is validated (and warned about)
-  # only while building, never per lookup.
+  # interval; the next access after that builds again (at most once per
+  # interval while the callback keeps failing). The cache key is the
+  # registered modules AND the raw `task_providers` config, so a change to
+  # either rebuilds; the config is validated (and warned about) only while
+  # building, never per lookup.
   #
-  # No lock is ever held while a module's `ai_tasks/0` runs (a hanging or
-  # re-entrant callback must block only its own caller): two processes may
-  # build at once, which costs duplicate work and a duplicate warning on a
-  # cold start. What must not happen is a slow FAILED build overwriting a
-  # good one, so `rebuild/1` re-reads the cache before putting. An
-  # `ai_tasks/0` that calls back into this module while it is being built
-  # gets the last cached registry (or an empty one) instead of a nested
-  # build.
+  # ONE writer. Reads are a lock-free `:persistent_term` hit; on a miss or a
+  # due retry the caller asks `PhoenixKitAI.Tasks.Builder`, which works out
+  # the CURRENT key itself, answers from the cache when it already fits and
+  # otherwise builds — so builds are serial, always for the current config,
+  # and the carry-forward always reads the builder's own last state. Each
+  # `ai_tasks/0` runs in its own task with a timeout, so a hanging one costs
+  # one timeout, never blocks the builder. A call from inside a build (the
+  # builder, a callback task or anything it `Task.async`s) answers from the
+  # last cached registry instead of asking the builder again.
+  #
+  # Without the builder (it is one of `PhoenixKitAI.children/0`; a host or a
+  # test that does not start them) the caller builds inline, the callbacks
+  # in its own process; a callback that calls back in gets the last cached
+  # registry.
   @building {__MODULE__, :building}
+  @callback_timeout 5_000
+  @ensure_timeout 30_000
 
   defp state do
     key = cache_key()
 
     case current(key) do
-      {:ok, state} ->
-        state
-
-      :rebuild ->
-        if Process.get(@building), do: last_cached(), else: guarded_rebuild(key)
+      {:ok, state} -> state
+      :rebuild -> ensure()
     end
   end
 
-  defp guarded_rebuild(key) do
+  defp ensure do
+    builder = Process.whereis(PhoenixKitAI.Tasks.Builder)
+
+    cond do
+      is_pid(builder) and inside_build?(builder) ->
+        last_cached()
+
+      is_pid(builder) ->
+        try do
+          GenServer.call(builder, :ensure, ensure_timeout())
+        catch
+          :exit, _ -> last_cached()
+        end
+
+      Process.get(@building) ->
+        last_cached()
+
+      true ->
+        inline_rebuild()
+    end
+  end
+
+  defp inside_build?(builder),
+    do: builder == self() or builder in List.wrap(Process.get(:"$callers"))
+
+  @doc false
+  # Run by `PhoenixKitAI.Tasks.Builder`, the one writer: the current key's
+  # state, built (callbacks isolated in tasks) when the cache does not fit.
+  @spec ensure_built() :: map()
+  def ensure_built do
+    key = cache_key()
+
+    case current(key) do
+      {:ok, state} -> state
+      :rebuild -> rebuild(key, &isolated/1)
+    end
+  end
+
+  defp inline_rebuild do
     Process.put(@building, true)
 
     try do
-      rebuild(key)
+      rebuild(cache_key(), & &1.())
     after
       Process.delete(@building)
+    end
+  end
+
+  # One module's callback in its own task, bounded by the callback timeout;
+  # a timeout counts as a failure (carry-forward, retry).
+  defp isolated(fun) do
+    task = Task.async(fun)
+
+    case Task.yield(task, callback_timeout()) || Task.shutdown(task, :brutal_kill) do
+      {:ok, result} -> result
+      _ -> :timeout
     end
   end
 
@@ -205,11 +259,11 @@ defmodule PhoenixKitAI.Tasks do
     end
   end
 
-  defp rebuild({modules, raw_providers} = key) do
+  defp rebuild({modules, raw_providers} = key, run) do
     # A module listed both ways is a kit module: its switch, asked once.
     providers = configured_providers(raw_providers) -- modules
     previous = previous_declarations()
-    {state, failed} = build(modules, providers, previous)
+    {state, failed} = build(modules, providers, previous, run)
 
     failed_at =
       if failed != [] do
@@ -222,30 +276,24 @@ defmodule PhoenixKitAI.Tasks do
         now()
       end
 
-    store(key, state, failed_at)
+    :persistent_term.put(@registry_key, {key, state, failed_at})
+    state
   end
 
-  # A failed build never replaces a successful one stored for the same key
-  # meanwhile (by a concurrent caller): that one is used instead.
-  defp store(key, state, failed_at) do
-    case {failed_at, :persistent_term.get(@registry_key, nil)} do
-      {failed_at, {^key, good, nil}} when not is_nil(failed_at) ->
-        good
-
-      _ ->
-        :persistent_term.put(@registry_key, {key, state, failed_at})
-        state
-    end
-  end
-
-  # What each module answered the last time its `ai_tasks/0` worked, from
-  # whatever registry is cached (also one built for another key).
+  # What each module answered the last time its `ai_tasks/0` worked.
   defp previous_declarations do
     case :persistent_term.get(@registry_key, nil) do
       {_key, %{declared: declared}, _failed_at} -> declared
       _ -> %{}
     end
   end
+
+  defp callback_timeout,
+    do:
+      Application.get_env(:phoenix_kit_ai, :task_registry_callback_timeout_ms, @callback_timeout)
+
+  defp ensure_timeout,
+    do: Application.get_env(:phoenix_kit_ai, :task_registry_build_timeout_ms, @ensure_timeout)
 
   defp retry_ms, do: Application.get_env(:phoenix_kit_ai, :task_registry_retry_ms, @retry_ms)
 
@@ -303,10 +351,10 @@ defmodule PhoenixKitAI.Tasks do
   # later declarer of the same key holds it meanwhile (the alternative,
   # holding back every later declaration, would let one broken module hide
   # every provider's tasks).
-  defp build(modules, providers, previous) do
+  defp build(modules, providers, previous, run) do
     declared =
-      Enum.map(modules, &{&1, declared_by(&1)}) ++
-        Enum.map(providers, &{&1, declared_by_provider(&1)})
+      Enum.map(modules, &{&1, run_callback(run, &1, fn -> declared_by(&1) end)}) ++
+        Enum.map(providers, &{&1, run_callback(run, &1, fn -> declared_by_provider(&1) end)})
 
     failed = for {module, :error} <- declared, do: module
 
@@ -326,6 +374,21 @@ defmodule PhoenixKitAI.Tasks do
     }
 
     {state, failed}
+  end
+
+  defp run_callback(run, module, fun) do
+    case run.(fun) do
+      :timeout ->
+        Logger.warning(
+          "[PhoenixKitAI] #{inspect(module)}.ai_tasks/0 did not answer within " <>
+            "#{callback_timeout()} ms"
+        )
+
+        :error
+
+      result ->
+        result
+    end
   end
 
   # First declaration wins: kit modules come before providers, providers in
