@@ -764,12 +764,16 @@ Test database `phoenix_kit_ai_test`.
   `PhoenixKit.Module` callback on it. One writer: `PhoenixKitAI.Tasks.Builder` (in
   `children/0`) builds, serially and always for the current config; reads
   stay a lock-free `:persistent_term` hit, and a miss asks the builder.
-  Each `ai_tasks/0` runs in its own task bounded by
-  `:task_registry_callback_timeout_ms` (default 5 s; a timeout is a
-  failure). A call from inside a build (the builder, a callback task or its
-  `Task.async` children, by `$callers`) answers from the last cached
-  registry. Without the builder (a test, a host not starting the kit's
-  children) a caller builds inline. Read one snapshot per lookup (`Tasks.overview/0` for a page).
+  Each `ai_tasks/0` runs in its own UNLINKED process
+  (`spawn_monitor`) bounded by `:task_registry_callback_timeout_ms`
+  (default 5 s): a crash, a crashing linked child or a timeout is that
+  module's failure and never reaches the builder. A call from inside a
+  build (the builder, a callback or anything it starts, by `$callers`)
+  answers from the last cached registry. Without the builder (a host not
+  starting the kit's children) a caller builds a state for itself only —
+  never cached, same runner and timeout; re-entry from it is recognised by
+  a process-dictionary mark on the inline builder. The test helper starts
+  the builder (unlinked), so tests see caching as a host does. Read one snapshot per lookup (`Tasks.overview/0` for a page).
   An improper `task_providers` list is bad config (warned, its proper part
   used). `enabled` is display only —
   `for_call/1` does not consult it.

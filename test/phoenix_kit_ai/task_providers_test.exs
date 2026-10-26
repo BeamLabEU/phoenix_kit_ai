@@ -96,6 +96,18 @@ defmodule PhoenixKitAI.TaskProvidersTest do
     end
   end
 
+  defmodule CrashingChildProvider do
+    @moduledoc false
+    alias PhoenixKitAI.TaskSpec
+
+    # A linked child that dies takes the callback down with it.
+    def ai_tasks do
+      spawn_link(fn -> exit(:boom) end)
+      Process.sleep(1_000)
+      [%TaskSpec{key: "myapp.crashing", label: "Crashing"}]
+    end
+  end
+
   defmodule HangingProvider do
     @moduledoc false
     def ai_tasks do
@@ -207,36 +219,6 @@ defmodule PhoenixKitAI.TaskProvidersTest do
       assert %{key: "test.photo", kept: FakeAITasks, dropped: AppTasks} in Tasks.collisions()
     end
 
-    test "without the builder a call builds inline" do
-      refute Process.whereis(PhoenixKitAI.Tasks.Builder)
-      providers([AppTasks])
-      assert %TaskSpec{module: AppTasks} = Tasks.get("myapp.photo_fix")
-    end
-
-    test "a re-entrant ai_tasks/0 neither deadlocks nor recurses" do
-      Application.put_env(:phoenix_kit_ai, :blocking_provider_test, self())
-      on_exit(fn -> Application.delete_env(:phoenix_kit_ai, :blocking_provider_test) end)
-      providers([ReentrantProvider])
-
-      task = Task.async(fn -> Tasks.get("myapp.reentrant") end)
-
-      assert {:ok, %TaskSpec{module: ReentrantProvider}} = Task.yield(task, 2_000)
-      assert_received {:called, _}
-      refute_received {:called, _}
-    end
-
-    test "a hanging provider blocks only its caller; removed, others build fine" do
-      providers([HangingProvider])
-      hung = Task.async(fn -> Tasks.list() end)
-      refute Task.yield(hung, 200)
-
-      providers([AppTasks])
-      other = Task.async(fn -> Tasks.get("myapp.photo_fix") end)
-
-      assert {:ok, %TaskSpec{module: AppTasks}} = Task.yield(other, 2_000)
-      Task.shutdown(hung, :brutal_kill)
-    end
-
     test "overview/0 returns the tasks, the providers and the collisions" do
       providers([AppTasks])
 
@@ -272,7 +254,6 @@ defmodule PhoenixKitAI.TaskProvidersTest do
     setup do
       :persistent_term.erase({Tasks, :registry})
       Application.put_env(:phoenix_kit_ai, :blocking_provider_test, self())
-      start_supervised!(PhoenixKitAI.Tasks.Builder)
 
       on_exit(fn ->
         Application.delete_env(:phoenix_kit_ai, :blocking_provider_test)
@@ -345,6 +326,94 @@ defmodule PhoenixKitAI.TaskProvidersTest do
     end
 
     test "re-entry from a Task.async child neither deadlocks nor builds twice" do
+      providers([AsyncReentrantProvider])
+
+      task = Task.async(fn -> Tasks.get("myapp.async_reentrant") end)
+      assert {:ok, %TaskSpec{module: AsyncReentrantProvider}} = Task.yield(task, 3_000)
+      assert_received {:called, _}
+      refute_received {:called, _}
+    end
+  end
+
+  describe "the builder survives its callbacks" do
+    test "a callback whose linked child crashes is that module's failure; the builder lives" do
+      Application.put_env(:phoenix_kit_ai, :task_registry_retry_ms, 0)
+      on_exit(fn -> Application.delete_env(:phoenix_kit_ai, :task_registry_retry_ms) end)
+      builder = Process.whereis(PhoenixKitAI.Tasks.Builder)
+      providers([CrashingChildProvider, AppTasks])
+
+      # Every lookup is a due retry: more crashes than any restart intensity.
+      log =
+        capture_log(fn ->
+          for _ <- 1..6, do: assert(%TaskSpec{module: AppTasks} = Tasks.get("myapp.photo_fix"))
+        end)
+
+      assert Process.whereis(PhoenixKitAI.Tasks.Builder) == builder
+      assert Process.alive?(builder)
+      assert log =~ "CrashingChildProvider"
+      refute Tasks.get("myapp.crashing")
+    end
+  end
+
+  describe "without the builder" do
+    setup do
+      :persistent_term.erase({Tasks, :registry})
+      Application.put_env(:phoenix_kit_ai, :blocking_provider_test, self())
+      :ok = GenServer.stop(PhoenixKitAI.Tasks.Builder)
+
+      on_exit(fn ->
+        Application.delete_env(:phoenix_kit_ai, :blocking_provider_test)
+        Application.delete_env(:phoenix_kit_ai, :task_registry_callback_timeout_ms)
+
+        unless Process.whereis(PhoenixKitAI.Tasks.Builder) do
+          {:ok, _} =
+            GenServer.start(PhoenixKitAI.Tasks.Builder, :ok, name: PhoenixKitAI.Tasks.Builder)
+        end
+      end)
+
+      :ok
+    end
+
+    test "a call builds for itself only and caches nothing" do
+      providers([AppTasks])
+      assert %TaskSpec{module: AppTasks} = Tasks.get("myapp.photo_fix")
+      assert :persistent_term.get({Tasks, :registry}, nil) == nil
+    end
+
+    test "an inline build stalled before the builder started never overwrites it" do
+      providers([BlockingProvider])
+      inline = Task.async(fn -> Tasks.get("myapp.slow") end)
+      assert_receive {:called, inline_cb}, 1_000
+
+      {:ok, _} =
+        GenServer.start(PhoenixKitAI.Tasks.Builder, :ok, name: PhoenixKitAI.Tasks.Builder)
+
+      built = Task.async(fn -> Tasks.get("myapp.slow") end)
+      assert_receive {:called, builder_cb}, 1_000
+      send(builder_cb, {:go, :ok})
+      assert %TaskSpec{} = Task.await(built)
+      stored = :persistent_term.get({Tasks, :registry})
+
+      send(inline_cb, {:go, :raise})
+      capture_log(fn -> Task.await(inline) end)
+
+      assert :persistent_term.get({Tasks, :registry}) == stored
+    end
+
+    test "inline callbacks time out" do
+      Application.put_env(:phoenix_kit_ai, :task_registry_callback_timeout_ms, 300)
+      providers([HangingProvider, AppTasks])
+
+      log =
+        capture_log(fn ->
+          task = Task.async(fn -> Tasks.get("myapp.photo_fix") end)
+          assert {:ok, %TaskSpec{module: AppTasks}} = Task.yield(task, 3_000)
+        end)
+
+      assert log =~ "did not answer within 300 ms"
+    end
+
+    test "re-entry from an inline build's Task.async child does not build again" do
       providers([AsyncReentrantProvider])
 
       task = Task.async(fn -> Tasks.get("myapp.async_reentrant") end)

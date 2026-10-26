@@ -161,9 +161,10 @@ defmodule PhoenixKitAI.Tasks do
   # last cached registry instead of asking the builder again.
   #
   # Without the builder (it is one of `PhoenixKitAI.children/0`; a host or a
-  # test that does not start them) the caller builds inline, the callbacks
-  # in its own process; a callback that calls back in gets the last cached
-  # registry.
+  # test that does not start them) the caller builds a state for ITSELF ONLY
+  # — never written to the cache, which only the builder writes — with the
+  # same unlinked, time-bounded callback runner; a call from inside that
+  # build (the caller or any `$callers` descendant) answers from the cache.
   @building {__MODULE__, :building}
   @callback_timeout 5_000
   @ensure_timeout 30_000
@@ -191,16 +192,31 @@ defmodule PhoenixKitAI.Tasks do
           :exit, _ -> last_cached()
         end
 
-      Process.get(@building) ->
+      inside_inline_build?() ->
         last_cached()
 
       true ->
-        inline_rebuild()
+        inline_build()
     end
   end
 
   defp inside_build?(builder),
     do: builder == self() or builder in List.wrap(Process.get(:"$callers"))
+
+  # The caller, or a process it started (by `$callers`), is building inline.
+  defp inside_inline_build? do
+    Process.get(@building) == true or
+      Enum.any?(List.wrap(Process.get(:"$callers")), &inline_builder?/1)
+  end
+
+  defp inline_builder?(pid) when is_pid(pid) do
+    case Process.info(pid, :dictionary) do
+      {:dictionary, dict} -> List.keyfind(dict, @building, 0) == {@building, true}
+      _ -> false
+    end
+  end
+
+  defp inline_builder?(_other), do: false
 
   @doc false
   # Run by `PhoenixKitAI.Tasks.Builder`, the one writer: the current key's
@@ -210,29 +226,63 @@ defmodule PhoenixKitAI.Tasks do
     key = cache_key()
 
     case current(key) do
-      {:ok, state} -> state
-      :rebuild -> rebuild(key, &isolated/1)
+      {:ok, state} ->
+        state
+
+      :rebuild ->
+        {state, failed_at} = build_state(key)
+        :persistent_term.put(@registry_key, {key, state, failed_at})
+        state
     end
   end
 
-  defp inline_rebuild do
+  # For this caller only: never stored.
+  defp inline_build do
     Process.put(@building, true)
 
     try do
-      rebuild(cache_key(), & &1.())
+      {state, _failed_at} = build_state(cache_key())
+      state
     after
       Process.delete(@building)
     end
   end
 
-  # One module's callback in its own task, bounded by the callback timeout;
-  # a timeout counts as a failure (carry-forward, retry).
+  # One module's callback in its own UNLINKED process, bounded by the
+  # callback timeout: a crash (its own or a linked child's) or a timeout is
+  # that module's failure (carry-forward, retry) and never reaches the
+  # caller. `$callers` is passed on so a call back into this module from
+  # the callback, or from anything it starts, is recognised as re-entry.
   defp isolated(fun) do
-    task = Task.async(fun)
+    parent = self()
+    ref = make_ref()
+    callers = [parent | List.wrap(Process.get(:"$callers"))]
 
-    case Task.yield(task, callback_timeout()) || Task.shutdown(task, :brutal_kill) do
-      {:ok, result} -> result
-      _ -> :timeout
+    {pid, monitor} =
+      spawn_monitor(fn ->
+        Process.put(:"$callers", callers)
+        send(parent, {ref, fun.()})
+      end)
+
+    receive do
+      {^ref, result} ->
+        Process.demonitor(monitor, [:flush])
+        result
+
+      {:DOWN, ^monitor, :process, _pid, _reason} ->
+        :error
+    after
+      callback_timeout() ->
+        Process.exit(pid, :kill)
+        Process.demonitor(monitor, [:flush])
+
+        receive do
+          {^ref, _late} -> :ok
+        after
+          0 -> :ok
+        end
+
+        :timeout
     end
   end
 
@@ -259,11 +309,12 @@ defmodule PhoenixKitAI.Tasks do
     end
   end
 
-  defp rebuild({modules, raw_providers} = key, run) do
+  # The state for `key` and its failed_at (nil when every callback answered).
+  defp build_state({modules, raw_providers}) do
     # A module listed both ways is a kit module: its switch, asked once.
     providers = configured_providers(raw_providers) -- modules
     previous = previous_declarations()
-    {state, failed} = build(modules, providers, previous, run)
+    {state, failed} = build(modules, providers, previous, &isolated/1)
 
     failed_at =
       if failed != [] do
@@ -276,8 +327,7 @@ defmodule PhoenixKitAI.Tasks do
         now()
       end
 
-    :persistent_term.put(@registry_key, {key, state, failed_at})
-    state
+    {state, failed_at}
   end
 
   # What each module answered the last time its `ai_tasks/0` worked.

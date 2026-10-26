@@ -5,8 +5,9 @@ defmodule PhoenixKitAI.Tasks.Builder do
   stale or due for a retry asks this process, which works out the current
   module and provider lists itself and builds only when the cache does not
   already fit them. Builds are therefore serial and always for the current
-  config. Each module's `ai_tasks/0` runs in its own task with a timeout
-  (`:task_registry_callback_timeout_ms`), so a hanging one cannot stall it.
+  config. Each module's `ai_tasks/0` runs in its own unlinked process with
+  a timeout (`:task_registry_callback_timeout_ms`), so a hanging or crashing
+  one cannot stall or kill it. Without this process no lookup caches.
   Started by `PhoenixKitAI.children/0`.
   """
 
