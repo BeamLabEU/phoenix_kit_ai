@@ -98,8 +98,9 @@ defmodule PhoenixKitAI.Web.EndpointsTest do
 
       # Integration name is shown verbatim.
       assert html =~ connection_name
-      # Masked api_key — first 8 (`sk-or-v1`) + last 4 (`mnop`).
-      assert html =~ "sk-or-v1…mnop"
+      # Masked api_key — the last 4 (`mnop`) only.
+      assert html =~ "•••mnop"
+      refute html =~ "sk-or-v1"
       # The full key never reaches the rendered HTML.
       refute html =~ "sk-or-v1-abcdefghijklmnop"
     end

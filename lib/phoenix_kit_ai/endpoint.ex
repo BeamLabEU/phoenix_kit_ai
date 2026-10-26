@@ -386,10 +386,9 @@ defmodule PhoenixKitAI.Endpoint do
   - `nil` or `""` → `"Not set"` (translated).
   - Keys shorter than 14 chars → `"•••"` (a 13-char key would otherwise
     leak most of itself with the head+tail shape).
-  - Longer keys → first 8 + `…` + last 4 (e.g. `"sk-or-v1…mnop"`).
-    Recognisable provider prefix retained, identifying suffix retained,
-    middle elided. Useful for human-recognition in admin cards while
-    still hiding the bulk of the secret.
+  - Longer keys → `"•••"` + the last 4 (e.g. `"•••mnop"`): enough to tell
+    two keys apart, and nothing more. The endpoint list shows it to every
+    holder of the base `ai` key, so the prefix is not shown either.
   """
   @spec masked_api_key(String.t() | nil) :: String.t()
   def masked_api_key(nil), do: gettext("Not set")
@@ -399,9 +398,7 @@ defmodule PhoenixKitAI.Endpoint do
     if String.length(api_key) < 14 do
       "•••"
     else
-      head = String.slice(api_key, 0, 8)
-      tail = String.slice(api_key, -4..-1)
-      head <> "…" <> tail
+      "•••" <> String.slice(api_key, -4..-1//1)
     end
   end
 

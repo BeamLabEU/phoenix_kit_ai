@@ -485,17 +485,17 @@ msgstr "Lubatud"
 msgid "Endpoint"
 msgstr "Lõpp-punkt"
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:708
+#: lib/phoenix_kit_ai/web/endpoints.ex:709
 #, elixir-autogen, elixir-format
 msgid "Endpoint deleted"
 msgstr "Lõpp-punkt kustutatud"
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:682
+#: lib/phoenix_kit_ai/web/endpoints.ex:683
 #, elixir-autogen, elixir-format
 msgid "Endpoint disabled"
 msgstr "Lõpp-punkt keelatud"
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:681
+#: lib/phoenix_kit_ai/web/endpoints.ex:682
 #, elixir-autogen, elixir-format
 msgid "Endpoint enabled"
 msgstr "Lõpp-punkt lubatud"
@@ -512,8 +512,8 @@ msgstr "Lõpp-punkt on keelatud"
 
 #: lib/phoenix_kit_ai/errors.ex:36
 #: lib/phoenix_kit_ai/web/endpoint_form.ex:689
-#: lib/phoenix_kit_ai/web/endpoints.ex:693
-#: lib/phoenix_kit_ai/web/endpoints.ex:714
+#: lib/phoenix_kit_ai/web/endpoints.ex:694
+#: lib/phoenix_kit_ai/web/endpoints.ex:715
 #, elixir-autogen, elixir-format
 msgid "Endpoint not found"
 msgstr "Lõpp-punkti ei leitud"
@@ -544,7 +544,7 @@ msgstr "Viga"
 msgid "Existing translations in every non-primary language will be overwritten on completion."
 msgstr "Valmimisel kirjutatakse kõigi mitte-põhikeelte olemasolevad tõlked üle."
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:717
+#: lib/phoenix_kit_ai/web/endpoints.ex:718
 #, elixir-autogen, elixir-format
 msgid "Failed to delete endpoint"
 msgstr "Lõpp-punkti kustutamine ebaõnnestus"
@@ -554,7 +554,7 @@ msgstr "Lõpp-punkti kustutamine ebaõnnestus"
 msgid "Failed to delete prompt"
 msgstr "Prompti kustutamine ebaõnnestus"
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:696
+#: lib/phoenix_kit_ai/web/endpoints.ex:697
 #, elixir-autogen, elixir-format
 msgid "Failed to update endpoint"
 msgstr "Lõpp-punkti uuendamine ebaõnnestus"
@@ -1381,7 +1381,7 @@ msgstr "Tokenite piirmäär"
 msgid "Tokens"
 msgstr "Tokenid"
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:735
+#: lib/phoenix_kit_ai/web/endpoints.ex:736
 #, elixir-autogen, elixir-format
 msgid "Too many endpoints to reorder at once."
 msgstr "Korraga on liiga palju lõpp-punkte, et järjekorda muuta."
@@ -1499,7 +1499,7 @@ msgstr "Uuenda oma AI lõpp-punkti seadistust"
 msgid "Updating…"
 msgstr "Uuendamine…"
 
-#: lib/phoenix_kit_ai.ex:1209
+#: lib/phoenix_kit_ai.ex:1218
 #: lib/phoenix_kit_ai/web/endpoints.ex:77
 #: lib/phoenix_kit_ai/web/prompts.ex:41
 #, elixir-autogen, elixir-format
@@ -1767,7 +1767,7 @@ msgid_plural "tokens"
 msgstr[0] "token"
 msgstr[1] "tokenit"
 
-#: lib/phoenix_kit_ai.ex:1205
+#: lib/phoenix_kit_ai.ex:1214
 #: lib/phoenix_kit_ai/web/endpoint_form.ex:640
 #: lib/phoenix_kit_ai/web/endpoints.ex:110
 #: lib/phoenix_kit_ai/web/playground.ex:53
@@ -1778,21 +1778,21 @@ msgstr[1] "tokenit"
 msgid "AI"
 msgstr "AI"
 
-#: lib/phoenix_kit_ai.ex:1206
+#: lib/phoenix_kit_ai.ex:1215
 #: lib/phoenix_kit_ai/web/endpoint_form.ex:776
 #: lib/phoenix_kit_ai/web/endpoints.ex:81
 #, elixir-autogen, elixir-format
 msgid "Endpoints"
 msgstr "Lõpp-punktid"
 
-#: lib/phoenix_kit_ai.ex:1208
-#: lib/phoenix_kit_ai.ex:1253
+#: lib/phoenix_kit_ai.ex:1217
+#: lib/phoenix_kit_ai.ex:1262
 #: lib/phoenix_kit_ai/web/playground.ex:56
 #, elixir-autogen, elixir-format
 msgid "Playground"
 msgstr "Liivakast"
 
-#: lib/phoenix_kit_ai.ex:1207
+#: lib/phoenix_kit_ai.ex:1216
 #: lib/phoenix_kit_ai/web/prompt_form.ex:81
 #: lib/phoenix_kit_ai/web/prompts.ex:65
 #, elixir-autogen, elixir-format
@@ -2309,62 +2309,62 @@ msgstr[1] "— Vali teenusepakkuja (%{count} saadaval) —"
 msgid "(No content in response)"
 msgstr "(Vastuses puudub sisu)"
 
-#: lib/phoenix_kit_ai/endpoint.ex:578
+#: lib/phoenix_kit_ai/endpoint.ex:575
 #, elixir-autogen, elixir-format
 msgid "1024x1024 (Square)"
 msgstr "1024x1024 (ruut)"
 
-#: lib/phoenix_kit_ai/endpoint.ex:580
+#: lib/phoenix_kit_ai/endpoint.ex:577
 #, elixir-autogen, elixir-format
 msgid "1024x1792 (Portrait)"
 msgstr "1024x1792 (püstine)"
 
-#: lib/phoenix_kit_ai/endpoint.ex:604
+#: lib/phoenix_kit_ai/endpoint.ex:601
 #, elixir-autogen, elixir-format
 msgid "16:9 (Landscape)"
 msgstr "16:9 (rõhtne)"
 
-#: lib/phoenix_kit_ai/endpoint.ex:579
+#: lib/phoenix_kit_ai/endpoint.ex:576
 #, elixir-autogen, elixir-format
 msgid "1792x1024 (Landscape)"
 msgstr "1792x1024 (rõhtne)"
 
-#: lib/phoenix_kit_ai/endpoint.ex:603
+#: lib/phoenix_kit_ai/endpoint.ex:600
 #, elixir-autogen, elixir-format
 msgid "1:1 (Square)"
 msgstr "1:1 (ruut)"
 
-#: lib/phoenix_kit_ai/endpoint.ex:605
+#: lib/phoenix_kit_ai/endpoint.ex:602
 #, elixir-autogen, elixir-format
 msgid "9:16 (Portrait)"
 msgstr "9:16 (püstine)"
 
-#: lib/phoenix_kit_ai/endpoint.ex:636
+#: lib/phoenix_kit_ai/endpoint.ex:633
 #, elixir-autogen, elixir-format
 msgid "Extra High (~95%)"
 msgstr "Eriti kõrge (~95%)"
 
-#: lib/phoenix_kit_ai/endpoint.ex:591
+#: lib/phoenix_kit_ai/endpoint.ex:588
 #, elixir-autogen, elixir-format
 msgid "HD"
 msgstr "HD"
 
-#: lib/phoenix_kit_ai/endpoint.ex:635
+#: lib/phoenix_kit_ai/endpoint.ex:632
 #, elixir-autogen, elixir-format
 msgid "High (~80%)"
 msgstr "Kõrge (~80%)"
 
-#: lib/phoenix_kit_ai/endpoint.ex:633
+#: lib/phoenix_kit_ai/endpoint.ex:630
 #, elixir-autogen, elixir-format
 msgid "Low (~20%)"
 msgstr "Madal (~20%)"
 
-#: lib/phoenix_kit_ai/endpoint.ex:634
+#: lib/phoenix_kit_ai/endpoint.ex:631
 #, elixir-autogen, elixir-format
 msgid "Medium (~50%)"
 msgstr "Keskmine (~50%)"
 
-#: lib/phoenix_kit_ai/endpoint.ex:632
+#: lib/phoenix_kit_ai/endpoint.ex:629
 #, elixir-autogen, elixir-format
 msgid "Minimal (~10%)"
 msgstr "Minimaalne (~10%)"
@@ -2375,19 +2375,19 @@ msgstr "Minimaalne (~10%)"
 msgid "No API key configured"
 msgstr "API võti on seadistamata"
 
-#: lib/phoenix_kit_ai/endpoint.ex:631
+#: lib/phoenix_kit_ai/endpoint.ex:628
 #, elixir-autogen, elixir-format
 msgid "None (disabled)"
 msgstr "Puudub (välja lülitatud)"
 
+#: lib/phoenix_kit_ai/endpoint.ex:394
 #: lib/phoenix_kit_ai/endpoint.ex:395
-#: lib/phoenix_kit_ai/endpoint.ex:396
-#: lib/phoenix_kit_ai/endpoint.ex:408
+#: lib/phoenix_kit_ai/endpoint.ex:405
 #, elixir-autogen, elixir-format
 msgid "Not set"
 msgstr "Määramata"
 
-#: lib/phoenix_kit_ai/endpoint.ex:590
+#: lib/phoenix_kit_ai/endpoint.ex:587
 #, elixir-autogen, elixir-format
 msgid "Standard"
 msgstr "Standardne"
@@ -2524,7 +2524,7 @@ msgstr "Värskenda katalooge"
 msgid "Some model catalogues could not be read"
 msgstr "Mõnda mudelite kataloogi ei õnnestunud lugeda"
 
-#: lib/phoenix_kit_ai.ex:1210
+#: lib/phoenix_kit_ai.ex:1219
 #: lib/phoenix_kit_ai/web/tasks.ex:66
 #, elixir-autogen, elixir-format
 msgid "Tasks"
@@ -2535,7 +2535,7 @@ msgstr "Ülesanded"
 msgid "The endpoint's model cannot do what this task needs: %{needs}"
 msgstr "Lõpp-punkti mudel ei oska seda, mida ülesanne vajab: %{needs}"
 
-#: lib/phoenix_kit_ai.ex:1241
+#: lib/phoenix_kit_ai.ex:1250
 #, elixir-autogen, elixir-format
 msgid "Translation"
 msgstr "Tõlkimine"
@@ -2577,12 +2577,12 @@ msgstr "Keeldutud"
 msgid "Refused before reaching the provider"
 msgstr "Keeldutud enne pakkujani jõudmist"
 
-#: lib/phoenix_kit_ai.ex:1256
+#: lib/phoenix_kit_ai.ex:1265
 #, elixir-autogen, elixir-format
 msgid "Let an administrator try endpoints and prompts by hand."
 msgstr "Laseb administraatoril lõpp-punkte ja prompte käsitsi proovida."
 
-#: lib/phoenix_kit_ai.ex:1244
+#: lib/phoenix_kit_ai.ex:1253
 #, elixir-autogen, elixir-format
 msgid "Translate the text fields of a record from one language into another, keeping the field structure."
 msgstr "Tõlgib kirje tekstiväljad ühest keelest teise, säilitades väljade struktuuri."
@@ -2713,7 +2713,7 @@ msgstr "Piir peab olema täisarv, raha puhul summa dollarites"
 msgid "A user"
 msgstr "Kasutaja"
 
-#: lib/phoenix_kit_ai.ex:1076
+#: lib/phoenix_kit_ai.ex:1085
 #, elixir-autogen, elixir-format
 msgid "AI task guard"
 msgstr "AI-ülesannete valve"
@@ -2776,7 +2776,7 @@ msgstr "Piirid ja kasutus:"
 msgid "Limits saved"
 msgstr "Piirid on salvestatud"
 
-#: lib/phoenix_kit_ai.ex:1211
+#: lib/phoenix_kit_ai.ex:1220
 #, elixir-autogen, elixir-format
 msgid "Manage the AI task guard"
 msgstr "Halda AI-ülesannete valvet"
@@ -2995,7 +2995,7 @@ msgstr "ühe kasutaja päringud"
 msgid "one user's spending"
 msgstr "ühe kasutaja kulu"
 
-#: lib/phoenix_kit_ai.ex:1778
+#: lib/phoenix_kit_ai.ex:1787
 #, elixir-autogen, elixir-format
 msgid "only a holder of ai.manage may declare capabilities while only verified models are allowed"
 msgstr "kui lubatud on ainult kontrollitud mudelid, saab võimekusi märkida ainult ai.manage õiguse omanik"
@@ -3085,7 +3085,7 @@ msgstr "%{email} on AI-ülesandest %{task} blokeeritud."
 msgid "%{email} is no longer blocked from the AI task %{task}."
 msgstr "%{email} ei ole enam AI-ülesandest %{task} blokeeritud."
 
-#: lib/phoenix_kit_ai.ex:1078
+#: lib/phoenix_kit_ai.ex:1087
 #, elixir-autogen, elixir-format
 msgid "An AI task is near or at a limit, a spending cap refused a call, a task's model no longer fits it, a request was flagged as off-purpose, a task is used unusually, or a person was blocked or unblocked"
 msgstr "AI-ülesanne on piiri lähedal või selleni jõudnud, kulupiir lükkas päringu tagasi, ülesande mudel ei sobi enam, päring märgiti eesmärgiväliseks, ülesannet kasutatakse ebatavaliselt või inimene blokeeriti või blokeering eemaldati"
@@ -3117,7 +3117,7 @@ msgstr "Praegu blokeeritud:"
 msgid "By"
 msgstr "Kes"
 
-#: lib/phoenix_kit_ai.ex:1212
+#: lib/phoenix_kit_ai.ex:1221
 #, elixir-autogen, elixir-format
 msgid "Change the limits of AI tasks, who is told about them and which models may be used; block a person from a task; see why a private task's request was flagged"
 msgstr "Muuta AI-ülesannete piire, kellele neist teatatakse ja milliseid mudeleid tohib kasutada; blokeerida inimene ülesandest; näha, miks privaatse ülesande päring märgiti"
@@ -3544,7 +3544,7 @@ msgstr "„image“ või „imagine“ nimes tähendab tavaliselt, et mudel loob
 msgid "the operator does not report capabilities"
 msgstr "operaator ei teata võimekusi"
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:653
+#: lib/phoenix_kit_ai/web/endpoints.ex:654
 #, elixir-autogen, elixir-format
 msgid "Counted from the price entered by hand on the endpoint"
 msgstr "Arvutatud lõpp-punktis käsitsi sisestatud hinna järgi"
@@ -3571,7 +3571,7 @@ msgstr "Käsitsi sisestatud hind"
 msgid "The provider does not give this model's price, so the cost of its calls is not counted. Enter the price per 1M tokens in dollars and each call's cost is counted from its tokens; a cost the provider reports is used instead."
 msgstr "Teenusepakkuja ei anna selle mudeli hinda, seega selle päringute kulu ei arvestata. Sisestage hind 1M tokeni kohta dollarites ja iga päringu kulu arvutatakse selle tokenite järgi; kui teenusepakkuja ise kulu teatab, kasutatakse seda."
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:655
+#: lib/phoenix_kit_ai/web/endpoints.ex:656
 #, elixir-autogen, elixir-format
 msgid "entered by hand"
 msgstr "sisestatud käsitsi"
@@ -3603,12 +3603,12 @@ msgstr "Puudub"
 msgid "Anthropic: on, the model thinks as it does by default (Claude 5 models think); off, thinking is turned off where the model allows it (not on Claude Opus 5.5 or Fable). Anthropic's OpenAI-compatible API ignores the effort level; a token limit is sent only to a model that takes a thinking budget."
 msgstr "Anthropic: sees — mudel mõtleb nagu vaikimisi (Claude 5 mudelid mõtlevad); väljas — mõtlemine lülitatakse välja, kus mudel seda lubab (mitte Claude Opus 5.5 ega Fable puhul). Anthropicu OpenAI-ühilduv API eirab pingutuse taset; tokenite piir saadetakse ainult mudelile, mis võtab mõtlemise eelarve."
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:665
+#: lib/phoenix_kit_ai/web/endpoints.ex:666
 #, elixir-autogen, elixir-format
 msgid "Counted from the built-in list price, which may be out of date"
 msgstr "Arvutatud sisseehitatud hinnakirja järgi, mis võib olla aegunud"
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:667
+#: lib/phoenix_kit_ai/web/endpoints.ex:668
 #, elixir-autogen, elixir-format
 msgid "list price"
 msgstr "hinnakirja hind"
@@ -3638,7 +3638,7 @@ msgstr "Kataloog annab sellele mudelile hinna, mida kasutatakse esimesena: seda 
 msgid "Setting a price needs the “Manage the AI task guard” permission: it decides what the money limits count."
 msgstr "Hinna määramiseks on vaja õigust „Halda AI-ülesannete valvet“: sellest sõltub, mida rahalised piirangud arvestavad."
 
-#: lib/phoenix_kit_ai.ex:1801
+#: lib/phoenix_kit_ai.ex:1810
 #, elixir-autogen, elixir-format
 msgid "only a holder of ai.manage may set or change a manual price"
 msgstr "käsitsi hinda saab määrata või muuta ainult ai.manage õiguse omaja"
@@ -3699,22 +3699,22 @@ msgstr "Selle ülesande kulupiirang vajab uuendamist, enne kui see saab uuesti t
 msgid "needs to be set again in dollars"
 msgstr "tuleb uuesti dollarites määrata"
 
-#: lib/phoenix_kit_ai.ex:1222
+#: lib/phoenix_kit_ai.ex:1231
 #, elixir-autogen, elixir-format
 msgid "Create, edit, enable, disable, reorder and delete AI endpoints"
 msgstr "AI otspunktide loomine, muutmine, lubamine, keelamine, järjestamine ja kustutamine"
 
-#: lib/phoenix_kit_ai.ex:1221
+#: lib/phoenix_kit_ai.ex:1230
 #, elixir-autogen, elixir-format
 msgid "Manage AI endpoints"
 msgstr "AI otspunktide haldamine"
 
-#: lib/phoenix_kit_ai.ex:1217
+#: lib/phoenix_kit_ai.ex:1226
 #, elixir-autogen, elixir-format
 msgid "Open the Usage tab: every AI request on the site with its prompt and response"
 msgstr "Kasutuse vahekaardi avamine: iga saidi AI päring koos viiba ja vastusega"
 
-#: lib/phoenix_kit_ai.ex:1216
+#: lib/phoenix_kit_ai.ex:1225
 #, elixir-autogen, elixir-format
 msgid "See AI usage"
 msgstr "AI kasutuse vaatamine"
@@ -3724,7 +3724,7 @@ msgstr "AI kasutuse vaatamine"
 msgid "This endpoint still uses an API key stored from before the Integrations system. Add an Integration with this provider's key and pick it above; saving then removes the stored key."
 msgstr "See otspunkt kasutab veel enne integratsioonide süsteemi salvestatud API-võtit. Lisa selle teenusepakkuja võtmega integratsioon ja vali see ülal; salvestamine eemaldab siis salvestatud võtme."
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:775
+#: lib/phoenix_kit_ai/web/endpoints.ex:791
 #, elixir-autogen, elixir-format
 msgid "You don't have permission to do that."
 msgstr "Sul pole selleks õigust."
@@ -3735,7 +3735,7 @@ msgstr "Sul pole selleks õigust."
 msgid "You don't have permission to manage AI endpoints."
 msgstr "Sul pole õigust AI otspunkte hallata."
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:199
+#: lib/phoenix_kit_ai/web/endpoints.ex:786
 #, elixir-autogen, elixir-format
 msgid "You don't have permission to see AI usage."
 msgstr "Sul pole õigust AI kasutust vaadata."

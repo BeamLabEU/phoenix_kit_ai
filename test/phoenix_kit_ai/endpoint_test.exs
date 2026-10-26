@@ -144,10 +144,10 @@ defmodule PhoenixKitAI.EndpointTest do
       assert Endpoint.masked_api_key("") == "Not set"
     end
 
-    test "renders head+tail with an ellipsis for long keys" do
-      # First 8 + ellipsis + last 4 — recognisable provider prefix
-      # (`sk-or-v1`) retained, identifying suffix (`cdef`) retained.
-      assert Endpoint.masked_api_key("sk-or-v1-1234567890abcdef") == "sk-or-v1…cdef"
+    test "renders only the last 4 characters of a long key" do
+      # The endpoint list shows it to every base `ai` holder: the suffix
+      # tells keys apart, the prefix and the rest stay hidden.
+      assert Endpoint.masked_api_key("sk-or-v1-1234567890abcdef") == "•••cdef"
     end
 
     test "fully masks short keys (< 14 chars) to avoid leaking most of the secret" do

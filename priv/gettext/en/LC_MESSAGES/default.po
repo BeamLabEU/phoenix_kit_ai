@@ -485,17 +485,17 @@ msgstr "Enabled"
 msgid "Endpoint"
 msgstr "Endpoint"
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:708
+#: lib/phoenix_kit_ai/web/endpoints.ex:709
 #, elixir-autogen, elixir-format
 msgid "Endpoint deleted"
 msgstr "Endpoint deleted"
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:682
+#: lib/phoenix_kit_ai/web/endpoints.ex:683
 #, elixir-autogen, elixir-format
 msgid "Endpoint disabled"
 msgstr "Endpoint disabled"
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:681
+#: lib/phoenix_kit_ai/web/endpoints.ex:682
 #, elixir-autogen, elixir-format
 msgid "Endpoint enabled"
 msgstr "Endpoint enabled"
@@ -512,8 +512,8 @@ msgstr "Endpoint is disabled"
 
 #: lib/phoenix_kit_ai/errors.ex:36
 #: lib/phoenix_kit_ai/web/endpoint_form.ex:689
-#: lib/phoenix_kit_ai/web/endpoints.ex:693
-#: lib/phoenix_kit_ai/web/endpoints.ex:714
+#: lib/phoenix_kit_ai/web/endpoints.ex:694
+#: lib/phoenix_kit_ai/web/endpoints.ex:715
 #, elixir-autogen, elixir-format
 msgid "Endpoint not found"
 msgstr "Endpoint not found"
@@ -544,7 +544,7 @@ msgstr "Error"
 msgid "Existing translations in every non-primary language will be overwritten on completion."
 msgstr "Existing translations in every non-primary language will be overwritten on completion."
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:717
+#: lib/phoenix_kit_ai/web/endpoints.ex:718
 #, elixir-autogen, elixir-format
 msgid "Failed to delete endpoint"
 msgstr "Failed to delete endpoint"
@@ -554,7 +554,7 @@ msgstr "Failed to delete endpoint"
 msgid "Failed to delete prompt"
 msgstr "Failed to delete prompt"
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:696
+#: lib/phoenix_kit_ai/web/endpoints.ex:697
 #, elixir-autogen, elixir-format
 msgid "Failed to update endpoint"
 msgstr "Failed to update endpoint"
@@ -1381,7 +1381,7 @@ msgstr "Token Limit"
 msgid "Tokens"
 msgstr "Tokens"
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:735
+#: lib/phoenix_kit_ai/web/endpoints.ex:736
 #, elixir-autogen, elixir-format
 msgid "Too many endpoints to reorder at once."
 msgstr "Too many endpoints to reorder at once."
@@ -1499,7 +1499,7 @@ msgstr "Update your AI endpoint configuration"
 msgid "Updating…"
 msgstr "Updating…"
 
-#: lib/phoenix_kit_ai.ex:1209
+#: lib/phoenix_kit_ai.ex:1218
 #: lib/phoenix_kit_ai/web/endpoints.ex:77
 #: lib/phoenix_kit_ai/web/prompts.ex:41
 #, elixir-autogen, elixir-format
@@ -1767,7 +1767,7 @@ msgid_plural "tokens"
 msgstr[0] "token"
 msgstr[1] "tokens"
 
-#: lib/phoenix_kit_ai.ex:1205
+#: lib/phoenix_kit_ai.ex:1214
 #: lib/phoenix_kit_ai/web/endpoint_form.ex:640
 #: lib/phoenix_kit_ai/web/endpoints.ex:110
 #: lib/phoenix_kit_ai/web/playground.ex:53
@@ -1778,21 +1778,21 @@ msgstr[1] "tokens"
 msgid "AI"
 msgstr "AI"
 
-#: lib/phoenix_kit_ai.ex:1206
+#: lib/phoenix_kit_ai.ex:1215
 #: lib/phoenix_kit_ai/web/endpoint_form.ex:776
 #: lib/phoenix_kit_ai/web/endpoints.ex:81
 #, elixir-autogen, elixir-format
 msgid "Endpoints"
 msgstr "Endpoints"
 
-#: lib/phoenix_kit_ai.ex:1208
-#: lib/phoenix_kit_ai.ex:1253
+#: lib/phoenix_kit_ai.ex:1217
+#: lib/phoenix_kit_ai.ex:1262
 #: lib/phoenix_kit_ai/web/playground.ex:56
 #, elixir-autogen, elixir-format
 msgid "Playground"
 msgstr "Playground"
 
-#: lib/phoenix_kit_ai.ex:1207
+#: lib/phoenix_kit_ai.ex:1216
 #: lib/phoenix_kit_ai/web/prompt_form.ex:81
 #: lib/phoenix_kit_ai/web/prompts.ex:65
 #, elixir-autogen, elixir-format
@@ -2309,62 +2309,62 @@ msgstr[1] ""
 msgid "(No content in response)"
 msgstr "(No content in response)"
 
-#: lib/phoenix_kit_ai/endpoint.ex:578
+#: lib/phoenix_kit_ai/endpoint.ex:575
 #, elixir-autogen, elixir-format
 msgid "1024x1024 (Square)"
 msgstr "1024x1024 (Square)"
 
-#: lib/phoenix_kit_ai/endpoint.ex:580
+#: lib/phoenix_kit_ai/endpoint.ex:577
 #, elixir-autogen, elixir-format
 msgid "1024x1792 (Portrait)"
 msgstr "1024x1792 (Portrait)"
 
-#: lib/phoenix_kit_ai/endpoint.ex:604
+#: lib/phoenix_kit_ai/endpoint.ex:601
 #, elixir-autogen, elixir-format
 msgid "16:9 (Landscape)"
 msgstr "16:9 (Landscape)"
 
-#: lib/phoenix_kit_ai/endpoint.ex:579
+#: lib/phoenix_kit_ai/endpoint.ex:576
 #, elixir-autogen, elixir-format
 msgid "1792x1024 (Landscape)"
 msgstr "1792x1024 (Landscape)"
 
-#: lib/phoenix_kit_ai/endpoint.ex:603
+#: lib/phoenix_kit_ai/endpoint.ex:600
 #, elixir-autogen, elixir-format
 msgid "1:1 (Square)"
 msgstr "1:1 (Square)"
 
-#: lib/phoenix_kit_ai/endpoint.ex:605
+#: lib/phoenix_kit_ai/endpoint.ex:602
 #, elixir-autogen, elixir-format
 msgid "9:16 (Portrait)"
 msgstr "9:16 (Portrait)"
 
-#: lib/phoenix_kit_ai/endpoint.ex:636
+#: lib/phoenix_kit_ai/endpoint.ex:633
 #, elixir-autogen, elixir-format
 msgid "Extra High (~95%)"
 msgstr "Extra High (~95%)"
 
-#: lib/phoenix_kit_ai/endpoint.ex:591
+#: lib/phoenix_kit_ai/endpoint.ex:588
 #, elixir-autogen, elixir-format
 msgid "HD"
 msgstr "HD"
 
-#: lib/phoenix_kit_ai/endpoint.ex:635
+#: lib/phoenix_kit_ai/endpoint.ex:632
 #, elixir-autogen, elixir-format
 msgid "High (~80%)"
 msgstr "High (~80%)"
 
-#: lib/phoenix_kit_ai/endpoint.ex:633
+#: lib/phoenix_kit_ai/endpoint.ex:630
 #, elixir-autogen, elixir-format
 msgid "Low (~20%)"
 msgstr "Low (~20%)"
 
-#: lib/phoenix_kit_ai/endpoint.ex:634
+#: lib/phoenix_kit_ai/endpoint.ex:631
 #, elixir-autogen, elixir-format
 msgid "Medium (~50%)"
 msgstr "Medium (~50%)"
 
-#: lib/phoenix_kit_ai/endpoint.ex:632
+#: lib/phoenix_kit_ai/endpoint.ex:629
 #, elixir-autogen, elixir-format
 msgid "Minimal (~10%)"
 msgstr "Minimal (~10%)"
@@ -2375,19 +2375,19 @@ msgstr "Minimal (~10%)"
 msgid "No API key configured"
 msgstr "No API key configured"
 
-#: lib/phoenix_kit_ai/endpoint.ex:631
+#: lib/phoenix_kit_ai/endpoint.ex:628
 #, elixir-autogen, elixir-format
 msgid "None (disabled)"
 msgstr "None (disabled)"
 
+#: lib/phoenix_kit_ai/endpoint.ex:394
 #: lib/phoenix_kit_ai/endpoint.ex:395
-#: lib/phoenix_kit_ai/endpoint.ex:396
-#: lib/phoenix_kit_ai/endpoint.ex:408
+#: lib/phoenix_kit_ai/endpoint.ex:405
 #, elixir-autogen, elixir-format
 msgid "Not set"
 msgstr "Not set"
 
-#: lib/phoenix_kit_ai/endpoint.ex:590
+#: lib/phoenix_kit_ai/endpoint.ex:587
 #, elixir-autogen, elixir-format
 msgid "Standard"
 msgstr "Standard"
@@ -2524,7 +2524,7 @@ msgstr "Refresh catalogues"
 msgid "Some model catalogues could not be read"
 msgstr "Some model catalogues could not be read"
 
-#: lib/phoenix_kit_ai.ex:1210
+#: lib/phoenix_kit_ai.ex:1219
 #: lib/phoenix_kit_ai/web/tasks.ex:66
 #, elixir-autogen, elixir-format
 msgid "Tasks"
@@ -2535,7 +2535,7 @@ msgstr "Tasks"
 msgid "The endpoint's model cannot do what this task needs: %{needs}"
 msgstr "The endpoint's model cannot do what this task needs: %{needs}"
 
-#: lib/phoenix_kit_ai.ex:1241
+#: lib/phoenix_kit_ai.ex:1250
 #, elixir-autogen, elixir-format
 msgid "Translation"
 msgstr "Translation"
@@ -2577,12 +2577,12 @@ msgstr "Refused"
 msgid "Refused before reaching the provider"
 msgstr "Refused before reaching the provider"
 
-#: lib/phoenix_kit_ai.ex:1256
+#: lib/phoenix_kit_ai.ex:1265
 #, elixir-autogen, elixir-format
 msgid "Let an administrator try endpoints and prompts by hand."
 msgstr "Let an administrator try endpoints and prompts by hand."
 
-#: lib/phoenix_kit_ai.ex:1244
+#: lib/phoenix_kit_ai.ex:1253
 #, elixir-autogen, elixir-format
 msgid "Translate the text fields of a record from one language into another, keeping the field structure."
 msgstr "Translate the text fields of a record from one language into another, keeping the field structure."
@@ -2713,7 +2713,7 @@ msgstr "A limit must be a whole number, or dollars for money"
 msgid "A user"
 msgstr "A user"
 
-#: lib/phoenix_kit_ai.ex:1076
+#: lib/phoenix_kit_ai.ex:1085
 #, elixir-autogen, elixir-format
 msgid "AI task guard"
 msgstr "AI task guard"
@@ -2776,7 +2776,7 @@ msgstr "Limits and use:"
 msgid "Limits saved"
 msgstr "Limits saved"
 
-#: lib/phoenix_kit_ai.ex:1211
+#: lib/phoenix_kit_ai.ex:1220
 #, elixir-autogen, elixir-format
 msgid "Manage the AI task guard"
 msgstr "Manage the AI task guard"
@@ -2995,7 +2995,7 @@ msgstr "one user's calls"
 msgid "one user's spending"
 msgstr "one user's spending"
 
-#: lib/phoenix_kit_ai.ex:1778
+#: lib/phoenix_kit_ai.ex:1787
 #, elixir-autogen, elixir-format
 msgid "only a holder of ai.manage may declare capabilities while only verified models are allowed"
 msgstr "only a holder of ai.manage may declare capabilities while only verified models are allowed"
@@ -3085,7 +3085,7 @@ msgstr "%{email} is blocked from the AI task %{task}."
 msgid "%{email} is no longer blocked from the AI task %{task}."
 msgstr "%{email} is no longer blocked from the AI task %{task}."
 
-#: lib/phoenix_kit_ai.ex:1078
+#: lib/phoenix_kit_ai.ex:1087
 #, elixir-autogen, elixir-format
 msgid "An AI task is near or at a limit, a spending cap refused a call, a task's model no longer fits it, a request was flagged as off-purpose, a task is used unusually, or a person was blocked or unblocked"
 msgstr "An AI task is near or at a limit, a spending cap refused a call, a task's model no longer fits it, a request was flagged as off-purpose, a task is used unusually, or a person was blocked or unblocked"
@@ -3117,7 +3117,7 @@ msgstr "Blocked now:"
 msgid "By"
 msgstr "By"
 
-#: lib/phoenix_kit_ai.ex:1212
+#: lib/phoenix_kit_ai.ex:1221
 #, elixir-autogen, elixir-format
 msgid "Change the limits of AI tasks, who is told about them and which models may be used; block a person from a task; see why a private task's request was flagged"
 msgstr "Change the limits of AI tasks, who is told about them and which models may be used; block a person from a task; see why a private task's request was flagged"
@@ -3544,7 +3544,7 @@ msgstr "“image” or “imagine” in a name usually means the model generates
 msgid "the operator does not report capabilities"
 msgstr "the operator does not report capabilities"
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:653
+#: lib/phoenix_kit_ai/web/endpoints.ex:654
 #, elixir-autogen, elixir-format
 msgid "Counted from the price entered by hand on the endpoint"
 msgstr "Counted from the price entered by hand on the endpoint"
@@ -3571,7 +3571,7 @@ msgstr "Price entered by hand"
 msgid "The provider does not give this model's price, so the cost of its calls is not counted. Enter the price per 1M tokens in dollars and each call's cost is counted from its tokens; a cost the provider reports is used instead."
 msgstr "The provider does not give this model's price, so the cost of its calls is not counted. Enter the price per 1M tokens in dollars and each call's cost is counted from its tokens; a cost the provider reports is used instead."
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:655
+#: lib/phoenix_kit_ai/web/endpoints.ex:656
 #, elixir-autogen, elixir-format
 msgid "entered by hand"
 msgstr "entered by hand"
@@ -3603,12 +3603,12 @@ msgstr "Missing"
 msgid "Anthropic: on, the model thinks as it does by default (Claude 5 models think); off, thinking is turned off where the model allows it (not on Claude Opus 5.5 or Fable). Anthropic's OpenAI-compatible API ignores the effort level; a token limit is sent only to a model that takes a thinking budget."
 msgstr "Anthropic: on, the model thinks as it does by default (Claude 5 models think); off, thinking is turned off where the model allows it (not on Claude Opus 5.5 or Fable). Anthropic's OpenAI-compatible API ignores the effort level; a token limit is sent only to a model that takes a thinking budget."
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:665
+#: lib/phoenix_kit_ai/web/endpoints.ex:666
 #, elixir-autogen, elixir-format
 msgid "Counted from the built-in list price, which may be out of date"
 msgstr "Counted from the built-in list price, which may be out of date"
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:667
+#: lib/phoenix_kit_ai/web/endpoints.ex:668
 #, elixir-autogen, elixir-format
 msgid "list price"
 msgstr "list price"
@@ -3638,7 +3638,7 @@ msgstr "The catalogue gives this model a price, which is used first: this price 
 msgid "Setting a price needs the “Manage the AI task guard” permission: it decides what the money limits count."
 msgstr "Setting a price needs the “Manage the AI task guard” permission: it decides what the money limits count."
 
-#: lib/phoenix_kit_ai.ex:1801
+#: lib/phoenix_kit_ai.ex:1810
 #, elixir-autogen, elixir-format
 msgid "only a holder of ai.manage may set or change a manual price"
 msgstr "only a holder of ai.manage may set or change a manual price"
@@ -3699,22 +3699,22 @@ msgstr ""
 msgid "needs to be set again in dollars"
 msgstr ""
 
-#: lib/phoenix_kit_ai.ex:1222
+#: lib/phoenix_kit_ai.ex:1231
 #, elixir-autogen, elixir-format
 msgid "Create, edit, enable, disable, reorder and delete AI endpoints"
 msgstr ""
 
-#: lib/phoenix_kit_ai.ex:1221
+#: lib/phoenix_kit_ai.ex:1230
 #, elixir-autogen, elixir-format
 msgid "Manage AI endpoints"
 msgstr ""
 
-#: lib/phoenix_kit_ai.ex:1217
+#: lib/phoenix_kit_ai.ex:1226
 #, elixir-autogen, elixir-format
 msgid "Open the Usage tab: every AI request on the site with its prompt and response"
 msgstr ""
 
-#: lib/phoenix_kit_ai.ex:1216
+#: lib/phoenix_kit_ai.ex:1225
 #, elixir-autogen, elixir-format
 msgid "See AI usage"
 msgstr ""
@@ -3724,7 +3724,7 @@ msgstr ""
 msgid "This endpoint still uses an API key stored from before the Integrations system. Add an Integration with this provider's key and pick it above; saving then removes the stored key."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:775
+#: lib/phoenix_kit_ai/web/endpoints.ex:791
 #, elixir-autogen, elixir-format
 msgid "You don't have permission to do that."
 msgstr ""
@@ -3735,7 +3735,7 @@ msgstr ""
 msgid "You don't have permission to manage AI endpoints."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:199
+#: lib/phoenix_kit_ai/web/endpoints.ex:786
 #, elixir-autogen, elixir-format
 msgid "You don't have permission to see AI usage."
 msgstr ""

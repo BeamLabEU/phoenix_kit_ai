@@ -414,7 +414,9 @@ event that reads or writes what they gate: the tabs declare `path:`, so
 core's route gate admits any `ai` holder and the tab `permission:` only
 hides the sidebar entry. `migrate_legacy/0` grants each once to every role
 that held `ai` (flags `ai_view_usage_backfilled`,
-`ai_manage_endpoints_backfilled`, set only after every grant succeeded).
+`ai_manage_endpoints_backfilled`, set only after every grant succeeded; the
+roles' keys are read with the module's own query, which raises, because
+core's `get_permissions_for_role/1` reads a failed lookup as "no keys").
 `"ai.manage"`: changing the task guard (limits, personal limits, forgiving,
 watchers, "only verified models", declaring capabilities while that is on,
 a task's self-flag mode, blocking and lifting), and seeing the reasons of a private task's flags and
@@ -484,7 +486,8 @@ provided the API exposes `<base_url>/chat/completions` and `/models`.
   embeddings together, and its `/audio/voices` feeds the TTS voice picker.
 - Endpoint cards show an enabled badge, an integration-health badge
   (missing/error/not-connected), and a masked key via
-  `Endpoint.masked_api_key/1`. A stored key is never rendered in clear,
+  `Endpoint.masked_api_key/1` (the last 4 characters only — every base
+  `ai` holder sees the list). A stored key is never rendered in clear,
   the legacy `api_key` notice on the form included — it shows the masked
   form and asks for an Integration instead. `integrations_by_uuid` is loaded once per render
   to avoid an N+1.

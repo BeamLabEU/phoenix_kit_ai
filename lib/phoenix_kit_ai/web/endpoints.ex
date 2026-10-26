@@ -182,6 +182,7 @@ defmodule PhoenixKitAI.Web.Endpoints do
       # Re-read on every patch, not only at mount: core refreshes the scope
       # live, and the filters and sorting of the Usage tab are patches.
       can_view_usage = Access.can?(socket, @view_usage)
+      socket = assign(socket, :can_view_usage, can_view_usage)
 
       socket =
         case tab do
@@ -195,9 +196,7 @@ defmodule PhoenixKitAI.Web.Endpoints do
             |> maybe_reload_endpoints(tab)
 
           "usage" when not can_view_usage ->
-            socket
-            |> put_flash(:error, gettext("You don't have permission to see AI usage."))
-            |> push_navigate(to: PhoenixKitAI.Routes.ai_path() <> "/endpoints")
+            leave_usage(socket)
 
           "usage" ->
             {sort_by, sort_dir, filters} = parse_usage_params(params)
@@ -472,16 +471,18 @@ defmodule PhoenixKitAI.Web.Endpoints do
   def handle_info(:refresh_usage, socket) do
     socket = assign(socket, :usage_refresh_timer, nil)
 
-    socket =
-      if socket.assigns.active_tab == "usage" do
-        socket
-        |> reload_usage_requests()
-        |> update_usage_stats()
-      else
-        socket
-      end
+    cond do
+      socket.assigns.active_tab != "usage" ->
+        {:noreply, socket}
 
-    {:noreply, socket}
+      # The live scope lost ai.view_usage while the tab was open: stop
+      # showing requests at once and leave the tab, rather than reload.
+      not Access.can?(socket, @view_usage) ->
+        {:noreply, leave_usage(socket)}
+
+      true ->
+        {:noreply, socket |> reload_usage_requests() |> update_usage_stats()}
+    end
   end
 
   # Catch-all for unmatched messages (PubSub from other modules, late
@@ -769,6 +770,21 @@ defmodule PhoenixKitAI.Web.Endpoints do
     request = Enum.find(socket.assigns.usage_requests, fn r -> to_string(r.uuid) == uuid end)
 
     {:noreply, assign(socket, :selected_request, request)}
+  end
+
+  # Drops every loaded request (the template renders the tab only while
+  # `@can_view_usage` holds) and goes to the endpoint list.
+  defp leave_usage(socket) do
+    socket
+    |> assign(
+      can_view_usage: false,
+      usage_requests: [],
+      usage_stats: nil,
+      selected_request: nil,
+      usage_loaded: false
+    )
+    |> put_flash(:error, gettext("You don't have permission to see AI usage."))
+    |> push_navigate(to: PhoenixKitAI.Routes.ai_path() <> "/endpoints")
   end
 
   defp deny(socket),

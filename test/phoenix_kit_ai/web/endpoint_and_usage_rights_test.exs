@@ -48,9 +48,18 @@ defmodule PhoenixKitAI.Web.EndpointAndUsageRightsTest do
   end
 
   describe "the Usage tab" do
-    test "the tab carries ai.view_usage" do
+    test "the tab carries ai.view_usage, and the page refuses every other key set",
+         %{conn: conn} do
       tab = Enum.find(PhoenixKitAI.admin_tabs(), &(&1.id == :admin_ai_usage))
       assert tab.permission == "ai.view_usage"
+
+      # Every AI key but the one: the page itself must refuse, not the tab.
+      others = ["ai", "ai.manage", "ai.manage_endpoints"]
+
+      assert {:error, {:live_redirect, %{flash: %{"error" => error}}}} =
+               live(as(conn, others), "/en/admin/ai/usage")
+
+      assert error =~ "permission"
     end
 
     test "the base key alone is refused", %{conn: conn} do
@@ -68,6 +77,20 @@ defmodule PhoenixKitAI.Web.EndpointAndUsageRightsTest do
 
       {:ok, _view, html} = live(as(conn, ["ai", "ai.view_usage"]), "/en/admin/ai/usage")
       assert html =~ "secret-model"
+    end
+
+    test "a revoked key stops the live reload and leaves the tab", %{conn: conn} do
+      request_fixture(fixture_endpoint())
+
+      {:ok, view, html} = live(as(conn, ["ai", "ai.view_usage"]), "/en/admin/ai/usage")
+      assert html =~ "secret-model"
+
+      swap_scope(view, scope_with(["ai"]))
+      send(view.pid, :refresh_usage)
+
+      assert {path, flash} = assert_redirect(view)
+      assert path =~ "/admin/ai/endpoints"
+      assert flash["error"] =~ "permission"
     end
 
     test "loading and opening requests re-check the key", %{conn: conn} do
@@ -158,6 +181,25 @@ defmodule PhoenixKitAI.Web.EndpointAndUsageRightsTest do
     end
   end
 
+  describe "the integration key on the endpoint list" do
+    test "shows a base ai holder at most its last 4 characters", %{conn: conn} do
+      key = "sk-or-v1-verysecretmiddle-WXYZ"
+
+      %{uuid: integration_uuid} =
+        seed_openrouter_connection("mask-#{System.unique_integer([:positive])}",
+          data: %{"api_key" => key}
+        )
+
+      fixture_endpoint(integration_uuid: integration_uuid)
+
+      {:ok, _view, html} = live(as(conn, ["ai"]), "/en/admin/ai/endpoints")
+
+      assert html =~ "•••WXYZ"
+      refute html =~ "sk-or-v1"
+      refute html =~ "verysecret"
+    end
+  end
+
   describe "the legacy API key" do
     test "is shown masked, never in clear", %{conn: conn} do
       key = "sk-or-v1-abcdefghijklmnopqrstuvwxyz-1234"
@@ -210,6 +252,22 @@ defmodule PhoenixKitAI.Web.EndpointAndUsageRightsTest do
       refute "ai.view_usage" in Permissions.get_permissions_for_role(holder.uuid)
     end
 
+    test "a failed permission lookup leaves the flag unset and grants nothing" do
+      clear_flags()
+      holder = role!("Support")
+      {:ok, _} = Permissions.grant_permission(holder.uuid, "ai", nil)
+
+      broken_lookup = fn -> raise DBConnection.ConnectionError, "lookup failed" end
+
+      assert {:error, {"ai.view_usage", %DBConnection.ConnectionError{}}} =
+               PhoenixKitAI.backfill_sub_permission("ai.view_usage", @usage_flag,
+                 role_grants: broken_lookup
+               )
+
+      assert Settings.get_setting(@usage_flag) != "true"
+      refute "ai.view_usage" in Permissions.get_permissions_for_role(holder.uuid)
+    end
+
     test "a failed grant leaves the flag unset, so the next boot retries" do
       clear_flags()
       holder = role!("Support")
@@ -218,7 +276,7 @@ defmodule PhoenixKitAI.Web.EndpointAndUsageRightsTest do
       failing = fn _role, _key, _by -> {:error, :boom} end
 
       assert {:error, {"ai.view_usage", failures}} =
-               PhoenixKitAI.backfill_sub_permission("ai.view_usage", @usage_flag, failing)
+               PhoenixKitAI.backfill_sub_permission("ai.view_usage", @usage_flag, grant: failing)
 
       assert {holder.uuid, {:error, :boom}} in failures
 

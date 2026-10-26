@@ -117,7 +117,7 @@ defmodule PhoenixKitAI do
   alias PhoenixKit.PubSub.Manager, as: PubSub
   alias PhoenixKit.Settings
   alias PhoenixKit.Settings.Queries, as: SettingsQueries
-  alias PhoenixKit.Users.{Permissions, Roles}
+  alias PhoenixKit.Users.Permissions
   alias PhoenixKit.Utils.Date, as: UtilsDate
   alias PhoenixKit.Utils.Reorder
   alias PhoenixKit.Utils.UUID, as: UUIDUtils
@@ -818,38 +818,48 @@ defmodule PhoenixKitAI do
   end
 
   @doc false
-  # The grant function is a parameter only so a test can make a grant fail
-  # and prove the flag then stays unset; production always passes core's.
-  @spec backfill_sub_permission(String.t(), String.t(), function()) :: :ok | {:error, term()}
-  def backfill_sub_permission(
-        key,
-        flag,
-        grant \\ &Permissions.grant_permission/3
-      ) do
+  # `:grant` and `:role_grants` are options only so a test can make a grant
+  # or the lookup fail and prove the flag then stays unset; production always
+  # uses core's grant and `role_grants/0`.
+  @spec backfill_sub_permission(String.t(), String.t(), keyword()) :: :ok | {:error, term()}
+  def backfill_sub_permission(key, flag, opts \\ []) do
+    grant = Keyword.get(opts, :grant, &Permissions.grant_permission/3)
+    role_grants = Keyword.get(opts, :role_grants, &role_grants/0)
+
     failures =
-      for role <- Roles.list_roles(),
-          granted = Permissions.get_permissions_for_role(role.uuid),
+      for {role_uuid, granted} <- role_grants.(),
           module_key() in granted,
           key not in granted,
-          result = grant.(role.uuid, key, nil),
+          result = grant.(role_uuid, key, nil),
           not match?({:ok, _}, result) do
-        {role.uuid, result}
+        {role_uuid, result}
       end
 
-    if failures == [] do
-      Settings.update_setting_with_module(flag, "true", module_key())
+    with [] <- failures,
+         {:ok, _} <- Settings.update_setting_with_module(flag, "true", module_key()) do
       :ok
     else
-      Logger.warning(
-        "[PhoenixKitAI] #{key} backfill incomplete, will retry next boot: #{inspect(failures)}"
-      )
+      failed ->
+        Logger.warning(
+          "[PhoenixKitAI] #{key} backfill incomplete, will retry next boot: #{inspect(failed)}"
+        )
 
-      {:error, {key, failures}}
+        {:error, {key, failed}}
     end
   rescue
     e ->
       Logger.warning("[PhoenixKitAI] #{key} backfill failed: #{Exception.message(e)}")
       {:error, {key, e}}
+  end
+
+  # Every role's granted keys, read with a query that RAISES on failure.
+  # Core's `Permissions.get_permissions_for_role/1` rescues a query error to
+  # `[]`, which would read as "this role has no `ai`" and let the flag be set
+  # for good with the role never granted the sub-key.
+  defp role_grants do
+    from(rp in PhoenixKit.Users.RolePermission, select: {rp.role_uuid, rp.module_key})
+    |> PhoenixKit.RepoHelper.repo().all()
+    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
   end
 
   defp sweep_provider_string_to_integration_uuid do

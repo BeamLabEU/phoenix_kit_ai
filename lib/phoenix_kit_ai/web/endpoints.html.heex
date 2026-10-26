@@ -410,7 +410,7 @@
       <% end %>
     <% end %>
 
-    <%= if @active_tab == "usage" do %>
+    <%= if @active_tab == "usage" and @can_view_usage do %>
       <%!-- Usage Statistics --%>
       <%= if @usage_loaded do %>
         <%!-- Usage Stats --%>
