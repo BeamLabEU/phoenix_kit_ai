@@ -20,8 +20,11 @@ defmodule PhoenixKitAI.Tasks do
   (`provider?/1`). A listed provider that cannot be loaded or exports no
   `ai_tasks/0` is warned about; a bad config entry is ignored with a
   warning. A change to the registered modules or to the provider list
-  rebuilds the registry. Builds are serialized on the node; a module whose
-  `ai_tasks/0` fails keeps the tasks it last declared until it answers.
+  rebuilds the registry. No lock is held while `ai_tasks/0` runs: builds may
+  run at once, and a failed build never replaces a good one stored for the
+  same lists meanwhile; an `ai_tasks/0` that calls back into this module gets
+  the last cached registry. A module whose `ai_tasks/0` fails keeps the tasks
+  it last declared until it answers.
 
   Two declarations of one key: the first wins (kit modules before
   providers, providers in config order), with a warning naming both; the
@@ -147,16 +150,42 @@ defmodule PhoenixKitAI.Tasks do
   # change to either rebuilds; the config is validated (and warned about)
   # only while building, never per lookup.
   #
-  # Reads are lock-free. Builds are serialized on this node, and the cache
-  # is read again once the lock is held, so a second process that needed a
-  # build uses the first one's result instead of building (and putting) its
-  # own — a slow build that fails can never overwrite a newer good one.
+  # No lock is ever held while a module's `ai_tasks/0` runs (a hanging or
+  # re-entrant callback must block only its own caller): two processes may
+  # build at once, which costs duplicate work and a duplicate warning on a
+  # cold start. What must not happen is a slow FAILED build overwriting a
+  # good one, so `rebuild/1` re-reads the cache before putting. An
+  # `ai_tasks/0` that calls back into this module while it is being built
+  # gets the last cached registry (or an empty one) instead of a nested
+  # build.
+  @building {__MODULE__, :building}
+
   defp state do
     key = cache_key()
 
     case current(key) do
-      {:ok, state} -> state
-      :rebuild -> locked_rebuild()
+      {:ok, state} ->
+        state
+
+      :rebuild ->
+        if Process.get(@building), do: last_cached(), else: guarded_rebuild(key)
+    end
+  end
+
+  defp guarded_rebuild(key) do
+    Process.put(@building, true)
+
+    try do
+      rebuild(key)
+    after
+      Process.delete(@building)
+    end
+  end
+
+  defp last_cached do
+    case :persistent_term.get(@registry_key, nil) do
+      {_key, state, _failed_at} -> state
+      _ -> %{specs: %{}, collisions: [], providers: MapSet.new(), declared: %{}}
     end
   end
 
@@ -176,21 +205,6 @@ defmodule PhoenixKitAI.Tasks do
     end
   end
 
-  defp locked_rebuild do
-    :global.trans(
-      {@registry_key, self()},
-      fn ->
-        key = cache_key()
-
-        case current(key) do
-          {:ok, state} -> state
-          :rebuild -> rebuild(key)
-        end
-      end,
-      [node()]
-    )
-  end
-
   defp rebuild({modules, raw_providers} = key) do
     # A module listed both ways is a kit module: its switch, asked once.
     providers = configured_providers(raw_providers) -- modules
@@ -208,8 +222,20 @@ defmodule PhoenixKitAI.Tasks do
         now()
       end
 
-    :persistent_term.put(@registry_key, {key, state, failed_at})
-    state
+    store(key, state, failed_at)
+  end
+
+  # A failed build never replaces a successful one stored for the same key
+  # meanwhile (by a concurrent caller): that one is used instead.
+  defp store(key, state, failed_at) do
+    case {failed_at, :persistent_term.get(@registry_key, nil)} do
+      {failed_at, {^key, good, nil}} when not is_nil(failed_at) ->
+        good
+
+      _ ->
+        :persistent_term.put(@registry_key, {key, state, failed_at})
+        state
+    end
   end
 
   # What each module answered the last time its `ai_tasks/0` worked, from

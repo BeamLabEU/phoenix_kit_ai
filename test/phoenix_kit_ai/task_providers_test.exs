@@ -61,12 +61,34 @@ defmodule PhoenixKitAI.TaskProvidersTest do
     @moduledoc false
     alias PhoenixKitAI.TaskSpec
 
-    # Tells the test who is asking, then waits for its go-ahead.
+    # Tells the test who is asking, then answers or raises on its word.
     def ai_tasks do
       send(Application.fetch_env!(:phoenix_kit_ai, :blocking_provider_test), {:called, self()})
 
       receive do
-        :go -> [%TaskSpec{key: "myapp.slow", label: "Slow"}]
+        {:go, :ok} -> [%TaskSpec{key: "myapp.slow", label: "Slow"}]
+        {:go, :raise} -> raise "slow failure"
+      end
+    end
+  end
+
+  defmodule ReentrantProvider do
+    @moduledoc false
+    alias PhoenixKitAI.TaskSpec
+
+    # Calls back into the registry while it is being built.
+    def ai_tasks do
+      send(Application.fetch_env!(:phoenix_kit_ai, :blocking_provider_test), {:called, self()})
+      _ = PhoenixKitAI.Tasks.list()
+      [%TaskSpec{key: "myapp.reentrant", label: "Re-entrant"}]
+    end
+  end
+
+  defmodule HangingProvider do
+    @moduledoc false
+    def ai_tasks do
+      receive do
+        :never -> []
       end
     end
   end
@@ -173,25 +195,52 @@ defmodule PhoenixKitAI.TaskProvidersTest do
       assert %{key: "test.photo", kept: FakeAITasks, dropped: AppTasks} in Tasks.collisions()
     end
 
-    test "concurrent builds are serialized: a waiting caller uses the first build" do
+    test "a slow failing build finishing after a good one does not overwrite it" do
       Application.put_env(:phoenix_kit_ai, :blocking_provider_test, self())
       on_exit(fn -> Application.delete_env(:phoenix_kit_ai, :blocking_provider_test) end)
+      :persistent_term.erase({Tasks, :registry})
       providers([BlockingProvider])
 
-      first = Task.async(fn -> Tasks.get("myapp.slow") end)
-      assert_receive {:called, builder}, 1_000
+      slow = Task.async(fn -> Tasks.get("myapp.slow") end)
+      assert_receive {:called, slow_builder}, 1_000
 
-      second = Task.async(fn -> Tasks.get("myapp.slow") end)
-      # The second caller waits for the lock instead of building its own.
-      refute_receive {:called, _}, 200
+      quick = Task.async(fn -> Tasks.get("myapp.slow") end)
+      assert_receive {:called, quick_builder}, 1_000
 
-      send(builder, :go)
-      assert %TaskSpec{module: BlockingProvider} = Task.await(first)
-      assert %TaskSpec{module: BlockingProvider} = Task.await(second)
+      send(quick_builder, {:go, :ok})
+      assert %TaskSpec{} = Task.await(quick)
+
+      send(slow_builder, {:go, :raise})
+      capture_log(fn -> Task.await(slow) end)
+
+      assert %TaskSpec{module: BlockingProvider} = Tasks.get("myapp.slow")
+    end
+
+    test "a re-entrant ai_tasks/0 neither deadlocks nor recurses" do
+      Application.put_env(:phoenix_kit_ai, :blocking_provider_test, self())
+      on_exit(fn -> Application.delete_env(:phoenix_kit_ai, :blocking_provider_test) end)
+      providers([ReentrantProvider])
+
+      task = Task.async(fn -> Tasks.get("myapp.reentrant") end)
+
+      assert {:ok, %TaskSpec{module: ReentrantProvider}} = Task.yield(task, 2_000)
+      assert_received {:called, _}
       refute_received {:called, _}
     end
 
-    test "overview/0 reads one snapshot of tasks, providers and collisions" do
+    test "a hanging provider blocks only its caller; removed, others build fine" do
+      providers([HangingProvider])
+      hung = Task.async(fn -> Tasks.list() end)
+      refute Task.yield(hung, 200)
+
+      providers([AppTasks])
+      other = Task.async(fn -> Tasks.get("myapp.photo_fix") end)
+
+      assert {:ok, %TaskSpec{module: AppTasks}} = Task.yield(other, 2_000)
+      Task.shutdown(hung, :brutal_kill)
+    end
+
+    test "overview/0 returns the tasks, the providers and the collisions" do
       providers([AppTasks])
 
       assert %{tasks: tasks, providers: providers, collisions: collisions} = Tasks.overview()
