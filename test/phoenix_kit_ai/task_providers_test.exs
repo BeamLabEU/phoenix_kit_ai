@@ -108,6 +108,27 @@ defmodule PhoenixKitAI.TaskProvidersTest do
     end
   end
 
+  defmodule NotifyingHangingProvider do
+    @moduledoc false
+    def ai_tasks do
+      send(Application.fetch_env!(:phoenix_kit_ai, :blocking_provider_test), {:called, self()})
+
+      receive do
+        :never -> []
+      end
+    end
+  end
+
+  defmodule QuickProvider do
+    @moduledoc false
+    alias PhoenixKitAI.TaskSpec
+
+    def ai_tasks do
+      Process.sleep(1)
+      [%TaskSpec{key: "myapp.quick", label: "Quick"}]
+    end
+  end
+
   defmodule HangingProvider do
     @moduledoc false
     def ai_tasks do
@@ -411,6 +432,60 @@ defmodule PhoenixKitAI.TaskProvidersTest do
         end)
 
       assert log =~ "did not answer within 300 ms"
+    end
+
+    test "a callback dies with its inline caller" do
+      providers([NotifyingHangingProvider])
+      caller = spawn(fn -> Tasks.list() end)
+      assert_receive {:called, callback}, 1_000
+      ref = Process.monitor(callback)
+
+      Process.exit(caller, :kill)
+      assert_receive {:DOWN, ^ref, :process, ^callback, _}, 1_000
+    end
+
+    test "late replies never land in the caller's mailbox" do
+      Application.put_env(:phoenix_kit_ai, :task_registry_callback_timeout_ms, 1)
+      providers([QuickProvider])
+
+      leftovers =
+        Task.async(fn ->
+          capture_log(fn -> for _ <- 1..500, do: Tasks.list() end)
+          Process.sleep(50)
+          Process.info(self(), :messages)
+        end)
+        |> Task.await(30_000)
+
+      assert leftovers == {:messages, []}
+    end
+
+    test "an unrelated task of the inline builder's caller reads normally" do
+      providers([BlockingProvider])
+      test = self()
+
+      parent =
+        Task.async(fn ->
+          sibling =
+            Task.async(fn ->
+              receive do
+                :go_sibling -> Tasks.get("test.photo")
+              end
+            end)
+
+          send(test, {:sibling, sibling.pid})
+          {Tasks.get("myapp.slow"), Task.await(sibling, 5_000)}
+        end)
+
+      assert_receive {:sibling, sibling}, 1_000
+      assert_receive {:called, parent_cb}, 1_000
+
+      send(sibling, :go_sibling)
+      # The sibling builds for itself instead of being treated as re-entry.
+      assert_receive {:called, sibling_cb}, 1_000
+      send(sibling_cb, {:go, :ok})
+      send(parent_cb, {:go, :ok})
+
+      assert {%TaskSpec{}, %TaskSpec{key: "test.photo"}} = Task.await(parent, 5_000)
     end
 
     test "re-entry from an inline build's Task.async child does not build again" do

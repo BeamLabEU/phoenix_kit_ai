@@ -767,12 +767,15 @@ Test database `phoenix_kit_ai_test`.
   Each `ai_tasks/0` runs in its own UNLINKED process
   (`spawn_monitor`) bounded by `:task_registry_callback_timeout_ms`
   (default 5 s): a crash, a crashing linked child or a timeout is that
-  module's failure and never reaches the builder. A call from inside a
-  build (the builder, a callback or anything it starts, by `$callers`)
-  answers from the last cached registry. Without the builder (a host not
+  module's failure and never reaches the builder. Its reply goes to a
+  process alias dropped when the wait ends (no stray late message), and a
+  watchdog kills it at its deadline or when its caller dies. A call from
+  inside a build (the builder, a process mid-inline-build, a callback, or
+  anything a callback starts — callback processes are marked, found
+  through `$callers`) answers from the last cached registry; an unrelated
+  task of the builder's caller reads normally. Without the builder (a host not
   starting the kit's children) a caller builds a state for itself only —
-  never cached, same runner and timeout; re-entry from it is recognised by
-  a process-dictionary mark on the inline builder. The test helper starts
+  never cached, same runner and timeout. The test helper starts
   the builder (unlinked), so tests see caching as a host does. Read one snapshot per lookup (`Tasks.overview/0` for a page).
   An improper `task_providers` list is bad config (warned, its proper part
   used). `enabled` is display only —

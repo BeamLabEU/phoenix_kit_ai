@@ -166,6 +166,7 @@ defmodule PhoenixKitAI.Tasks do
   # same unlinked, time-bounded callback runner; a call from inside that
   # build (the caller or any `$callers` descendant) answers from the cache.
   @building {__MODULE__, :building}
+  @callback_mark {__MODULE__, :callback}
   @callback_timeout 5_000
   @ensure_timeout 30_000
 
@@ -182,7 +183,7 @@ defmodule PhoenixKitAI.Tasks do
     builder = Process.whereis(PhoenixKitAI.Tasks.Builder)
 
     cond do
-      is_pid(builder) and inside_build?(builder) ->
+      reentry?(builder) ->
         last_cached()
 
       is_pid(builder) ->
@@ -192,31 +193,29 @@ defmodule PhoenixKitAI.Tasks do
           :exit, _ -> last_cached()
         end
 
-      inside_inline_build?() ->
-        last_cached()
-
       true ->
         inline_build()
     end
   end
 
-  defp inside_build?(builder),
-    do: builder == self() or builder in List.wrap(Process.get(:"$callers"))
-
-  # The caller, or a process it started (by `$callers`), is building inline.
-  defp inside_inline_build? do
-    Process.get(@building) == true or
-      Enum.any?(List.wrap(Process.get(:"$callers")), &inline_builder?/1)
+  # A call from inside a build: the builder itself, this process mid-inline
+  # build, a callback process, or anything a callback started (a `$callers`
+  # ancestor is a callback). Only CALLBACK processes are marked, so an
+  # unrelated task the builder's caller started earlier reads normally.
+  defp reentry?(builder) do
+    (is_pid(builder) and builder == self()) or Process.get(@building) == true or
+      Process.get(@callback_mark) == true or
+      Enum.any?(List.wrap(Process.get(:"$callers")), &callback_process?/1)
   end
 
-  defp inline_builder?(pid) when is_pid(pid) do
+  defp callback_process?(pid) when is_pid(pid) do
     case Process.info(pid, :dictionary) do
-      {:dictionary, dict} -> List.keyfind(dict, @building, 0) == {@building, true}
+      {:dictionary, dict} -> List.keyfind(dict, @callback_mark, 0) == {@callback_mark, true}
       _ -> false
     end
   end
 
-  defp inline_builder?(_other), do: false
+  defp callback_process?(_other), do: false
 
   @doc false
   # Run by `PhoenixKitAI.Tasks.Builder`, the one writer: the current key's
@@ -251,39 +250,68 @@ defmodule PhoenixKitAI.Tasks do
   # One module's callback in its own UNLINKED process, bounded by the
   # callback timeout: a crash (its own or a linked child's) or a timeout is
   # that module's failure (carry-forward, retry) and never reaches the
-  # caller. `$callers` is passed on so a call back into this module from
-  # the callback, or from anything it starts, is recognised as re-entry.
+  # caller. The reply goes to a process alias, dropped once the caller
+  # stops waiting, so a late answer never lands in anyone's mailbox. A
+  # watchdog kills the callback when its deadline passes or its caller dies,
+  # so it never outlives either. `$callers` is passed on and the process is
+  # marked, so a call back into this module from it (or anything it
+  # starts) is recognised as re-entry.
   defp isolated(fun) do
     parent = self()
-    ref = make_ref()
+    reply_to = Process.alias()
     callers = [parent | List.wrap(Process.get(:"$callers"))]
+    timeout = callback_timeout()
 
     {pid, monitor} =
       spawn_monitor(fn ->
         Process.put(:"$callers", callers)
-        send(parent, {ref, fun.()})
+        Process.put(@callback_mark, true)
+        watchdog(self(), parent, timeout)
+        send(reply_to, {reply_to, fun.()})
       end)
 
     receive do
-      {^ref, result} ->
+      {^reply_to, result} ->
         Process.demonitor(monitor, [:flush])
+        drop_alias(reply_to)
         result
 
       {:DOWN, ^monitor, :process, _pid, _reason} ->
+        drop_alias(reply_to)
         :error
     after
-      callback_timeout() ->
+      timeout ->
+        drop_alias(reply_to)
         Process.exit(pid, :kill)
         Process.demonitor(monitor, [:flush])
-
-        receive do
-          {^ref, _late} -> :ok
-        after
-          0 -> :ok
-        end
-
         :timeout
     end
+  end
+
+  # No further reply can arrive after the unalias; one that arrived just
+  # before it is taken out here.
+  defp drop_alias(reply_to) do
+    Process.unalias(reply_to)
+
+    receive do
+      {^reply_to, _late} -> :ok
+    after
+      0 -> :ok
+    end
+  end
+
+  defp watchdog(callback, caller, timeout) do
+    spawn(fn ->
+      callback_ref = Process.monitor(callback)
+      caller_ref = Process.monitor(caller)
+
+      receive do
+        {:DOWN, ^callback_ref, :process, _, _} -> :ok
+        {:DOWN, ^caller_ref, :process, _, _} -> Process.exit(callback, :kill)
+      after
+        timeout -> Process.exit(callback, :kill)
+      end
+    end)
   end
 
   defp last_cached do
