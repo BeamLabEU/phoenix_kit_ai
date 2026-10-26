@@ -4778,6 +4778,8 @@ defmodule PhoenixKitAI do
     task = Tasks.for_call(opts[:task])
 
     with :ok <- money_ready(endpoint),
+         # A switched-off module's task refuses every call, a dry run too.
+         :ok <- Tasks.check_enabled(task),
          :ok <- if(spends?, do: blocks(task, opts), else: :ok),
          {:ok, admission} <- Guard.check(endpoint, opts, task, implied),
          :ok <- check_fallbacks(endpoint, opts, task, implied),

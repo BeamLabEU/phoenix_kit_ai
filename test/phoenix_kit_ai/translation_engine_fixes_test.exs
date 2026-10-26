@@ -13,6 +13,14 @@ defmodule PhoenixKitAI.TranslationEngineFixesTest do
 
   use PhoenixKitAI.DataCase, async: false
 
+  # The translation calls name the `ai.translation` task, and a switched-off
+  # module's task refuses calls: the AI module is on here, as on any host
+  # that translates.
+  setup do
+    PhoenixKitAI.enable_system()
+    :ok
+  end
+
   import ExUnit.CaptureLog
 
   alias PhoenixKitAI.Translation

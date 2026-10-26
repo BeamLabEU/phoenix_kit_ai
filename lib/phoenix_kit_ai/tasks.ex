@@ -10,7 +10,8 @@ defmodule PhoenixKitAI.Tasks do
   `handle_ai_usage/1`); this module declares `ai.translation` and
   `ai.playground` itself. The registry is built on first use and again
   only when the set of registered modules changes — never per call. A task
-  of a module that is switched off is listed with `enabled: false`.
+  of a module that is switched off is listed with `enabled: false` and
+  refuses calls (`check_enabled/1`, `{:task_disabled, key}`).
 
   A host app that is not a kit module lists its own modules in
   `config :phoenix_kit_ai, task_providers: [MyApp.AI]` (read at run time);
@@ -64,7 +65,7 @@ defmodule PhoenixKitAI.Tasks do
   # REGISTRY
   # ===========================================
 
-  @doc "Every declared task, by key, each marked whether its module is on."
+  @doc "Every declared task, by key, each marked whether its module is on (a switched-off module's tasks refuse calls)."
   @spec list() :: [TaskSpec.t()]
   def list do
     state = state()
@@ -114,17 +115,30 @@ defmodule PhoenixKitAI.Tasks do
   def for_call(nil), do: nil
 
   def for_call(key) when is_binary(key) do
-    case Map.get(state().specs, key) do
+    state = state()
+
+    case Map.get(state.specs, key) do
       nil ->
         warn_unknown_once(key)
         nil
 
       spec ->
-        spec
+        with_enabled(spec, state)
     end
   end
 
   def for_call(_key), do: nil
+
+  @doc """
+  The call-time switch check: a task whose declaring module is switched off
+  refuses calls with `{:error, {:task_disabled, key}}`. No task (nil) and a
+  provider's task (always enabled) pass. `enabled` comes from `for_call/1`,
+  read from the same registry snapshot as the spec; a module's `enabled?/0`
+  is a cached settings read.
+  """
+  @spec check_enabled(TaskSpec.t() | nil) :: :ok | {:error, {:task_disabled, String.t()}}
+  def check_enabled(%TaskSpec{enabled: false, key: key}), do: {:error, {:task_disabled, key}}
+  def check_enabled(_spec), do: :ok
 
   @doc """
   The declarations that lost a key collision and were dropped, as

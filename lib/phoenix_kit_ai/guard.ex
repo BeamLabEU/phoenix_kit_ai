@@ -416,7 +416,8 @@ defmodule PhoenixKitAI.Guard do
       when is_binary(task) and is_integer(ttl_s) and ttl_s > 0 do
     spec = Tasks.for_call(task)
 
-    with :ok <- GuardBlocks.check(spec, user_uuid),
+    with :ok <- Tasks.check_enabled(spec),
+         :ok <- GuardBlocks.check(spec, user_uuid),
          :ok <- TaskLimits.check(spec, user_uuid: user_uuid) do
       token = 24 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false)
       keep_admission(token, {task, user_uuid, turn_ref, now_ms() + ttl_s * 1000})

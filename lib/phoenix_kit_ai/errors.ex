@@ -169,6 +169,9 @@ defmodule PhoenixKitAI.Errors do
 
   # The group only: the block's reason is not for the blocked person, and a
   # refusal is a journal row every holder of `ai` reads.
+  def message({:task_disabled, _key}),
+    do: gettext("This AI task's module is switched off, so the task cannot run")
+
   def message({:task_blocked, _group}),
     do: gettext("You are blocked from this AI task until an administrator lifts the block")
 

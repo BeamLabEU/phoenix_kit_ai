@@ -247,9 +247,11 @@ enabled, since a provider has no module switch. Notes:
   One listed anyway counts as a module (its switch applies).
 - A listed module that is not loaded, has no `ai_tasks/0` or raises is
   warned about and skipped; a raising one is tried again a minute later.
-- A task's `enabled` (a module switched off) is shown, but does not block
-  calls today: a call that names a switched-off module's task still runs
-  with that task's checks.
+- A task of a module that is switched off refuses calls with
+  `{:error, {:task_disabled, key}}` (a refusal row; a cached answer does not
+  bypass it). With the AI module itself off, its own `ai.translation` and
+  `ai.playground` are refused the same way. Calls without `task:`, or naming
+  a key nobody declares, are not affected.
 
 ### Task limits
 
@@ -699,6 +701,7 @@ All public functions return `{:ok, result}` or `{:error, reason}` where
 |------|-------|-----|
 | `:endpoint_not_found` | Endpoint UUID does not exist | "Endpoint not found" |
 | `:endpoint_disabled` | Endpoint exists but `enabled: false` | "Endpoint is disabled" |
+| `{:task_disabled, key}` | The call names a task whose module is switched off | "This AI task's module is switched off, so the task cannot run" |
 | `:invalid_endpoint_identifier` | Caller passed a non-UUID value | "Invalid endpoint identifier" |
 | `:invalid_api_key` | OpenRouter returned 401 | "Invalid API key" |
 | `:insufficient_credits` | OpenRouter returned 402 | "Insufficient credits" |

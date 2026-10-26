@@ -734,7 +734,7 @@ Test database `phoenix_kit_ai_test`.
   (key, lookup, zero-cost hit row). A new verb joins both or it is not a
   verb — `dev_docs/guides/spend-caps-and-caching.md` holds the semantics
   of caps, cache, structured output and telemetry. A refusal past the
-  endpoint check (`{:task_blocked, group}`, `{:model_unfit, missing}`,
+  endpoint check (`{:task_disabled, key}`, `{:task_blocked, group}`, `{:model_unfit, missing}`,
   `{:model_unverified, unclear}`,
   `{:task_limit_exceeded, scope, unit, period}`, `{:budget_exceeded,
   scope}`) writes an error row through `refuse/4`,
@@ -778,8 +778,15 @@ Test database `phoenix_kit_ai_test`.
   never cached, same runner and timeout. The test helper starts
   the builder (unlinked), so tests see caching as a host does. Read one snapshot per lookup (`Tasks.overview/0` for a page).
   An improper `task_providers` list is bad config (warned, its proper part
-  used). `enabled` is display only —
-  `for_call/1` does not consult it.
+  used). A switched-off module's task refuses calls: `for_call/1`
+  carries `enabled` from the same snapshot (the module's `enabled?/0` is a
+  cached settings read), and `authorize/5` (and `Guard.admit/4`) refuse
+  with `{:error, {:task_disabled, key}}` first, before blocks, the model
+  check and the request cache, as a refusal row. With the AI module off
+  that includes `ai.translation` and `ai.playground` — no other gate in
+  the call path checked `ai_enabled` before. `TranslateWorker` does not
+  retry it (not in `retryable?/1`): the job is discarded with a terminal
+  `task_disabled` event. No task and an undeclared key are unaffected.
 - Task limits (`PhoenixKitAI.TaskLimits`): scope `:task` (every call of
   the task) and `:user` (one user in it) × money (dollars) / requests
   / tokens × calendar day / month in the site time zone. In force, cell by
