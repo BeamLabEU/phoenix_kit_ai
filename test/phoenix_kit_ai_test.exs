@@ -124,7 +124,9 @@ defmodule PhoenixKitAITest do
 
       for tab <- subtabs do
         assert tab.parent == :admin_ai
-        assert tab.permission == PhoenixKitAI.module_key()
+
+        expected = if tab.id == :admin_ai_usage, do: "ai.view_usage", else: "ai"
+        assert tab.permission == expected
       end
     end
 

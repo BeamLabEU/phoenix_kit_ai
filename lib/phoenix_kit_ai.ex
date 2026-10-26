@@ -117,6 +117,7 @@ defmodule PhoenixKitAI do
   alias PhoenixKit.PubSub.Manager, as: PubSub
   alias PhoenixKit.Settings
   alias PhoenixKit.Settings.Queries, as: SettingsQueries
+  alias PhoenixKit.Users.{Permissions, Roles}
   alias PhoenixKit.Utils.Date, as: UtilsDate
   alias PhoenixKit.Utils.Reorder
   alias PhoenixKit.Utils.UUID, as: UUIDUtils
@@ -731,7 +732,7 @@ defmodule PhoenixKitAI do
   @doc """
   Combined boot-time migration entry point.
 
-  Runs both legacy data transitions for AI:
+  Runs the legacy data transitions for AI:
 
   1. **Local api_key → Integrations row + integration_uuid**
      (delegates to `run_legacy_api_key_migration/0`). Endpoints with
@@ -747,7 +748,13 @@ defmodule PhoenixKitAI do
      most of these at install time; this pass catches stragglers
      (e.g., endpoints created post-form-update but pre-V107).
 
-  Both kinds log to `PhoenixKit.Activity` per migrated record / group
+  3. **Sub-permission backfill.** `ai.view_usage` and
+     `ai.manage_endpoints` are granted once each to every role that holds
+     the base `ai` key, guarded by `ai_view_usage_backfilled` /
+     `ai_manage_endpoints_backfilled`; a flag is set only after every grant
+     for its key succeeded, so a failed pass retries on the next boot.
+
+  The first two kinds log to `PhoenixKit.Activity` per migrated record / group
   with `mode: "auto"` and module `"ai"`. PII-safe: never logs
   `api_key` values.
 
@@ -760,10 +767,12 @@ defmodule PhoenixKitAI do
   def migrate_legacy do
     credentials_result = run_legacy_api_key_migration()
     references_result = sweep_provider_string_to_integration_uuid()
+    permissions_result = backfill_sub_permissions()
 
     summary = %{
       credentials_migration: credentials_result,
-      reference_migration: references_result
+      reference_migration: references_result,
+      permissions_backfill: permissions_result
     }
 
     # Surface inner sweep failures at the outer return shape so the
@@ -772,9 +781,10 @@ defmodule PhoenixKitAI do
     # `:error` inside `{:ok, %{reference_migration: :error}}` would
     # silently swallow the failure for any caller that doesn't drill
     # into the map.
-    case references_result do
-      :error -> {:error, {:sweep_failed, summary}}
-      _ -> {:ok, summary}
+    cond do
+      references_result == :error -> {:error, {:sweep_failed, summary}}
+      permissions_result != :ok -> {:error, {:permission_backfill_incomplete, summary}}
+      true -> {:ok, summary}
     end
   rescue
     e ->
@@ -783,6 +793,63 @@ defmodule PhoenixKitAI do
       Logger.warning("[PhoenixKitAI] migrate_legacy/0 raised: #{Exception.message(e)}")
 
       {:error, e}
+  end
+
+  # One flag per sub-permission, so a later split gets its own pass.
+  @sub_permission_backfills [
+    {"ai.view_usage", "ai_view_usage_backfilled"},
+    {"ai.manage_endpoints", "ai_manage_endpoints_backfilled"}
+  ]
+
+  # Each split-out sub-permission is granted ONCE to every role that held the
+  # base `ai` key at the time, so nobody loses what the base key used to
+  # allow. A role granted `ai` afterwards gets the narrow meaning, and an
+  # Owner's later revoke sticks, because the flag stops the pass for good.
+  defp backfill_sub_permissions do
+    results =
+      for {key, flag} <- @sub_permission_backfills,
+          Settings.get_setting(flag) != "true",
+          do: backfill_sub_permission(key, flag)
+
+    case Enum.reject(results, &(&1 == :ok)) do
+      [] -> :ok
+      failures -> {:error, failures}
+    end
+  end
+
+  @doc false
+  # The grant function is a parameter only so a test can make a grant fail
+  # and prove the flag then stays unset; production always passes core's.
+  @spec backfill_sub_permission(String.t(), String.t(), function()) :: :ok | {:error, term()}
+  def backfill_sub_permission(
+        key,
+        flag,
+        grant \\ &Permissions.grant_permission/3
+      ) do
+    failures =
+      for role <- Roles.list_roles(),
+          granted = Permissions.get_permissions_for_role(role.uuid),
+          module_key() in granted,
+          key not in granted,
+          result = grant.(role.uuid, key, nil),
+          not match?({:ok, _}, result) do
+        {role.uuid, result}
+      end
+
+    if failures == [] do
+      Settings.update_setting_with_module(flag, "true", module_key())
+      :ok
+    else
+      Logger.warning(
+        "[PhoenixKitAI] #{key} backfill incomplete, will retry next boot: #{inspect(failures)}"
+      )
+
+      {:error, {key, failures}}
+    end
+  rescue
+    e ->
+      Logger.warning("[PhoenixKitAI] #{key} backfill failed: #{Exception.message(e)}")
+      {:error, {key, e}}
   end
 
   defp sweep_provider_string_to_integration_uuid do
@@ -958,12 +1025,30 @@ defmodule PhoenixKitAI do
       # private task's flags and blocks. Core grants a new
       # sub-permission to Admin once while Admin holds `ai`; an Owner holds
       # every key.
+      #
+      # `ai.view_usage`: the Usage tab, which shows every AI request on the
+      # site with its prompt and response. `ai.manage_endpoints`: creating,
+      # editing, enabling, reordering and deleting endpoints (the list stays
+      # on the base key). Both were part of the base key before; the
+      # once-only backfill in `migrate_legacy/0` keeps them for every role
+      # that held `ai` then.
       sub_permissions: [
         %{
           key: "manage",
           label: "Manage the AI task guard",
           description:
             "Change the limits of AI tasks, who is told about them and which models may be used; block a person from a task; see why a private task's request was flagged"
+        },
+        %{
+          key: "view_usage",
+          label: "See AI usage",
+          description:
+            "Open the Usage tab: every AI request on the site with its prompt and response"
+        },
+        %{
+          key: "manage_endpoints",
+          label: "Manage AI endpoints",
+          description: "Create, edit, enable, disable, reorder and delete AI endpoints"
         }
       ],
       # Renders the label translated in the admin permissions matrix, the
@@ -1070,7 +1155,10 @@ defmodule PhoenixKitAI do
         path: "ai/usage",
         priority: 644,
         level: :admin,
-        permission: module_key(),
+        # Hides the tab; `Web.Endpoints` refuses the page itself (the tabs
+        # declare `path:`, not `live_view:`, so core's route gate admits any
+        # `ai` holder).
+        permission: "ai.view_usage",
         parent: :admin_ai,
         gettext_backend: PhoenixKitAI.Gettext,
         gettext_domain: "default"
@@ -1123,6 +1211,16 @@ defmodule PhoenixKitAI do
       dgettext_noop(
         "default",
         "Change the limits of AI tasks, who is told about them and which models may be used; block a person from a task; see why a private task's request was flagged"
+      ),
+      dgettext_noop("default", "See AI usage"),
+      dgettext_noop(
+        "default",
+        "Open the Usage tab: every AI request on the site with its prompt and response"
+      ),
+      dgettext_noop("default", "Manage AI endpoints"),
+      dgettext_noop(
+        "default",
+        "Create, edit, enable, disable, reorder and delete AI endpoints"
       )
     ]
   end

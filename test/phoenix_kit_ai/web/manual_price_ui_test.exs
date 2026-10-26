@@ -78,7 +78,7 @@ defmodule PhoenixKitAI.Web.ManualPriceUITest do
       user = Fixtures.user_fixture()
       {:ok, role} = Roles.create_role(%{name: "Role #{System.unique_integer([:positive])}"})
       {:ok, _} = Roles.assign_role(user, role.name)
-      :ok = Permissions.set_permissions(role.uuid, ["ai"])
+      :ok = Permissions.set_permissions(role.uuid, ["ai", "ai.manage_endpoints"])
 
       {:ok, view, _html} =
         conn

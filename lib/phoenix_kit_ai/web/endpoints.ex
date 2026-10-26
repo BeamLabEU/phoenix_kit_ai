@@ -27,6 +27,7 @@ defmodule PhoenixKitAI.Web.Endpoints do
   alias PhoenixKit.Utils.Format
   alias PhoenixKitAI, as: AI
   alias PhoenixKitAI.Endpoint
+  alias PhoenixKitAI.Web.Access
   alias PhoenixKitAI.Web.AuthHelpers
   alias PhoenixKitAI.Web.MessageShape
   alias PhoenixKitAI.Web.SortHelpers
@@ -83,6 +84,9 @@ defmodule PhoenixKitAI.Web.Endpoints do
 
   @page_size 20
 
+  @manage_endpoints "ai.manage_endpoints"
+  @view_usage "ai.view_usage"
+
   @impl true
   def mount(_params, session, socket) do
     current_path = get_current_path(socket, session)
@@ -109,6 +113,10 @@ defmodule PhoenixKitAI.Web.Endpoints do
       |> assign(:page_title, page_title)
       |> assign(:page_subtitle, page_subtitle)
       |> assign(:project_title, project_title)
+      # The page sits on the base `ai` key; what the sub-keys gate is
+      # checked here and again in every event below.
+      |> assign(:can_manage_endpoints, Access.can?(socket, @manage_endpoints))
+      |> assign(:can_view_usage, Access.can?(socket, @view_usage))
       |> assign(:endpoints, [])
       |> assign(:endpoint_stats, %{})
       |> assign(:integrations_by_uuid, %{})
@@ -171,6 +179,10 @@ defmodule PhoenixKitAI.Web.Endpoints do
         |> assign(:page_subtitle, page_subtitle)
 
       # Apply tab-specific params
+      # Re-read on every patch, not only at mount: core refreshes the scope
+      # live, and the filters and sorting of the Usage tab are patches.
+      can_view_usage = Access.can?(socket, @view_usage)
+
       socket =
         case tab do
           "endpoints" ->
@@ -181,6 +193,11 @@ defmodule PhoenixKitAI.Web.Endpoints do
             |> assign(:sort_dir, sort_dir)
             |> assign(:page, page)
             |> maybe_reload_endpoints(tab)
+
+          "usage" when not can_view_usage ->
+            socket
+            |> put_flash(:error, gettext("You don't have permission to see AI usage."))
+            |> push_navigate(to: PhoenixKitAI.Routes.ai_path() <> "/endpoints")
 
           "usage" ->
             {sort_by, sort_dir, filters} = parse_usage_params(params)
@@ -295,53 +312,23 @@ defmodule PhoenixKitAI.Web.Endpoints do
   # ENDPOINT ACTIONS
   # ===========================================
 
+  # The list sits on the base `ai` key; changing endpoints needs
+  # ai.manage_endpoints and reading requests ai.view_usage, re-checked on
+  # every event against the scope as it is now (core refreshes it live).
+  @manage_events ~w(toggle_endpoint delete_endpoint reorder_endpoints)
+  @usage_events ~w(load_more_requests show_request_details)
+
   @impl true
-  def handle_event("toggle_endpoint", %{"uuid" => uuid}, socket) do
-    # Same stale-row handling as `delete_endpoint` below.
-    with %Endpoint{} = endpoint <- AI.get_endpoint(uuid),
-         {:ok, updated} <-
-           AI.update_endpoint(endpoint, %{enabled: !endpoint.enabled}, actor_opts(socket)) do
-      message =
-        if updated.enabled,
-          do: gettext("Endpoint enabled"),
-          else: gettext("Endpoint disabled")
-
-      {:noreply,
-       socket
-       |> reload_endpoints()
-       |> put_flash(:info, message)}
-    else
-      nil ->
-        {:noreply,
-         socket
-         |> reload_endpoints_and_presence()
-         |> put_flash(:error, gettext("Endpoint not found"))}
-
-      {:error, _changeset} ->
-        {:noreply, put_flash(socket, :error, gettext("Failed to update endpoint"))}
-    end
+  def handle_event(event, params, socket) when event in @manage_events do
+    if Access.can?(socket, @manage_endpoints),
+      do: manage_event(event, params, socket),
+      else: {:noreply, deny(socket)}
   end
 
-  @impl true
-  def handle_event("delete_endpoint", %{"uuid" => uuid}, socket) do
-    # The row can be gone already (deleted in another tab while this
-    # list was open): say so and refresh the list, rather than raise.
-    with %Endpoint{} = endpoint <- AI.get_endpoint(uuid),
-         {:ok, _} <- AI.delete_endpoint(endpoint, actor_opts(socket)) do
-      {:noreply,
-       socket
-       |> reload_endpoints_and_presence()
-       |> put_flash(:info, gettext("Endpoint deleted"))}
-    else
-      nil ->
-        {:noreply,
-         socket
-         |> reload_endpoints_and_presence()
-         |> put_flash(:error, gettext("Endpoint not found"))}
-
-      {:error, _} ->
-        {:noreply, put_flash(socket, :error, gettext("Failed to delete endpoint"))}
-    end
+  def handle_event(event, params, socket) when event in @usage_events do
+    if Access.can?(socket, @view_usage),
+      do: usage_event(event, params, socket),
+      else: {:noreply, deny(socket)}
   end
 
   @impl true
@@ -392,58 +379,9 @@ defmodule PhoenixKitAI.Web.Endpoints do
     end
   end
 
-  @impl true
-  def handle_event("reorder_endpoints", %{"ordered_ids" => ordered_ids} = params, socket)
-      when is_list(ordered_ids) do
-    moved_id = params["moved_id"]
-
-    case AI.reorder_endpoints(ordered_ids, actor_opts(socket)) do
-      :ok ->
-        {:noreply,
-         socket
-         |> push_event("sortable:flash", %{uuid: moved_id, status: "ok"})
-         |> reload_endpoints()}
-
-      {:error, :too_many_uuids} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, gettext("Too many endpoints to reorder at once."))
-         |> push_event("sortable:flash", %{uuid: moved_id, status: "error"})
-         |> reload_endpoints()}
-    end
-  end
-
   # ===========================================
   # USAGE TAB
   # ===========================================
-
-  @impl true
-  def handle_event("load_more_requests", _params, socket) do
-    page = socket.assigns.usage_page + 1
-
-    opts =
-      [
-        page: page,
-        page_size: 20,
-        sort_by: socket.assigns.usage_sort_by,
-        sort_dir: socket.assigns.usage_sort_dir,
-        preload: [:prompt]
-      ]
-      |> maybe_add_filter(:endpoint_uuid, socket.assigns.usage_filter_endpoint)
-      |> maybe_add_filter(:model, socket.assigns.usage_filter_model)
-      |> maybe_add_filter(:status, socket.assigns.usage_filter_status)
-      |> maybe_add_filter(:source, socket.assigns.usage_filter_source)
-      |> maybe_add_filter(:since, date_filter_to_datetime(socket.assigns.usage_filter_date))
-
-    {new_requests, _total} = AI.list_requests(opts)
-
-    socket =
-      socket
-      |> assign(:usage_page, page)
-      |> assign(:usage_requests, socket.assigns.usage_requests ++ new_requests)
-
-    {:noreply, socket}
-  end
 
   @impl true
   def handle_event("usage_sort", %{"by" => field}, socket) do
@@ -498,13 +436,6 @@ defmodule PhoenixKitAI.Web.Endpoints do
       })
 
     {:noreply, push_patch(socket, to: path)}
-  end
-
-  @impl true
-  def handle_event("show_request_details", %{"uuid" => uuid}, socket) do
-    request = Enum.find(socket.assigns.usage_requests, fn r -> to_string(r.uuid) == uuid end)
-
-    {:noreply, assign(socket, :selected_request, request)}
   end
 
   @impl true
@@ -739,4 +670,107 @@ defmodule PhoenixKitAI.Web.Endpoints do
   end
 
   defp cost_source_badge(assigns), do: ~H""
+
+  defp manage_event("toggle_endpoint", %{"uuid" => uuid}, socket) do
+    # Same stale-row handling as `delete_endpoint` below.
+    with %Endpoint{} = endpoint <- AI.get_endpoint(uuid),
+         {:ok, updated} <-
+           AI.update_endpoint(endpoint, %{enabled: !endpoint.enabled}, actor_opts(socket)) do
+      message =
+        if updated.enabled,
+          do: gettext("Endpoint enabled"),
+          else: gettext("Endpoint disabled")
+
+      {:noreply,
+       socket
+       |> reload_endpoints()
+       |> put_flash(:info, message)}
+    else
+      nil ->
+        {:noreply,
+         socket
+         |> reload_endpoints_and_presence()
+         |> put_flash(:error, gettext("Endpoint not found"))}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, gettext("Failed to update endpoint"))}
+    end
+  end
+
+  defp manage_event("delete_endpoint", %{"uuid" => uuid}, socket) do
+    # The row can be gone already (deleted in another tab while this
+    # list was open): say so and refresh the list, rather than raise.
+    with %Endpoint{} = endpoint <- AI.get_endpoint(uuid),
+         {:ok, _} <- AI.delete_endpoint(endpoint, actor_opts(socket)) do
+      {:noreply,
+       socket
+       |> reload_endpoints_and_presence()
+       |> put_flash(:info, gettext("Endpoint deleted"))}
+    else
+      nil ->
+        {:noreply,
+         socket
+         |> reload_endpoints_and_presence()
+         |> put_flash(:error, gettext("Endpoint not found"))}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, gettext("Failed to delete endpoint"))}
+    end
+  end
+
+  defp manage_event("reorder_endpoints", %{"ordered_ids" => ordered_ids} = params, socket)
+       when is_list(ordered_ids) do
+    moved_id = params["moved_id"]
+
+    case AI.reorder_endpoints(ordered_ids, actor_opts(socket)) do
+      :ok ->
+        {:noreply,
+         socket
+         |> push_event("sortable:flash", %{uuid: moved_id, status: "ok"})
+         |> reload_endpoints()}
+
+      {:error, :too_many_uuids} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, gettext("Too many endpoints to reorder at once."))
+         |> push_event("sortable:flash", %{uuid: moved_id, status: "error"})
+         |> reload_endpoints()}
+    end
+  end
+
+  defp usage_event("load_more_requests", _params, socket) do
+    page = socket.assigns.usage_page + 1
+
+    opts =
+      [
+        page: page,
+        page_size: 20,
+        sort_by: socket.assigns.usage_sort_by,
+        sort_dir: socket.assigns.usage_sort_dir,
+        preload: [:prompt]
+      ]
+      |> maybe_add_filter(:endpoint_uuid, socket.assigns.usage_filter_endpoint)
+      |> maybe_add_filter(:model, socket.assigns.usage_filter_model)
+      |> maybe_add_filter(:status, socket.assigns.usage_filter_status)
+      |> maybe_add_filter(:source, socket.assigns.usage_filter_source)
+      |> maybe_add_filter(:since, date_filter_to_datetime(socket.assigns.usage_filter_date))
+
+    {new_requests, _total} = AI.list_requests(opts)
+
+    socket =
+      socket
+      |> assign(:usage_page, page)
+      |> assign(:usage_requests, socket.assigns.usage_requests ++ new_requests)
+
+    {:noreply, socket}
+  end
+
+  defp usage_event("show_request_details", %{"uuid" => uuid}, socket) do
+    request = Enum.find(socket.assigns.usage_requests, fn r -> to_string(r.uuid) == uuid end)
+
+    {:noreply, assign(socket, :selected_request, request)}
+  end
+
+  defp deny(socket),
+    do: put_flash(socket, :error, gettext("You don't have permission to do that."))
 end

@@ -102,7 +102,7 @@ defmodule PhoenixKitAI.Web.TasksTest do
       assert has_element?(view, "[data-task-key='test.plain'] [data-worked-empty]")
     end
 
-    test "lists the fit models of the catalogue, with the create link only for a scope holding ai",
+    test "lists the fit models of the catalogue, with the create link only for a scope holding ai.manage_endpoints",
          %{conn: conn} do
       stub = Module.concat(__MODULE__, "Stub#{System.unique_integer([:positive])}")
       Application.put_env(:phoenix_kit_ai, :req_options, plug: {Req.Test, stub}, retry: false)
@@ -157,7 +157,11 @@ defmodule PhoenixKitAI.Web.TasksTest do
 
       photo = "[data-task-key='test.photo']"
 
-      with_ai = put_test_scope(conn, scope.(["ai"]))
+      # The create link's ai.manage_endpoints check resolves through the registry.
+      :ok = ModuleRegistry.register(PhoenixKitAI)
+      on_exit(fn -> ModuleRegistry.unregister(PhoenixKitAI) end)
+
+      with_ai = put_test_scope(conn, scope.(["ai", "ai.manage_endpoints"]))
       {:ok, view, _html} = live(with_ai, "/en/admin/ai/tasks")
 
       # The vision task takes the model that sees images, not the cheaper one that does not.
@@ -174,7 +178,7 @@ defmodule PhoenixKitAI.Web.TasksTest do
                "#{photo} [data-recommended-model='google/gemini-flash'] a[data-create-endpoint]"
              )
 
-      without = put_test_scope(conn, scope.(["staff"]))
+      without = put_test_scope(conn, scope.(["ai"]))
       {:ok, view, _html} = live(without, "/en/admin/ai/tasks")
       assert has_element?(view, "#{photo} [data-recommended-model='google/gemini-flash']")
       refute has_element?(view, "[data-create-endpoint]")

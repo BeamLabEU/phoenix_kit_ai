@@ -27,6 +27,10 @@ defmodule PhoenixKitAI.LegacyApiKeyMigrationTest do
     # here makes intent obvious.
     :ok = clear_integration_keys()
     :ok = clear_completion_flag()
+    # migrate_legacy/0 also backfills the AI sub-permissions, which core
+    # grants only for keys its module registry knows — as at boot.
+    :ok = PhoenixKit.ModuleRegistry.register(PhoenixKitAI)
+    on_exit(fn -> PhoenixKit.ModuleRegistry.unregister(PhoenixKitAI) end)
     :ok
   end
 

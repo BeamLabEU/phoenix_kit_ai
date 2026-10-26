@@ -782,7 +782,8 @@ defmodule PhoenixKitAI.Web.EndpointFormCoverageTest do
       # (`scope -> Scope.can_access_admin_area?(scope)`). Also exercises
       # the EDIT save path through `AI.update_endpoint(...)` (vs the new-endpoint
       # branch covered by the previous test).
-      scope = fake_scope()
+      # A real Owner scope: the edit form needs ai.manage_endpoints.
+      scope = scope_with([], ["Owner"])
       conn = put_test_scope(conn, scope)
 
       ep = fixture_endpoint(name: "EditSave-#{System.unique_integer([:positive])}")
@@ -820,7 +821,7 @@ defmodule PhoenixKitAI.Web.EndpointFormCoverageTest do
         actor_uuid: scope.user.uuid,
         metadata_has: %{
           "name" => ep.name,
-          "actor_role" => "user"
+          "actor_role" => "admin"
         }
       )
     end

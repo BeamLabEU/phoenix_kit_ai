@@ -1,6 +1,8 @@
 defmodule PhoenixKitAI.Web.Access do
   @moduledoc """
-  The `ai.manage` check of the module's admin pages, made again on every
+  The permission checks of the module's admin pages. `can?/2` checks a
+  sub-permission against the socket's scope. The `ai.manage` check, made
+  again on every
   event (`PhoenixKitAI.Guard.may_manage?/1`: an Owner, or a holder of
   `ai.manage`).
 
@@ -46,6 +48,20 @@ defmodule PhoenixKitAI.Web.Access do
       end
 
     assign(socket, :ai_session_ref, ref)
+  end
+
+  @doc """
+  Whether the socket's scope holds the AI sub-permission `key` (an Owner
+  always does). The page-level rule for `ai.view_usage` and
+  `ai.manage_endpoints`: checked at mount and again in every event that
+  reads or writes what the key gates. Fails closed on an absent scope.
+  """
+  @spec can?(Phoenix.LiveView.Socket.t(), String.t()) :: boolean()
+  def can?(socket, key) when is_binary(key) do
+    case socket.assigns[:phoenix_kit_current_scope] do
+      %Scope{} = scope -> Scope.owner?(scope) or Scope.can?(scope, key)
+      _ -> false
+    end
   end
 
   @doc "Whether the signed-in person may change the AI task guard now (see the moduledoc)."

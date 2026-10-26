@@ -136,7 +136,8 @@ defmodule PhoenixKitAI.Web.EndpointsTest do
       # through to the activity log. Without this the test couldn't
       # distinguish a working actor-threading from a regression that
       # silently drops the keyword arg.
-      scope = fake_scope()
+      # A real Owner scope: changing endpoints needs ai.manage_endpoints.
+      scope = scope_with([], ["Owner"])
       conn = put_test_scope(conn, scope)
 
       endpoint = fixture_endpoint(enabled: true)
@@ -162,7 +163,7 @@ defmodule PhoenixKitAI.Web.EndpointsTest do
         actor_uuid: scope.user.uuid,
         metadata_has: %{
           "name" => endpoint.name,
-          "actor_role" => "user"
+          "actor_role" => "admin"
         }
       )
     end
@@ -170,7 +171,8 @@ defmodule PhoenixKitAI.Web.EndpointsTest do
 
   describe "delete_endpoint" do
     test "removes the row, flashes success, and logs `endpoint.deleted`", %{conn: conn} do
-      scope = fake_scope()
+      # A real Owner scope: changing endpoints needs ai.manage_endpoints.
+      scope = scope_with([], ["Owner"])
       conn = put_test_scope(conn, scope)
 
       endpoint = fixture_endpoint()
@@ -191,7 +193,7 @@ defmodule PhoenixKitAI.Web.EndpointsTest do
         actor_uuid: scope.user.uuid,
         metadata_has: %{
           "name" => endpoint.name,
-          "actor_role" => "user"
+          "actor_role" => "admin"
         }
       )
     end
@@ -213,7 +215,8 @@ defmodule PhoenixKitAI.Web.EndpointsTest do
   describe "reorder_endpoints" do
     test "drag-to-reorder rewrites sort_order, flashes ok, and logs `endpoint.reordered`",
          %{conn: conn} do
-      scope = fake_scope()
+      # A real Owner scope: changing endpoints needs ai.manage_endpoints.
+      scope = scope_with([], ["Owner"])
       conn = put_test_scope(conn, scope)
 
       a = fixture_endpoint(name: "Drag A")
@@ -236,7 +239,7 @@ defmodule PhoenixKitAI.Web.EndpointsTest do
       assert_activity_logged("endpoint.reordered",
         resource_uuid: b.uuid,
         actor_uuid: scope.user.uuid,
-        metadata_has: %{"count" => 2, "actor_role" => "user"}
+        metadata_has: %{"count" => 2, "actor_role" => "admin"}
       )
     end
 

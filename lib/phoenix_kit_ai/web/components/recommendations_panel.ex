@@ -278,8 +278,9 @@ defmodule PhoenixKitAI.Web.Components.RecommendationsPanel do
     """
   end
 
+  # The link opens the new-endpoint form, which needs ai.manage_endpoints.
   defp can_create?(%Scope{} = scope),
-    do: Scope.has_module_access?(scope, PhoenixKitAI.module_key())
+    do: Scope.owner?(scope) or Scope.can?(scope, "ai.manage_endpoints")
 
   defp can_create?(_scope), do: false
 

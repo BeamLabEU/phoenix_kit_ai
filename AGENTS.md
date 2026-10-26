@@ -404,7 +404,17 @@ so `Settings.delete_setting/1` is how a language falls back to the shared
 key; `translate_fields/6`'s `glossary:` option overrides both (`nil` = none).
 
 Permissions: the module permission `"ai"` from `permission_metadata/0`,
-checked with `Scope.has_module_access?/2`, and one sub-permission,
+checked with `Scope.has_module_access?/2`, and three sub-permissions.
+`"ai.view_usage"`: the Usage tab (every request with its prompt and
+response). `"ai.manage_endpoints"`: creating, editing, enabling,
+reordering and deleting endpoints — the base key still lists them, and the
+recommendations panel's create link needs this key. Both are checked by
+`Web.Access.can?/2` (an Owner always) at mount or patch and again in every
+event that reads or writes what they gate: the tabs declare `path:`, so
+core's route gate admits any `ai` holder and the tab `permission:` only
+hides the sidebar entry. `migrate_legacy/0` grants each once to every role
+that held `ai` (flags `ai_view_usage_backfilled`,
+`ai_manage_endpoints_backfilled`, set only after every grant succeeded).
 `"ai.manage"`: changing the task guard (limits, personal limits, forgiving,
 watchers, "only verified models", declaring capabilities while that is on,
 a task's self-flag mode, blocking and lifting), and seeing the reasons of a private task's flags and
@@ -474,7 +484,9 @@ provided the API exposes `<base_url>/chat/completions` and `/models`.
   embeddings together, and its `/audio/voices` feeds the TTS voice picker.
 - Endpoint cards show an enabled badge, an integration-health badge
   (missing/error/not-connected), and a masked key via
-  `Endpoint.masked_api_key/1`. `integrations_by_uuid` is loaded once per render
+  `Endpoint.masked_api_key/1`. A stored key is never rendered in clear,
+  the legacy `api_key` notice on the form included — it shows the masked
+  form and asks for an Integration instead. `integrations_by_uuid` is loaded once per render
   to avoid an N+1.
 - **Image verbs pick an adapter by provider key** (`PhoenixKitAI.Provider.for_endpoint/1`):
   OpenRouter, xAI and OpenAI have their own; everything else gets the
@@ -843,8 +855,8 @@ Test database `phoenix_kit_ai_test`.
   (`picker/1` for a consumer's form field, `recommendations/1` for the
   panel alone, as on AI → Tasks); the panel is the live component
   `Web.Components.RecommendationsPanel` (its filters are its own state,
-  kept over the page's re-renders); its create link needs the `ai`
-  permission in the `scope` attr and opens the new-endpoint form with
+  kept over the page's re-renders); its create link needs
+  `ai.manage_endpoints` in the `scope` attr and opens the new-endpoint form with
   `?name=&model=&integration_uuid=` prefilled — never saved by the link.
 - Every verb's result names its usage row: `"request_uuid"` in the chat and
   embedding responses, `:request_uuid` in the other verbs' maps; a cache

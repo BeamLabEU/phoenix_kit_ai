@@ -53,11 +53,33 @@ defmodule PhoenixKitAI.LiveCase do
     # the `phoenix_kit_settings` table we create in the test migration.
     PhoenixKitAI.enable_system()
 
+    # Every admin page runs with a signed-in scope in production. The
+    # default is an Owner (who holds every AI sub-permission), so a test
+    # that is not about rights reaches every page; a test about rights
+    # replaces it with `put_test_scope(conn, scope_with([...]))`.
     conn =
       Phoenix.ConnTest.build_conn()
-      |> Plug.Test.init_test_session(%{})
+      |> Plug.Test.init_test_session(%{"phoenix_kit_test_scope" => scope_with([], ["Owner"])})
 
     {:ok, conn: conn}
+  end
+
+  @doc """
+  A real `%Scope{}` holding exactly `permissions` and `roles` (no Owner by
+  default), for tests about who may do what. Pair with `put_test_scope/2`.
+  Sub-permission checks resolve through core's module registry, so a test
+  using a dotted key registers `PhoenixKitAI` first.
+  """
+  def scope_with(permissions, roles \\ ["Employee"]) do
+    %Scope{
+      user: %{
+        uuid: Ecto.UUID.generate(),
+        email: "scope-#{System.unique_integer([:positive])}@example.com"
+      },
+      authenticated?: true,
+      cached_roles: roles,
+      cached_permissions: MapSet.new(permissions)
+    }
   end
 
   @doc """
