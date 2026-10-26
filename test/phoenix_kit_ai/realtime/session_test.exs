@@ -84,7 +84,8 @@ defmodule PhoenixKitAI.Realtime.SessionTest do
         Session.start_link(
           live_view_pid: self(),
           api_key: "test-key",
-          realtime_module: RealtimeMock
+          realtime_module: RealtimeMock,
+          enabled?: fn -> true end
         )
 
       Process.flag(:trap_exit, true)
@@ -93,6 +94,31 @@ defmodule PhoenixKitAI.Realtime.SessionTest do
       Session.send_text(session_pid, "hello")
       Session.finish(session_pid)
       Session.close(session_pid)
+
+      assert_receive {:EXIT, ^session_pid, :normal}
+    end
+  end
+
+  describe "the AI module switch" do
+    test "a send while the module is off closes the connection and stops the session" do
+      ws_pid = unlinked_pid()
+
+      expect(RealtimeMock, :connect_tts, fn _opts -> {:ok, ws_pid} end)
+      expect(RealtimeMock, :close, fn ^ws_pid -> :ok end)
+
+      {:ok, session_pid} =
+        Session.start_link(
+          live_view_pid: self(),
+          api_key: "test-key",
+          realtime_module: RealtimeMock,
+          enabled?: fn -> false end
+        )
+
+      Process.flag(:trap_exit, true)
+      Process.link(session_pid)
+
+      # No send_text expectation: Mox fails the test if it is called.
+      Session.send_text(session_pid, "hello")
 
       assert_receive {:EXIT, ^session_pid, :normal}
     end

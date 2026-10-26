@@ -787,6 +787,10 @@ Test database `phoenix_kit_ai_test`.
   the call path checked `ai_enabled` before. `TranslateWorker` does not
   retry it (not in `retryable?/1`): the job is discarded with a terminal
   `task_disabled` event. No task and an undeclared key are unaffected.
+  The realtime voice session runs no task, so it checks the switch itself:
+  the Playground refuses to start or speak while the AI module is off
+  (closing an open session, with a flash), and `Realtime.Session` closes
+  and stops on any send while it is off (`enabled?:` option).
 - Task limits (`PhoenixKitAI.TaskLimits`): scope `:task` (every call of
   the task) and `:user` (one user in it) × money (dollars) / requests
   / tokens × calendar day / month in the site time zone. In force, cell by

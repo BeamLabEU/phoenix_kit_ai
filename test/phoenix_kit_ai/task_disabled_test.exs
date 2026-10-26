@@ -93,6 +93,10 @@ defmodule PhoenixKitAI.TaskDisabledTest do
     assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "same", task: "test.plain", cache: true)
     assert_received :provider_called
 
+    # Warm: the same call is answered from the cache, without the provider.
+    assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "same", task: "test.plain", cache: true)
+    refute_received :provider_called
+
     switch(false)
 
     assert {:error, {:task_disabled, "test.plain"}} =

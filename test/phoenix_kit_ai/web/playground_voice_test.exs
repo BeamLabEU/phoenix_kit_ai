@@ -182,6 +182,39 @@ defmodule PhoenixKitAI.Web.PlaygroundVoiceTest do
     end
   end
 
+  describe "the AI module switch" do
+    test "starting voice is refused while the AI module is off", %{conn: conn} do
+      endpoint = fixture_endpoint(provider: "xai", model: "grok-4.5")
+
+      {:ok, view, _html} = live(conn, "/en/admin/ai/playground")
+      select_endpoint(view, endpoint)
+      PhoenixKitAI.disable_system()
+
+      # No connect_tts expectation: Mox fails the test if it is called.
+      html = render_click(view, "start_voice")
+      assert html =~ "The AI module is switched off."
+      refute html =~ "Connected"
+    end
+
+    test "speaking after the module is switched off ends the session", %{conn: conn} do
+      endpoint = fixture_endpoint(provider: "xai", model: "grok-4.5")
+      ws_pid = spawn(fn -> Process.sleep(:infinity) end)
+
+      expect(RealtimeMock, :connect_tts, fn _opts -> {:ok, ws_pid} end)
+      expect(RealtimeMock, :close, fn ^ws_pid -> :ok end)
+
+      {:ok, view, _html} = live(conn, "/en/admin/ai/playground")
+      select_endpoint(view, endpoint)
+      render_click(view, "start_voice")
+
+      PhoenixKitAI.disable_system()
+
+      html = render_submit(view, "speak_voice", %{"text" => "Hello there"})
+      assert html =~ "The AI module is switched off."
+      wait_until(fn -> render(view) =~ "Not connected" end)
+    end
+  end
+
   describe "audio streaming" do
     test "pushes each audio chunk to the client as base64", %{conn: conn} do
       endpoint = fixture_endpoint(provider: "xai", model: "grok-4.5")
