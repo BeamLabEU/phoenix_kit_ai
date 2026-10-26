@@ -182,6 +182,64 @@ defmodule PhoenixKitAI.ErrorsTest do
     end
   end
 
+  describe "message/1 — journal retention" do
+    @retention_errors [
+      :forbidden,
+      :module_disabled,
+      {:cutoff_in_future, :requests},
+      {:invalid_cutoff, :content},
+      {:invalid_retention, :content},
+      :prune_running,
+      :stale_retention,
+      {:foreign_key_blocks, "other_table"},
+      :preview_timeout,
+      {:unknown_kind, "rows"},
+      :settings_write_failed,
+      :retention_busy,
+      :enqueue_failed,
+      :nothing_to_run,
+      {:prune_failed, "undefined_column"},
+      :preview_failed,
+      {:prune_failed, "foreign_key_blocks"},
+      {:prune_failed, "cutoff_in_future"},
+      {:prune_failed, "invalid_cutoff"},
+      {:prune_failed, "invalid_args"}
+    ]
+
+    test "each has its own sentence, naming the kind or the table" do
+      for reason <- @retention_errors do
+        refute Errors.message(reason) =~ "Unexpected error", inspect(reason)
+      end
+
+      assert Errors.message({:cutoff_in_future, :requests}) =~ "journal entries"
+      assert Errors.message({:invalid_retention, :guard_events}) =~ "guard events"
+      assert Errors.message({:foreign_key_blocks, "other_table"}) =~ "other_table"
+      assert Errors.message({:foreign_key_blocks, "other_table"}) =~ "the guard events"
+    end
+
+    test "a known class of a failed run has its own sentence; any other the general one" do
+      general = Errors.message({:prune_failed, "undefined_column"})
+
+      for class <- ~w(foreign_key_blocks cutoff_in_future invalid_cutoff invalid_args) do
+        assert Errors.message({:prune_failed, class}) =~ "nothing was deleted"
+        refute Errors.message({:prune_failed, class}) == general
+      end
+    end
+
+    test "they are translated" do
+      for locale <- ["et", "ru"], reason <- @retention_errors do
+        english = Errors.message(reason)
+
+        Gettext.with_locale(PhoenixKitAI.Gettext, locale, fn ->
+          text = Errors.message(reason)
+
+          assert text != "" and text != english,
+                 "#{locale}/#{inspect(reason)} fell back to English"
+        end)
+      end
+    end
+  end
+
   describe "message/1 — fallback paths" do
     test "string reasons pass through unchanged" do
       assert Errors.message("legacy reason") == "legacy reason"

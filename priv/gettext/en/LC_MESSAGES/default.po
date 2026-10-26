@@ -27,13 +27,13 @@ msgid "AI Translation"
 msgstr "AI Translation"
 
 #: lib/phoenix_kit_ai/web/endpoint_form.ex:855
-#: lib/phoenix_kit_ai/web/playground.ex:130
+#: lib/phoenix_kit_ai/web/playground.ex:131
 #: lib/phoenix_kit_ai/web/prompt_form.ex:111
 #, elixir-autogen, elixir-format
 msgid "AI module is not enabled"
 msgstr "AI module is not enabled"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:1015
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:1045
 #, elixir-autogen, elixir-format
 msgid "API Response (raw)"
 msgstr "API Response (raw)"
@@ -48,8 +48,8 @@ msgstr "API error: %{status}"
 msgid "API key forbidden"
 msgstr "API key forbidden"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:233
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:640
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:238
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:665
 #: lib/phoenix_kit_ai/web/prompts.html.heex:151
 #, elixir-autogen, elixir-format
 msgid "Actions"
@@ -60,27 +60,27 @@ msgstr "Actions"
 msgid "Add new ones there and they'll appear in the picker."
 msgstr "Add new ones there and they'll appear in the picker."
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:510
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:535
 #, elixir-autogen, elixir-format
 msgid "All Endpoints"
 msgstr "All Endpoints"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:521
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:546
 #, elixir-autogen, elixir-format
 msgid "All Models"
 msgstr "All Models"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:547
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:572
 #, elixir-autogen, elixir-format
 msgid "All Sources"
 msgstr "All Sources"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:534
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:559
 #, elixir-autogen, elixir-format
 msgid "All Statuses"
 msgstr "All Statuses"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:502
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:527
 #, elixir-autogen, elixir-format
 msgid "All Time"
 msgstr "All Time"
@@ -90,8 +90,8 @@ msgstr "All Time"
 msgid "All non-primary languages (%{count}, overwrites existing)"
 msgstr "All non-primary languages (%{count}, overwrites existing)"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:193
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:348
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:198
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:353
 #, elixir-autogen, elixir-format
 msgid "Are you sure you want to delete this endpoint?"
 msgstr "Are you sure you want to delete this endpoint?"
@@ -102,17 +102,17 @@ msgstr "Are you sure you want to delete this endpoint?"
 msgid "Are you sure you want to delete this prompt?"
 msgstr "Are you sure you want to delete this prompt?"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:449
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:454
 #, elixir-autogen, elixir-format
 msgid "Avg Latency (30 days)"
 msgstr "Avg Latency (30 days)"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:477
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:482
 #, elixir-autogen, elixir-format
 msgid "Avg Latency (all time)"
 msgstr "Avg Latency (all time)"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:421
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:426
 #, elixir-autogen, elixir-format
 msgid "Avg Latency today"
 msgstr "Avg Latency today"
@@ -142,8 +142,8 @@ msgstr "Change Model"
 msgid "Chat / Completion"
 msgstr "Chat / Completion"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:57
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:279
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:62
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:284
 #, elixir-autogen, elixir-format
 msgid "Chat / completion model"
 msgstr "Chat / completion model"
@@ -154,7 +154,7 @@ msgid "Choose a model from the list below"
 msgstr "Choose a model from the list below"
 
 #: lib/phoenix_kit_ai/web/endpoint_form.html.heex:771
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:563
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:588
 #: lib/phoenix_kit_ai/web/playground.html.heex:133
 #: lib/phoenix_kit_ai/web/playground.html.heex:263
 #, elixir-autogen, elixir-format
@@ -170,7 +170,7 @@ msgid "Clear model"
 msgstr "Clear model"
 
 #: lib/phoenix_kit_ai/components/ai_translate.ex:122
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:1036
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:1066
 #, elixir-autogen, elixir-format
 msgid "Close"
 msgstr "Close"
@@ -232,14 +232,14 @@ msgstr "Copied!"
 msgid "Copy"
 msgstr "Copy"
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:64
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:227
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:792
+#: lib/phoenix_kit_ai/web/endpoints.ex:71
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:232
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:817
 #, elixir-autogen, elixir-format
 msgid "Cost"
 msgstr "Cost"
 
-#: lib/phoenix_kit_ai/web/playground.ex:365
+#: lib/phoenix_kit_ai/web/playground.ex:366
 #, elixir-autogen, elixir-format
 msgid "Could not connect to xAI realtime voice"
 msgstr "Could not connect to xAI realtime voice"
@@ -260,7 +260,7 @@ msgstr "Could not start translation."
 msgid "Create Endpoint"
 msgstr "Create Endpoint"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:389
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:394
 #, elixir-autogen, elixir-format
 msgid "Create First Endpoint"
 msgstr "Create First Endpoint"
@@ -295,13 +295,13 @@ msgstr "Create reusable prompt templates with variable substitution."
 msgid "Create reusable prompts with variable substitution"
 msgstr "Create reusable prompts with variable substitution"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:383
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:388
 #, elixir-autogen, elixir-format
 msgid "Create your first AI endpoint to get started."
 msgstr "Create your first AI endpoint to get started."
 
 #: lib/phoenix_kit_ai/web/endpoint_form.ex:316
-#: lib/phoenix_kit_ai/web/endpoints.ex:58
+#: lib/phoenix_kit_ai/web/endpoints.ex:65
 #: lib/phoenix_kit_ai/web/prompts.ex:43
 #: lib/phoenix_kit_ai/web/prompts.html.heex:93
 #: lib/phoenix_kit_ai/web/prompts.html.heex:148
@@ -324,7 +324,7 @@ msgstr "Current Model"
 msgid "Current tab only (%{lang})"
 msgstr "Current tab only (%{lang})"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:1026
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:1056
 #, elixir-autogen, elixir-format
 msgid "Database Record"
 msgstr "Database Record"
@@ -374,21 +374,23 @@ msgstr "Defaults to project_title (%{title}) from"
 msgid "Defaults to site_url from"
 msgstr "Defaults to site_url from"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:195
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:350
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:147
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:335
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:200
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:355
 #: lib/phoenix_kit_ai/web/prompts.html.heex:125
 #: lib/phoenix_kit_ai/web/prompts.html.heex:207
 #, elixir-autogen, elixir-format
 msgid "Delete"
 msgstr "Delete"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:103
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:108
 #, elixir-autogen, elixir-format
 msgid "Deleted"
 msgstr "Deleted"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:192
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:347
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:197
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:352
 #: lib/phoenix_kit_ai/web/prompts.html.heex:122
 #: lib/phoenix_kit_ai/web/prompts.html.heex:204
 #, elixir-autogen, elixir-format
@@ -410,8 +412,8 @@ msgstr "Description (Optional)"
 msgid "Detected Variables"
 msgstr "Detected Variables"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:186
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:341
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:191
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:346
 #: lib/phoenix_kit_ai/web/prompts.html.heex:116
 #: lib/phoenix_kit_ai/web/prompts.html.heex:198
 #, elixir-autogen, elixir-format
@@ -438,7 +440,7 @@ msgstr "Disconnect"
 msgid "Disconnected"
 msgstr "Disconnected"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:269
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:274
 #, elixir-autogen, elixir-format
 msgid "Drag to reorder"
 msgstr "Drag to reorder"
@@ -449,8 +451,8 @@ msgid "Each language is saved automatically the moment it finishes, so it's fine
 msgstr "Each language is saved automatically the moment it finishes, so it's fine to navigate away or keep editing other fields — nothing will be lost."
 
 #: lib/phoenix_kit_ai/web/endpoint_form.ex:689
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:179
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:334
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:184
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:339
 #: lib/phoenix_kit_ai/web/prompt_form.ex:73
 #: lib/phoenix_kit_ai/web/prompts.html.heex:109
 #: lib/phoenix_kit_ai/web/prompts.html.heex:191
@@ -463,14 +465,14 @@ msgstr "Edit"
 msgid "Effort Level"
 msgstr "Effort Level"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:56
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:278
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:61
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:283
 #, elixir-autogen, elixir-format
 msgid "Embedding model"
 msgstr "Embedding model"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:186
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:341
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:191
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:346
 #: lib/phoenix_kit_ai/web/prompts.html.heex:116
 #: lib/phoenix_kit_ai/web/prompts.html.heex:198
 #, elixir-autogen, elixir-format
@@ -488,24 +490,24 @@ msgstr "Enable Thinking"
 msgid "Enabled"
 msgstr "Enabled"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:596
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:803
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:621
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:828
 #: lib/phoenix_kit_ai/web/playground.html.heex:13
 #, elixir-autogen, elixir-format
 msgid "Endpoint"
 msgstr "Endpoint"
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:334
+#: lib/phoenix_kit_ai/web/endpoints.ex:352
 #, elixir-autogen, elixir-format
 msgid "Endpoint deleted"
 msgstr "Endpoint deleted"
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:307
+#: lib/phoenix_kit_ai/web/endpoints.ex:325
 #, elixir-autogen, elixir-format
 msgid "Endpoint disabled"
 msgstr "Endpoint disabled"
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:306
+#: lib/phoenix_kit_ai/web/endpoints.ex:324
 #, elixir-autogen, elixir-format
 msgid "Endpoint enabled"
 msgstr "Endpoint enabled"
@@ -522,8 +524,8 @@ msgstr "Endpoint is disabled"
 
 #: lib/phoenix_kit_ai/errors.ex:36
 #: lib/phoenix_kit_ai/web/endpoint_form.ex:674
-#: lib/phoenix_kit_ai/web/endpoints.ex:318
-#: lib/phoenix_kit_ai/web/endpoints.ex:340
+#: lib/phoenix_kit_ai/web/endpoints.ex:336
+#: lib/phoenix_kit_ai/web/endpoints.ex:358
 #, elixir-autogen, elixir-format
 msgid "Endpoint not found"
 msgstr "Endpoint not found"
@@ -554,7 +556,7 @@ msgstr "Error"
 msgid "Existing translations in every non-primary language will be overwritten on completion."
 msgstr "Existing translations in every non-primary language will be overwritten on completion."
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:343
+#: lib/phoenix_kit_ai/web/endpoints.ex:361
 #, elixir-autogen, elixir-format
 msgid "Failed to delete endpoint"
 msgstr "Failed to delete endpoint"
@@ -564,7 +566,7 @@ msgstr "Failed to delete endpoint"
 msgid "Failed to delete prompt"
 msgstr "Failed to delete prompt"
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:321
+#: lib/phoenix_kit_ai/web/endpoints.ex:339
 #, elixir-autogen, elixir-format
 msgid "Failed to update endpoint"
 msgstr "Failed to update endpoint"
@@ -650,19 +652,19 @@ msgstr "Input cannot be empty"
 msgid "Insufficient credits"
 msgstr "Insufficient credits"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:80
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:296
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:85
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:301
 #, elixir-autogen, elixir-format
 msgid "Integration error"
 msgstr "Integration error"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:76
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:294
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:81
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:299
 #, elixir-autogen, elixir-format
 msgid "Integration missing"
 msgstr "Integration missing"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:98
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:103
 #, elixir-autogen, elixir-format
 msgid "Integration:"
 msgstr "Integration:"
@@ -692,31 +694,31 @@ msgstr "Invalid prompt identifier"
 msgid "Invalid response format"
 msgstr "Invalid response format"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:110
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:115
 #, elixir-autogen, elixir-format
 msgid "Key:"
 msgstr "Key:"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:501
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:526
 #, elixir-autogen, elixir-format
 msgid "Last 30 Days"
 msgstr "Last 30 Days"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:500
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:525
 #, elixir-autogen, elixir-format
 msgid "Last 7 Days"
 msgstr "Last 7 Days"
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:65
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:230
+#: lib/phoenix_kit_ai/web/endpoints.ex:72
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:235
 #: lib/phoenix_kit_ai/web/prompts.ex:42
 #: lib/phoenix_kit_ai/web/prompts.html.heex:145
 #, elixir-autogen, elixir-format
 msgid "Last Used"
 msgstr "Last Used"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:623
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:786
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:648
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:811
 #, elixir-autogen, elixir-format
 msgid "Latency"
 msgstr "Latency"
@@ -732,7 +734,7 @@ msgstr "Leave blank to inherit."
 msgid "Legacy API key (recovery)"
 msgstr "Legacy API key (recovery)"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:739
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:764
 #, elixir-autogen, elixir-format
 msgid "Load More"
 msgstr "Load More"
@@ -747,7 +749,7 @@ msgstr "Loading models..."
 msgid "Loading models…"
 msgstr "Loading models…"
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:57
+#: lib/phoenix_kit_ai/web/endpoints.ex:64
 #, elixir-autogen, elixir-format
 msgid "Manual"
 msgstr "Manual"
@@ -775,10 +777,10 @@ msgstr "Missing variables:"
 
 #: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:120
 #: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:225
-#: lib/phoenix_kit_ai/web/endpoints.ex:61
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:218
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:607
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:822
+#: lib/phoenix_kit_ai/web/endpoints.ex:68
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:223
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:632
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:847
 #, elixir-autogen, elixir-format
 msgid "Model"
 msgstr "Model"
@@ -798,7 +800,7 @@ msgstr "Model Type"
 msgid "Model not found"
 msgstr "Model not found"
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:76
+#: lib/phoenix_kit_ai/web/endpoints.ex:83
 #, elixir-autogen, elixir-format
 msgid "Monitor API requests, token usage, and costs"
 msgstr "Monitor API requests, token usage, and costs"
@@ -809,8 +811,8 @@ msgid "Mood"
 msgstr "Mood"
 
 #: lib/phoenix_kit_ai/web/endpoint_form.html.heex:20
-#: lib/phoenix_kit_ai/web/endpoints.ex:59
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:211
+#: lib/phoenix_kit_ai/web/endpoints.ex:66
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:216
 #: lib/phoenix_kit_ai/web/prompt_form.html.heex:15
 #: lib/phoenix_kit_ai/web/prompts.ex:40
 #: lib/phoenix_kit_ai/web/prompts.html.heex:137
@@ -823,19 +825,19 @@ msgstr "Name"
 msgid "Naming rules:"
 msgstr "Naming rules:"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:326
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:331
 #: lib/phoenix_kit_ai/web/prompts.html.heex:180
 #, elixir-autogen, elixir-format
 msgid "Never"
 msgstr "Never"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:163
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:168
 #: lib/phoenix_kit_ai/web/prompts.html.heex:89
 #, elixir-autogen, elixir-format
 msgid "Never used"
 msgstr "Never used"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:35
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:40
 #, elixir-autogen, elixir-format
 msgid "New Endpoint"
 msgstr "New Endpoint"
@@ -845,7 +847,7 @@ msgstr "New Endpoint"
 msgid "New Prompt"
 msgstr "New Prompt"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:382
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:387
 #, elixir-autogen, elixir-format
 msgid "No Endpoints Yet"
 msgstr "No Endpoints Yet"
@@ -865,8 +867,8 @@ msgstr "No choices in response"
 msgid "No enabled endpoints."
 msgstr "No enabled endpoints."
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:88
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:300
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:93
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:305
 #, elixir-autogen, elixir-format
 msgid "No integration"
 msgstr "No integration"
@@ -877,7 +879,7 @@ msgstr "No integration"
 msgid "No integration configured for this endpoint. Set up the API key in Settings → Integrations."
 msgstr "No integration configured for this endpoint. Set up the API key in Settings → Integrations."
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:87
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:92
 #, elixir-autogen, elixir-format
 msgid "No integration selected. Edit the endpoint to pick one."
 msgstr "No integration selected. Edit the endpoint to pick one."
@@ -892,14 +894,14 @@ msgstr "No model selected"
 msgid "No optional settings for this provider."
 msgstr "No optional settings for this provider."
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:579
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:604
 #, elixir-autogen, elixir-format
 msgid "No requests match the current filters"
 msgstr "No requests match the current filters"
 
 #: lib/phoenix_kit_ai/web/endpoint_form.ex:392
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:84
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:298
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:89
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:303
 #: lib/phoenix_kit_ai/web/playground.html.heex:184
 #, elixir-autogen, elixir-format
 msgid "Not connected"
@@ -971,22 +973,22 @@ msgstr "Pick an integration above to see optional provider-specific settings."
 msgid "Pick an integration above, then a model, to configure generation parameters."
 msgstr "Pick an integration above, then a model, to configure generation parameters."
 
-#: lib/phoenix_kit_ai/web/playground.ex:150
-#: lib/phoenix_kit_ai/web/playground.ex:198
-#: lib/phoenix_kit_ai/web/playground.ex:227
-#: lib/phoenix_kit_ai/web/playground.ex:262
-#: lib/phoenix_kit_ai/web/playground.ex:300
+#: lib/phoenix_kit_ai/web/playground.ex:151
+#: lib/phoenix_kit_ai/web/playground.ex:199
+#: lib/phoenix_kit_ai/web/playground.ex:228
+#: lib/phoenix_kit_ai/web/playground.ex:263
+#: lib/phoenix_kit_ai/web/playground.ex:301
 #, elixir-autogen, elixir-format
 msgid "Please select an endpoint"
 msgstr "Please select an endpoint"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:631
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:656
 #, elixir-autogen, elixir-format
 msgid "Price"
 msgstr "Price"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:599
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:807
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:624
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:832
 #, elixir-autogen, elixir-format
 msgid "Prompt"
 msgstr "Prompt"
@@ -1052,7 +1054,7 @@ msgstr "Prompt updated successfully"
 #: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:121
 #: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:226
 #: lib/phoenix_kit_ai/web/endpoint_form.html.heex:62
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:216
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:221
 #, elixir-autogen, elixir-format
 msgid "Provider"
 msgstr "Provider"
@@ -1072,17 +1074,17 @@ msgstr "Rate limited"
 msgid "Reasoning (\"thinking\") models are slower and may return unstructured output — a standard model is recommended for translation."
 msgstr "Reasoning (\"thinking\") models are slower and may return unstructured output — a standard model is recommended for translation."
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:492
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:517
 #, elixir-autogen, elixir-format
 msgid "Recent Requests"
 msgstr "Recent Requests"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:763
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:788
 #, elixir-autogen, elixir-format
 msgid "Request Details"
 msgstr "Request Details"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:1002
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:1032
 #, elixir-autogen, elixir-format
 msgid "Request Payload (sent to API)"
 msgstr "Request Payload (sent to API)"
@@ -1092,29 +1094,29 @@ msgstr "Request Payload (sent to API)"
 msgid "Request timeout"
 msgstr "Request timeout"
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:62
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:221
+#: lib/phoenix_kit_ai/web/endpoints.ex:69
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:226
 #: lib/phoenix_kit_ai/web/tasks.ex:1296
 #, elixir-autogen, elixir-format
 msgid "Requests"
 msgstr "Requests"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:433
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:438
 #, elixir-autogen, elixir-format
 msgid "Requests / Tokens (30 days)"
 msgstr "Requests / Tokens (30 days)"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:461
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:466
 #, elixir-autogen, elixir-format
 msgid "Requests / Tokens (all time)"
 msgstr "Requests / Tokens (all time)"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:405
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:410
 #, elixir-autogen, elixir-format
 msgid "Requests / Tokens today"
 msgstr "Requests / Tokens today"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:892
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:922
 #: lib/phoenix_kit_ai/web/playground.html.heex:467
 #, elixir-autogen, elixir-format
 msgid "Response"
@@ -1171,7 +1173,7 @@ msgstr "Select an AI endpoint first."
 msgid "Select an endpoint..."
 msgstr "Select an endpoint..."
 
-#: lib/phoenix_kit_ai/web/playground.ex:307
+#: lib/phoenix_kit_ai/web/playground.ex:308
 #, elixir-autogen, elixir-format
 msgid "Selected endpoint does not support realtime voice"
 msgstr "Selected endpoint does not support realtime voice"
@@ -1214,7 +1216,7 @@ msgstr "Settings → Integrations"
 msgid "Setting…"
 msgstr "Setting…"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:570
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:595
 #, elixir-autogen, elixir-format
 msgid "Showing %{shown} of %{total} requests"
 msgstr "Showing %{shown} of %{total} requests"
@@ -1231,8 +1233,8 @@ msgstr "Slug"
 msgid "Something went wrong. Please try again."
 msgstr "Something went wrong. Please try again."
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:637
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:945
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:662
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:975
 #, elixir-autogen, elixir-format
 msgid "Source"
 msgstr "Source"
@@ -1257,10 +1259,10 @@ msgstr "Speaker"
 msgid "Starting…"
 msgstr "Starting…"
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:60
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:214
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:634
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:772
+#: lib/phoenix_kit_ai/web/endpoints.ex:67
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:219
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:659
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:797
 #: lib/phoenix_kit_ai/web/prompts.html.heex:139
 #, elixir-autogen, elixir-format
 msgid "Status"
@@ -1276,17 +1278,17 @@ msgstr "Streaming Voice (xAI)"
 msgid "Success"
 msgstr "Success"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:441
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:446
 #, elixir-autogen, elixir-format
 msgid "Successful / Errors (30 days)"
 msgstr "Successful / Errors (30 days)"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:469
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:474
 #, elixir-autogen, elixir-format
 msgid "Successful / Errors (all time)"
 msgstr "Successful / Errors (all time)"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:413
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:418
 #, elixir-autogen, elixir-format
 msgid "Successful / Errors today"
 msgstr "Successful / Errors today"
@@ -1302,7 +1304,7 @@ msgstr "System Prompt"
 msgid "System Prompt (Optional)"
 msgstr "System Prompt (Optional)"
 
-#: lib/phoenix_kit_ai/web/playground.ex:56
+#: lib/phoenix_kit_ai/web/playground.ex:57
 #, elixir-autogen, elixir-format
 msgid "Test endpoints and prompts interactively"
 msgstr "Test endpoints and prompts interactively"
@@ -1312,8 +1314,8 @@ msgstr "Test endpoints and prompts interactively"
 msgid "Text-to-Speech"
 msgstr "Text-to-Speech"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:55
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:277
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:60
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:282
 #, elixir-autogen, elixir-format
 msgid "Text-to-Speech model"
 msgstr "Text-to-Speech model"
@@ -1328,7 +1330,7 @@ msgstr "The %{provider} integration is not connected — requests will fail unti
 msgid "The TTS provider returned an unreadable audio response."
 msgstr "The TTS provider returned an unreadable audio response."
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:83
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:88
 #, elixir-autogen, elixir-format
 msgid "The integration is not currently connected. Open it in Settings → Integrations to test."
 msgstr "The integration is not currently connected. Open it in Settings → Integrations to test."
@@ -1338,12 +1340,12 @@ msgstr "The integration is not currently connected. Open it in Settings → Inte
 msgid "The integration used by this endpoint has been deleted. Please select a new one in the endpoint settings."
 msgstr "The integration used by this endpoint has been deleted. Please select a new one in the endpoint settings."
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:79
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:84
 #, elixir-autogen, elixir-format
 msgid "The integration's last validation failed. Open it in Settings → Integrations to retest."
 msgstr "The integration's last validation failed. Open it in Settings → Integrations to retest."
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:75
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:80
 #, elixir-autogen, elixir-format
 msgid "The pinned integration was deleted. Edit the endpoint and select a new one."
 msgstr "The pinned integration was deleted. Edit the endpoint and select a new one."
@@ -1368,7 +1370,7 @@ msgstr "This endpoint still has an api_key from before the Integrations system. 
 msgid "This is taking longer than usual. Translations keep running in the background — you can safely leave this page."
 msgstr "This is taking longer than usual. Translations keep running in the background — you can safely leave this page."
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:593
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:618
 #, elixir-autogen, elixir-format
 msgid "Time"
 msgstr "Time"
@@ -1378,7 +1380,7 @@ msgstr "Time"
 msgid "Timeout"
 msgstr "Timeout"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:499
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:524
 #, elixir-autogen, elixir-format
 msgid "Today"
 msgstr "Today"
@@ -1388,15 +1390,15 @@ msgstr "Today"
 msgid "Token Limit"
 msgstr "Token Limit"
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:63
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:224
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:615
+#: lib/phoenix_kit_ai/web/endpoints.ex:70
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:229
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:640
 #: lib/phoenix_kit_ai/web/tasks.ex:1297
 #, elixir-autogen, elixir-format
 msgid "Tokens"
 msgstr "Tokens"
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:410
+#: lib/phoenix_kit_ai/web/endpoints.ex:428
 #, elixir-autogen, elixir-format
 msgid "Too many endpoints to reorder at once."
 msgstr "Too many endpoints to reorder at once."
@@ -1466,7 +1468,7 @@ msgstr "Translation failed for %{lang}."
 msgid "Translation failed."
 msgstr "Translation failed."
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:208
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:213
 #, elixir-autogen, elixir-format
 msgid "Type"
 msgstr "Type"
@@ -1481,7 +1483,7 @@ msgstr "Type text to speak..."
 msgid "Type your message to the AI..."
 msgstr "Type your message to the AI..."
 
-#: lib/phoenix_kit_ai/errors.ex:229
+#: lib/phoenix_kit_ai/errors.ex:290
 #, elixir-autogen, elixir-format
 msgid "Unexpected error: %{reason}"
 msgstr "Unexpected error: %{reason}"
@@ -1506,8 +1508,8 @@ msgstr "Update Prompt"
 msgid "Update your AI endpoint configuration"
 msgstr "Update your AI endpoint configuration"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:184
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:339
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:189
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:344
 #: lib/phoenix_kit_ai/web/prompts.html.heex:114
 #: lib/phoenix_kit_ai/web/prompts.html.heex:196
 #, elixir-autogen, elixir-format
@@ -1515,7 +1517,7 @@ msgid "Updating…"
 msgstr "Updating…"
 
 #: lib/phoenix_kit_ai.ex:1120
-#: lib/phoenix_kit_ai/web/endpoints.ex:76
+#: lib/phoenix_kit_ai/web/endpoints.ex:83
 #: lib/phoenix_kit_ai/web/prompts.ex:41
 #, elixir-autogen, elixir-format
 msgid "Usage"
@@ -1567,8 +1569,8 @@ msgstr "Variable Syntax"
 msgid "Variables"
 msgstr "Variables"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:720
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:724
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:745
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:749
 #, elixir-autogen, elixir-format
 msgid "View"
 msgstr "View"
@@ -1593,7 +1595,7 @@ msgstr "Waiting for response..."
 msgid "X-Title"
 msgstr "X-Title"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:895
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:925
 #, elixir-autogen, elixir-format
 msgid "assistant"
 msgstr "assistant"
@@ -1603,7 +1605,7 @@ msgstr "assistant"
 msgid "auto-generated-slug"
 msgstr "auto-generated-slug"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:919
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:949
 #, elixir-autogen, elixir-format
 msgid "chain of thought"
 msgstr "chain of thought"
@@ -1633,7 +1635,7 @@ msgstr "in"
 msgid "no spaces"
 msgstr "no spaces"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:105
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:110
 #, elixir-autogen, elixir-format
 msgid "none"
 msgstr "none"
@@ -1720,12 +1722,12 @@ msgid_plural "Missing only (%{count} languages)"
 msgstr[0] "Missing only (%{count} language)"
 msgstr[1] "Missing only (%{count} languages)"
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:81
+#: lib/phoenix_kit_ai/web/endpoints.ex:88
 #, elixir-autogen, elixir-format
 msgid "Artificial intelligence — manage provider endpoints and API configurations"
 msgstr "Artificial intelligence — manage provider endpoints and API configurations"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:141
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:146
 #, elixir-autogen, elixir-format
 msgid "%{count} request"
 msgid_plural "%{count} requests"
@@ -1739,33 +1741,33 @@ msgid_plural "%{count} uses"
 msgstr[0] "%{count} use"
 msgstr[1] "%{count} uses"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:157
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:162
 #: lib/phoenix_kit_ai/web/prompts.html.heex:83
 #, elixir-autogen, elixir-format
 msgid "Last used"
 msgstr "Last used"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:133
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:138
 #, elixir-autogen, elixir-format
 msgid "Max:"
 msgstr "Max:"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:127
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:132
 #, elixir-autogen, elixir-format
 msgid "Temp:"
 msgstr "Temp:"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:153
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:158
 #, elixir-autogen, elixir-format
 msgid "Total cost"
 msgstr "Total cost"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:139
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:144
 #, elixir-autogen, elixir-format
 msgid "Total requests"
 msgstr "Total requests"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:143
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:148
 #, elixir-autogen, elixir-format
 msgid "Total tokens"
 msgstr "Total tokens"
@@ -1775,7 +1777,7 @@ msgstr "Total tokens"
 msgid "Usage count"
 msgstr "Usage count"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:146
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:151
 #, elixir-autogen, elixir-format
 msgid "token"
 msgid_plural "tokens"
@@ -1784,8 +1786,8 @@ msgstr[1] "tokens"
 
 #: lib/phoenix_kit_ai.ex:1116
 #: lib/phoenix_kit_ai/web/endpoint_form.ex:625
-#: lib/phoenix_kit_ai/web/endpoints.ex:106
-#: lib/phoenix_kit_ai/web/playground.ex:52
+#: lib/phoenix_kit_ai/web/endpoints.ex:117
+#: lib/phoenix_kit_ai/web/playground.ex:53
 #: lib/phoenix_kit_ai/web/prompt_form.ex:36
 #: lib/phoenix_kit_ai/web/prompts.ex:62
 #: lib/phoenix_kit_ai/web/tasks.ex:63
@@ -1795,14 +1797,14 @@ msgstr "AI"
 
 #: lib/phoenix_kit_ai.ex:1117
 #: lib/phoenix_kit_ai/web/endpoint_form.ex:761
-#: lib/phoenix_kit_ai/web/endpoints.ex:80
+#: lib/phoenix_kit_ai/web/endpoints.ex:87
 #, elixir-autogen, elixir-format
 msgid "Endpoints"
 msgstr "Endpoints"
 
 #: lib/phoenix_kit_ai.ex:1119
 #: lib/phoenix_kit_ai.ex:1154
-#: lib/phoenix_kit_ai/web/playground.ex:55
+#: lib/phoenix_kit_ai/web/playground.ex:56
 #, elixir-autogen, elixir-format
 msgid "Playground"
 msgstr "Playground"
@@ -1844,8 +1846,8 @@ msgstr "Image edit"
 msgid "Invalid image input"
 msgstr "Invalid image input"
 
-#: lib/phoenix_kit_ai/web/playground.ex:230
-#: lib/phoenix_kit_ai/web/playground.ex:265
+#: lib/phoenix_kit_ai/web/playground.ex:231
+#: lib/phoenix_kit_ai/web/playground.ex:266
 #, elixir-autogen, elixir-format
 msgid "Please add at least one image"
 msgstr "Please add at least one image"
@@ -1858,7 +1860,7 @@ msgid "Remove"
 msgstr "Remove"
 
 #: lib/phoenix_kit_ai/errors.ex:61
-#: lib/phoenix_kit_ai/web/playground.ex:771
+#: lib/phoenix_kit_ai/web/playground.ex:795
 #, elixir-autogen, elixir-format
 msgid "The model returned no image"
 msgstr "The model returned no image"
@@ -1935,7 +1937,7 @@ msgstr "Not supported by this provider"
 msgid "Operations"
 msgstr "Operations"
 
-#: lib/phoenix_kit_ai/web/playground.ex:269
+#: lib/phoenix_kit_ai/web/playground.ex:270
 #, elixir-autogen, elixir-format
 msgid "Pick an operation or write an instruction"
 msgstr "Pick an operation or write an instruction"
@@ -1965,7 +1967,7 @@ msgstr "The model does not accept %{option} = %{value}"
 msgid "This operation needs a reference image"
 msgstr "This operation needs a reference image"
 
-#: lib/phoenix_kit_ai/web/playground.ex:746
+#: lib/phoenix_kit_ai/web/playground.ex:770
 #, elixir-autogen, elixir-format
 msgid "This provider publishes no image model list"
 msgstr "This provider publishes no image model list"
@@ -2006,7 +2008,7 @@ msgstr "The image could not be downloaded"
 msgid "The provider refused this content: %{reason}"
 msgstr "The provider refused this content: %{reason}"
 
-#: lib/phoenix_kit_ai/web/playground.ex:962
+#: lib/phoenix_kit_ai/web/playground.ex:986
 #, elixir-autogen, elixir-format
 msgid "%{count} bytes of image data"
 msgstr "%{count} bytes of image data"
@@ -2018,27 +2020,27 @@ msgid_plural "%{count} images kept from the last run"
 msgstr[0] "%{count} image kept from the last run"
 msgstr[1] "%{count} images kept from the last run"
 
-#: lib/phoenix_kit_ai/web/playground.ex:942
+#: lib/phoenix_kit_ai/web/playground.ex:966
 #, elixir-autogen, elixir-format
 msgid "%{option} was changed from %{from} to %{to}"
 msgstr "%{option} was changed from %{from} to %{to}"
 
-#: lib/phoenix_kit_ai/web/playground.ex:935
+#: lib/phoenix_kit_ai/web/playground.ex:959
 #, elixir-autogen, elixir-format
 msgid "%{option} was dropped: the model does not accept %{value}"
 msgstr "%{option} was dropped: the model does not accept %{value}"
 
-#: lib/phoenix_kit_ai/web/playground.ex:958
+#: lib/phoenix_kit_ai/web/playground.ex:982
 #, elixir-autogen, elixir-format
 msgid "An output image could not be downloaded and is shown from the provider's link"
 msgstr "An output image could not be downloaded and is shown from the provider's link"
 
-#: lib/phoenix_kit_ai/web/playground.ex:924
+#: lib/phoenix_kit_ai/web/playground.ex:948
 #, elixir-autogen, elixir-format
 msgid "Aspect ratio"
 msgstr "Aspect ratio"
 
-#: lib/phoenix_kit_ai/web/playground.ex:927
+#: lib/phoenix_kit_ai/web/playground.ex:951
 #, elixir-autogen, elixir-format
 msgid "Background"
 msgstr "Background"
@@ -2073,18 +2075,18 @@ msgstr "Enhance the photo"
 msgid "Free-form instruction"
 msgstr "Free-form instruction"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:736
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:761
 #: lib/phoenix_kit_ai/web/playground.html.heex:330
 #, elixir-autogen, elixir-format
 msgid "Loading…"
 msgstr "Loading…"
 
-#: lib/phoenix_kit_ai/web/playground.ex:971
+#: lib/phoenix_kit_ai/web/playground.ex:995
 #, elixir-autogen, elixir-format
 msgid "Only JPEG, PNG and WebP images are accepted"
 msgstr "Only JPEG, PNG and WebP images are accepted"
 
-#: lib/phoenix_kit_ai/web/playground.ex:928
+#: lib/phoenix_kit_ai/web/playground.ex:952
 #, elixir-autogen, elixir-format
 msgid "Output format"
 msgstr "Output format"
@@ -2094,7 +2096,7 @@ msgstr "Output format"
 msgid "Plain studio background"
 msgstr "Plain studio background"
 
-#: lib/phoenix_kit_ai/web/playground.ex:926
+#: lib/phoenix_kit_ai/web/playground.ex:950
 #, elixir-autogen, elixir-format
 msgid "Quality"
 msgstr "Quality"
@@ -2119,7 +2121,7 @@ msgstr "Remove something"
 msgid "Replace the background"
 msgstr "Replace the background"
 
-#: lib/phoenix_kit_ai/web/playground.ex:925
+#: lib/phoenix_kit_ai/web/playground.ex:949
 #, elixir-autogen, elixir-format
 msgid "Resolution"
 msgstr "Resolution"
@@ -2129,7 +2131,7 @@ msgstr "Resolution"
 msgid "Restyle after reference images"
 msgstr "Restyle after reference images"
 
-#: lib/phoenix_kit_ai/web/playground.ex:814
+#: lib/phoenix_kit_ai/web/playground.ex:838
 #, elixir-autogen, elixir-format
 msgid "Something went wrong on our side. Please try again."
 msgstr "Something went wrong on our side. Please try again."
@@ -2139,7 +2141,7 @@ msgstr "Something went wrong on our side. Please try again."
 msgid "Straighten"
 msgstr "Straighten"
 
-#: lib/phoenix_kit_ai/web/playground.ex:968
+#: lib/phoenix_kit_ai/web/playground.ex:992
 #, elixir-autogen, elixir-format
 msgid "That file is too large (8 MB at most)"
 msgstr "That file is too large (8 MB at most)"
@@ -2149,7 +2151,7 @@ msgstr "That file is too large (8 MB at most)"
 msgid "The provider's model list could not be fetched"
 msgstr "The provider's model list could not be fetched"
 
-#: lib/phoenix_kit_ai/web/playground.ex:955
+#: lib/phoenix_kit_ai/web/playground.ex:979
 #, elixir-autogen, elixir-format
 msgid "The provider's model list could not be fetched; options were not checked"
 msgstr "The provider's model list could not be fetched; options were not checked"
@@ -2159,12 +2161,12 @@ msgstr "The provider's model list could not be fetched; options were not checked
 msgid "The provider's model list does not include %{model}"
 msgstr "The provider's model list does not include %{model}"
 
-#: lib/phoenix_kit_ai/web/playground.ex:950
+#: lib/phoenix_kit_ai/web/playground.ex:974
 #, elixir-autogen, elixir-format
 msgid "The provider's model list does not include %{model}; options were not checked"
 msgstr "The provider's model list does not include %{model}; options were not checked"
 
-#: lib/phoenix_kit_ai/web/playground.ex:973
+#: lib/phoenix_kit_ai/web/playground.ex:997
 #, elixir-autogen, elixir-format
 msgid "Two images at most"
 msgstr "Two images at most"
@@ -2211,67 +2213,67 @@ msgstr "New prompt"
 msgid "Advanced Parameters"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:955
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:985
 #, elixir-autogen, elixir-format
 msgid "Caller Context"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:865
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:895
 #, elixir-autogen, elixir-format
 msgid "Error Message"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:768
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:793
 #, elixir-autogen, elixir-format
 msgid "ID"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:835
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:860
 #, elixir-autogen, elixir-format
 msgid "Input Tokens"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:973
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:1003
 #, elixir-autogen, elixir-format
 msgid "Memory"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:964
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:994
 #, elixir-autogen, elixir-format
 msgid "Node"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:841
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:866
 #, elixir-autogen, elixir-format
 msgid "Output Tokens"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:968
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:998
 #, elixir-autogen, elixir-format
 msgid "PID"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:933
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:963
 #, elixir-autogen, elixir-format
 msgid "Parameters"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:959
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:989
 #, elixir-autogen, elixir-format
 msgid "Request ID"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:875
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:905
 #, elixir-autogen, elixir-format
 msgid "Request Messages"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:856
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:881
 #, elixir-autogen, elixir-format
 msgid "Timestamp"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:847
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:872
 #, elixir-autogen, elixir-format
 msgid "Total Tokens"
 msgstr ""
@@ -2293,7 +2295,7 @@ msgid_plural "%{name} (%{count} models)"
 msgstr[0] ""
 msgstr[1] ""
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:911
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:941
 #, elixir-autogen, elixir-format
 msgid "Reasoning (%{count} character)"
 msgid_plural "Reasoning (%{count} characters)"
@@ -2305,7 +2307,7 @@ msgstr[1] ""
 msgid "Speaking…"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:985
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:1015
 #, elixir-autogen, elixir-format
 msgid "Stacktrace (%{count} frame)"
 msgid_plural "Stacktrace (%{count} frames)"
@@ -2319,7 +2321,7 @@ msgid_plural "— Select provider (%{count} available) —"
 msgstr[0] ""
 msgstr[1] ""
 
-#: lib/phoenix_kit_ai/web/playground.ex:725
+#: lib/phoenix_kit_ai/web/playground.ex:749
 #, elixir-autogen, elixir-format
 msgid "(No content in response)"
 msgstr "(No content in response)"
@@ -2581,13 +2583,13 @@ msgid "No provider of this model accepts all the request's parameters. Remove th
 msgstr "No provider of this model accepts all the request's parameters. Remove the ones it does not support from the endpoint."
 
 #: lib/phoenix_kit_ai/request.ex:230
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:699
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:782
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:724
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:807
 #, elixir-autogen, elixir-format
 msgid "Refused"
 msgstr "Refused"
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:697
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:722
 #, elixir-autogen, elixir-format
 msgid "Refused before reaching the provider"
 msgstr "Refused before reaching the provider"
@@ -2848,6 +2850,7 @@ msgstr "Personal limits:"
 msgid "Reached: %{limit}"
 msgstr "Reached: %{limit}"
 
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:132
 #: lib/phoenix_kit_ai/web/tasks.ex:994
 #, elixir-autogen, elixir-format
 msgid "Save"
@@ -3559,7 +3562,7 @@ msgstr "“image” or “imagine” in a name usually means the model generates
 msgid "the operator does not report capabilities"
 msgstr "the operator does not report capabilities"
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:722
+#: lib/phoenix_kit_ai/web/endpoints.ex:791
 #, elixir-autogen, elixir-format
 msgid "Counted from the price entered by hand on the endpoint"
 msgstr "Counted from the price entered by hand on the endpoint"
@@ -3586,7 +3589,7 @@ msgstr "Price entered by hand"
 msgid "The provider does not give this model's price, so the cost of its calls is not counted. Enter the price per 1M tokens in dollars and each call's cost is counted from its tokens; a cost the provider reports is used instead."
 msgstr "The provider does not give this model's price, so the cost of its calls is not counted. Enter the price per 1M tokens in dollars and each call's cost is counted from its tokens; a cost the provider reports is used instead."
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:724
+#: lib/phoenix_kit_ai/web/endpoints.ex:793
 #, elixir-autogen, elixir-format
 msgid "entered by hand"
 msgstr "entered by hand"
@@ -3618,12 +3621,12 @@ msgstr "Missing"
 msgid "Anthropic: on, the model thinks as it does by default (Claude 5 models think); off, thinking is turned off where the model allows it (not on Claude Opus 5.5 or Fable). Anthropic's OpenAI-compatible API ignores the effort level; a token limit is sent only to a model that takes a thinking budget."
 msgstr "Anthropic: on, the model thinks as it does by default (Claude 5 models think); off, thinking is turned off where the model allows it (not on Claude Opus 5.5 or Fable). Anthropic's OpenAI-compatible API ignores the effort level; a token limit is sent only to a model that takes a thinking budget."
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:734
+#: lib/phoenix_kit_ai/web/endpoints.ex:803
 #, elixir-autogen, elixir-format
 msgid "Counted from the built-in list price, which may be out of date"
 msgstr "Counted from the built-in list price, which may be out of date"
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:736
+#: lib/phoenix_kit_ai/web/endpoints.ex:805
 #, elixir-autogen, elixir-format
 msgid "list price"
 msgstr "list price"
@@ -3678,8 +3681,8 @@ msgstr "Money is not counted for this task's calls on %{endpoints}: nothing pric
 msgid "Needed by the tasks that declare it."
 msgstr "Needed by the tasks that declare it."
 
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:670
-#: lib/phoenix_kit_ai/web/endpoints.html.heex:826
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:695
+#: lib/phoenix_kit_ai/web/endpoints.html.heex:851
 #, elixir-autogen, elixir-format
 msgid "answered by %{model}"
 msgstr "answered by %{model}"
@@ -3712,4 +3715,605 @@ msgstr ""
 #: lib/phoenix_kit_ai/guard_events.ex:688
 #, elixir-autogen, elixir-format
 msgid "needs to be set again in dollars"
+msgstr ""
+
+#: lib/phoenix_kit_ai/errors.ex:239
+#, elixir-autogen, elixir-format
+msgid "A journal cleanup is already running"
+msgstr ""
+
+#: lib/phoenix_kit_ai/errors.ex:252
+#, elixir-autogen, elixir-format
+msgid "Counting what would be deleted took too long"
+msgstr ""
+
+#: lib/phoenix_kit_ai/errors.ex:236
+#, elixir-autogen, elixir-format
+msgid "Invalid retention period for %{kind}"
+msgstr ""
+
+#: lib/phoenix_kit_ai/errors.ex:225
+#, elixir-autogen, elixir-format
+msgid "The AI module is disabled"
+msgstr ""
+
+#: lib/phoenix_kit_ai/errors.ex:242
+#, elixir-autogen, elixir-format
+msgid "The retention periods were changed by someone else; reload the page"
+msgstr ""
+
+#: lib/phoenix_kit_ai/errors.ex:224
+#, elixir-autogen, elixir-format
+msgid "You are not allowed to do this"
+msgstr ""
+
+#: lib/phoenix_kit_ai/errors.ex:295
+#, elixir-autogen, elixir-format
+msgid "guard events"
+msgstr ""
+
+#: lib/phoenix_kit_ai/errors.ex:294
+#, elixir-autogen, elixir-format
+msgid "journal entries"
+msgstr ""
+
+#: lib/phoenix_kit_ai/errors.ex:293
+#, elixir-autogen, elixir-format
+msgid "the content of journal entries"
+msgstr ""
+
+#: lib/phoenix_kit_ai/errors.ex:228
+#, elixir-autogen, elixir-format
+msgid "The cleanup boundary for %{kind} is in the future"
+msgstr ""
+
+#: lib/phoenix_kit_ai/errors.ex:245
+#, elixir-autogen, elixir-format
+msgid "The table %{table} references the AI journal or the guard events in a way that would block or spread the deletion; nothing was deleted"
+msgstr ""
+
+#: lib/phoenix_kit_ai/errors.ex:232
+#, elixir-autogen, elixir-format
+msgid "The cleanup boundary for %{kind} is not a date and time"
+msgstr ""
+
+#: lib/phoenix_kit_ai/errors.ex:263
+#, elixir-autogen, elixir-format
+msgid "Choose what to clean up"
+msgstr ""
+
+#: lib/phoenix_kit_ai/errors.ex:262
+#, elixir-autogen, elixir-format
+msgid "The journal cleanup could not be queued"
+msgstr ""
+
+#: lib/phoenix_kit_ai/errors.ex:283
+#, elixir-autogen, elixir-format
+msgid "The journal cleanup failed"
+msgstr ""
+
+#: lib/phoenix_kit_ai/errors.ex:260
+#, elixir-autogen, elixir-format
+msgid "The retention periods are being saved by someone else; try again"
+msgstr ""
+
+#: lib/phoenix_kit_ai/errors.ex:257
+#, elixir-autogen, elixir-format
+msgid "The retention periods could not be saved"
+msgstr ""
+
+#: lib/phoenix_kit_ai/errors.ex:254
+#, elixir-autogen, elixir-format
+msgid "Unknown kind of journal retention"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:369
+#, elixir-autogen, elixir-format
+msgid "%{count} day"
+msgid_plural "%{count} days"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:583
+#, elixir-autogen, elixir-format
+msgid "%{count} guard event deleted"
+msgid_plural "%{count} guard events deleted"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:720
+#, elixir-autogen, elixir-format
+msgid "%{count} guard event older than %{date} will be deleted."
+msgid_plural "%{count} guard events older than %{date} will be deleted."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:573
+#, elixir-autogen, elixir-format
+msgid "%{count} journal entry deleted"
+msgid_plural "%{count} journal entries deleted"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:678
+#, elixir-autogen, elixir-format
+msgid "%{count} journal entry older than %{date} will be deleted."
+msgid_plural "%{count} journal entries older than %{date} will be deleted."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:370
+#, elixir-autogen, elixir-format
+msgid "%{count} month"
+msgid_plural "%{count} months"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:371
+#, elixir-autogen, elixir-format
+msgid "%{count} year"
+msgid_plural "%{count} years"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:70
+#, elixir-autogen, elixir-format
+msgid "A cleanup job is %{state}"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/journal_retention.ex:559
+#, elixir-autogen, elixir-format
+msgid "A whole number from 1 to %{max}"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:469
+#, elixir-autogen, elixir-format
+msgid "Automatic cleanup is off: the journal is kept forever"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:58
+#, elixir-autogen, elixir-format
+msgid "By default nothing is deleted. A period you choose is applied by the nightly cleanup, no earlier than a day after you save it."
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:393
+#, elixir-autogen, elixir-format
+msgid "By the saved period (%{period})"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/journal_retention.ex:565
+#, elixir-autogen, elixir-format
+msgid "Choose days, months or years"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:263
+#, elixir-autogen, elixir-format
+msgid "Clean up now"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:143
+#, elixir-autogen, elixir-format
+msgid "Clean up the journal now"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:114
+#, elixir-autogen, elixir-format
+msgid "Clearing the content keeps each entry's cost, tokens and model. An entry's error message (which may quote the provider's answer) leaves only with the entry; the reasons and notes of blocks are not covered here."
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:356
+#, elixir-autogen, elixir-format
+msgid "Content of journal entries"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:324
+#, elixir-autogen, elixir-format
+msgid "Count"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:265
+#, elixir-autogen, elixir-format
+msgid "Count first, then confirm. A value here applies to this run only and is not saved."
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:323
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:656
+#, elixir-autogen, elixir-format
+msgid "Counting…"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:431
+#, elixir-autogen, elixir-format
+msgid "Deleting does not shrink the table files: the space is reused after autovacuum. A large first run writes a lot of WAL (replicas, backups)."
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/journal_retention.ex:573
+#, elixir-autogen, elixir-format
+msgid "Enter a whole number, or choose to keep forever"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:400
+#, elixir-autogen, elixir-format
+msgid "Entries before %{date} will be deleted: there will be nothing to check the provider's invoice against for the months before it"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:413
+#, elixir-autogen, elixir-format
+msgid "Flags and forgiven limits before %{date} will be deleted"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:364
+#, elixir-autogen, elixir-format
+msgid "Flags, blocks and forgiven limits of the AI guard"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:163
+#, elixir-autogen, elixir-format
+msgid "For the retained period, since %{date}"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:358
+#, elixir-autogen, elixir-format
+msgid "Guard events"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:357
+#, elixir-autogen, elixir-format
+msgid "Journal entries"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:52
+#, elixir-autogen, elixir-format
+msgid "Journal retention"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:213
+#, elixir-autogen, elixir-format
+msgid "Keep forever"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:368
+#, elixir-autogen, elixir-format
+msgid "Kept forever"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:552
+#, elixir-autogen, elixir-format
+msgid "Last manual cleanup: %{date}"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:520
+#, elixir-autogen, elixir-format
+msgid "Last nightly cleanup: %{date}"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:390
+#, elixir-autogen, elixir-format
+msgid "Leave as it is"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:596
+#, elixir-autogen, elixir-format
+msgid "More is left: the next run continues where this one stopped"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/journal_retention.ex:598
+#, elixir-autogen, elixir-format
+msgid "No period is saved for this kind"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/journal_retention.ex:304
+#, elixir-autogen, elixir-format
+msgid "Nothing to save: the periods are as stored"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:224
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:301
+#, elixir-autogen, elixir-format
+msgid "Number"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:395
+#, elixir-autogen, elixir-format
+msgid "Older than…"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:361
+#, elixir-autogen, elixir-format
+msgid "Prompts, answers and reasoning are removed; the entry, its cost and tokens stay"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:54
+#, elixir-autogen, elixir-format
+msgid "Read only"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/journal_retention.ex:348
+#, elixir-autogen, elixir-format
+msgid "Retention periods saved"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:128
+#, elixir-autogen, elixir-format
+msgid "Save a shorter period"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:91
+#, elixir-autogen, elixir-format
+msgid "Save periods"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:90
+#, elixir-autogen, elixir-format
+msgid "Saving…"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:407
+#, elixir-autogen, elixir-format
+msgid "The 30-day windows (model recommendations, token medians, flags of the last 30 days, the 30-day totals on this page) will see less"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:748
+#, elixir-autogen, elixir-format
+msgid "The content of the last 24 hours is never removed."
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:695
+#, elixir-autogen, elixir-format
+msgid "The content of up to %{count} journal entry from %{from} to %{date} will be removed."
+msgid_plural "The content of up to %{count} journal entries from %{from} to %{date} will be removed."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:703
+#, elixir-autogen, elixir-format
+msgid "The content of up to %{count} journal entry older than %{date} will be removed."
+msgid_plural "The content of up to %{count} journal entries older than %{date} will be removed."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:176
+#, elixir-autogen, elixir-format
+msgid "The content was removed by the retention period on %{date}"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:418
+#, elixir-autogen, elixir-format
+msgid "The content will live as long as its entry does"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:642
+#, elixir-autogen, elixir-format
+msgid "The first nightly cleanup runs no earlier than %{date}."
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/journal_retention.ex:395
+#, elixir-autogen, elixir-format
+msgid "The journal cleanup is queued"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:559
+#, elixir-autogen, elixir-format
+msgid "The last manual cleanup failed on %{date}: %{error}"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:507
+#, elixir-autogen, elixir-format
+msgid "The nightly cleanup failed on %{date}: %{error}"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:542
+#, elixir-autogen, elixir-format
+msgid "The nightly cleanup has not run. Check that PhoenixKitAI.JournalPruneWorker is in Oban's crontab (mix phoenix_kit.update adds it), or clean up by hand."
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:735
+#, elixir-autogen, elixir-format
+msgid "The period is shorter than the current month: entries from %{date} on are not deleted — the spend limits read them."
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:742
+#, elixir-autogen, elixir-format
+msgid "The period is shorter than the current month: guard events from %{date} on are not deleted — this month's forgiven limits read them."
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:363
+#, elixir-autogen, elixir-format
+msgid "The whole entry is deleted, with its cost"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:234
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:311
+#, elixir-autogen, elixir-format
+msgid "Unit"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:664
+#, elixir-autogen, elixir-format
+msgid "You can still go on: the boundaries are checked again, and the numbers will be in the outcome."
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:383
+#, elixir-autogen, elixir-format
+msgid "day"
+msgid_plural "days"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:384
+#, elixir-autogen, elixir-format
+msgid "month"
+msgid_plural "months"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:437
+#, elixir-autogen, elixir-format
+msgid "running"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:436
+#, elixir-autogen, elixir-format
+msgid "scheduled"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:578
+#, elixir-autogen, elixir-format
+msgid "the content of %{count} entry cleared"
+msgid_plural "the content of %{count} entries cleared"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:435
+#, elixir-autogen, elixir-format
+msgid "waiting in the queue"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:438
+#, elixir-autogen, elixir-format
+msgid "waiting to retry"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:385
+#, elixir-autogen, elixir-format
+msgid "year"
+msgid_plural "years"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/phoenix_kit_ai/errors.ex:275
+#, elixir-autogen, elixir-format
+msgid "A cleanup boundary was in the future; nothing was deleted"
+msgstr ""
+
+#: lib/phoenix_kit_ai/errors.ex:278
+#, elixir-autogen, elixir-format
+msgid "A cleanup boundary was not a date and time; nothing was deleted"
+msgstr ""
+
+#: lib/phoenix_kit_ai/errors.ex:270
+#, elixir-autogen, elixir-format
+msgid "A table references the AI journal or the guard events in a way that would block or spread the deletion; nothing was deleted"
+msgstr ""
+
+#: lib/phoenix_kit_ai/errors.ex:266
+#, elixir-autogen, elixir-format
+msgid "Counting what would be deleted failed"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/journal_retention.ex:173
+#, elixir-autogen, elixir-format
+msgid "Someone else changed the retention periods; the card shows them now"
+msgstr ""
+
+#: lib/phoenix_kit_ai/errors.ex:281
+#, elixir-autogen, elixir-format
+msgid "The cleanup job's arguments could not be read; nothing was deleted"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:497
+#, elixir-autogen, elixir-format
+msgid "The first cleanup of guard events runs no earlier than %{date}"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:494
+#, elixir-autogen, elixir-format
+msgid "The first cleanup of journal entries runs no earlier than %{date}"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:489
+#, elixir-autogen, elixir-format
+msgid "The first cleanup of the content of journal entries runs no earlier than %{date}"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:628
+#, elixir-autogen, elixir-format
+msgid "The period for guard events (%{period}) is stored without the time it was set: the events are kept forever until it is saved again"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:621
+#, elixir-autogen, elixir-format
+msgid "The period for journal entries (%{period}) is stored without the time it was set: the entries are kept forever until it is saved again"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:614
+#, elixir-autogen, elixir-format
+msgid "The period for the content of journal entries (%{period}) is stored without the time it was set: the content is kept forever until it is saved again"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:778
+#, elixir-autogen, elixir-format
+msgid "%{day} %{month} %{year}"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:786
+#, elixir-autogen, elixir-format
+msgctxt "date"
+msgid "April"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:790
+#, elixir-autogen, elixir-format
+msgctxt "date"
+msgid "August"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:794
+#, elixir-autogen, elixir-format
+msgctxt "date"
+msgid "December"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:784
+#, elixir-autogen, elixir-format
+msgctxt "date"
+msgid "February"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:783
+#, elixir-autogen, elixir-format
+msgctxt "date"
+msgid "January"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:789
+#, elixir-autogen, elixir-format
+msgctxt "date"
+msgid "July"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:788
+#, elixir-autogen, elixir-format
+msgctxt "date"
+msgid "June"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:785
+#, elixir-autogen, elixir-format
+msgctxt "date"
+msgid "March"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:787
+#, elixir-autogen, elixir-format
+msgctxt "date"
+msgid "May"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:793
+#, elixir-autogen, elixir-format
+msgctxt "date"
+msgid "November"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:792
+#, elixir-autogen, elixir-format
+msgctxt "date"
+msgid "October"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/journal_retention_card.ex:791
+#, elixir-autogen, elixir-format
+msgctxt "date"
+msgid "September"
 msgstr ""

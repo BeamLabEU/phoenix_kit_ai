@@ -10,6 +10,8 @@ defmodule PhoenixKitAI.Web.Endpoints do
 
   - **Endpoint Management**: Add, edit, delete, enable/disable AI endpoints
   - **Usage Statistics**: View request history and token usage
+  - **Journal retention**: the periods the journal is kept, the nightly
+    cleanup's outcome and a cleanup by hand (`PhoenixKitAI.Web.JournalRetention`)
 
   ## Route
 
@@ -27,11 +29,16 @@ defmodule PhoenixKitAI.Web.Endpoints do
   alias PhoenixKit.Utils.Format
   alias PhoenixKitAI, as: AI
   alias PhoenixKitAI.Endpoint
+  alias PhoenixKitAI.Web.Access
   alias PhoenixKitAI.Web.AuthHelpers
+  alias PhoenixKitAI.Web.Components.JournalRetentionCard
+  alias PhoenixKitAI.Web.JournalRetention
   alias PhoenixKitAI.Web.MessageShape
   alias PhoenixKitAI.Web.SortHelpers
 
   @usage_refresh_ms 500
+
+  @retention_events JournalRetention.events()
 
   @valid_usage_sort_fields ~w(inserted_at endpoint_name model total_tokens latency_ms cost status)
 
@@ -92,6 +99,8 @@ defmodule PhoenixKitAI.Web.Endpoints do
     if connected?(socket) do
       AI.subscribe_endpoints()
       AI.subscribe_requests()
+      # The journal's retention periods and the outcome of its cleanups.
+      Settings.subscribe()
     end
 
     # Default to the endpoints tab; `handle_params/3` re-derives both for the
@@ -102,6 +111,8 @@ defmodule PhoenixKitAI.Web.Endpoints do
     # `has_endpoints` and the data load happen in `handle_params/3`.
     socket =
       socket
+      |> Access.assign_session(session)
+      |> JournalRetention.assign_defaults()
       |> assign(:current_path, current_path)
       |> assign(:page_section, gettext("AI"))
       |> assign(:page_section_path, PhoenixKitAI.Routes.ai_path())
@@ -181,6 +192,7 @@ defmodule PhoenixKitAI.Web.Endpoints do
             |> assign(:sort_dir, sort_dir)
             |> assign(:page, page)
             |> maybe_reload_endpoints(tab)
+            |> JournalRetention.assign_retained_since()
 
           "usage" ->
             {sort_by, sort_dir, filters} = parse_usage_params(params)
@@ -193,6 +205,7 @@ defmodule PhoenixKitAI.Web.Endpoints do
             |> assign(:usage_filter_status, filters.status)
             |> assign(:usage_filter_source, filters.source)
             |> assign(:usage_filter_date, filters.date)
+            |> load_retention()
             |> load_usage_data()
 
           _ ->
@@ -281,6 +294,11 @@ defmodule PhoenixKitAI.Web.Endpoints do
     query = URI.encode_query(params)
     PhoenixKitAI.Routes.ai_path() <> "/usage?#{query}"
   end
+
+  # The retention card is read when the tab first opens; later it follows
+  # the settings broadcasts, so a filter change keeps what is being typed.
+  defp load_retention(%{assigns: %{usage_loaded: true}} = socket), do: socket
+  defp load_retention(socket), do: JournalRetention.load(socket)
 
   defp maybe_add_url_param(params, _key, nil), do: params
   defp maybe_add_url_param(params, key, value), do: params ++ [{key, to_string(value)}]
@@ -513,6 +531,19 @@ defmodule PhoenixKitAI.Web.Endpoints do
   end
 
   # ===========================================
+  # JOURNAL RETENTION
+  # ===========================================
+
+  @impl true
+  def handle_event(event, params, socket) when event in @retention_events,
+    do: JournalRetention.handle_event(event, params, socket)
+
+  @impl true
+  def handle_async(name, result, socket)
+      when name in [:retention_save_preview, :retention_run_preview],
+      do: JournalRetention.handle_async(name, result, socket)
+
+  # ===========================================
   # PUBSUB HANDLERS - Real-time updates
   # ===========================================
 
@@ -553,6 +584,29 @@ defmodule PhoenixKitAI.Web.Endpoints do
     {:noreply, socket}
   end
 
+  # Core's settings topic: the retention card's two settings are drawn from
+  # the value in the message; after a cleanup the journal is shown again.
+  # Every other setting is skipped quietly here, before the catch-all logs.
+  @impl true
+  def handle_info({:setting_changed, key, value}, socket) do
+    if JournalRetention.setting?(key),
+      do: {:noreply, retention_changed(socket, key, value)},
+      else: {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:setting_deleted, key}, socket) do
+    if JournalRetention.setting?(key),
+      do: {:noreply, retention_changed(socket, key, nil)},
+      else: {:noreply, socket}
+  end
+
+  # A stamp's broadcast asks for the cleanup job to be read again once its
+  # attempt is closed (`JournalRetention.handle_setting/3`).
+  @impl true
+  def handle_info(:retention_job_reread, socket),
+    do: {:noreply, JournalRetention.reread_job(socket)}
+
   # Catch-all for unmatched messages (PubSub from other modules, late
   # replies after navigation, etc.). Log at :debug per the workspace
   # sync precedent — never silently swallow a message we didn't expect.
@@ -568,6 +622,21 @@ defmodule PhoenixKitAI.Web.Endpoints do
   # ===========================================
   # PRIVATE HELPERS
   # ===========================================
+
+  defp retention_changed(socket, key, value) do
+    case JournalRetention.handle_setting(socket, key, value) do
+      {:last_run, socket} -> reload_after_cleanup(socket)
+      {:periods, socket} -> socket
+    end
+  end
+
+  defp reload_after_cleanup(%{assigns: %{active_tab: "usage", usage_loaded: true}} = socket),
+    do: socket |> reload_usage_requests() |> update_usage_stats()
+
+  defp reload_after_cleanup(%{assigns: %{active_tab: "endpoints"}} = socket),
+    do: reload_endpoints(socket)
+
+  defp reload_after_cleanup(socket), do: socket
 
   defp reload_endpoints_and_presence(socket) do
     socket = reload_endpoints(socket)
