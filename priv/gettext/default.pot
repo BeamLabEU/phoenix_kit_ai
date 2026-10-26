@@ -3724,7 +3724,7 @@ msgstr ""
 msgid "This endpoint still uses an API key stored from before the Integrations system. Add an Integration with this provider's key and pick it above; saving then removes the stored key."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:791
+#: lib/phoenix_kit_ai/web/endpoints.ex:815
 #, elixir-autogen, elixir-format
 msgid "You don't have permission to do that."
 msgstr ""
@@ -3735,7 +3735,12 @@ msgstr ""
 msgid "You don't have permission to manage AI endpoints."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:786
+#: lib/phoenix_kit_ai/web/endpoints.ex:810
 #, elixir-autogen, elixir-format
 msgid "You don't have permission to see AI usage."
+msgstr ""
+
+#: lib/phoenix_kit_ai/components/ai_translate/embed.ex:123
+#, elixir-autogen, elixir-format
+msgid "You don't have permission to translate this."
 msgstr ""

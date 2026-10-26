@@ -915,6 +915,13 @@ Test database `phoenix_kit_ai_test`.
   doubling); after that a 429 is an ordinary retryable failure, so an
   exhausted quota ends in `ai.translation_failed` instead of holding its
   in-flight slot.
+- `use PhoenixKitAI.Components.AITranslate.Embed, authorize: …` gates the
+  translate modal: a 1-arity remote capture or `{m, f, args}` (called with
+  the socket first), evaluated against the live socket for each of the six
+  `ai_*` events before anything is dispatched; falsy halts with an error
+  flash and enqueues nothing. Omitted, every event is dispatched (kept for
+  existing hosts) — a host should always pass it, since the hook halts
+  those events before any host `handle_event` could re-check.
 - Host translatables (`config :phoenix_kit_ai, translatables:`) implement
   `PhoenixKitAI.Translatable` (`fetch/2`, `source_fields/2`,
   `put_translation/4`); a configured entry wins over a module's adapter

@@ -3736,7 +3736,7 @@ msgstr "Просмотр использования ИИ"
 msgid "This endpoint still uses an API key stored from before the Integrations system. Add an Integration with this provider's key and pick it above; saving then removes the stored key."
 msgstr "Эта конечная точка всё ещё использует API-ключ, сохранённый до появления системы интеграций. Добавьте интеграцию с ключом этого провайдера и выберите её выше; при сохранении сохранённый ключ будет удалён."
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:791
+#: lib/phoenix_kit_ai/web/endpoints.ex:815
 #, elixir-autogen, elixir-format
 msgid "You don't have permission to do that."
 msgstr "У вас нет прав на это действие."
@@ -3747,7 +3747,12 @@ msgstr "У вас нет прав на это действие."
 msgid "You don't have permission to manage AI endpoints."
 msgstr "У вас нет прав на управление конечными точками ИИ."
 
-#: lib/phoenix_kit_ai/web/endpoints.ex:786
+#: lib/phoenix_kit_ai/web/endpoints.ex:810
 #, elixir-autogen, elixir-format
 msgid "You don't have permission to see AI usage."
 msgstr "У вас нет прав на просмотр использования ИИ."
+
+#: lib/phoenix_kit_ai/components/ai_translate/embed.ex:123
+#, elixir-autogen, elixir-format
+msgid "You don't have permission to translate this."
+msgstr "У вас нет прав на этот перевод."
