@@ -208,7 +208,8 @@ defmodule PhoenixKitAI.Tasks do
       Enum.any?(List.wrap(Process.get(:"$callers")), &callback_process?/1)
   end
 
-  defp callback_process?(pid) when is_pid(pid) do
+  # Callbacks always run on this node; `Process.info/2` raises on a remote pid.
+  defp callback_process?(pid) when is_pid(pid) and node(pid) == node() do
     case Process.info(pid, :dictionary) do
       {:dictionary, dict} -> List.keyfind(dict, @callback_mark, 0) == {@callback_mark, true}
       _ -> false

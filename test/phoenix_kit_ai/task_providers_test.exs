@@ -459,6 +459,23 @@ defmodule PhoenixKitAI.TaskProvidersTest do
       assert leftovers == {:messages, []}
     end
 
+    test "a remote pid in $callers is not mistaken for a callback and does not raise" do
+      node_name = "other@host"
+
+      remote =
+        :erlang.binary_to_term(
+          <<131, 88, 119, byte_size(node_name), node_name::binary, 1::32, 0::32, 1::32>>
+        )
+
+      task =
+        Task.async(fn ->
+          Process.put(:"$callers", [remote | List.wrap(Process.get(:"$callers"))])
+          Tasks.get("test.photo")
+        end)
+
+      assert %TaskSpec{key: "test.photo"} = Task.await(task, 5_000)
+    end
+
     test "an unrelated task of the inline builder's caller reads normally" do
       providers([BlockingProvider])
       test = self()
