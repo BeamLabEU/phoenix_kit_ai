@@ -11,7 +11,20 @@ defmodule PhoenixKitAI.Tasks do
   `ai.playground` itself. The registry is built on first use and again
   only when the set of registered modules changes — never per call. A task
   of a module that is switched off is listed with `enabled: false`.
-  Two declarations of one key: the first wins, with a warning.
+
+  A host app that is not a kit module lists its own modules in
+  `config :phoenix_kit_ai, task_providers: [MyApp.AI]` (read at run time);
+  each exports `ai_tasks/0` like a kit module. Providers are read after the
+  registered modules; a module listed both ways counts as a kit module. A
+  provider has no module switch, so its tasks are always `enabled: true`
+  (`provider?/1`). A listed provider that cannot be loaded or exports no
+  `ai_tasks/0` is warned about; a bad config entry is ignored with a
+  warning. A change to the registered modules or to the provider list
+  rebuilds the registry.
+
+  Two declarations of one key: the first wins (kit modules before
+  providers, providers in config order), with a warning naming both; the
+  dropped one is listed by `collisions/0` and shown on AI → Tasks.
 
   ## Fitness
 
@@ -87,26 +100,50 @@ defmodule PhoenixKitAI.Tasks do
 
   def for_call(_key), do: nil
 
+  @doc """
+  The declarations that lost a key collision and were dropped, as
+  `%{key, kept: module, dropped: module}` — shown on AI → Tasks so a
+  provider's task replaced by a kit module's (or an earlier provider's) is
+  not a silent substitution.
+  """
+  @spec collisions() :: [%{key: String.t(), kept: module(), dropped: module()}]
+  def collisions, do: state().collisions
+
+  @doc """
+  Whether `spec` comes from a host app's `config :phoenix_kit_ai,
+  task_providers:` entry rather than a registered kit module. A provider
+  has no module switch, so its tasks are always enabled.
+  """
+  @spec provider?(TaskSpec.t()) :: boolean()
+  def provider?(%TaskSpec{module: module}), do: MapSet.member?(state().providers, module)
+
   # A build where a module's `ai_tasks/0` failed is kept only for the retry
   # interval; the next access after that builds again (and puts again, so
-  # at most once per interval while the callback keeps failing).
-  defp registry do
-    modules = discoverable_modules()
+  # at most once per interval while the callback keeps failing). The cache
+  # key is the registered modules AND the raw `task_providers` config, so a
+  # change to either rebuilds; the config is validated (and warned about)
+  # only while building, never per lookup.
+  defp registry, do: state().specs
+
+  defp state do
+    key = {discoverable_modules(), Application.get_env(:phoenix_kit_ai, :task_providers, [])}
 
     case :persistent_term.get(@registry_key, nil) do
-      {^modules, specs, nil} ->
-        specs
+      {^key, state, nil} ->
+        state
 
-      {^modules, specs, failed_at} ->
-        if now() - failed_at < retry_ms(), do: specs, else: rebuild(modules)
+      {^key, state, failed_at} ->
+        if now() - failed_at < retry_ms(), do: state, else: rebuild(key)
 
       _ ->
-        rebuild(modules)
+        rebuild(key)
     end
   end
 
-  defp rebuild(modules) do
-    {specs, failed} = build(modules)
+  defp rebuild({modules, raw_providers} = key) do
+    # A module listed both ways is a kit module: its switch, asked once.
+    providers = configured_providers(raw_providers) -- modules
+    {state, failed} = build(modules, providers)
 
     failed_at =
       if failed != [] do
@@ -118,8 +155,8 @@ defmodule PhoenixKitAI.Tasks do
         now()
       end
 
-    :persistent_term.put(@registry_key, {modules, specs, failed_at})
-    specs
+    :persistent_term.put(@registry_key, {key, state, failed_at})
+    state
   end
 
   defp retry_ms, do: Application.get_env(:phoenix_kit_ai, :task_registry_retry_ms, @retry_ms)
@@ -134,11 +171,38 @@ defmodule PhoenixKitAI.Tasks do
     _ -> [PhoenixKitAI]
   end
 
-  defp build(modules) do
-    declared = Enum.map(modules, &{&1, declared_by(&1)})
+  # `config :phoenix_kit_ai, task_providers: [MyApp.AI]` — a host app's own
+  # modules declaring tasks without being kit modules. Read at run time.
+  defp configured_providers(list) when is_list(list) do
+    {atoms, others} = Enum.split_with(list, &(is_atom(&1) and not is_nil(&1)))
+
+    if others != [] do
+      Logger.warning(
+        "[PhoenixKitAI] :task_providers entries that are not module names are ignored: " <>
+          Enum.map_join(others, ", ", &MessageShape.describe/1)
+      )
+    end
+
+    Enum.uniq(atoms)
+  end
+
+  defp configured_providers(other) do
+    Logger.warning(
+      "[PhoenixKitAI] :task_providers must be a list of modules; ignored: " <>
+        MessageShape.describe(other)
+    )
+
+    []
+  end
+
+  defp build(modules, providers) do
+    declared =
+      Enum.map(modules, &{&1, declared_by(&1)}) ++
+        Enum.map(providers, &{&1, declared_by_provider(&1)})
+
     failed = for {module, :error} <- declared, do: module
 
-    specs =
+    {specs, collisions} =
       declared
       |> Enum.flat_map(fn
         {_module, {:ok, specs}} -> specs
@@ -146,22 +210,55 @@ defmodule PhoenixKitAI.Tasks do
       end)
       |> unique_keys()
 
-    {specs, failed}
+    {%{specs: specs, collisions: collisions, providers: MapSet.new(providers)}, failed}
   end
 
+  # First declaration wins: kit modules come before providers, providers in
+  # config order. The dropped one is warned about (naming both) and kept in
+  # `collisions/0` for the Tasks page.
   defp unique_keys(specs) do
-    Enum.reduce(specs, %{}, fn %TaskSpec{key: key} = spec, acc ->
-      if Map.has_key?(acc, key) do
+    {map, collisions} =
+      Enum.reduce(specs, {%{}, []}, fn %TaskSpec{key: key} = spec, {acc, collisions} ->
+        if Map.has_key?(acc, key) do
+          kept = acc[key].module
+
+          Logger.warning(
+            "[PhoenixKitAI] AI task #{inspect(key)} declared again by #{inspect(spec.module)}; " <>
+              "the declaration of #{inspect(kept)} is kept"
+          )
+
+          {acc, [%{key: key, kept: kept, dropped: spec.module} | collisions]}
+        else
+          {Map.put(acc, key, spec), collisions}
+        end
+      end)
+
+    {map, Enum.reverse(collisions)}
+  end
+
+  # A configured provider, unlike a kit module (most declare no tasks), is
+  # listed only to declare tasks: say why it declares none.
+  defp declared_by_provider(module) do
+    cond do
+      not match?({:module, _}, Code.ensure_loaded(module)) ->
         Logger.warning(
-          "[PhoenixKitAI] AI task #{inspect(key)} declared again by #{inspect(spec.module)}; " <>
-            "the declaration of #{inspect(acc[key].module)} is kept"
+          "[PhoenixKitAI] AI task provider #{inspect(module)} (config :task_providers) " <>
+            "could not be loaded; its tasks are missing"
         )
 
-        acc
-      else
-        Map.put(acc, key, spec)
-      end
-    end)
+        {:ok, []}
+
+      not function_exported?(module, :ai_tasks, 0) ->
+        Logger.warning(
+          "[PhoenixKitAI] AI task provider #{inspect(module)} (config :task_providers) " <>
+            "does not export ai_tasks/0; it declares no tasks"
+        )
+
+        {:ok, []}
+
+      true ->
+        declared_by(module)
+    end
   end
 
   defp declared_by(module) do
@@ -206,8 +303,12 @@ defmodule PhoenixKitAI.Tasks do
     end
   end
 
-  defp with_enabled(%TaskSpec{module: module} = spec),
-    do: %{spec | enabled: module_enabled?(module)}
+  # A provider's tasks are always on: it has no module switch, and a host
+  # module may define an `enabled?/0` of its own for another purpose.
+  defp with_enabled(%TaskSpec{module: module} = spec) do
+    enabled? = MapSet.member?(state().providers, module) or module_enabled?(module)
+    %{spec | enabled: enabled?}
+  end
 
   defp module_enabled?(module) do
     if Code.ensure_loaded?(module) and function_exported?(module, :enabled?, 0),

@@ -68,6 +68,7 @@ defmodule PhoenixKitAI.Web.Tasks do
       |> assign(:project_title, Settings.get_project_title())
       |> assign(:refreshing, false)
       |> assign(:tasks, [])
+      |> assign(:task_collisions, [])
 
     {:ok, socket}
   end
@@ -350,6 +351,7 @@ defmodule PhoenixKitAI.Web.Tasks do
 
         %{
           spec: spec,
+          provider?: Tasks.provider?(spec),
           dom_id: dom_id(spec.key),
           recommendations: Map.fetch!(recommendations, spec.key),
           endpoints: Enum.map(endpoints, &%{endpoint: &1, fitness: Tasks.fitness(spec, &1)}),
@@ -358,7 +360,9 @@ defmodule PhoenixKitAI.Web.Tasks do
         }
       end
 
-    assign(socket, :tasks, tasks)
+    socket
+    |> assign(:tasks, tasks)
+    |> assign(:task_collisions, Tasks.collisions())
   end
 
   # The task's recent flags and its group's active blocks, as `viewer` may
@@ -617,6 +621,21 @@ defmodule PhoenixKitAI.Web.Tasks do
 
       <CapabilityBadges.glossary id="ai-tasks-capability-glossary" class="bg-base-100" />
 
+      <div :if={@task_collisions != []} id="ai-tasks-collisions" class="alert alert-warning">
+        <div class="flex flex-col gap-1 text-sm">
+          <span class="font-medium">
+            {gettext("Some AI tasks were declared twice; the second declaration is not used:")}
+          </span>
+          <span :for={c <- @task_collisions} data-collision={c.key}>
+            {gettext("%{key}: %{dropped} is ignored, %{kept} is used",
+              key: c.key,
+              dropped: inspect(c.dropped),
+              kept: inspect(c.kept)
+            )}
+          </span>
+        </div>
+      </div>
+
       <%= if @tasks == [] do %>
         <div id="ai-tasks-empty" class="alert">
           {gettext("No module declares an AI task.")}
@@ -634,10 +653,20 @@ defmodule PhoenixKitAI.Web.Tasks do
             <div class="flex flex-wrap items-center gap-2">
               <h2 class="card-title text-base">{TaskSpec.label(task.spec)}</h2>
               <code class="text-xs text-base-content/60">{task.spec.key}</code>
-              <span :if={!task.spec.enabled} class="badge badge-ghost badge-sm" data-module-off>
+              <span
+                :if={!task.provider? and !task.spec.enabled}
+                class="badge badge-ghost badge-sm"
+                data-module-off
+              >
                 {gettext("Module off")}
               </span>
             </div>
+
+            <p class="text-xs text-base-content/60" data-declared-by={inspect(task.spec.module)}>
+              {if task.provider?,
+                do: gettext("Declared by %{module} (your app)", module: inspect(task.spec.module)),
+                else: gettext("Declared by %{module}", module: inspect(task.spec.module))}
+            </p>
 
             <p :if={TaskSpec.purpose(task.spec)} class="text-sm">{TaskSpec.purpose(task.spec)}</p>
 

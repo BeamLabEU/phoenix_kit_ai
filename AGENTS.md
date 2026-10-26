@@ -746,7 +746,17 @@ Test database `phoenix_kit_ai_test`.
   (success, error, refusal, cache hit, unparsed JSON) carries
   `metadata.task`, and `:task` is not part of the cache key. A key no
   module declares is logged once and the call goes on. This module
-  declares `ai.translation` and `ai.playground`.
+  declares `ai.translation` and `ai.playground`. A host app that is not a
+  kit module lists its own modules in `config :phoenix_kit_ai,
+  task_providers:` (run time; part of the registry's rebuild key): read
+  after the registered modules, always `enabled: true` (`enabled?/0` is
+  never asked of a provider — `Tasks.provider?/1`), a module listed both
+  ways counts as a kit module. A colliding key keeps the first declaration
+  (kit modules first, then providers in config order); the dropped one is
+  warned about naming both and listed by `Tasks.collisions/0` on AI →
+  Tasks. `spec.module` may therefore be a plain host module: never call a
+  `PhoenixKit.Module` callback on it. `enabled` is display only —
+  `for_call/1` does not consult it.
 - Task limits (`PhoenixKitAI.TaskLimits`): scope `:task` (every call of
   the task) and `:user` (one user in it) × money (dollars) / requests
   / tokens × calendar day / month in the site time zone. In force, cell by

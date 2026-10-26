@@ -1084,7 +1084,7 @@ msgstr "Päringu ajalõpp"
 
 #: lib/phoenix_kit_ai/web/endpoints.ex:63
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:230
-#: lib/phoenix_kit_ai/web/tasks.ex:1296
+#: lib/phoenix_kit_ai/web/tasks.ex:1325
 #, elixir-autogen, elixir-format
 msgid "Requests"
 msgstr "Päringud"
@@ -1376,7 +1376,7 @@ msgstr "Tokenite piirmäär"
 #: lib/phoenix_kit_ai/web/endpoints.ex:64
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:233
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:633
-#: lib/phoenix_kit_ai/web/tasks.ex:1297
+#: lib/phoenix_kit_ai/web/tasks.ex:1326
 #, elixir-autogen, elixir-format
 msgid "Tokens"
 msgstr "Tokenid"
@@ -1836,8 +1836,8 @@ msgid "Please add at least one image"
 msgstr "Palun lisa vähemalt üks pilt"
 
 #: lib/phoenix_kit_ai/web/playground.html.heex:279
-#: lib/phoenix_kit_ai/web/tasks.ex:764
-#: lib/phoenix_kit_ai/web/tasks.ex:952
+#: lib/phoenix_kit_ai/web/tasks.ex:793
+#: lib/phoenix_kit_ai/web/tasks.ex:981
 #, elixir-autogen, elixir-format
 msgid "Remove"
 msgstr "Eemalda"
@@ -2417,7 +2417,7 @@ msgstr "Deklareeritud, kuid kataloogi järgi see mudel ei oska: %{capabilities}.
 msgid "Images"
 msgstr "Pildid"
 
-#: lib/phoenix_kit_ai/tasks.ex:250
+#: lib/phoenix_kit_ai/tasks.ex:351
 #: lib/phoenix_kit_ai/web/components/capability_badges.ex:81
 #, elixir-autogen, elixir-format
 msgid "JSON schema"
@@ -2444,18 +2444,18 @@ msgstr "Teenusepakkuja ei teata, mida see mudel oskab. Märkige, mida see oskab 
 msgid "Tools"
 msgstr "Tööriistad"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:596
+#: lib/phoenix_kit_ai/web/tasks.ex:600
 #, elixir-autogen, elixir-format
 msgid "Each task is declared by a module. A call with a task is refused before it reaches the provider when the model lacks something the task needs."
 msgstr "Iga ülesande kuulutab välja moodul. Ülesandega päring lükatakse tagasi enne pakkujani jõudmist, kui mudel ei oska midagi, mida ülesanne vajab."
 
-#: lib/phoenix_kit_ai/web/tasks.ex:661
+#: lib/phoenix_kit_ai/web/tasks.ex:690
 #, elixir-autogen, elixir-format
 msgid "Endpoints in use:"
 msgstr "Kasutusel olevad lõpp-punktid:"
 
 #: lib/phoenix_kit_ai/web/components/task_model_picker.ex:108
-#: lib/phoenix_kit_ai/web/tasks.ex:1343
+#: lib/phoenix_kit_ai/web/tasks.ex:1372
 #, elixir-autogen, elixir-format
 msgid "Fits"
 msgstr "Sobib"
@@ -2465,34 +2465,34 @@ msgstr "Sobib"
 msgid "It is not known whether the endpoint's model can do what this task needs (%{needs}). Mark the model's capabilities on the endpoint first."
 msgstr "Pole teada, kas lõpp-punkti mudel oskab seda, mida ülesanne vajab (%{needs}). Märkige esmalt mudeli võimalused lõpp-punktil."
 
-#: lib/phoenix_kit_ai/tasks.ex:251
+#: lib/phoenix_kit_ai/tasks.ex:352
 #: lib/phoenix_kit_ai/web/components/capability_badges.ex:82
 #, elixir-autogen, elixir-format
 msgid "JSON"
 msgstr "JSON"
 
 #: lib/phoenix_kit_ai/web/components/task_model_picker.ex:118
-#: lib/phoenix_kit_ai/web/tasks.ex:1353
+#: lib/phoenix_kit_ai/web/tasks.ex:1382
 #, elixir-autogen, elixir-format
 msgid "Lacks: %{needs}"
 msgstr "Puudub: %{needs}"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:311
+#: lib/phoenix_kit_ai/web/tasks.ex:312
 #, elixir-autogen, elixir-format
 msgid "Model catalogues refreshed"
 msgstr "Mudelite kataloogid värskendatud"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:638
+#: lib/phoenix_kit_ai/web/tasks.ex:661
 #, elixir-autogen, elixir-format
 msgid "Module off"
 msgstr "Moodul väljas"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:645
+#: lib/phoenix_kit_ai/web/tasks.ex:674
 #, elixir-autogen, elixir-format
 msgid "Needs:"
 msgstr "Vajab:"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:622
+#: lib/phoenix_kit_ai/web/tasks.ex:641
 #, elixir-autogen, elixir-format
 msgid "No module declares an AI task."
 msgstr "Ükski moodul ei kuuluta välja AI ülesannet."
@@ -2502,24 +2502,24 @@ msgstr "Ükski moodul ei kuuluta välja AI ülesannet."
 msgid "No provider of this model accepts all the request's parameters (%{params}). Remove the ones it does not support from the endpoint."
 msgstr "Ükski selle mudeli pakkuja ei aktsepteeri kõiki päringu parameetreid (%{params}). Eemaldage lõpp-punktist need, mida mudel ei toeta."
 
-#: lib/phoenix_kit_ai/web/tasks.ex:664
+#: lib/phoenix_kit_ai/web/tasks.ex:693
 #, elixir-autogen, elixir-format
 msgid "None chosen; the caller names an endpoint per call."
 msgstr "Valimata: lõpp-punkti nimetab iga päring ise."
 
 #: lib/phoenix_kit_ai/web/components/recommendations_panel.ex:246
 #: lib/phoenix_kit_ai/web/components/task_model_picker.ex:128
-#: lib/phoenix_kit_ai/web/tasks.ex:1363
+#: lib/phoenix_kit_ai/web/tasks.ex:1392
 #, elixir-autogen, elixir-format
 msgid "Not verified: %{needs}"
 msgstr "Kontrollimata: %{needs}"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:608
+#: lib/phoenix_kit_ai/web/tasks.ex:612
 #, elixir-autogen, elixir-format
 msgid "Refresh catalogues"
 msgstr "Värskenda katalooge"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:314
+#: lib/phoenix_kit_ai/web/tasks.ex:315
 #, elixir-autogen, elixir-format
 msgid "Some model catalogues could not be read"
 msgstr "Mõnda mudelite kataloogi ei õnnestunud lugeda"
@@ -2545,17 +2545,17 @@ msgstr "Tõlkimine"
 msgid "What each AI task needs and whether its endpoints fit"
 msgstr "Mida iga AI ülesanne vajab ja kas selle lõpp-punktid sobivad"
 
-#: lib/phoenix_kit_ai/tasks.ex:246
+#: lib/phoenix_kit_ai/tasks.ex:347
 #, elixir-autogen, elixir-format
 msgid "images"
 msgstr "pildid"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:647
+#: lib/phoenix_kit_ai/web/tasks.ex:676
 #, elixir-autogen, elixir-format
 msgid "text only"
 msgstr "ainult tekst"
 
-#: lib/phoenix_kit_ai/tasks.ex:249
+#: lib/phoenix_kit_ai/tasks.ex:350
 #, elixir-autogen, elixir-format
 msgid "tools"
 msgstr "tööriistad"
@@ -2698,12 +2698,12 @@ msgstr "tasuta — kehtivad teenusepakkuja piirangud ja tingimused"
 msgid "%{email} has reached the %{name} (%{limit}) in the AI task %{task}."
 msgstr "%{email} on jõudnud piirini „%{name}“ (%{limit}) AI-ülesandes %{task}."
 
-#: lib/phoenix_kit_ai/web/tasks.ex:733
+#: lib/phoenix_kit_ai/web/tasks.ex:762
 #, elixir-autogen, elixir-format
 msgid "A call is refused when nobody knows whether the model can do what its task needs. Declaring capabilities on an endpoint then needs this permission too."
 msgstr "Päring lükatakse tagasi, kui keegi ei tea, kas mudel suudab teha seda, mida ülesanne vajab. Lõpp-punktil võimekuste märkimiseks on siis samuti vaja seda õigust."
 
-#: lib/phoenix_kit_ai/web/tasks.ex:279
+#: lib/phoenix_kit_ai/web/tasks.ex:280
 #, elixir-autogen, elixir-format
 msgid "A limit must be a whole number, or dollars for money"
 msgstr "Piir peab olema täisarv, raha puhul summa dollarites"
@@ -2718,7 +2718,7 @@ msgstr "Kasutaja"
 msgid "AI task guard"
 msgstr "AI-ülesannete valve"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:778
+#: lib/phoenix_kit_ai/web/tasks.ex:807
 #, elixir-autogen, elixir-format
 msgid "Add a person…"
 msgstr "Lisa inimene…"
@@ -2728,50 +2728,50 @@ msgstr "Lisa inimene…"
 msgid "An AI spending cap (%{cap}) refused a call. Calls are refused until spending is below it."
 msgstr "AI kulupiir (%{cap}) lükkas päringu tagasi. Päringuid lükatakse tagasi, kuni kulu on piirist väiksem."
 
-#: lib/phoenix_kit_ai/web/tasks.ex:997
-#: lib/phoenix_kit_ai/web/tasks.ex:1174
-#: lib/phoenix_kit_ai/web/tasks.ex:1255
+#: lib/phoenix_kit_ai/web/tasks.ex:1026
+#: lib/phoenix_kit_ai/web/tasks.ex:1203
+#: lib/phoenix_kit_ai/web/tasks.ex:1284
 #, elixir-autogen, elixir-format
 msgid "Cancel"
 msgstr "Tühista"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:718
+#: lib/phoenix_kit_ai/web/tasks.ex:747
 #, elixir-autogen, elixir-format
 msgid "Changing the guard needs the “Manage the AI task guard” permission."
 msgstr "Valve muutmiseks on vaja õigust „Halda AI-ülesannete valvet“."
 
-#: lib/phoenix_kit_ai/web/tasks.ex:821
+#: lib/phoenix_kit_ai/web/tasks.ex:850
 #, elixir-autogen, elixir-format
 msgid "Each user, a day"
 msgstr "Iga kasutaja, päevas"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:822
+#: lib/phoenix_kit_ai/web/tasks.ex:851
 #, elixir-autogen, elixir-format
 msgid "Each user, a month"
 msgstr "Iga kasutaja, kuus"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:754
+#: lib/phoenix_kit_ai/web/tasks.ex:783
 #, elixir-autogen, elixir-format
 msgid "Every Owner"
 msgstr "Kõik omanikud"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:899
 #: lib/phoenix_kit_ai/web/tasks.ex:928
+#: lib/phoenix_kit_ai/web/tasks.ex:957
 #, elixir-autogen, elixir-format
 msgid "Forgive"
 msgstr "Anna andeks"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:129
+#: lib/phoenix_kit_ai/web/tasks.ex:130
 #, elixir-autogen, elixir-format
 msgid "Limit forgiven"
 msgstr "Piir on andeks antud"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:808
+#: lib/phoenix_kit_ai/web/tasks.ex:837
 #, elixir-autogen, elixir-format
 msgid "Limits and use:"
 msgstr "Piirid ja kasutus:"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:114
+#: lib/phoenix_kit_ai/web/tasks.ex:115
 #, elixir-autogen, elixir-format
 msgid "Limits saved"
 msgstr "Piirid on salvestatud"
@@ -2781,24 +2781,24 @@ msgstr "Piirid on salvestatud"
 msgid "Manage the AI task guard"
 msgstr "Halda AI-ülesannete valvet"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1295
+#: lib/phoenix_kit_ai/web/tasks.ex:1324
 #, elixir-autogen, elixir-format
 msgid "Money"
 msgstr "Raha"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:781
-#: lib/phoenix_kit_ai/web/tasks.ex:967
+#: lib/phoenix_kit_ai/web/tasks.ex:810
+#: lib/phoenix_kit_ai/web/tasks.ex:996
 #, elixir-autogen, elixir-format
 msgid "No matches"
 msgstr "Vasteid pole"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:935
-#: lib/phoenix_kit_ai/web/tasks.ex:1055
+#: lib/phoenix_kit_ai/web/tasks.ex:964
+#: lib/phoenix_kit_ai/web/tasks.ex:1084
 #, elixir-autogen, elixir-format
 msgid "None"
 msgstr "Pole"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:731
+#: lib/phoenix_kit_ai/web/tasks.ex:760
 #, elixir-autogen, elixir-format
 msgid "Only verified models"
 msgstr "Ainult kontrollitud mudelid"
@@ -2808,63 +2808,63 @@ msgstr "Ainult kontrollitud mudelid"
 msgid "Only verified models are allowed: declaring capabilities needs the “Manage the AI task guard” permission."
 msgstr "Lubatud on ainult kontrollitud mudelid: võimekuste märkimiseks on vaja õigust „Halda AI-ülesannete valvet“."
 
-#: lib/phoenix_kit_ai/web/tasks.ex:909
+#: lib/phoenix_kit_ai/web/tasks.ex:938
 #, elixir-autogen, elixir-format
 msgid "People at a limit now:"
 msgstr "Praegu piiril:"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:184
+#: lib/phoenix_kit_ai/web/tasks.ex:185
 #, elixir-autogen, elixir-format
 msgid "Personal limits removed"
 msgstr "Isiklikud piirid on eemaldatud"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:175
+#: lib/phoenix_kit_ai/web/tasks.ex:176
 #, elixir-autogen, elixir-format
 msgid "Personal limits saved"
 msgstr "Isiklikud piirid on salvestatud"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:934
+#: lib/phoenix_kit_ai/web/tasks.ex:963
 #, elixir-autogen, elixir-format
 msgid "Personal limits:"
 msgstr "Isiklikud piirid:"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:887
+#: lib/phoenix_kit_ai/web/tasks.ex:916
 #, elixir-autogen, elixir-format
 msgid "Reached: %{limit}"
 msgstr "Täis: %{limit}"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:994
+#: lib/phoenix_kit_ai/web/tasks.ex:1023
 #, elixir-autogen, elixir-format
 msgid "Save"
 msgstr "Salvesta"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:859
+#: lib/phoenix_kit_ai/web/tasks.ex:888
 #, elixir-autogen, elixir-format
 msgid "Save limits"
 msgstr "Salvesta piirid"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:780
-#: lib/phoenix_kit_ai/web/tasks.ex:966
+#: lib/phoenix_kit_ai/web/tasks.ex:809
+#: lib/phoenix_kit_ai/web/tasks.ex:995
 #, elixir-autogen, elixir-format
 msgid "Searching…"
 msgstr "Otsin…"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:964
+#: lib/phoenix_kit_ai/web/tasks.ex:993
 #, elixir-autogen, elixir-format
 msgid "Set personal limits for…"
 msgstr "Määra isiklikud piirid…"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:716
+#: lib/phoenix_kit_ai/web/tasks.ex:745
 #, elixir-autogen, elixir-format
 msgid "Task guard"
 msgstr "Ülesannete valve"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:819
+#: lib/phoenix_kit_ai/web/tasks.ex:848
 #, elixir-autogen, elixir-format
 msgid "Task, a day"
 msgstr "Ülesanne, päevas"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:820
+#: lib/phoenix_kit_ai/web/tasks.ex:849
 #, elixir-autogen, elixir-format
 msgid "Task, a month"
 msgstr "Ülesanne, kuus"
@@ -2884,7 +2884,7 @@ msgstr "AI-ülesanne %{task} on kasutanud %{used} piirist „%{name}“ (%{limit
 msgid "The AI task %{task} uses the endpoint %{endpoint}, whose model now lacks: %{needs}."
 msgstr "AI-ülesanne %{task} kasutab lõpp-punkti %{endpoint}, mille mudelil nüüd puudub: %{needs}."
 
-#: lib/phoenix_kit_ai/web/tasks.ex:303
+#: lib/phoenix_kit_ai/web/tasks.ex:304
 #, elixir-autogen, elixir-format
 msgid "The change was not saved"
 msgstr "Muudatust ei salvestatud"
@@ -2894,37 +2894,37 @@ msgstr "Muudatust ei salvestatud"
 msgid "This AI task has reached its %{name}"
 msgstr "See AI-ülesanne on jõudnud piirini „%{name}“"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:297
+#: lib/phoenix_kit_ai/web/tasks.ex:298
 #, elixir-autogen, elixir-format
 msgid "Too many watchers"
 msgstr "Liiga palju jälgijaid"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:818
+#: lib/phoenix_kit_ai/web/tasks.ex:847
 #, elixir-autogen, elixir-format
 msgid "Used this month"
 msgstr "Kasutatud sel kuul"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:817
+#: lib/phoenix_kit_ai/web/tasks.ex:846
 #, elixir-autogen, elixir-format
 msgid "Used today"
 msgstr "Kasutatud täna"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:863
+#: lib/phoenix_kit_ai/web/tasks.ex:892
 #, elixir-autogen, elixir-format
 msgid "Warn at %{percent}%"
 msgstr "Hoiata %{percent}% juures"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:851
+#: lib/phoenix_kit_ai/web/tasks.ex:880
 #, elixir-autogen, elixir-format
 msgid "Warn at, %"
 msgstr "Hoiata, %"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:270
+#: lib/phoenix_kit_ai/web/tasks.ex:271
 #, elixir-autogen, elixir-format
 msgid "Watchers saved"
 msgstr "Jälgijad on salvestatud"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:746
+#: lib/phoenix_kit_ai/web/tasks.ex:775
 #, elixir-autogen, elixir-format
 msgid "Who is told"
 msgstr "Kellele teatatakse"
@@ -2944,8 +2944,8 @@ msgstr "Oled selles AI-ülesandes jõudnud piirini „%{name}“"
 msgid "You have used %{used} of your %{name} (%{limit}) in the AI task %{task}."
 msgstr "Oled kasutanud %{used} piirist „%{name}“ (%{limit}) AI-ülesandes %{task}."
 
-#: lib/phoenix_kit_ai/web/tasks.ex:103
-#: lib/phoenix_kit_ai/web/tasks.ex:276
+#: lib/phoenix_kit_ai/web/tasks.ex:104
+#: lib/phoenix_kit_ai/web/tasks.ex:277
 #, elixir-autogen, elixir-format
 msgid "You may not change the AI task guard"
 msgstr "Sul pole õigust AI-ülesannete valvet muuta"
@@ -3005,7 +3005,7 @@ msgstr "kui lubatud on ainult kontrollitud mudelid, saab võimekusi märkida ain
 msgid "the whole site"
 msgstr "kogu sait"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:282
+#: lib/phoenix_kit_ai/web/tasks.ex:283
 #, elixir-autogen, elixir-format
 msgid "That person was not found"
 msgstr "Seda inimest ei leitud"
@@ -3025,12 +3025,12 @@ msgstr "Pildigeneratsioon"
 msgid "Not verified — mark it on the endpoint"
 msgstr "Kontrollimata — märkige see lõpp-punktis"
 
-#: lib/phoenix_kit_ai/tasks.ex:247
+#: lib/phoenix_kit_ai/tasks.ex:348
 #, elixir-autogen, elixir-format
 msgid "documents"
 msgstr "dokumendid"
 
-#: lib/phoenix_kit_ai/tasks.ex:248
+#: lib/phoenix_kit_ai/tasks.ex:349
 #, elixir-autogen, elixir-format
 msgid "image generation"
 msgstr "pildigeneratsioon"
@@ -3065,7 +3065,7 @@ msgstr "Eelvaated, beetad, tasuta variandid, aliased ja hinnata mudelid: need v�
 msgid "Not verified"
 msgstr "Kontrollimata"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:738
+#: lib/phoenix_kit_ai/web/tasks.ex:767
 #, elixir-autogen, elixir-format
 msgid "Without a catalogue (OpenAI, xAI, Z.ai) the capabilities have to be marked on the endpoint, or the calls are refused."
 msgstr "Kataloogita teenusepakkujate (OpenAI, xAI, Z.ai) võimalused tuleb märkida lõpp-punktis, muidu lükatakse päringud tagasi."
@@ -3090,29 +3090,29 @@ msgstr "%{email} ei ole enam AI-ülesandest %{task} blokeeritud."
 msgid "An AI task is near or at a limit, a spending cap refused a call, a task's model no longer fits it, a request was flagged as off-purpose, a task is used unusually, or a person was blocked or unblocked"
 msgstr "AI-ülesanne on piiri lähedal või selleni jõudnud, kulupiir lükkas päringu tagasi, ülesande mudel ei sobi enam, päring märgiti eesmärgiväliseks, ülesannet kasutatakse ebatavaliselt või inimene blokeeriti või blokeering eemaldati"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1081
-#: lib/phoenix_kit_ai/web/tasks.ex:1135
-#: lib/phoenix_kit_ai/web/tasks.ex:1171
+#: lib/phoenix_kit_ai/web/tasks.ex:1110
+#: lib/phoenix_kit_ai/web/tasks.ex:1164
+#: lib/phoenix_kit_ai/web/tasks.ex:1200
 #, elixir-autogen, elixir-format
 msgid "Block"
 msgstr "Blokeeri"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:250
+#: lib/phoenix_kit_ai/web/tasks.ex:251
 #, elixir-autogen, elixir-format
 msgid "Block lifted"
 msgstr "Blokeering eemaldatud"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:231
+#: lib/phoenix_kit_ai/web/tasks.ex:232
 #, elixir-autogen, elixir-format
 msgid "Blocked"
 msgstr "Blokeeritud"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1179
+#: lib/phoenix_kit_ai/web/tasks.ex:1208
 #, elixir-autogen, elixir-format
 msgid "Blocked now:"
 msgstr "Praegu blokeeritud:"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1190
+#: lib/phoenix_kit_ai/web/tasks.ex:1219
 #, elixir-autogen, elixir-format
 msgid "By"
 msgstr "Kes"
@@ -3122,87 +3122,87 @@ msgstr "Kes"
 msgid "Change the limits of AI tasks, who is told about them and which models may be used; block a person from a task; see why a private task's request was flagged"
 msgstr "Muuta AI-ülesannete piire, kellele neist teatatakse ja milliseid mudeleid tohib kasutada; blokeerida inimene ülesandest; näha, miks privaatse ülesande päring märgiti"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1063
+#: lib/phoenix_kit_ai/web/tasks.ex:1092
 #, elixir-autogen, elixir-format
 msgid "Flags"
 msgstr "Märked"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1110
-#: lib/phoenix_kit_ai/web/tasks.ex:1203
+#: lib/phoenix_kit_ai/web/tasks.ex:1139
+#: lib/phoenix_kit_ai/web/tasks.ex:1232
 #, elixir-autogen, elixir-format
 msgid "Hidden: the task is private"
 msgstr "Peidetud: ülesanne on privaatne"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1117
+#: lib/phoenix_kit_ai/web/tasks.ex:1146
 #, elixir-autogen, elixir-format
 msgid "Journal row"
 msgstr "Logirida"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1224
-#: lib/phoenix_kit_ai/web/tasks.ex:1252
+#: lib/phoenix_kit_ai/web/tasks.ex:1253
+#: lib/phoenix_kit_ai/web/tasks.ex:1281
 #, elixir-autogen, elixir-format
 msgid "Lift"
 msgstr "Eemalda blokeering"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:748
+#: lib/phoenix_kit_ai/web/tasks.ex:777
 #, elixir-autogen, elixir-format
 msgid "Limits near or reached, spending caps, models that stop fitting, off-purpose flags, unusual use and blocks are sent to these people (and to the people a task names), never with a reason. Nobody chosen: every Owner."
 msgstr "Piiride lähedus või täitumine, kulupiirid, mudelid, mis enam ei sobi, eesmärgivälised märked, ebatavaline kasutus ja blokeeringud saadetakse neile inimestele (ja neile, keda ülesanne nimetab), kunagi mitte koos põhjusega. Kedagi pole valitud: kõik omanikud."
 
-#: lib/phoenix_kit_ai/web/tasks.ex:433
+#: lib/phoenix_kit_ai/web/tasks.ex:437
 #, elixir-autogen, elixir-format
 msgid "No user"
 msgstr "Kasutajata"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1181
+#: lib/phoenix_kit_ai/web/tasks.ex:1210
 #, elixir-autogen, elixir-format
 msgid "Nobody"
 msgstr "Mitte keegi"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:288
+#: lib/phoenix_kit_ai/web/tasks.ex:289
 #, elixir-autogen, elixir-format
 msgid "Nobody but an Owner lifts their own block"
 msgstr "Oma blokeeringut ei saa eemaldada keegi peale omaniku"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1246
+#: lib/phoenix_kit_ai/web/tasks.ex:1275
 #, elixir-autogen, elixir-format
 msgid "Note"
 msgstr "Märkus"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1053
+#: lib/phoenix_kit_ai/web/tasks.ex:1082
 #, elixir-autogen, elixir-format
 msgid "Off-purpose flags, last 30 days:"
 msgstr "Eesmärgivälised märked, viimased 30 päeva:"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:285
+#: lib/phoenix_kit_ai/web/tasks.ex:286
 #, elixir-autogen, elixir-format
 msgid "Only an Owner blocks an Owner or lifts their block"
 msgstr "Omanikku saab blokeerida ja tema blokeeringut eemaldada ainult omanik"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1062
-#: lib/phoenix_kit_ai/web/tasks.ex:1094
-#: lib/phoenix_kit_ai/web/tasks.ex:1188
+#: lib/phoenix_kit_ai/web/tasks.ex:1091
+#: lib/phoenix_kit_ai/web/tasks.ex:1123
+#: lib/phoenix_kit_ai/web/tasks.ex:1217
 #, elixir-autogen, elixir-format
 msgid "Person"
 msgstr "Inimene"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1095
-#: lib/phoenix_kit_ai/web/tasks.ex:1191
+#: lib/phoenix_kit_ai/web/tasks.ex:1124
+#: lib/phoenix_kit_ai/web/tasks.ex:1220
 #, elixir-autogen, elixir-format
 msgid "Reason"
 msgstr "Põhjus"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1189
+#: lib/phoenix_kit_ai/web/tasks.ex:1218
 #, elixir-autogen, elixir-format
 msgid "Since"
 msgstr "Alates"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:294
+#: lib/phoenix_kit_ai/web/tasks.ex:295
 #, elixir-autogen, elixir-format
 msgid "That block was lifted already"
 msgstr "See blokeering on juba eemaldatud"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:291
+#: lib/phoenix_kit_ai/web/tasks.ex:292
 #, elixir-autogen, elixir-format
 msgid "That person is blocked from this task already"
 msgstr "See inimene on sellest ülesandest juba blokeeritud"
@@ -3212,7 +3212,7 @@ msgstr "See inimene on sellest ülesandest juba blokeeritud"
 msgid "The AI task %{task} was asked for something outside its purpose. The flags are on the AI tasks page."
 msgstr "AI-ülesandelt %{task} küsiti midagi, mis pole selle eesmärk. Märked on AI-ülesannete lehel."
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1164
+#: lib/phoenix_kit_ai/web/tasks.ex:1193
 #, elixir-autogen, elixir-format
 msgid "The person cannot use the tasks of the group %{group} until the block is lifted."
 msgstr "Inimene ei saa grupi %{group} ülesandeid kasutada, kuni blokeering on eemaldatud."
@@ -3227,12 +3227,12 @@ msgstr "AI-ülesande %{task} ebatavaline kasutus (%{email}): %{rule}."
 msgid "Unusual use of the AI task %{task}: %{rule}."
 msgstr "AI-ülesande %{task} ebatavaline kasutus: %{rule}."
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1093
+#: lib/phoenix_kit_ai/web/tasks.ex:1122
 #, elixir-autogen, elixir-format
 msgid "When"
 msgstr "Millal"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1159
+#: lib/phoenix_kit_ai/web/tasks.ex:1188
 #, elixir-autogen, elixir-format
 msgid "Why (seen by those who manage the guard)"
 msgstr "Miks (näevad need, kes valvet haldavad)"
@@ -3267,12 +3267,12 @@ msgstr "päring üle %{limit} märgi"
 msgid "more than %{limit} calls in an hour"
 msgstr "üle %{limit} päringu tunnis"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1044
+#: lib/phoenix_kit_ai/web/tasks.ex:1073
 #, elixir-autogen, elixir-format
 msgid "The model flags off-purpose requests"
 msgstr "Mudel märgib eesmärgivälised päringud"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:1046
+#: lib/phoenix_kit_ai/web/tasks.ex:1075
 #, elixir-autogen, elixir-format
 msgid "The module that uses this task asks the model to refuse what is not the task's purpose and to flag it. Off: no such instruction, and no flags are written."
 msgstr "Seda ülesannet kasutav moodul palub mudelil keelduda sellest, mis pole ülesande eesmärk, ja selle märkida. Väljas: sellist juhist pole ja märkeid ei kirjutata."
@@ -3282,7 +3282,7 @@ msgstr "Seda ülesannet kasutav moodul palub mudelil keelduda sellest, mis pole 
 msgid "Base URL"
 msgstr "Baas-URL"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:870
+#: lib/phoenix_kit_ai/web/tasks.ex:899
 #, elixir-autogen, elixir-format
 msgid "Days and months follow the site time zone. Empty limits inherit defaults when set; otherwise they are unlimited. 0 allows nothing. Calls running at the same time can each go past a limit by their own size."
 msgstr "Päevad ja kuud on saidi ajavööndis. Tühjad piirid pärivad vaikeväärtused, kui need on määratud; muidu piirangut pole. 0 ei luba midagi. Samal ajal käivad päringud võivad igaüks piiri oma suuruse võrra ületada."
@@ -3292,8 +3292,8 @@ msgstr "Päevad ja kuud on saidi ajavööndis. Tühjad piirid pärivad vaikevä�
 msgid "Models used in this task"
 msgstr "Selles ülesandes kasutatud mudelid"
 
-#: lib/phoenix_kit_ai/web/tasks.ex:300
-#: lib/phoenix_kit_ai/web/tasks.ex:905
+#: lib/phoenix_kit_ai/web/tasks.ex:301
+#: lib/phoenix_kit_ai/web/tasks.ex:934
 #, elixir-autogen, elixir-format
 msgid "Limits per user are set by the task's module"
 msgstr "Kasutaja piirid määrab ülesande moodul"
@@ -3653,7 +3653,7 @@ msgstr "%{capability}: midagi, mida mudel peab oskama."
 msgid "How to tell: the model card at the operator or on OpenRouter; or send a test request."
 msgstr "Kuidas teada saada: mudeli kaart operaatori juures või OpenRouteris; või saatke testpäring."
 
-#: lib/phoenix_kit_ai/web/tasks.ex:875
+#: lib/phoenix_kit_ai/web/tasks.ex:904
 #, elixir-autogen, elixir-format
 msgid "Money is not counted for this task's calls on %{endpoints}: nothing prices them (the provider reports no cost, and no catalogue, manual or list price applies). Requests and tokens still apply."
 msgstr "Selle ülesande päringute raha ei arvestata lõpp-punktides %{endpoints}: miski ei hinda neid (teenusepakkuja kulu ei teata ning kataloogi, käsitsi ega hinnakirja hinda pole). Päringud ja tokenid kehtivad endiselt."
@@ -3744,3 +3744,23 @@ msgstr "Sul pole õigust AI kasutust vaadata."
 #, elixir-autogen, elixir-format
 msgid "You don't have permission to translate this."
 msgstr "Sul pole õigust seda tõlkida."
+
+#: lib/phoenix_kit_ai/web/tasks.ex:630
+#, elixir-autogen, elixir-format
+msgid "%{key}: %{dropped} is ignored, %{kept} is used"
+msgstr "%{key}: %{dropped} jäetakse kõrvale, kasutatakse %{kept}"
+
+#: lib/phoenix_kit_ai/web/tasks.ex:668
+#, elixir-autogen, elixir-format
+msgid "Declared by %{module}"
+msgstr "Deklareerija: %{module}"
+
+#: lib/phoenix_kit_ai/web/tasks.ex:667
+#, elixir-autogen, elixir-format
+msgid "Declared by %{module} (your app)"
+msgstr "Deklareerija: %{module} (teie rakendus)"
+
+#: lib/phoenix_kit_ai/web/tasks.ex:627
+#, elixir-autogen, elixir-format
+msgid "Some AI tasks were declared twice; the second declaration is not used:"
+msgstr "Mõni AI ülesanne on deklareeritud kaks korda; teist deklaratsiooni ei kasutata:"
