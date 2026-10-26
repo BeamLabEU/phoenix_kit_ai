@@ -57,6 +57,20 @@ defmodule PhoenixKitAI.TaskProvidersTest do
     @moduledoc false
   end
 
+  defmodule BlockingProvider do
+    @moduledoc false
+    alias PhoenixKitAI.TaskSpec
+
+    # Tells the test who is asking, then waits for its go-ahead.
+    def ai_tasks do
+      send(Application.fetch_env!(:phoenix_kit_ai, :blocking_provider_test), {:called, self()})
+
+      receive do
+        :go -> [%TaskSpec{key: "myapp.slow", label: "Slow"}]
+      end
+    end
+  end
+
   setup do
     PhoenixKitAI.RequestCache.clear()
     :ok = ModuleRegistry.register(FakeAITasks)
@@ -128,6 +142,62 @@ defmodule PhoenixKitAI.TaskProvidersTest do
       refute log =~ "declared again"
       refute Tasks.provider?(Tasks.get("test.photo"))
       assert Tasks.collisions() == []
+    end
+
+    test "an improper list is bad config: warned about, its proper part used, nothing raises" do
+      providers([AppTasks | :not_a_tail])
+
+      log = capture_log(fn -> assert "myapp.photo_fix" in keys() end)
+      assert log =~ "not a proper list"
+      assert Tasks.get("myapp.photo_fix").module == AppTasks
+      assert Tasks.for_call("test.photo")
+    end
+
+    test "a kit module that fails keeps its keys: a provider never takes them over" do
+      providers([AppTasks])
+      assert Tasks.get("test.photo").module == FakeAITasks
+
+      # The kit module's ai_tasks/0 now raises, and a config change rebuilds.
+      Application.put_env(:phoenix_kit_ai, :fake_ai_tasks_fail, :raise)
+      on_exit(fn -> Application.delete_env(:phoenix_kit_ai, :fake_ai_tasks_fail) end)
+      providers([AppTasks, NoTasksProvider])
+
+      log =
+        capture_log(fn ->
+          spec = Tasks.get("test.photo")
+          assert spec.module == FakeAITasks
+          refute Tasks.provider?(spec)
+        end)
+
+      assert log =~ "ai_tasks/0 failed"
+      assert %{key: "test.photo", kept: FakeAITasks, dropped: AppTasks} in Tasks.collisions()
+    end
+
+    test "concurrent builds are serialized: a waiting caller uses the first build" do
+      Application.put_env(:phoenix_kit_ai, :blocking_provider_test, self())
+      on_exit(fn -> Application.delete_env(:phoenix_kit_ai, :blocking_provider_test) end)
+      providers([BlockingProvider])
+
+      first = Task.async(fn -> Tasks.get("myapp.slow") end)
+      assert_receive {:called, builder}, 1_000
+
+      second = Task.async(fn -> Tasks.get("myapp.slow") end)
+      # The second caller waits for the lock instead of building its own.
+      refute_receive {:called, _}, 200
+
+      send(builder, :go)
+      assert %TaskSpec{module: BlockingProvider} = Task.await(first)
+      assert %TaskSpec{module: BlockingProvider} = Task.await(second)
+      refute_received {:called, _}
+    end
+
+    test "overview/0 reads one snapshot of tasks, providers and collisions" do
+      providers([AppTasks])
+
+      assert %{tasks: tasks, providers: providers, collisions: collisions} = Tasks.overview()
+      assert MapSet.member?(providers, AppTasks)
+      assert %TaskSpec{enabled: true} = Enum.find(tasks, &(&1.key == "myapp.photo_fix"))
+      assert Enum.any?(collisions, &(&1.key == "test.photo"))
     end
 
     test "an invalid config, a missing module, no ai_tasks/0 and a raising provider are warned about" do

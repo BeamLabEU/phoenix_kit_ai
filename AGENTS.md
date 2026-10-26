@@ -740,7 +740,10 @@ Test database `phoenix_kit_ai_test`.
   (duck-typed); `PhoenixKitAI.Tasks` keeps the registry, `fitness/2`,
   `endpoint_options/1` and `check_selection/2`. The registry is rebuilt
   only when the module set changes, or a minute after a build in which a
-  module's `ai_tasks/0` failed (raised, exited or threw) — not when code
+  module's `ai_tasks/0` failed (raised, exited or threw; meanwhile the
+  module keeps the tasks it declared when it last answered, so a failure
+  never hands its keys to a later declarer — before a first answer it has
+  none) — not when code
   is hot-reloaded: a changed `ai_tasks/0` with the same modules needs a
   restart to show. Every verb takes `task:`; every row it writes
   (success, error, refusal, cache hit, unparsed JSON) carries
@@ -755,7 +758,11 @@ Test database `phoenix_kit_ai_test`.
   (kit modules first, then providers in config order); the dropped one is
   warned about naming both and listed by `Tasks.collisions/0` on AI →
   Tasks. `spec.module` may therefore be a plain host module: never call a
-  `PhoenixKit.Module` callback on it. `enabled` is display only —
+  `PhoenixKit.Module` callback on it. Builds are serialized on the node
+  (`:global.trans`, the cache re-read under the lock), reads stay
+  lock-free; read one snapshot per lookup (`Tasks.overview/0` for a page).
+  An improper `task_providers` list is bad config (warned, its proper part
+  used). `enabled` is display only —
   `for_call/1` does not consult it.
 - Task limits (`PhoenixKitAI.TaskLimits`): scope `:task` (every call of
   the task) and `:user` (one user in it) × money (dollars) / requests

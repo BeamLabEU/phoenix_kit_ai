@@ -340,7 +340,8 @@ defmodule PhoenixKitAI.Web.Tasks do
 
   defp load_tasks(socket) do
     # The catalogues and the journal are read once for all the tasks.
-    specs = Tasks.list()
+    # One registry snapshot for the tasks, their sources and the collisions.
+    %{tasks: specs, providers: providers, collisions: collisions} = Tasks.overview()
     recommendations = Recommendations.for_tasks(specs)
     # Only a viewer who may manage the guard now is shown a private reason.
     viewer = if socket.assigns.can_manage, do: Access.session_scope(socket)
@@ -351,7 +352,7 @@ defmodule PhoenixKitAI.Web.Tasks do
 
         %{
           spec: spec,
-          provider?: Tasks.provider?(spec),
+          provider?: MapSet.member?(providers, spec.module),
           dom_id: dom_id(spec.key),
           recommendations: Map.fetch!(recommendations, spec.key),
           endpoints: Enum.map(endpoints, &%{endpoint: &1, fitness: Tasks.fitness(spec, &1)}),
@@ -362,7 +363,7 @@ defmodule PhoenixKitAI.Web.Tasks do
 
     socket
     |> assign(:tasks, tasks)
-    |> assign(:task_collisions, Tasks.collisions())
+    |> assign(:task_collisions, collisions)
   end
 
   # The task's recent flags and its group's active blocks, as `viewer` may

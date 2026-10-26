@@ -20,7 +20,8 @@ defmodule PhoenixKitAI.Tasks do
   (`provider?/1`). A listed provider that cannot be loaded or exports no
   `ai_tasks/0` is warned about; a bad config entry is ignored with a
   warning. A change to the registered modules or to the provider list
-  rebuilds the registry.
+  rebuilds the registry. Builds are serialized on the node; a module whose
+  `ai_tasks/0` fails keeps the tasks it last declared until it answers.
 
   Two declarations of one key: the first wins (kit modules before
   providers, providers in config order), with a warning naming both; the
@@ -63,18 +64,40 @@ defmodule PhoenixKitAI.Tasks do
   @doc "Every declared task, by key, each marked whether its module is on."
   @spec list() :: [TaskSpec.t()]
   def list do
-    registry()
+    state = state()
+
+    state.specs
     |> Map.values()
     |> Enum.sort_by(& &1.key)
-    |> Enum.map(&with_enabled/1)
+    |> Enum.map(&with_enabled(&1, state))
+  end
+
+  @doc """
+  One consistent read for AI → Tasks: the tasks (as `list/0`), which of
+  their declaring modules are app providers, and the dropped declarations
+  (as `collisions/0`) — all from the same registry snapshot.
+  """
+  @spec overview() :: %{tasks: [TaskSpec.t()], providers: MapSet.t(), collisions: [map()]}
+  def overview do
+    state = state()
+
+    tasks =
+      state.specs
+      |> Map.values()
+      |> Enum.sort_by(& &1.key)
+      |> Enum.map(&with_enabled(&1, state))
+
+    %{tasks: tasks, providers: state.providers, collisions: state.collisions}
   end
 
   @doc "The task declared under `key`, or `nil`."
   @spec get(String.t()) :: TaskSpec.t() | nil
   def get(key) when is_binary(key) do
-    case Map.get(registry(), key) do
+    state = state()
+
+    case Map.get(state.specs, key) do
       nil -> nil
-      spec -> with_enabled(spec)
+      spec -> with_enabled(spec, state)
     end
   end
 
@@ -88,7 +111,7 @@ defmodule PhoenixKitAI.Tasks do
   def for_call(nil), do: nil
 
   def for_call(key) when is_binary(key) do
-    case Map.get(registry(), key) do
+    case Map.get(state().specs, key) do
       nil ->
         warn_unknown_once(key)
         nil
@@ -123,33 +146,63 @@ defmodule PhoenixKitAI.Tasks do
   # key is the registered modules AND the raw `task_providers` config, so a
   # change to either rebuilds; the config is validated (and warned about)
   # only while building, never per lookup.
-  defp registry, do: state().specs
-
+  #
+  # Reads are lock-free. Builds are serialized on this node, and the cache
+  # is read again once the lock is held, so a second process that needed a
+  # build uses the first one's result instead of building (and putting) its
+  # own — a slow build that fails can never overwrite a newer good one.
   defp state do
-    key = {discoverable_modules(), Application.get_env(:phoenix_kit_ai, :task_providers, [])}
+    key = cache_key()
 
+    case current(key) do
+      {:ok, state} -> state
+      :rebuild -> locked_rebuild()
+    end
+  end
+
+  defp cache_key,
+    do: {discoverable_modules(), Application.get_env(:phoenix_kit_ai, :task_providers, [])}
+
+  defp current(key) do
     case :persistent_term.get(@registry_key, nil) do
       {^key, state, nil} ->
-        state
+        {:ok, state}
 
       {^key, state, failed_at} ->
-        if now() - failed_at < retry_ms(), do: state, else: rebuild(key)
+        if now() - failed_at < retry_ms(), do: {:ok, state}, else: :rebuild
 
       _ ->
-        rebuild(key)
+        :rebuild
     end
+  end
+
+  defp locked_rebuild do
+    :global.trans(
+      {@registry_key, self()},
+      fn ->
+        key = cache_key()
+
+        case current(key) do
+          {:ok, state} -> state
+          :rebuild -> rebuild(key)
+        end
+      end,
+      [node()]
+    )
   end
 
   defp rebuild({modules, raw_providers} = key) do
     # A module listed both ways is a kit module: its switch, asked once.
     providers = configured_providers(raw_providers) -- modules
-    {state, failed} = build(modules, providers)
+    previous = previous_declarations()
+    {state, failed} = build(modules, providers, previous)
 
     failed_at =
       if failed != [] do
         Logger.warning(
-          "[PhoenixKitAI] AI tasks of #{Enum.map_join(failed, ", ", &inspect/1)} are missing " <>
-            "until their ai_tasks/0 answers; tried again in #{div(retry_ms(), 1000)} s at the earliest"
+          "[PhoenixKitAI] ai_tasks/0 of #{Enum.map_join(failed, ", ", &inspect/1)} failed; " <>
+            "their last known tasks are kept (none before a first answer) and they are " <>
+            "asked again in #{div(retry_ms(), 1000)} s at the earliest"
         )
 
         now()
@@ -157,6 +210,15 @@ defmodule PhoenixKitAI.Tasks do
 
     :persistent_term.put(@registry_key, {key, state, failed_at})
     state
+  end
+
+  # What each module answered the last time its `ai_tasks/0` worked, from
+  # whatever registry is cached (also one built for another key).
+  defp previous_declarations do
+    case :persistent_term.get(@registry_key, nil) do
+      {_key, %{declared: declared}, _failed_at} -> declared
+      _ -> %{}
+    end
   end
 
   defp retry_ms, do: Application.get_env(:phoenix_kit_ai, :task_registry_retry_ms, @retry_ms)
@@ -174,7 +236,16 @@ defmodule PhoenixKitAI.Tasks do
   # `config :phoenix_kit_ai, task_providers: [MyApp.AI]` — a host app's own
   # modules declaring tasks without being kit modules. Read at run time.
   defp configured_providers(list) when is_list(list) do
-    {atoms, others} = Enum.split_with(list, &(is_atom(&1) and not is_nil(&1)))
+    {items, tail} = proper_prefix(list, [])
+
+    if tail != [] do
+      Logger.warning(
+        "[PhoenixKitAI] :task_providers is not a proper list; its tail is ignored: " <>
+          MessageShape.describe(tail)
+      )
+    end
+
+    {atoms, others} = Enum.split_with(items, &(is_atom(&1) and not is_nil(&1)))
 
     if others != [] do
       Logger.warning(
@@ -195,22 +266,40 @@ defmodule PhoenixKitAI.Tasks do
     []
   end
 
-  defp build(modules, providers) do
+  # `[a, b | tail]` → `{[a, b], tail}`; `tail` is `[]` for a proper list.
+  defp proper_prefix([head | rest], acc), do: proper_prefix(rest, [head | acc])
+  defp proper_prefix(tail, acc), do: {Enum.reverse(acc), tail}
+
+  # A module whose `ai_tasks/0` fails keeps the tasks it declared last time
+  # it answered (`previous`), in its place in the order — so a transient
+  # failure never hands its keys to a later declarer. Before a first answer
+  # there is nothing to keep: its tasks are missing until the retry, and a
+  # later declarer of the same key holds it meanwhile (the alternative,
+  # holding back every later declaration, would let one broken module hide
+  # every provider's tasks).
+  defp build(modules, providers, previous) do
     declared =
       Enum.map(modules, &{&1, declared_by(&1)}) ++
         Enum.map(providers, &{&1, declared_by_provider(&1)})
 
     failed = for {module, :error} <- declared, do: module
 
-    {specs, collisions} =
-      declared
-      |> Enum.flat_map(fn
-        {_module, {:ok, specs}} -> specs
-        {_module, :error} -> []
+    resolved =
+      Enum.map(declared, fn
+        {module, {:ok, specs}} -> {module, specs}
+        {module, :error} -> {module, Map.get(previous, module, [])}
       end)
-      |> unique_keys()
 
-    {%{specs: specs, collisions: collisions, providers: MapSet.new(providers)}, failed}
+    {specs, collisions} = resolved |> Enum.flat_map(&elem(&1, 1)) |> unique_keys()
+
+    state = %{
+      specs: specs,
+      collisions: collisions,
+      providers: MapSet.new(providers),
+      declared: Map.new(resolved)
+    }
+
+    {state, failed}
   end
 
   # First declaration wins: kit modules come before providers, providers in
@@ -305,8 +394,8 @@ defmodule PhoenixKitAI.Tasks do
 
   # A provider's tasks are always on: it has no module switch, and a host
   # module may define an `enabled?/0` of its own for another purpose.
-  defp with_enabled(%TaskSpec{module: module} = spec) do
-    enabled? = MapSet.member?(state().providers, module) or module_enabled?(module)
+  defp with_enabled(%TaskSpec{module: module} = spec, state) do
+    enabled? = MapSet.member?(state.providers, module) or module_enabled?(module)
     %{spec | enabled: enabled?}
   end
 
