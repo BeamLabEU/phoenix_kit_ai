@@ -1094,13 +1094,13 @@ defmodule PhoenixKitAI do
   end
 
   @doc """
-  The module's scheduled job: the daily pruning of the guard's events older
-  than 180 days (`PhoenixKitAI.GuardEventsPruneWorker`, core `default`
-  queue).
+  The module's scheduled job: the nightly cleanup of the AI journal by the
+  periods set for it (`PhoenixKitAI.JournalPruneWorker`, core `default`
+  queue; kept forever by default, see `PhoenixKitAI.Retention`).
   """
   @impl PhoenixKit.Module
   @spec oban_crons() :: [{String.t(), module()}]
-  def oban_crons, do: [{"17 3 * * *", PhoenixKitAI.GuardEventsPruneWorker}]
+  def oban_crons, do: [{"17 3 * * *", PhoenixKitAI.JournalPruneWorker}]
 
   @impl PhoenixKit.Module
   @spec admin_tabs() :: [PhoenixKit.Dashboard.Tab.t()]
@@ -1311,6 +1311,13 @@ defmodule PhoenixKitAI do
   @impl PhoenixKit.Module
   @spec migration_module() :: module()
   def migration_module, do: PhoenixKitAI.Migrations
+
+  @doc """
+  The manifest of this module's tables, for `mix phoenix_kit.repair` and
+  `mix phoenix_kit.doctor`; see `PhoenixKitAI.ExpectedSchema`.
+  """
+  # No `@impl`, so this compiles against a core that lacks the callback.
+  def expected_schema, do: PhoenixKitAI.ExpectedSchema
 
   @impl PhoenixKit.Module
   @spec required_integrations() :: [String.t()]

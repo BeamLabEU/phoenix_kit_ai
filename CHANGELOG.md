@@ -1,5 +1,9 @@
 ## Unreleased
 
+### Added
+
+- **The module supplies the manifest of its 8 tables** (`expected_schema/0`, `PhoenixKitAI.ExpectedSchema`), so `mix phoenix_kit.repair` and `mix phoenix_kit.doctor` check and repair them again, now from the module's own chain instead of core's manifest. Generated from `PhoenixKitAI.Migrations` by core's `dev_docs/squash/generate_module_manifest.exs`, never edited by hand. Core uses it from the first release after 2.64.1; before that nothing reads it. Repair is additive (it creates what is missing and reports the rest) and checks the tables only while the database is at the chain's current version. No migration.
+
 ### Changed
 
 - The migration chain is now V5 and adopts `phoenix_kit_ai_endpoints`,

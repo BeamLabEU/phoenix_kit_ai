@@ -585,6 +585,38 @@ config :phoenix_kit_ai,
   allow_internal_endpoint_urls: false
 ```
 
+#### Journal retention
+
+By default nothing is deleted: the request journal, its content and the
+guard's events are kept forever. On **AI → Usage** a person with
+`ai.manage` (or an Owner) can set a period for each of three kinds — N
+days, months or years, or "keep forever":
+
+- **Content of journal entries** — older rows lose the message bodies,
+  responses, reasoning, tool calls, inputs and debug context from
+  `metadata` (`PhoenixKitAI.Retention.content_keys/0`); the row, its cost,
+  tokens and model stay, and the request's details say when the content
+  was removed.
+- **Journal entries** — older rows of `phoenix_kit_ai_requests` are
+  deleted, cost included.
+- **Guard events** — older rows of `phoenix_kit_ai_guard_events` are
+  deleted.
+
+A period is applied by the nightly job `PhoenixKitAI.JournalPruneWorker`
+(`oban_crons/0`, written into the host's crontab by
+`mix phoenix_kit.update`), no earlier than a day after it was saved; a
+shorter period is saved only after a preview of what it would delete. The
+same card has "Clean up now" (count first, then confirm). Rows of the
+current month — from local midnight two days before its first day — and
+the content of the last 24 hours are never removed, whatever the period:
+the spend caps and task limits read them. Each manual run, each night
+that removed something and failed runs are in the Activity feed
+(`journal.pruned` / `journal.prune_failed`, kept permanently).
+Options of the run (chunk sizes, pauses, time slices) are
+`config :phoenix_kit_ai, :journal_prune`. The full picture for a host,
+including the first run on a large journal:
+`dev_docs/guides/journal-retention.md`.
+
 ## Migrating from legacy `endpoint.api_key`
 
 Endpoints created before V107 / the Integrations migration stored the
@@ -838,8 +870,9 @@ create:
 - **`phoenix_kit_ai_task_settings`**, **`phoenix_kit_ai_task_user_limits`**
   — the limits of AI tasks and users' personal limits
 - **`phoenix_kit_ai_guard_events`** — what the task guard noticed (limits,
-  models that stopped fitting), deduplicated per window; kept 180 days (a
-  daily job the module schedules in core's `default` queue)
+  models that stopped fitting), deduplicated per window; kept until a
+  retention period is set for them (forever by default, see "Journal
+  retention" above)
 - **`phoenix_kit_ai_guard_blocks`** — people blocked from a group of AI
   tasks, with who set and lifted each block; one active per group and person
 

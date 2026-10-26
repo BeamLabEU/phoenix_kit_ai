@@ -15,7 +15,8 @@ host supplies endpoint and router (`config/` exists only for tests).
 
 - **Depends on:** `phoenix_kit` `~> 2.64` (Hex; the floor carries V223's
   dollar-valued request cost and removes the legacy account reference;
-  `PhoenixKit.Module.oban_crons/0` ships in 2.63, needed for guard-event pruning;
+  `PhoenixKit.Module.oban_crons/0` ships in 2.63, needed to schedule the nightly
+  journal cleanup (`PhoenixKitAI.JournalPruneWorker`);
   Activity and Actor also need at least 2.38). No sibling
   `phoenix_kit_*` deps. Non-kit deps: `phoenix_live_view` `~> 1.1`, `gettext` `~> 1.0`, `xai`
   `~> 0.2` (realtime voice only — `Xai.Realtime`; `gun`/`mint` are deliberately
@@ -65,10 +66,16 @@ host supplies endpoint and router (`config/` exists only for tests).
 - **No Oban for completions.** Chat, TTS, embeddings and image calls run
   synchronously. Oban is used only by the AI-translation pipeline
   (`PhoenixKitAI.TranslateWorker`, and the sweep chains consuming modules
-  run through `PhoenixKitAI.TranslationSweep`).
+  run through `PhoenixKitAI.TranslationSweep`) and by the journal cleanup
+  (`PhoenixKitAI.JournalPruneWorker`).
 - **No streaming chat responses.** `Completion` returns a full
   `{:ok, response}` and the Playground is request/response. Realtime *voice* is
   the one streaming path, and it is a separate WebSocket transport.
+- **No automatic cleanup without a period.** The request journal, its
+  content and the guard's events are kept forever until a person sets a
+  period for them (AI → Usage, `PhoenixKitAI.Retention`); the nightly job
+  that `oban_crons/0` puts in the host's crontab deletes nothing until then.
+  No `VACUUM` is run from code either.
 
 ## Commands
 
@@ -245,6 +252,41 @@ Repo-local aliases:
 - Spend caps read the usage table; concurrent callers overshoot by their
   in-flight calls, and a database error fails open. Treat a cap as a brake
   on a runaway day, not as a hard invoice ceiling.
+- The journal is no longer forever for its readers once a period is set.
+  A total "for all time" (`get_usage_stats/1`, the Endpoints and Usage
+  tabs) covers only what is kept — the tabs say "for the retained period,
+  since <date>" — and the 30-day windows (model recommendations and
+  `Recommendations.worked/2`, token medians, flags of the last 30 days, the
+  30-day totals) see less under a period shorter than 30 days. Anything
+  that needs older history copies it out first. Only the floor is
+  promised: the current month, from local midnight two days before its
+  first day (and the last 24 hours of content).
+- Guard events changed behaviour: they used to be deleted after a fixed
+  180 days by `GuardEventsPruneWorker`; now they are kept forever unless
+  `guard_events` gets a period, so an install that relied on the old
+  pruning sets one.
+- What clearing the content leaves of personal data: the `error_message`
+  column (`Errors.message/1` plus the provider's answer, cut and masked;
+  a `{:content_policy, text}` refusal is the provider's text, which can
+  paraphrase the request) goes only with the row, by the `requests` period;
+  the reasons and lift notes of blocks (`phoenix_kit_ai_guard_blocks`) are
+  written by people and no period covers them.
+- Deleting and clearing do not shrink the table files: the space is reused
+  after autovacuum. A large first run writes a burst of WAL (replicas,
+  backups, disk). Nothing here runs `VACUUM`.
+- A new `metadata` key carrying user text — anything written under the
+  `capture_request_content?` gate — must be added to
+  `Retention.content_keys/0`, or the content step leaves it behind for good.
+  `test/phoenix_kit_ai/retention_content_keys_test.exs` writes each kind of
+  row with capture on and off and fails on a gated key missing from the
+  list.
+- `test/phoenix_kit_ai/retention_client_timeout_test.exs` commits the
+  `ai_journal_retention` row to the test database from connections outside
+  the sandbox (to hold it under `FOR UPDATE`, and a save on its own repo
+  instance), and removes the row and its committed `setting.changed`
+  Activity entries itself, before each test and in `on_exit`. A run killed
+  midway leaves them behind for every later run of this module and of any
+  module sharing the database (`PGDATABASE`) until the test runs again.
 - `PhoenixKitAI.Limiter` counts per node: in a cluster each node has its own slots,
   so a provider sees up to `limit × nodes` concurrent calls. The slot covers the whole
   call including retries; a retried 429 keeps its slot while it backs off, on purpose.
@@ -298,6 +340,9 @@ lib/phoenix_kit_ai/
   guard_blocks.ex guard_block.ex   blocks of a person in a task's block group: rights, the per-node cache; the V3 schema
   task_limits.ex                 task limits: calendar windows, limits in force, counting from the journal, forgiving
   guard_events.ex guard_watch.ex   guard events, dedupe, watchers, notifications; the model_unfit watch process
+  retention.ex                   PhoenixKitAI.Retention — journal retention: periods, boundaries and the floor, preview, foreign-key check, chunked cleanup, last-run stamp; the policy block (who, defaults, limits)
+  journal_prune_worker.ex        the nightly and manual cleanup job (Oban, `default` queue, unique)
+  guard_events_prune_worker.ex   shim of the old 180-day prune: only queues JournalPruneWorker
   migrations.ex model_capability.ex   the module's own migration chain; capability snapshot schema
   task_setting.ex task_user_limit.ex guard_event.ex   schemas of the chain's V2 tables
   errors.ex                      error atom -> gettext string
@@ -307,7 +352,8 @@ lib/phoenix_kit_ai/
   realtime/session.ex            one xAI realtime WebSocket per Playground LiveView
   translat*.ex translate_worker.ex   generic AI-translation pipeline
   components/ai_translate*       reusable translate button/glue components
-  web/                           admin LiveViews: Endpoints, EndpointForm, Prompts, PromptForm, Playground, Tasks
+  web/                           admin LiveViews: Endpoints, EndpointForm, Prompts, PromptForm, Playground, Tasks;
+                                 journal_retention.ex + components/journal_retention_card.ex (the Usage tab's retention card); access.ex (rights now, per event)
 ```
 
 Notes on the less obvious modules:
@@ -403,6 +449,35 @@ the prompt's `{{Glossary}}` slot, uncapped. A blank value cannot be stored,
 so `Settings.delete_setting/1` is how a language falls back to the shared
 key; `translate_fields/6`'s `glossary:` option overrides both (`nil` = none).
 
+Journal retention (`PhoenixKitAI.Retention`): `ai_journal_retention` is
+one JSON document, `{"content": P, "requests": P, "guard_events": P,
+"changed_at": {"content": ISO, …}}`, each `P` either `"forever"` or
+`{"n": N, "unit": "day" | "month" | "year"}` (N 1..36 500 days, 1..1 200
+months, 1..100 years). No setting means every kind forever, the default;
+a save writes the kinds it did not change out as they are (a missing one
+as `"forever"`). Read without the settings cache; a database error, a
+value of the wrong form or out of range, or a finite period without its
+`changed_at` reads as `"forever"` with a log warning (the last also lands
+in `settings/0`'s `unconfirmed`, its stored period in `unconfirmed_periods`;
+the card's form shows that period, and saving it as shown applies it,
+through the preview of a first finite period).
+`put_settings/3` writes it through core's
+`update_json_setting_with_module/4` with `actor_uuid:` and
+`source: "settings"`, so core's own `setting.changed` entry is the audit
+of a change; `changed_at` is set by the server, for the changed kinds
+only. `ai_journal_retention_last_run` is the runs' stamp, written with
+`history: false` (no settings history; the manual run's person is inside
+the JSON): `scheduled` and `manual` entries (`at`, `status` `ok` /
+`failed` / `skipped`, `error` — a class, never a message — `counts` of
+`content` / `requests` / `guard_events` / `guard_reasons`, `more_left`,
+`content_batch`, `failure_logged_at`, `actor_uuid` on a manual one), plus
+`content_done_before` (content below it is already cleared; only moves
+forward), `content_resume` (`{"lower", "upper"}`, an interval above that
+point already cleared, skipped by the next content step) and
+`rows_deleted_before` (the earliest boundary below which any run deleted
+journal rows; never cleared, so the "retained since" notes stay after a
+run that deletes nothing).
+
 Permissions: the module permission `"ai"` from `permission_metadata/0`,
 checked with `Scope.has_module_access?/2`, and three sub-permissions.
 `"ai.view_usage"`: the Usage tab (every request with its prompt and
@@ -423,14 +498,21 @@ roles' keys are read with the module's own query, which raises, because
 core's `get_permissions_for_role/1` reads a failed lookup as "no keys").
 `"ai.manage"`: changing the task guard (limits, personal limits, forgiving,
 watchers, "only verified models", declaring capabilities while that is on,
-a task's self-flag mode, blocking and lifting), and seeing the reasons of a private task's flags and
-blocks.
+a task's self-flag mode, blocking and lifting), seeing the reasons of a private task's flags and
+blocks, and the journal's retention — the periods of all three kinds, their
+preview and a cleanup by hand (`Retention.may_set?/2` / `may_run?/2`, the
+policy kept in one block at the top of `Retention`; `owner_only_kinds/0`
+is empty). Seeing the periods and the runs' outcome on the Usage tab
+needs `ai.view_usage` as well as the base `ai` permission.
 An Owner always may (`Guard.may_manage?/1`); core grants a new
 sub-permission to Admin once while Admin holds `ai`. Every context function
-that changes the guard takes the actor's scope and checks it; the Tasks
-page checks again per event, against the socket's scope and the scope as it
-is now (`PhoenixKitAI.Web.Access`: the session's through core's
-`SessionRef` where core has it, else the user's current row).
+that changes the guard or the retention takes the actor's scope and checks
+it; the Tasks page and the Usage page's retention card check again per
+event, against the socket's scope and the scope as it is now
+(`PhoenixKitAI.Web.Access`: the session's through core's `SessionRef`
+where core has it, else the user's current row). The card's acting events
+go through `Access.manage_scope/1`, which hands back the scope it checked
+so the context function gets that same, current scope.
 
 ### Application env
 
@@ -460,6 +542,7 @@ is now (`PhoenixKitAI.Web.Access`: the session's through core's
 | `:request_log_max_queue` | `10_000` | Async backlog above which callers write synchronously again (no row is dropped) |
 | `:log_cache_hits` | `true` | `false` skips the zero-cost usage row of a cache hit (a call's `log_cache_hit:` wins); the hit telemetry event still fires |
 | `:allow_internal_image_urls` | `false` | Lift the image-fetch host policy (loopback / link-local / RFC 1918 / `.local`, resolved addresses included) — tests and air-gapped installs only; separate from the endpoint base-URL switch |
+| `:journal_prune` | `[]` | Options of the journal cleanup (`PhoenixKitAI.JournalPruneWorker` → `Retention.run/3`): `request_batch:` 1 000, `content_batch:` 500 (halved after a chunk's `statement_timeout`, down to `content_min_batch:` 50, which is capped at `content_batch`), `event_batch:` 1 000, `pause_ms:` 50 between chunks (at most 5 000; a longer one is 5 000, with a warning), `max_rows:` 1 000 000 per counter per run, `statement_timeout_ms:` 30 000 and `lock_timeout_ms:` 5 000 per chunk, `time_limits:` `%{requests: 600_000, content: 360_000, guard_reasons: 60_000, guard_events: 120_000}` (ms). An invalid value falls back to its default with a warning; time limits that would not fit in the job's 25-minute `timeout/1` — their sum plus, per counter, one `pause_ms` and one chunk and one probe at `statement_timeout_ms` + 5 s (a counter overruns its slice by at most that; the content step starts no later range once its slice is over), plus a minute — fall back to the defaults as a whole, and a `statement_timeout_ms` too long for even the default slices (32 500 − `pause_ms` / 2 or more; 32 475 at the default pause) is lowered, with a warning naming it, to the largest that fits (`Retention.run_options/1`; the run never budgets past `timeout/1`). `lock_timeout_ms` is not part of the budget: PostgreSQL's statement timeout bounds a lock wait too. `:now` and `:actor_uuid` are ignored (they are the job's own); a value that is not a keyword list is ignored with a warning. `preview_timeout_ms:` (60 000) is the statement and lock timeout of a preview's counts, read separately; past it the preview is `{:error, :preview_timeout}` |
 
 ### Providers
 
@@ -838,11 +921,108 @@ Test database `phoenix_kit_ai_test`.
   (never `target_uuid`). Texts carry no reasons and nothing of a call. A key
   that was inserted is also kept on the node until its window ends, so a
   limit past its threshold costs no further INSERT. `GuardWatch` emits
-  `[:phoenix_kit_ai, :guard_watch, :look]` after each look. Events older
-  than 180 days are deleted daily by `GuardEventsPruneWorker`, which the
-  module schedules through `oban_crons/0` (written into the host's crontab
-  by `mix phoenix_kit.install` / `update`); it runs in core's `default`
-  queue, so the host lists no queue for it.
+  `[:phoenix_kit_ai, :guard_watch, :look]` after each look. Events are
+  kept until a period is set for them (journal retention, below; forever
+  by default).
+- Journal retention (`PhoenixKitAI.Retention`, applied by
+  `PhoenixKitAI.JournalPruneWorker`): three kinds, each kept forever until
+  a period is set. `content` — journal rows older than the period lose the
+  `content_keys/0` from `metadata` and get `metadata.content_pruned_at`; the
+  row, its cost, tokens and small keys stay; the `reason` of an
+  `off_purpose` event older than the boundary is cleared too. `requests`
+  — journal rows are deleted. `guard_events` — events are deleted. A
+  period's boundary (`cutoff/3`) is local midnight N days back, or the
+  start of the local month N months (years: 12·N) back, in the site time
+  zone (an empty or unusable zone is UTC). Under every boundary, whatever
+  its origin — the night, a preview, `run_now/2`, a job's arguments —
+  `effective_cutoff/3` puts the floor (`floor/2`): rows and events newer
+  than local midnight two days before the first of the current month are
+  never deleted (the day and month task limits, a month's
+  `limit_forgiven` events and the trailing 24-hour cap, which reaches into
+  the previous month on the 1st, read them; the two days cover a change of
+  the site's time zone and clock skew between nodes), and content newer
+  than 24 hours is never cleared. A shorter period is clamped, not refused
+  (the preview's `clamped`); a boundary after now is
+  `{:cutoff_in_future, kind}`, one that is not a `DateTime`
+  `{:invalid_cutoff, kind}`. The event an active block was set from
+  (`origin_event_uuid`, `lifted_at IS NULL`) is neither deleted nor
+  cleared while the block stands.
+  Nightly (`oban_crons/0` → `{"17 3 * * *", PhoenixKitAI.JournalPruneWorker}`,
+  core's `default` queue): a kind kept forever or changed less than 24 hours
+  ago (`changed_at`) is skipped; with the module off the run is stamped
+  `skipped`; a night whose last scheduled run is `ok` and under 20 hours
+  old runs nothing and writes no stamp (once a night: a second crontab
+  entry, the shim, a host's deliberate second schedule). By hand:
+  `run_now/2` queues `JournalPruneWorker.manual_job/2` with the boundaries
+  clamped, and the job clamps them again. One job at a time: Oban
+  uniqueness on the worker over `available` / `scheduled` / `executing` /
+  `retryable` (no `:suspended`: Oban's unique query fails with it on a
+  database migrated before Oban 14, and the cron inserts through `new/2`),
+  so a night while a manual run is queued or running does not run and a
+  second `run_now/2` is `:prune_running`. `timeout/1` is 25 minutes (under
+  Lifeline's default 60-minute rescue), `max_attempts: 3`.
+  A run's order: journal rows → content → off-purpose reasons → guard
+  events, each in chunks, each chunk its own transaction with
+  `SET LOCAL statement_timeout` / `lock_timeout` and the chunk chosen in a
+  `MATERIALIZED` CTE (as `uuid IN (subquery)` the planner may run a
+  `LIMIT … SKIP LOCKED` subquery again and delete more than the limit).
+  Rows: keyset by `(inserted_at, uuid)` with `FOR UPDATE SKIP LOCKED` —
+  the only step that skips locked rows — and whether any are left is a
+  probe (`inserted_at < boundary LIMIT 1`), never a short chunk. Content:
+  keyset windows of `content_batch` rows in `[lower, content boundary)`,
+  updating the ones that carry a content key and waiting for a locked row;
+  `lower` is the later of the rows' boundary and `content_done_before`
+  only when the row step ran and left nothing — with a tail left, the
+  content of the rows that stay is cleared first, then the tail's — and
+  `content_done_before` moves only once everything below the boundary is
+  done (a stopped step keeps `content_resume`). Reasons and events:
+  unordered chunks (no index leads with the events' `inserted_at`; the
+  table is small), finished by a probe. Each counter has a time slice
+  (rows 10 min, content 6 min, reasons 1 min, events 2 min) and a
+  `max_rows` cap; what is left is `more_left`, continued by the next night
+  or run. Before anything, `check_foreign_keys/1` reads `pg_constraint`
+  for every key referencing the journal or the events (by schema-qualified
+  name): each must be `ON DELETE SET NULL`, on one nullable column, with a
+  valid index leading with it (no predicate, or `col IS NOT NULL`), else
+  `{:foreign_key_blocks, table}` and nothing is deleted; the preview
+  reports the same. Rows written during a run are newer than any boundary.
+  Audit: `PhoenixKit.Activity.log("ai", …)` with `permanent: true` (core's
+  Activity pruning must not remove the trace of a deletion), `mode:`
+  `"manual"` / `"cron"`, the person of a manual run, and metadata of counts
+  (`content_cleared`, `requests_deleted`, `guard_events_deleted`,
+  `guard_reasons_cleared`), boundaries (`content_before`,
+  `requests_before`, `guard_events_before`) and `more_left` — no row uuids,
+  no content. `journal.pruned` for every manual run and every night that
+  did something (an idle night is only in the stamp); `journal.prune_failed`
+  with `error` (a Postgres error code or an exception module, never the
+  database's message) and the counts already committed. A failed check is
+  `{:cancel, reason}` (no retry, `failed` in the stamp), and a nightly one
+  is logged to Activity once per 20 hours per class; a failed chunk is an
+  error, retried by Oban, each attempt counting from zero. A job with
+  unreadable arguments (a manual one) is stamped `failed` (`invalid_args`)
+  and cancelled.
+  UI: the "Journal retention" card on AI → Usage
+  (`Web.JournalRetention`, markup `Web.Components.JournalRetentionCard`):
+  per kind a number and a unit or "keep forever", with
+  `Retention.warnings/4` under it; saving a shorter or first finite period
+  (`Retention.shorter?/4`) goes through a preview and a confirmation; the
+  nightly line (off / first cleanup of a kind not before a date / the last
+  night within 36 hours with its counts and "more left" / failed / not run,
+  check the crontab), the last manual run, a pending job read from
+  `oban_jobs` (a stuck `executing` shows); "Clean up now" per kind (leave /
+  by the saved period / a value for this run only) with a `start_async`
+  preview, the confirmation acting on the boundaries in the page's assigns,
+  never the event's parameters. The page follows core's settings topic and
+  draws from the value in `{:setting_changed, key, value}` (core announces
+  before its transaction commits). Totals on the Endpoints and Usage tabs
+  say "for the retained period, since <date>" once rows may be gone (a
+  finite rows period, or `rows_deleted_before` set); a request's details say
+  when its content was removed. Without `ai.manage` the card is read-only.
+  `PhoenixKitAI.GuardEventsPruneWorker` is a shim: `perform/1` only inserts
+  a `JournalPruneWorker` job (its uniqueness and the once-a-night rule
+  apply) and deletes nothing; `retention_days/0` is deprecated. It left
+  `oban_crons/0`, but a host's crontab entry of it, or a job already
+  queued, still works.
 - Off-purpose use (`PhoenixKitAI.Guard`): the consumer flags, the guard
   never edits a prompt or a schema. `self_flag?/1` (the task's guard mode,
   else the declaration's `self_flag`) before building the prompt; the mode

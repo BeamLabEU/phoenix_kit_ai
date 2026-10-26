@@ -260,3 +260,11 @@ exclude =
     else: [:requires_module_chain_check | exclude]
 
 ExUnit.start(exclude: exclude)
+
+# The manifest test builds the module's tables with `ModuleChainCheck.build_alone/4`
+# and hands the manifest to repair (`PhoenixKit.Module.expected_schema/0`); both
+# arrive in the first core release after 2.64.1.
+unless Code.ensure_loaded?(PhoenixKit.TestSupport.ModuleChainCheck) and
+         function_exported?(PhoenixKit.TestSupport.ModuleChainCheck, :build_alone, 4) do
+  ExUnit.configure(exclude: [:requires_core_expected_schema | ExUnit.configuration()[:exclude]])
+end
