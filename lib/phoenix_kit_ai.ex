@@ -1202,6 +1202,13 @@ defmodule PhoenixKitAI do
   @spec migration_module() :: module()
   def migration_module, do: PhoenixKitAI.Migrations
 
+  @doc """
+  The manifest of this module's tables, for `mix phoenix_kit.repair` and
+  `mix phoenix_kit.doctor`; see `PhoenixKitAI.ExpectedSchema`.
+  """
+  # No `@impl`, so this compiles against a core that lacks the callback.
+  def expected_schema, do: PhoenixKitAI.ExpectedSchema
+
   @impl PhoenixKit.Module
   @spec required_integrations() :: [String.t()]
   def required_integrations, do: ["openrouter"]
