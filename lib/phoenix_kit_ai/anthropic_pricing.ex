@@ -108,10 +108,7 @@ defmodule PhoenixKitAI.AnthropicPricing do
   defp rate(model, prompt_tokens) when is_binary(model) do
     id = Regex.replace(~r/-(\d{8}|latest)$/, model, "")
 
-    case Map.get(rates(), id) do
-      nil -> nil
-      base -> tier(id, prompt_tokens) || base
-    end
+    Map.get(configured_rates(), id) || tier(id, prompt_tokens) || Map.get(@rates, id)
   end
 
   defp rate(_model, _prompt_tokens), do: nil
@@ -123,23 +120,20 @@ defmodule PhoenixKitAI.AnthropicPricing do
     end
   end
 
-  # A configured rate wins over the table; a malformed one is left out, and so
-  # is a setting that is neither a map nor a list (a call is never failed by it).
-  defp rates do
-    configured =
-      :phoenix_kit_ai
-      |> Application.get_env(:anthropic_prices, %{})
-      |> configured_prices()
-      |> Enum.filter(fn
-        {id, {input, output}} ->
-          is_binary(id) and is_number(input) and input >= 0 and is_number(output) and output >= 0
+  # A configured rate replaces the model's built-in pricing, including its
+  # tiers. Malformed entries and settings are ignored.
+  defp configured_rates do
+    :phoenix_kit_ai
+    |> Application.get_env(:anthropic_prices, %{})
+    |> configured_prices()
+    |> Enum.filter(fn
+      {id, {input, output}} ->
+        is_binary(id) and is_number(input) and input >= 0 and is_number(output) and output >= 0
 
-        _ ->
-          false
-      end)
-      |> Map.new(fn {id, {input, output}} -> {id, {input * 1.0, output * 1.0}} end)
-
-    Map.merge(@rates, configured)
+      _ ->
+        false
+    end)
+    |> Map.new(fn {id, {input, output}} -> {id, {input * 1.0, output * 1.0}} end)
   end
 
   defp configured_prices(prices) when is_map(prices) or is_list(prices), do: prices

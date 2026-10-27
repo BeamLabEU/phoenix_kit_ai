@@ -850,7 +850,11 @@ defmodule PhoenixKitAI.Web.Endpoints do
   @spec phoenix_kit_scope_changed(Phoenix.LiveView.Socket.t()) :: Phoenix.LiveView.Socket.t()
   def phoenix_kit_scope_changed(socket) do
     can_view_usage = Access.can?(socket, @view_usage)
-    socket = assign(socket, :can_manage_endpoints, Access.can?(socket, @manage_endpoints))
+
+    socket =
+      socket
+      |> assign(:can_manage_endpoints, Access.can?(socket, @manage_endpoints))
+      |> JournalRetention.refresh_access()
 
     cond do
       can_view_usage ->

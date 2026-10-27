@@ -45,6 +45,24 @@ defmodule PhoenixKitAI.AnthropicPricingTest do
     assert AnthropicPricing.cost("claude-haiku-4-5", 1_000_000, 0) == 1.0
   end
 
+  test "a configured rate also replaces a built-in tier for large prompts" do
+    Application.put_env(:phoenix_kit_ai, :anthropic_prices, %{
+      "claude-haiku-5-5" => {2, 8}
+    })
+
+    for tokens <- [100_000, 100_001, 1_000_000] do
+      assert_in_delta AnthropicPricing.cost("claude-haiku-5-5", tokens, 1_000),
+                      (tokens * 2 + 1_000 * 8) / 1_000_000,
+                      1.0e-12
+
+      assert %{"input" => input, "output" => output} =
+               AnthropicPricing.per_million("claude-haiku-5-5-latest", tokens)
+
+      assert Decimal.equal?(input, 2)
+      assert Decimal.equal?(output, 8)
+    end
+  end
+
   test "a setting that is neither a map nor a list is ignored, not raised on" do
     for setting <- [nil, "claude-opus-4-6", 5] do
       Application.put_env(:phoenix_kit_ai, :anthropic_prices, setting)

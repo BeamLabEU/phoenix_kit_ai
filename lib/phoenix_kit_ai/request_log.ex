@@ -34,7 +34,7 @@ defmodule PhoenixKitAI.RequestLog do
   @doc "Whether rows are written asynchronously right now (mode, process, backlog)."
   @spec async?() :: boolean()
   def async? do
-    Application.get_env(:phoenix_kit_ai, :request_log_mode, :sync) == :async and
+    async_mode?() and
       case Process.whereis(__MODULE__) do
         nil ->
           false
@@ -51,6 +51,11 @@ defmodule PhoenixKitAI.RequestLog do
           end
       end
   end
+
+  @doc "Whether asynchronous logging is configured, independently of the writer's queue capacity."
+  @spec async_mode?() :: boolean()
+  def async_mode?,
+    do: Application.get_env(:phoenix_kit_ai, :request_log_mode, :sync) == :async
 
   @doc "Queue one row: its uuid and the attrs of `PhoenixKitAI.create_request/1`."
   @spec enqueue({Ecto.UUID.t(), map()}) :: :ok

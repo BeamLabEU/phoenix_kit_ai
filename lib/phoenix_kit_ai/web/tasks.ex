@@ -83,6 +83,18 @@ defmodule PhoenixKitAI.Web.Tasks do
      |> load_tasks()}
   end
 
+  @doc "Refreshes private reasons and controls when core updates the viewer's scope."
+  @spec phoenix_kit_scope_changed(Phoenix.LiveView.Socket.t()) :: Phoenix.LiveView.Socket.t()
+  def phoenix_kit_scope_changed(socket) do
+    socket
+    |> assign(:can_manage, Access.may_manage?(socket))
+    |> assign(:user_editor, nil)
+    |> assign(:block_editor, nil)
+    |> assign(:lift_editor, nil)
+    |> load_guard()
+    |> load_tasks()
+  end
+
   @impl true
   def handle_event("refresh_catalogues", _params, socket) do
     {:noreply,

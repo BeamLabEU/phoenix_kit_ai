@@ -88,3 +88,19 @@ Link between related PRs:
 - Review files (`*_REVIEW.md`) should explain *why*, not just *what*
 - Update FOLLOW_UP.md if issues are discovered later
 - Remove obsolete PR docs when the feature is fully deprecated
+
+## GPT review sweep — 2026-10-27
+
+The ten latest merged PRs were checked for an existing GPT review. #54 and
+#55 already had one; the remaining eight were reviewed against current main.
+
+| PR | Findings and resolution |
+|---|---|
+| [#49](2026/49-task-user-limits-flag/GPT_REVIEW.md) | No additional defect found |
+| [#50](2026/50-endpoint-form-manual-price/GPT_REVIEW.md) | Configured pricing now overrides built-in tiers for large prompts |
+| [#51](2026/51-endpoint-name-tiebreak/GPT_REVIEW.md) | No additional defect found |
+| [#52](2026/52-endpoint-name-tie-tests/GPT_REVIEW.md) | No additional defect found |
+| [#53](2026/53-provider-error-bodies/GPT_REVIEW.md) | No additional confirmed defect found |
+| [#56](2026/56-playground-cost-async-log/GPT_REVIEW.md) | Logged cost is awaited even when the queue fills after enqueueing |
+| [#57](2026/57-journal-retention/GPT_REVIEW.md) | Manual cleanup handles flag reasons alone; revoked management drops retention previews |
+| [#58](2026/58-permission-sweep/GPT_REVIEW.md) | Scope refresh hides private reasons and closes unauthorised endpoint forms; dependency audit repaired |

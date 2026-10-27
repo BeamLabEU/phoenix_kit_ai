@@ -496,6 +496,10 @@ that held `ai` (flags `ai_view_usage_backfilled`,
 `ai_manage_endpoints_backfilled`, set only after every grant succeeded; the
 roles' keys are read with the module's own query, which raises, because
 core's `get_permissions_for_role/1` reads a failed lookup as "no keys").
+The endpoint form leaves on a lost `ai.manage_endpoints`; the Tasks page
+reloads private reasons and clears editors on a scope change; the Usage
+card refreshes its retention rights and drops previews when `ai.manage`
+is lost. Regaining a permission never restores a discarded confirmation.
 `"ai.manage"`: changing the task guard (limits, personal limits, forgiving,
 watchers, "only verified models", declaring capabilities while that is on,
 a task's self-flag mode, blocking and lifting), seeing the reasons of a private task's flags and

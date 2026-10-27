@@ -603,6 +603,22 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     end
   end
 
+  @doc "Closes the form when core revokes endpoint management, and refreshes its guard rights."
+  @spec phoenix_kit_scope_changed(Phoenix.LiveView.Socket.t()) :: Phoenix.LiveView.Socket.t()
+  def phoenix_kit_scope_changed(socket) do
+    if Access.can?(socket, @manage_endpoints) do
+      may_manage = Access.may_manage?(socket)
+
+      socket
+      |> assign(:may_price, may_manage)
+      |> assign(:may_declare, not Guard.verified_only?() or may_manage)
+    else
+      socket
+      |> put_flash(:error, gettext("You don't have permission to manage AI endpoints."))
+      |> push_navigate(to: PhoenixKitAI.Routes.ai_path() <> "/endpoints")
+    end
+  end
+
   defp do_mount(_params, session, socket) do
     # No DB queries in mount/3 — they run twice. The `enabled?` check,
     # integration listing, and endpoint load all happen in

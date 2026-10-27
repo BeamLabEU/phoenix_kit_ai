@@ -21,7 +21,7 @@ defmodule PhoenixKitAI.Web.UsageRetentionTest do
   alias PhoenixKit.Test.Fixtures
   alias PhoenixKit.Users.Auth.Scope
   alias PhoenixKit.Users.{Permissions, Roles}
-  alias PhoenixKitAI.{Request, Retention}
+  alias PhoenixKitAI.{GuardEvent, Request, Retention}
   alias PhoenixKitAI.Test.Repo, as: TestRepo
 
   @path "/en/admin/ai/usage"
@@ -129,6 +129,30 @@ defmodule PhoenixKitAI.Web.UsageRetentionTest do
   end
 
   describe "without ai.manage" do
+    test "core's scope refresh removes retention controls and a pending preview immediately",
+         %{conn: conn} do
+      {user, role_uuid} = admin(["ai", "ai.view_usage", "ai.manage"])
+
+      {:ok, view, _html} =
+        conn |> put_test_scope(Scope.for_user(user)) |> live("/core-scope/admin/ai/usage")
+
+      submit_period(view, "content", "30", "day")
+      render_async(view, @async_ms)
+      assert :sys.get_state(view.pid).socket.assigns.retention_save != nil
+
+      :ok = Permissions.revoke_permission(role_uuid, "ai.manage")
+      render(view)
+
+      assert has_element?(view, "#ai-retention-read-only")
+      refute has_element?(view, "#ai-retention-form")
+      assert :sys.get_state(view.pid).socket.assigns.retention_save == nil
+
+      {:ok, _} = Permissions.grant_permission(role_uuid, "ai.manage")
+      render(view)
+      assert has_element?(view, "#ai-retention-form")
+      assert :sys.get_state(view.pid).socket.assigns.retention_save == nil
+    end
+
     test "the card is read only: the periods, no forms", %{conn: conn, owner: owner} do
       save_periods(owner, %{requests: {12, :month}})
       {user, _role} = admin(["ai", "ai.view_usage"])
@@ -600,6 +624,33 @@ defmodule PhoenixKitAI.Web.UsageRetentionTest do
       request!(DateTime.add(floor, -3600))
       request!(DateTime.add(floor, -7200))
       {:ok, floor: floor}
+    end
+
+    test "old flag reasons can be cleared when no journal content remains",
+         %{conn: conn, owner: owner} do
+      TestRepo.delete_all(Request)
+      at = long_ago(10)
+
+      flag =
+        TestRepo.insert!(%GuardEvent{
+          kind: "off_purpose",
+          task_key: "ai.playground",
+          reason: "old user text",
+          inserted_at: at
+        })
+
+      view = open(conn, owner)
+      count_run(view, "content", "5", "day")
+      render_async(view, @async_ms)
+
+      assert has_element?(view, "#ai-retention-run-preview", "1 off-purpose flag reason")
+      refute has_element?(view, "#ai-retention-run-delete[disabled]")
+      view |> element("#ai-retention-run-delete") |> render_click()
+      render_click(view, "retention_run_confirm", %{})
+
+      assert [job] = jobs()
+      assert :ok = PhoenixKitAI.JournalPruneWorker.perform(job)
+      assert TestRepo.get!(GuardEvent, flag.uuid).reason == nil
     end
 
     test "count asynchronously, confirm, the job takes the page's boundaries",

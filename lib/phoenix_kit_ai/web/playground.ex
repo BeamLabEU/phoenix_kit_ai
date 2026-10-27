@@ -746,11 +746,11 @@ defmodule PhoenixKitAI.Web.Playground do
   # The row is there when the verb returns, unless the usage log is
   # asynchronous: the answer then names a row that is only queued. When it is
   # not there yet, wait once for the queue to be written and read again. A log
-  # written by the caller itself, or whose queue is full (`RequestLog.async?/0`
-  # is false), is not waited for.
+  # written by the caller itself is already there. Queue capacity only decides
+  # how a NEW row is written: a full queue can still hold this call's row.
   defp logged_row(uuid) do
     case AI.get_request(uuid) do
-      nil -> if RequestLog.async?(), do: flush_then_get(uuid)
+      nil -> if RequestLog.async_mode?(), do: flush_then_get(uuid)
       row -> row
     end
   end

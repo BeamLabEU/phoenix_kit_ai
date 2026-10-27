@@ -31,6 +31,11 @@ defmodule PhoenixKitAI.Test.Router do
       layout: {PhoenixKitAI.Test.Layouts, :app},
       on_mount: [{PhoenixKitWeb.Users.Auth, :phoenix_kit_mount_current_scope}] do
       live("/admin/ai/usage", PhoenixKitAI.Web.Endpoints, :usage, as: :core_scope_ai_usage)
+      live("/admin/ai/tasks", PhoenixKitAI.Web.Tasks, :index, as: :core_scope_ai_tasks)
+
+      live("/admin/ai/endpoints/new", PhoenixKitAI.Web.EndpointForm, :new,
+        as: :core_scope_ai_endpoint_new
+      )
     end
   end
 

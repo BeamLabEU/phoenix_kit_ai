@@ -372,31 +372,43 @@ defmodule PhoenixKitAI.Web.PlaygroundCoverageTest do
       assert Decimal.equal?(cost, "1.4")
     end
 
-    test "with an asynchronous usage log the cost waits for the row", %{conn: conn} do
-      stub_response(200, payload_without_cost("claude-opus-5-5", 100_000, 50_000))
+    for max_queue <- [10_000, 1] do
+      test "with an asynchronous usage log the cost waits for the row (queue limit #{max_queue})",
+           %{conn: conn} do
+        stub_response(200, payload_without_cost("claude-opus-5-5", 100_000, 50_000))
 
-      ep =
-        fixture_endpoint(%{
-          provider: "anthropic",
-          model: "claude-opus-5-5",
-          api_key: "sk-ant-test"
-        })
+        ep =
+          fixture_endpoint(%{
+            provider: "anthropic",
+            model: "claude-opus-5-5",
+            api_key: "sk-ant-test"
+          })
 
-      start_supervised!(RequestLog)
-      Application.put_env(:phoenix_kit_ai, :request_log_mode, :async)
-      on_exit(fn -> Application.delete_env(:phoenix_kit_ai, :request_log_mode) end)
+        start_supervised!(RequestLog)
+        Application.put_env(:phoenix_kit_ai, :request_log_mode, :async)
+        previous_limit = Application.get_env(:phoenix_kit_ai, :request_log_max_queue)
+        Application.put_env(:phoenix_kit_ai, :request_log_max_queue, unquote(max_queue))
 
-      # The queue is held, so the row is only queued when the answer comes back;
-      # it is let go once the row and the Playground's wait for it are both in
-      # the queue.
-      writer = Process.whereis(RequestLog)
-      :ok = :sys.suspend(writer)
-      Task.start(fn -> resume_when_queued(writer, 2) end)
+        on_exit(fn ->
+          Application.delete_env(:phoenix_kit_ai, :request_log_mode)
 
-      html = ask(conn, ep)
+          if previous_limit,
+            do: Application.put_env(:phoenix_kit_ai, :request_log_max_queue, previous_limit),
+            else: Application.delete_env(:phoenix_kit_ai, :request_log_max_queue)
+        end)
 
-      assert html =~ "hero-currency-dollar"
-      assert html =~ "$1.40"
+        # The queue is held, so the row is only queued when the answer comes back;
+        # it is let go once the row and the Playground's wait for it are both in
+        # the queue.
+        writer = Process.whereis(RequestLog)
+        :ok = :sys.suspend(writer)
+        Task.start(fn -> resume_when_queued(writer, 2) end)
+
+        html = ask(conn, ep)
+
+        assert html =~ "hero-currency-dollar"
+        assert html =~ "$1.40"
+      end
     end
 
     test "a call nothing prices shows no cost", %{conn: conn} do

@@ -960,7 +960,7 @@ defmodule PhoenixKitAI.Retention do
 
   @doc """
   What a run with `cutoffs` would do now: `{:ok, %{content:, requests:,
-  guard_events:, clamped:, cutoffs:, content_from:}}`.
+  guard_events:, guard_reasons:, clamped:, cutoffs:, content_from:}}`.
 
   Each boundary goes through `effective_cutoff/3` first; `clamped` names
   the kinds held at the floor and `cutoffs` holds the boundaries used.
@@ -971,7 +971,9 @@ defmodule PhoenixKitAI.Retention do
   `content_from`, `nil` when the walk starts at the oldest row or there
   is no content boundary — to the content boundary), counted by the time
   index without reading the metadata. A
-  kind without a boundary counts 0. The foreign keys are checked first; a
+  kind without a boundary counts 0. `guard_reasons` counts off-purpose flag
+  reasons cleared by the content step, excluding active blocks' origins.
+  The foreign keys are checked first; a
   count over 60 s (`preview_timeout_ms:` of `config :phoenix_kit_ai,
   :journal_prune`) is `{:error, :preview_timeout}`. No rights are checked:
   `preview/2` is the same for a person.
@@ -1110,6 +1112,7 @@ defmodule PhoenixKitAI.Retention do
           %{
             requests: count_requests(effective.requests, qo),
             content: count_content(effective.content, content_from, qo),
+            guard_reasons: count_guard_reasons(effective.content, qo),
             guard_events: count_events(effective.guard_events, qo)
           }
         end)
@@ -1148,6 +1151,16 @@ defmodule PhoenixKitAI.Retention do
           qo
         )
     end
+  end
+
+  defp count_guard_reasons(nil, _qo), do: 0
+
+  defp count_guard_reasons(cut, qo) do
+    scalar(
+      "SELECT count(*) FROM #{table(GuardEvent)} e WHERE #{clearable_reasons()}",
+      [naive(cut)],
+      qo
+    )
   end
 
   defp count_events(nil, _qo), do: 0
@@ -1860,9 +1873,7 @@ defmodule PhoenixKitAI.Retention do
   # The reason of an off-purpose flag can echo the user's words.
   defp clear_reasons(state, cut, opts) do
     t = table(GuardEvent)
-
-    where =
-      "e.kind = 'off_purpose' AND e.reason IS NOT NULL AND e.inserted_at < $1 AND #{not_active_origin("e")}"
+    where = clearable_reasons()
 
     sql =
       "WITH chunk AS MATERIALIZED (SELECT e.uuid FROM #{t} e WHERE #{where} LIMIT $2) " <>
@@ -1918,6 +1929,10 @@ defmodule PhoenixKitAI.Retention do
 
   defp not_active_origin(alias) do
     "NOT EXISTS (SELECT 1 FROM #{table(GuardBlock)} b WHERE b.origin_event_uuid = #{alias}.uuid AND b.lifted_at IS NULL)"
+  end
+
+  defp clearable_reasons do
+    "e.kind = 'off_purpose' AND e.reason IS NOT NULL AND e.inserted_at < $1 AND #{not_active_origin("e")}"
   end
 
   # --- chunk loop ---

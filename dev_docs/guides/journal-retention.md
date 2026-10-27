@@ -171,7 +171,10 @@ or a value for this run only (not saved; the floor applies the same way).
 "Count" runs the preview in the background — rows and events older than
 each boundary, and "up to" N rows whose content would be removed (counted
 by time, without reading `metadata`, from the later of the rows' boundary
-and the point already cleared — the date the line names). "Delete" opens a confirmation with
+and the point already cleared — the date the line names). It also counts
+off-purpose flag reasons that the content step clears, excluding active
+blocks' origins. Those reasons alone are enough to enable a cleanup when
+no journal rows remain. "Delete" opens a confirmation with
 the same numbers and dates; the job gets the boundaries the preview used,
 held at the floor again when it runs. If the count does not finish within
 60 s the card says so and still lets the run go ahead: the boundaries are
@@ -194,7 +197,9 @@ runs on the Usage tab needs `ai.view_usage` as well as the `ai` module
 permission; without `ai.manage` the card is
 read-only. The context functions check the right, and the card checks it
 again on every acting event against the scope as it is now, so a right
-withdrawn while the page is open stops working at the next click.
+withdrawn while the page is open stops working at the next click. Core's
+scope refresh also removes the controls and pending previews immediately;
+regaining the right does not restore a discarded confirmation.
 
 ## Audit
 

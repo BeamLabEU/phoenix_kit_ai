@@ -98,6 +98,36 @@ defmodule PhoenixKitAI.Web.TasksBlocksTest do
       refute has_element?(view, "#{@private} [data-flag][data-flag-hidden]")
     end
 
+    test "core's scope refresh drops private reasons and open editors after a revoke",
+         %{conn: conn, owner: owner, person: person} do
+      {:ok, block} =
+        Guard.block(Scope.for_user(owner), "test.private", person.uuid, "PRIVATE-BLOCK", nil)
+
+      {user, role_uuid} = role_with(["ai", "ai.manage"])
+
+      {:ok, view, _html} =
+        conn |> put_test_scope(Scope.for_user(user)) |> live("/core-scope/admin/ai/tasks")
+
+      assert render(view) =~ "PRIVATE-REASON"
+      assert render(view) =~ "PRIVATE-BLOCK"
+      render_click(view, "lift_open", %{"block" => block.uuid})
+      assert has_element?(view, "[data-lift-form]")
+
+      :ok = Permissions.revoke_permission(role_uuid, "ai.manage")
+      # A message from this process follows the revoke notification to the view.
+      html = render(view)
+
+      refute html =~ "PRIVATE-REASON"
+      refute html =~ "PRIVATE-BLOCK"
+      assert has_element?(view, "#ai-guard-read-only")
+      refute has_element?(view, "[data-lift-form]")
+      assert :sys.get_state(view.pid).socket.assigns.lift_editor == nil
+
+      {:ok, _} = Permissions.grant_permission(role_uuid, "ai.manage")
+      assert render(view) =~ "PRIVATE-REASON"
+      refute has_element?(view, "[data-lift-form]")
+    end
+
     test "a flag without a user is listed, with nobody to block", %{conn: conn, owner: owner} do
       {:ok, nobody} = Guard.report_off_purpose("test.flagged", nil, "NO-USER-REASON", "t0")
       view = open(conn, owner)

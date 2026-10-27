@@ -67,6 +67,15 @@ defmodule PhoenixKitAI.Web.JournalRetention do
     |> reset_forms(settings)
   end
 
+  @doc "Refreshes retention rights after a scope change, dropping previews when management is lost."
+  @spec refresh_access(Phoenix.LiveView.Socket.t()) :: Phoenix.LiveView.Socket.t()
+  def refresh_access(socket) do
+    can_manage = Access.may_manage?(socket)
+    socket = assign(socket, :retention_can_manage, can_manage)
+
+    if can_manage, do: socket, else: reset_forms(socket, socket.assigns.retention)
+  end
+
   @doc """
   Reads where the totals "for all time" start (the endpoints tab), once
   per mount, with the periods and the last runs it is judged by: later
@@ -373,7 +382,7 @@ defmodule PhoenixKitAI.Web.JournalRetention do
   """
   @spec runnable?(map() | nil) :: boolean()
   def runnable?(%{preview: {:ok, counts}}),
-    do: Enum.any?(Retention.kinds(), &(Map.get(counts, &1, 0) > 0))
+    do: Enum.any?([:guard_reasons | Retention.kinds()], &(Map.get(counts, &1, 0) > 0))
 
   def runnable?(%{preview: {:error, :preview_timeout}}), do: true
   def runnable?(_run), do: false

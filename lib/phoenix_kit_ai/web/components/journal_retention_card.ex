@@ -708,7 +708,15 @@ defmodule PhoenixKitAI.Web.Components.JournalRetentionCard do
         )
       end
 
-    floor_message(:content, counts, nil) ++ [{:info, text}]
+    reasons =
+      ngettext(
+        "%{count} off-purpose flag reason older than %{date} will be cleared.",
+        "%{count} off-purpose flag reasons older than %{date} will be cleared.",
+        Map.get(counts, :guard_reasons, 0),
+        date: date_text(cut)
+      )
+
+    floor_message(:content, counts, nil) ++ [{:info, text}, {:info, reasons}]
   end
 
   defp kind_messages(:guard_events, counts) do

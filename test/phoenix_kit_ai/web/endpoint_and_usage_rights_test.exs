@@ -140,6 +140,26 @@ defmodule PhoenixKitAI.Web.EndpointAndUsageRightsTest do
   end
 
   describe "endpoint management" do
+    test "core's scope refresh leaves an open form after endpoint management is revoked",
+         %{conn: conn} do
+      _owner = Fixtures.user_fixture()
+      user = Fixtures.user_fixture()
+      {:ok, role} = Roles.create_role(%{name: "Endpoint #{System.unique_integer([:positive])}"})
+      {:ok, _} = Roles.assign_role(user, role.name)
+      :ok = Permissions.set_permissions(role.uuid, ["ai", "ai.manage_endpoints"])
+
+      {:ok, view, _html} =
+        conn
+        |> put_test_scope(Scope.for_user(user))
+        |> live("/core-scope/admin/ai/endpoints/new")
+
+      :ok = Permissions.revoke_permission(role.uuid, "ai.manage_endpoints")
+
+      assert {path, flash} = assert_redirect(view)
+      assert path =~ "/admin/ai/endpoints"
+      assert flash["error"] =~ "permission"
+    end
+
     test "the base key lists endpoints but offers no change", %{conn: conn} do
       endpoint = fixture_endpoint()
 

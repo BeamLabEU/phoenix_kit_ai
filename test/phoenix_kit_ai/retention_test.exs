@@ -607,6 +607,11 @@ defmodule PhoenixKitAI.RetentionTest do
         blocked_at: at
       })
 
+      assert {:ok, %{content: 0, guard_reasons: 1}} =
+               Retention.preview(%{content: floor_cut(:content)})
+
+      assert {:ok, %{guard_reasons: 0}} = Retention.preview(%{})
+
       assert {:ok, %{counts: %{guard_reasons: 1, content: 0}}} =
                Retention.run(:manual, %{content: floor_cut(:content)}, @fast)
 
