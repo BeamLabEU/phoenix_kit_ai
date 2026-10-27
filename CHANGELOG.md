@@ -6,6 +6,8 @@
 
 ### Changed
 
+- **Core pin widened to `>= 2.65.0 and < 4.0.0`:** works with core 3.x (core 3.0 stops creating the module tables; this module's own chain builds its tables). The floor is the first core with the `file_references/0` and `expected_schema/0` callbacks, which now carry `@impl PhoenixKit.Module`.
+
 - The migration chain is now V5 and adopts `phoenix_kit_ai_endpoints`,
   `phoenix_kit_ai_prompts` and `phoenix_kit_ai_requests`, which core's chain
   created before the module had one (core's V135 baseline plus V164, V169,
