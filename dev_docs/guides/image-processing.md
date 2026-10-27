@@ -183,6 +183,102 @@ is type-checked, so a sloppy answer on the no-`response_format` retry
 degrades to empty lists and `nil`s rather than raising. Only a valid
 BCP-47 tag is recorded as `language` on the usage row.
 
+## Locating and comparing
+
+Four verbs answer *where* as well as *what*, and two more help when there
+are many images or many calls. None of them knows what the images are of:
+a product photo, a receipt, a contract page, a comic panel and a car
+damage report all go through the same calls.
+
+| Verb | Asks | Returns |
+|---|---|---|
+| `detect_regions(endpoint, images, labels, opts)` | "where is each of these?" (`["logo", "price tag"]`, or `nil` for every notable thing) | `regions: [%{label, description, box, image, confidence}]` |
+| `describe_image(…, regions: true \| labels)` | the usual question, plus where the things it mentions are | `text`, plus `regions` |
+| `extract_text(…, boxes: true)` | the usual OCR, plus where each block is | each block gets `:box` |
+| `check_statements(endpoint, statements, images, opts)` | "do these images support these statements?" | `results: [%{id, verdict, evidence, image, box}]` |
+| `vision_batch(endpoint, items, verb: …)` | any of the above over many items | a status and a cost per item |
+| `embed(endpoint, [{:image, img} \| text, …])` | a vector per image (and text) | `data` + `space` |
+
+### Boxes
+
+Every box is a `PhoenixKitAI.Box`: `x0, y0, x1, y1`, fractions of the
+image from its top-left corner — the frame core Storage's `FocalPoint`
+uses, so `Box.center/1` of a detected subject is a focal point as it is.
+`Box.to_pixels/4` gives a crop rectangle (with `pad:`), `Box.iou/2`
+compares two boxes, `to_map/1` / `from_map/1` store one in JSON.
+
+The prompts ask for `box_2d` as `[ymin, xmin, ymax, xmax]` on a 0–1000
+grid, but models do not all follow that: in the test behind these verbs
+Qwen-VL answered `[xmin, ymin, xmax, ymax]` on every page whatever the
+prompt said. So the reading is chosen by the model that *answered*
+(`Box.format_for/2`: a call's `box_format:`, then
+`config :phoenix_kit_ai, box_formats:` by model-id prefix, then the
+built-in table, then `:yx_1000`). Nothing guesses the order from the
+numbers — a plausible-looking guess is worse than a known table. A box
+that is not four numbers or has no area left after clamping is dropped
+and counted (`dropped_regions`), never repaired.
+
+How *good* boxes are differs much more between models than how good
+their text is. On the same pages, some models placed panels well and
+scattered every other box; the cheapest model with good balloon boxes was
+not the one with good panels. Try a model on your own images (draw its
+boxes on them) before a feature depends on it.
+
+### Checking statements
+
+`check_statements/4` is for text written about images before it is
+trusted: a listing against its photos, an AI-written description against
+its picture, a claim against the pages it cites. Each statement is
+`:supported`, `:contradicted` or `:insufficient`, with the image and box
+of the deciding detail. The prompt tells the model to judge substance,
+not wording: a strict model otherwise marks true statements contradicted
+over technicalities, and a writer that drops "contradicted" facts then
+loses true ones. Treat `:contradicted` as "a person should look", not
+as proof. Planted false statements are a cheap way to see whether a model
+is honest enough for the job before trusting its "supported".
+
+### Many images: `vision_batch/3`
+
+One verb over a list of items, each a separate call through the usual
+gate, caps, task limits, cache and limiter, each with its own result:
+`:ok`, `:error`, `:unparsed` (answered without the JSON asked for — billed,
+no result) or `:skipped`. A failed image never produces output and never
+fails the rest. It stops starting new items when `budget:` is spent (the
+items already running finish) or on a refusal every later item would hit
+(a cap, a task limit, an unfit model, an exhausted balance, a bad key).
+The calls are tagged with one `run:`, so `run_costs/2` gives the full
+cost afterwards, unparsed answers included.
+
+### Runs
+
+`run:` / `step:` on any verb tag every row the call writes. `run_costs/2`
+totals a run in all, per step and per model (calls, errors, refusals,
+cache hits, unparsed answers, cost, tokens); `list_requests/1` and
+`get_usage_stats/1` filter by the same tags. The journal has no index on
+them: on a large journal pass `since:`.
+
+### Image embeddings
+
+`embed/3` takes images next to texts — `{:image, input}`, or with a
+caption for one joint vector `{:image, input, "red leather sofa"}` — for
+a multimodal embedding model (on OpenRouter `google/gemini-embedding-2`,
+`voyageai/voyage-multimodal-3.5`, NVIDIA's free VL embedder). Text and
+images land in one space, so a text query can find images directly. The
+answer names its `space` (`"<model>:<dimensions>"`); store it with the
+vectors and never compare across spaces. The module stores no vectors: a
+host keeps them in its own table (pgvector), next to the file they
+describe. Similar products, duplicate uploads, "more like this", grouping
+faces or logos are all a nearest-neighbour query on those vectors.
+
+### What stays in the app
+
+Anything that knows the domain: which pages pair, the reading order of a
+layout, a registry of the people or products found, clustering policy and
+the screen where a person confirms a group, spoiler or publishing rules,
+file storage. Faces of real people are biometric data: grouping them is
+the host's decision, with the consent that requires; the module offers
+embeddings, not identification.
+
 ## Adapters
 
 | provider key | adapter | transport |

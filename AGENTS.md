@@ -4,9 +4,10 @@ Guidance for AI agents working on `phoenix_kit_ai`.
 
 ## Overview
 
-AI endpoint management, prompt templates, chat completions, embeddings,
-text-to-speech, image generation and editing, realtime voice, and per-request
-usage tracking. Providers are OpenAI-compatible and are discovered at runtime
+AI endpoint management, prompt templates, chat completions, embeddings
+(text and images), text-to-speech, image generation and editing, reading and
+locating things in images (boxes, regions, checking statements against
+images, batches), realtime voice, and per-request usage tracking. Providers are OpenAI-compatible and are discovered at runtime
 from core's `PhoenixKit.Integrations` registry
 (`PhoenixKit.Integrations.Providers.with_capability(:ai_completions)`), so there
 is no hardcoded provider whitelist. Implements the `PhoenixKit.Module`
@@ -331,7 +332,11 @@ lib/phoenix_kit_ai/
   request_log.ex                 PhoenixKitAI.RequestLog — writes usage rows off the caller (request_log_mode: :async)
   provider.ex                    PhoenixKitAI.Provider behaviour + adapter resolution by provider key
   providers/                     adapters: openrouter (unified /images), xai, openai (multipart), openai_compatible (chat parts), http (shared Req door)
-  images.ex images/              generic image layer: operations → prompt, option fitting, describe/compare, model-capability cache
+  images.ex images/              generic image layer: operations → prompt, option fitting, describe/compare, model-capability cache;
+                                 images/regions.ex — schemas, prompts and parsing of located answers (regions, text boxes, statements)
+  box.ex                         PhoenixKitAI.Box — the one box type ([x0, y0, x1, y1] fractions, top-left) and each model's box format
+  vision_batch.ex                PhoenixKitAI.VisionBatch — one vision verb over many items, per-item status, budget and fatal stop
+  runs.ex                        PhoenixKitAI.Runs — a run's totals from the journal (`run:` / `step:` tags)
   openrouter_client.ex           generic across providers despite the name
   capabilities.ex                what a model can do (catalogue + declared), ETS cache process
   task_spec.ex tasks.ex          AI task declarations (`ai_tasks/0`), the registry, fitness for a task
@@ -545,6 +550,7 @@ so the context function gets that same, current scope.
 | `:request_log_mode` | `:sync` | `:async` writes usage rows from `PhoenixKitAI.RequestLog` instead of the calling process (same insert, broadcast, telemetry and sinks); `create_request/1` stays synchronous |
 | `:request_log_max_queue` | `10_000` | Async backlog above which callers write synchronously again (no row is dropped) |
 | `:log_cache_hits` | `true` | `false` skips the zero-cost usage row of a cache hit (a call's `log_cache_hit:` wins); the hit telemetry event still fires |
+| `:box_formats` | `%{}` | Model-id prefix → how that model writes a box (`:yx_1000`, `:xy_1000`, `:xy_fraction`, `:yx_fraction`), merged over the built-in table (`PhoenixKitAI.Box.format_for/2`; longest prefix wins; a call's `box_format:` wins over both). An unknown value is ignored with a warning |
 | `:allow_internal_image_urls` | `false` | Lift the image-fetch host policy (loopback / link-local / RFC 1918 / `.local`, resolved addresses included) — tests and air-gapped installs only; separate from the endpoint base-URL switch |
 | `:journal_prune` | `[]` | Options of the journal cleanup (`PhoenixKitAI.JournalPruneWorker` → `Retention.run/3`): `request_batch:` 1 000, `content_batch:` 500 (halved after a chunk's `statement_timeout`, down to `content_min_batch:` 50, which is capped at `content_batch`), `event_batch:` 1 000, `pause_ms:` 50 between chunks (at most 5 000; a longer one is 5 000, with a warning), `max_rows:` 1 000 000 per counter per run, `statement_timeout_ms:` 30 000 and `lock_timeout_ms:` 5 000 per chunk, `time_limits:` `%{requests: 600_000, content: 360_000, guard_reasons: 60_000, guard_events: 120_000}` (ms). An invalid value falls back to its default with a warning; time limits that would not fit in the job's 25-minute `timeout/1` — their sum plus, per counter, one `pause_ms` and one chunk and one probe at `statement_timeout_ms` + 5 s (a counter overruns its slice by at most that; the content step starts no later range once its slice is over), plus a minute — fall back to the defaults as a whole, and a `statement_timeout_ms` too long for even the default slices (32 500 − `pause_ms` / 2 or more; 32 475 at the default pause) is lowered, with a warning naming it, to the largest that fits (`Retention.run_options/1`; the run never budgets past `timeout/1`). `lock_timeout_ms` is not part of the budget: PostgreSQL's statement timeout bounds a lock wait too. `:now` and `:actor_uuid` are ignored (they are the job's own); a value that is not a keyword list is ignored with a warning. `preview_timeout_ms:` (60 000) is the statement and lock timeout of a preview's counts, read separately; past it the preview is `{:error, :preview_timeout}` |
 
@@ -643,6 +649,20 @@ provided the API exposes `<base_url>/chat/completions` and `/models`.
 - **Usage by source prefix**: `list_requests/1` and `get_usage_stats/1` take
   `source_prefix:` (LIKE-escaped) to total one app's calls across its many
   `source:` strings.
+- **Runs**: every verb takes `run:` and `step:` (strings, at most 200
+  characters; `Guard.run_tag/1`), stored on every row the call writes —
+  success, error, refusal, cache hit — through the admission's
+  `row_metadata` / `task_metadata`. `run_costs/2` totals a run by step and
+  model; `list_requests/1` and `get_usage_stats/1` filter by `run:` /
+  `step:`. Not part of the cache key. The tag has no index: pass `since:` on
+  a large journal.
+- **Image embeddings**: `embed/3` takes images (`{:image, input}`,
+  `%{image:, text:}`), checked and inlined by `Images.normalize_inputs/2`
+  and sent as OpenRouter multimodal `content` inputs; the image bytes are
+  never on the row (`image_count` is). The answer carries `"space"`
+  (`"<model>:<dimensions>"`); vectors from two spaces are not comparable.
+  No guard need is implied — a text-only model answers images with a
+  provider error.
 - **Several images in `extract_text/3`**: `images_as:` says how they relate —
   `:pages` (one document, the default), `:separate`, or a caller's own
   sentence — and is part of a caller-supplied cache key.
@@ -1160,6 +1180,23 @@ Test database `phoenix_kit_ai_test`.
   rewrites an existing, operator-editable prompt — so an older install
   adds the line to its prompt by hand; until then the setting is silently
   inert.
+- Located answers: `detect_regions/4`, `check_statements/4`,
+  `describe_image/3` with `regions:` and `extract_text/3` with
+  `boxes: true` return `PhoenixKitAI.Box` structs. Boxes are asked for as
+  `[ymin, xmin, ymax, xmax]` on 0–1000 and read in the format the
+  *answering* model writes (`Box.format_for/2`) — never guessed from the
+  numbers; an unusable box is dropped and counted (`dropped_regions`), not
+  repaired. The new verbs are `describe_image/3` with their own prompt and
+  schema (same gate, task needs, cache, row), so a new located verb is a
+  prompt + schema in `Images.Regions`, not a new call path.
+  `vision_batch/3` runs any of them over many items with a status per item
+  (`:ok` / `:error` / `:unparsed` / `:skipped`) and stops on `budget:` or
+  on a refusal every later item would hit (`VisionBatch`'s fatal list).
+  Every vision result now carries `:cost` (the row's; `log_usage/1` hands
+  it back in async mode too). An unparsed vision answer's row carries
+  `metadata.unparsed: true` (a chat call's does not). The verbs, formats,
+  measured model behaviour and what stays in a host app:
+  `dev_docs/guides/image-processing.md` ("Locating and comparing").
 - Image processing is provider-neutral by construction: callers name an
   endpoint and operations, adapters own the HTTP shape, and options are
   fitted to the model's published capabilities before anything is sent —

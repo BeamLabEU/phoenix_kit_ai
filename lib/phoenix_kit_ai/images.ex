@@ -57,7 +57,7 @@ defmodule PhoenixKitAI.Images do
   import Bitwise
 
   alias PhoenixKitAI.{Completion, Endpoint, Provider, StructuredOutput}
-  alias PhoenixKitAI.Images.{ImageModel, ImageModels, Operations}
+  alias PhoenixKitAI.Images.{ImageModel, ImageModels, Operations, Regions}
   alias PhoenixKitAI.Providers.{HTTP, OpenAICompatible}
 
   @request_options ~w(aspect_ratio resolution size quality background output_format output_compression n seed response_format style mask)a
@@ -646,6 +646,7 @@ defmodule PhoenixKitAI.Images do
   def describe(endpoint, images, opts \\ []) do
     endpoint = if opts[:model], do: %{endpoint | model: opts[:model]}, else: endpoint
     opts = Keyword.put(opts, :prompt, opts[:prompt] || opts[:question] || default_question())
+    opts = with_region_request(opts)
 
     with {:ok, refs} <- normalize_inputs(images, opts) do
       {suffix, response_format} = StructuredOutput.request(opts)
@@ -674,9 +675,49 @@ defmodule PhoenixKitAI.Images do
       # The retry without `response_format` lives here, not in the adapter,
       # so a provider with its own `vision/3` keeps it.
       with {:ok, response} <-
-             vision_with_fallback(endpoint, messages, vision_opts, response_format) do
-        described(response, endpoint, opts)
+             vision_with_fallback(endpoint, messages, vision_opts, response_format),
+           {:ok, result} <- described(response, endpoint, opts) do
+        {:ok, with_regions(result, opts, length(refs))}
       end
+    end
+  end
+
+  # `regions:` (true, or a list of what to locate) turns the question into a
+  # JSON answer with a `regions` list: the caller's own `schema:` gets the
+  # property added, otherwise the answer is `description` + `regions` and the
+  # result's `text` is the description.
+  defp with_region_request(opts) do
+    case region_labels(opts[:regions]) do
+      :none ->
+        opts
+
+      labels ->
+        opts
+        |> Keyword.put(:prompt, opts[:prompt] <> "\n\n" <> Regions.describe_regions_line(labels))
+        |> Keyword.put(:schema, Regions.with_regions(opts[:schema], labels))
+        |> Keyword.put(:region_answer, if(opts[:schema], do: :caller_schema, else: :description))
+    end
+  end
+
+  defp region_labels(true), do: nil
+  defp region_labels([_ | _] = labels), do: Enum.map(labels, &to_string/1)
+  defp region_labels(_other), do: :none
+
+  defp with_regions(result, opts, count) do
+    case opts[:region_answer] do
+      nil ->
+        result
+
+      answer ->
+        json = result.json || %{}
+        {regions, dropped} = Regions.parse_regions(json["regions"], result.model, count, opts)
+
+        text =
+          if answer == :description and is_binary(json["description"]),
+            do: json["description"],
+            else: result.text
+
+        Map.merge(result, %{text: text, regions: regions, dropped_regions: dropped})
     end
   end
 
@@ -795,11 +836,29 @@ defmodule PhoenixKitAI.Images do
     fields = normalize_fields(opts[:fields])
     prompt = text_prompt(images, fields, opts)
 
+    boxes? = opts[:boxes] == true
+    base_schema = text_schema_with_fields(opts[:schema] || @text_schema, fields)
+
     describe_opts =
       opts
-      |> Keyword.drop([:fields, :language, :layout, :instructions, :question, :json, :images_as])
-      |> Keyword.put(:prompt, prompt)
-      |> Keyword.put(:schema, text_schema_with_fields(opts[:schema] || @text_schema, fields))
+      |> Keyword.drop([
+        :fields,
+        :language,
+        :layout,
+        :instructions,
+        :question,
+        :json,
+        :images_as,
+        :regions
+      ])
+      |> Keyword.put(
+        :prompt,
+        if(boxes?, do: prompt <> "\n" <> Regions.text_boxes_line(), else: prompt)
+      )
+      |> Keyword.put(
+        :schema,
+        if(boxes?, do: Regions.text_schema_with_boxes(base_schema), else: base_schema)
+      )
 
     with {:ok, result} <- describe(endpoint, images, describe_opts) do
       # Shaped defensively: on the no-`response_format` retry the schema is
@@ -810,7 +869,8 @@ defmodule PhoenixKitAI.Images do
       {:ok,
        %{
          text: string_or(json["text"], result.text || ""),
-         blocks: blocks(json["blocks"]),
+         blocks:
+           blocks(json["blocks"]) |> with_block_boxes(boxes?, json["blocks"], result.model, opts),
          language: string_or(json["language"], nil),
          confidence: if(is_number(json["confidence"]), do: json["confidence"]),
          has_illegible_text: json["has_illegible_text"] == true,
@@ -839,6 +899,20 @@ defmodule PhoenixKitAI.Images do
   end
 
   defp blocks(_other), do: []
+
+  # `boxes: true`: each block gets `:box`, a `PhoenixKitAI.Box` or nil when
+  # the model gave none or an unusable one. Without it the blocks keep the
+  # shape they always had.
+  defp with_block_boxes(blocks, false, _raw, _model, _opts), do: blocks
+
+  defp with_block_boxes(blocks, true, raw, model, opts) do
+    {boxes, _bad} = Regions.block_boxes(raw, model, opts)
+    boxes = boxes ++ List.duplicate(nil, max(0, length(blocks) - length(boxes)))
+
+    blocks
+    |> Enum.zip(boxes)
+    |> Enum.map(fn {block, box} -> Map.put(block, :box, box) end)
+  end
 
   # `fields:` as a map of name → description, a list of names, or a
   # keyword list; anything else describing a field is inspected, not

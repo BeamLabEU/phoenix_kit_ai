@@ -127,7 +127,7 @@ defmodule PhoenixKitAI do
   alias PhoenixKitAI.Guard
   alias PhoenixKitAI.GuardBlocks
   alias PhoenixKitAI.GuardEvents
-  alias PhoenixKitAI.Images.{ImageModel, ImageModels, Operations}
+  alias PhoenixKitAI.Images.{ImageModel, ImageModels, Operations, Regions}
   alias PhoenixKitAI.ManualPrice
   alias PhoenixKitAI.Money
   alias PhoenixKitAI.ProviderError
@@ -2780,7 +2780,9 @@ defmodule PhoenixKitAI do
     if PhoenixKitAI.RequestLog.async?() and Request.changeset(%Request{}, attrs).valid? do
       uuid = UUIDv7.generate()
       :ok = PhoenixKitAI.RequestLog.enqueue({uuid, attrs})
-      {:ok, %Request{uuid: uuid}}
+      # The row is not written yet; the uuid and the cost it will carry are
+      # known, so a verb can still hand both back.
+      {:ok, %Request{uuid: uuid, cost: Map.get(attrs, :cost)}}
     else
       create_request(attrs)
     end
@@ -3021,7 +3023,72 @@ defmodule PhoenixKitAI do
   defp run_embed(endpoint, input, merged_opts, trace) do
     with {:ok, response} <- PhoenixKitAI.Completion.embeddings(endpoint, input, merged_opts) do
       logged = log_embedding_request(endpoint, input, response, trace)
-      {:ok, put_request_uuid(response, "request_uuid", logged)}
+
+      {:ok,
+       response
+       |> Map.put("space", embedding_space(response, endpoint))
+       |> put_request_uuid("request_uuid", logged)}
+    end
+  end
+
+  # Vectors are comparable only within one model and one size: `space`
+  # names both, so a host can refuse to compare vectors from two spaces.
+  defp embedding_space(response, endpoint) do
+    dims =
+      case response["data"] do
+        [%{"embedding" => vector} | _] when is_list(vector) -> length(vector)
+        _ -> nil
+      end
+
+    model = response["model"] || endpoint.model
+    if dims, do: "#{model}:#{dims}", else: model
+  end
+
+  # What `embed/3` takes: a string, or a list of strings and images. An
+  # image is `{:image, input}`, `%{image: input}`, or with a caption for a
+  # joint vector `{:image, input, text}` / `%{image: input, text: text}` —
+  # `input` anything the image verbs take (bytes, `%{data:, content_type:}`,
+  # `%{url:}`, a data or https URL). Images are checked and inlined like
+  # the vision verbs' (size limits, the fetch host policy) and sent as
+  # OpenRouter's multimodal `{"content": [image_url part]}` inputs.
+  defp prepare_embed_input(input, _opts) when is_binary(input), do: {:ok, input}
+  defp prepare_embed_input([], _opts), do: {:error, :empty_input}
+
+  defp prepare_embed_input(list, opts) when is_list(list) do
+    list
+    |> Enum.reduce_while({:ok, []}, fn item, {:ok, acc} ->
+      case embed_item(item, opts) do
+        {:ok, prepared} -> {:cont, {:ok, [prepared | acc]}}
+        {:error, _} = error -> {:halt, error}
+      end
+    end)
+    |> case do
+      {:ok, items} -> {:ok, Enum.reverse(items)}
+      error -> error
+    end
+  end
+
+  defp prepare_embed_input(single, opts), do: prepare_embed_input([single], opts)
+
+  defp embed_item(text, _opts) when is_binary(text), do: {:ok, text}
+  defp embed_item({:image, image}, opts), do: image_embed_item(image, nil, opts)
+
+  defp embed_item({:image, image, text}, opts) when is_binary(text),
+    do: image_embed_item(image, text, opts)
+
+  defp embed_item(%{image: image} = item, opts), do: image_embed_item(image, item[:text], opts)
+  defp embed_item(_other, _opts), do: {:error, :invalid_embedding_input}
+
+  defp image_embed_item(image, text, opts) do
+    with {:ok, [ref]} <- PhoenixKitAI.Images.normalize_inputs([image], opts) do
+      part = %{"type" => "image_url", "image_url" => %{"url" => ref}}
+
+      content =
+        if is_binary(text) and text != "",
+          do: [%{"type" => "text", "text" => text}, part],
+          else: [part]
+
+      {:ok, %{"content" => content}}
     end
   end
 
@@ -3089,10 +3156,23 @@ defmodule PhoenixKitAI do
     opts = log_unparsed_answer(opts, endpoint, prompt, images, trace)
 
     with {:ok, result} <- PhoenixKitAI.Images.describe(endpoint, images, opts) do
-      logged = log_image_op_request(endpoint, "vision", prompt, images, result, %{}, trace)
-      {:ok, result |> Map.take([:text, :json, :model]) |> put_request_uuid(:request_uuid, logged)}
+      extra = if result[:regions], do: %{region_count: length(result.regions)}, else: %{}
+      logged = log_image_op_request(endpoint, "vision", prompt, images, result, extra, trace)
+
+      {:ok,
+       result
+       |> Map.take([:text, :json, :model, :regions, :dropped_regions])
+       |> put_request_uuid(:request_uuid, logged)
+       |> put_cost(logged)}
     end
   end
+
+  # The cost the call's usage row carries (nil when the call has none, as
+  # for a provider reporting no usage and no price for the model).
+  defp put_cost(result, {:ok, %Request{cost: cost}}) when is_map(result),
+    do: Map.put(result, :cost, cost)
+
+  defp put_cost(result, _logged) when is_map(result), do: Map.put(result, :cost, nil)
 
   # A JSON request answered in prose still cost a provider call. The vision
   # layer hands that answer to `:on_no_json` before returning the error, so
@@ -3101,7 +3181,17 @@ defmodule PhoenixKitAI do
   # A nil `prompt` takes the one the vision layer actually sent.
   defp log_unparsed_answer(opts, endpoint, prompt, images, trace) do
     Keyword.put(opts, :on_no_json, fn raw ->
-      log_image_op_request(endpoint, "vision", prompt || raw[:prompt], images, raw, %{}, trace)
+      # `unparsed: true` keeps the billed-but-unusable answer apart from a
+      # good one in reports (`run_costs/2` counts them).
+      log_image_op_request(
+        endpoint,
+        "vision",
+        prompt || raw[:prompt],
+        images,
+        raw,
+        %{unparsed: true},
+        trace
+      )
     end)
   end
 
@@ -3129,7 +3219,8 @@ defmodule PhoenixKitAI do
       {:ok,
        result
        |> Map.drop([:usage, :latency_ms, :prompt])
-       |> put_request_uuid(:request_uuid, logged)}
+       |> put_request_uuid(:request_uuid, logged)
+       |> put_cost(logged)}
     end
   end
 
@@ -3309,6 +3400,8 @@ defmodule PhoenixKitAI do
     |> maybe_filter_by(:model, Keyword.get(opts, :model))
     |> maybe_filter_by(:source, Keyword.get(opts, :source))
     |> maybe_filter_by(:source_prefix, Keyword.get(opts, :source_prefix))
+    |> maybe_filter_by(:run, Guard.run_tag(Keyword.get(opts, :run)))
+    |> maybe_filter_by(:step, Guard.run_tag(Keyword.get(opts, :step)))
     |> maybe_filter_since(Keyword.get(opts, :since))
     |> maybe_filter_until(Keyword.get(opts, :until))
   end
@@ -3336,6 +3429,13 @@ defmodule PhoenixKitAI do
 
   defp maybe_filter_by(query, :source, source),
     do: where(query, [r], fragment("?->>'source' = ?", r.metadata, ^source))
+
+  # The rows of one `run:` (and one `step:` of it), as tagged by the call.
+  defp maybe_filter_by(query, :run, run) when is_binary(run),
+    do: where(query, [r], fragment("?->>'run' = ?", r.metadata, ^run))
+
+  defp maybe_filter_by(query, :step, step) when is_binary(step),
+    do: where(query, [r], fragment("?->>'step' = ?", r.metadata, ^step))
 
   # Every source starting with the prefix ("MyApp." counts all of an app's
   # callers); LIKE metacharacters in the prefix are matched literally.
@@ -3827,13 +3927,29 @@ defmodule PhoenixKitAI do
     complete(endpoint_uuid, messages, opts)
   end
 
+  @typedoc """
+  One input of `embed/3`: a text, or an image — `{:image, input}` /
+  `%{image: input}` — optionally with a caption embedded with it
+  (`{:image, input, text}` / `%{image: input, text: text}`). `input` is any
+  `t:PhoenixKitAI.Images.input/0`.
+  """
+  @type embed_input ::
+          String.t()
+          | {:image, PhoenixKitAI.Images.input()}
+          | {:image, PhoenixKitAI.Images.input(), String.t()}
+          | %{required(:image) => PhoenixKitAI.Images.input(), optional(:text) => String.t()}
+
   @doc """
   Makes an embeddings request using a configured endpoint.
 
   ## Parameters
 
   - `endpoint_uuid` - Endpoint UUID string or Endpoint struct
-  - `input` - Text or list of texts to embed
+  - `input` - Text, or a list of texts and images (see `t:embed_input/0`).
+    Images need a multimodal embedding model on the endpoint (on
+    OpenRouter e.g. `google/gemini-embedding-2`,
+    `voyageai/voyage-multimodal-3.5`); they are checked and inlined like
+    the image verbs' inputs, and a text model answers them with an error
   - `opts` - Optional parameter overrides
 
   ## Options
@@ -3857,18 +3973,25 @@ defmodule PhoenixKitAI do
         source: "SemanticSearch"
       )
 
+      # Images, and an image with its caption, in one call
+      {:ok, %{"data" => [photo, captioned], "space" => space}} =
+        PhoenixKitAI.embed(endpoint_uuid, [{:image, jpeg}, {:image, png, "red leather sofa"}])
+
   ## Returns
 
-  - `{:ok, response}` - Response with embeddings
+  - `{:ok, response}` - Response with embeddings, in the order given, plus
+    `"space"` — `"<model>:<dimensions>"`: vectors are comparable only
+    within one space, so store it next to them
   - `{:error, reason}` - Error atom or tagged tuple.
   """
-  @spec embed(String.t() | Endpoint.t(), String.t() | list(String.t()), keyword()) ::
+  @spec embed(String.t() | Endpoint.t(), embed_input() | [embed_input()], keyword()) ::
           {:ok, map()} | {:error, term()}
   def embed(endpoint_uuid, input, opts \\ []) do
     # `models:` is an OpenRouter chat option; an embedding never sends it
     opts = opts |> call_model_opts() |> Keyword.delete(:models)
 
-    with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
+    with {:ok, input} <- prepare_embed_input(input, opts),
+         {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
          {:ok, admission} <- authorize(endpoint, opts, :embed, []) do
       # A call's `model:` is the model sent, checked, cached and logged.
       endpoint = with_call_model(endpoint, opts)
@@ -4426,6 +4549,223 @@ defmodule PhoenixKitAI do
       end
     end
   end
+
+  @doc """
+  Finds things in images and says where they are: every visible instance of
+  each of `labels` (a list of words — `["logo", "price tag"]`, a person's
+  name, a part of a car — or `nil` for every notable thing), each with a
+  `PhoenixKitAI.Box`.
+
+      {:ok, %{regions: [%{label: "logo", box: box, image: 1} | _]}} =
+        PhoenixKitAI.detect_regions(endpoint_uuid, photo, ["logo"])
+
+  Returns `{:ok, %{regions: [%{label, description, box, image, confidence}],
+  dropped_regions, model, request_uuid, cost}}`. `image` is which image the
+  region is on (1 = the first). An empty list is a valid answer. Entries
+  whose box the model got wrong in shape are left out and counted in
+  `dropped_regions`. The boxes are read in the format the answering model
+  writes (`PhoenixKitAI.Box.format_for/2`; a call's `box_format:` wins).
+
+  It is `describe_image/3` with its own prompt and schema, so it takes the
+  same options (`model:`, `task:`, `user_uuid:`, `cache:`, `run:`, `step:`,
+  sampling) plus `instructions:` — extra wording for the prompt. Logged as a
+  `"vision"` request. How exact the boxes are depends a lot on the model:
+  some place them well, others answer with boxes that are nowhere near the
+  thing, so check a model on your own images before relying on it.
+  """
+  @spec detect_regions(
+          String.t() | Endpoint.t(),
+          [PhoenixKitAI.Images.input()] | PhoenixKitAI.Images.input(),
+          [String.t() | atom()] | String.t() | nil,
+          keyword()
+        ) :: {:ok, map()} | {:error, term()}
+  def detect_regions(endpoint_uuid, images, labels \\ nil, opts \\ []) do
+    images = List.wrap(images)
+
+    with {:ok, labels} <- region_labels(labels) do
+      describe_opts =
+        opts
+        |> Keyword.drop([:instructions, :regions, :question, :json, :schema])
+        |> Keyword.put(
+          :prompt,
+          Regions.detect_prompt(labels, length(images), opts[:instructions])
+        )
+        |> Keyword.put(:schema, Regions.detect_schema(labels))
+
+      with {:ok, result} <- describe_image(endpoint_uuid, images, describe_opts) do
+        {regions, dropped} =
+          Regions.parse_regions(
+            (result.json || %{})["regions"],
+            result.model,
+            length(images),
+            opts
+          )
+
+        {:ok,
+         %{
+           regions: regions,
+           dropped_regions: dropped,
+           model: result.model,
+           request_uuid: result[:request_uuid],
+           cost: result[:cost]
+         }}
+      end
+    end
+  end
+
+  defp region_labels(nil), do: {:ok, nil}
+  defp region_labels(label) when is_binary(label), do: region_labels([label])
+
+  defp region_labels(labels) when is_list(labels) do
+    if Enum.all?(labels, &(is_binary(&1) or (is_atom(&1) and not is_nil(&1)))),
+      do: {:ok, labels |> Enum.map(&to_string/1) |> Enum.reject(&(&1 == "")) |> Enum.uniq()},
+      else: {:error, :invalid_labels}
+  end
+
+  defp region_labels(_labels), do: {:error, :invalid_labels}
+
+  @doc """
+  Checks statements against images: for each one, do the images support
+  it, contradict it, or not show enough to say? Use it to check text
+  written about a picture before it is published — a product listing
+  against its photos, an AI-written description against its image, a
+  report against the photos attached to it.
+
+      {:ok, %{results: [%{verdict: :contradicted, evidence: evidence} | _]}} =
+        PhoenixKitAI.check_statements(endpoint_uuid, ["The sofa is red leather"], photo)
+
+  `statements` is a list of texts, or of `%{id: id, text: text}` /
+  `{id, text}` to keep your own ids (else the 1-based position is the id).
+
+  Returns `{:ok, %{results: [%{id, statement, verdict, evidence, image, box,
+  answered}], counts: %{supported, contradicted, insufficient}, model,
+  request_uuid, cost}}` with `verdict` one of `:supported`, `:contradicted`,
+  `:insufficient`; `image` and `box` point at the deciding detail (nil for
+  insufficient). A statement the model skipped is `:insufficient` with
+  `answered: false`.
+
+  The prompt tells the model to judge substance, not wording, because a
+  strict model otherwise rejects true statements over technicalities. A
+  verdict is still a model's reading: treat `:contradicted` as "look at
+  this", not as proof. Options as `describe_image/3`, plus
+  `instructions:`. Logged as a `"vision"` request.
+  """
+  @spec check_statements(
+          String.t() | Endpoint.t(),
+          [String.t() | {term(), String.t()} | %{id: term(), text: String.t()}],
+          [PhoenixKitAI.Images.input()] | PhoenixKitAI.Images.input(),
+          keyword()
+        ) :: {:ok, map()} | {:error, term()}
+  def check_statements(endpoint_uuid, statements, images, opts \\ []) do
+    images = List.wrap(images)
+
+    with {:ok, statements} <- normalize_statements(statements) do
+      describe_opts =
+        opts
+        |> Keyword.drop([:instructions, :regions, :question, :json, :schema])
+        |> Keyword.put(
+          :prompt,
+          Regions.statements_prompt(
+            Enum.map(statements, & &1.text),
+            length(images),
+            opts[:instructions]
+          )
+        )
+        |> Keyword.put(:schema, Regions.statements_schema())
+
+      with {:ok, result} <- describe_image(endpoint_uuid, images, describe_opts) do
+        results =
+          Regions.parse_statements(result.json, statements, result.model, length(images), opts)
+
+        counts = verdict_counts(results)
+
+        {:ok,
+         %{
+           results: results,
+           counts: counts,
+           model: result.model,
+           request_uuid: result[:request_uuid],
+           cost: result[:cost]
+         }}
+      end
+    end
+  end
+
+  defp verdict_counts(results) do
+    Enum.reduce(results, %{supported: 0, contradicted: 0, insufficient: 0}, fn r, acc ->
+      Map.update!(acc, r.verdict, &(&1 + 1))
+    end)
+  end
+
+  defp normalize_statements([]), do: {:error, :empty_input}
+
+  defp normalize_statements(list) when is_list(list) do
+    list
+    |> Enum.with_index(1)
+    |> Enum.reduce_while({:ok, []}, fn
+      {text, i}, {:ok, acc} when is_binary(text) and text != "" ->
+        {:cont, {:ok, [%{id: i, text: text} | acc]}}
+
+      {{id, text}, _i}, {:ok, acc} when is_binary(text) and text != "" ->
+        {:cont, {:ok, [%{id: id, text: text} | acc]}}
+
+      {%{text: text} = s, i}, {:ok, acc} when is_binary(text) and text != "" ->
+        {:cont, {:ok, [%{id: Map.get(s, :id, i), text: text} | acc]}}
+
+      _other, _acc ->
+        {:halt, {:error, :invalid_statements}}
+    end)
+    |> case do
+      {:ok, list} -> {:ok, Enum.reverse(list)}
+      error -> error
+    end
+  end
+
+  defp normalize_statements(_other), do: {:error, :invalid_statements}
+
+  @doc """
+  Runs one vision verb over many items — describing, reading or locating
+  a folder of product photos, the pages of an import, a night's uploads —
+  with a result per item. See `PhoenixKitAI.VisionBatch` for how it stops.
+
+      {:ok, %{items: items, cost: cost, stopped: nil}} =
+        PhoenixKitAI.vision_batch(endpoint_uuid, [%{id: 1, images: jpeg}, %{id: 2, images: png}],
+          verb: :extract_text, concurrency: 8, budget: "2.00")
+
+  An item is `%{id: id, images: images}` (plus an item's own `:prompt`,
+  `:labels` for `:detect_regions`, `:statements` for `:check_statements`,
+  `:opts` for that call), `{id, images}`, or the images alone (id = its
+  index).
+
+  Options: `verb:` — `:describe_image` (default), `:extract_text`,
+  `:detect_regions` or `:check_statements`; `concurrency:` (default 4, at
+  most 32); `budget:` — dollars (`Decimal` or decimal string) after which
+  no new item starts; `item_timeout:` (ms, default 300 000); `labels:` for
+  `:detect_regions`; `run:` / `step:` tags; every other option is passed
+  to each call (`prompt:`, `schema:`, `model:`, `task:`, `user_uuid:`, …).
+
+  Returns `{:ok, %{run, verb, items: [%{id, status, result, error, cost}],
+  cost, counts: %{ok, error, unparsed, skipped}, stopped}}`: `status` is
+  `:ok`, `:error`, `:unparsed` (the model answered without valid JSON —
+  billed, no result) or `:skipped` (not started after the batch stopped);
+  `stopped` is nil, `:budget`, or `{:error, reason}` for a refusal every
+  later item would hit. `cost` sums the items' own costs; the run's full
+  cost, unparsed answers included, is `run_costs/2` on `run`.
+  """
+  @spec vision_batch(String.t() | Endpoint.t(), list(), keyword()) ::
+          {:ok, PhoenixKitAI.VisionBatch.t()} | {:error, term()}
+  def vision_batch(endpoint_uuid, items, opts \\ []),
+    do: PhoenixKitAI.VisionBatch.run(endpoint_uuid, items, opts)
+
+  @doc """
+  What one run cost: the totals of every usage row tagged with `run:` —
+  in all, per `step:` and per model. See `PhoenixKitAI.Runs.costs/2`.
+
+      {:ok, %{total: %{cost: cost, calls: calls}, by_step: steps}} =
+        PhoenixKitAI.run_costs("import-2026-10-27", since: started_at)
+  """
+  @spec run_costs(term(), keyword()) :: {:ok, PhoenixKitAI.Runs.t()} | {:error, :invalid_run}
+  def run_costs(run, opts \\ []), do: PhoenixKitAI.Runs.costs(run, opts)
 
   @doc """
   The image models the endpoint's provider offers, with what each accepts
@@ -5281,6 +5621,7 @@ defmodule PhoenixKitAI do
        ) do
     usage = Completion.extract_usage(response)
     input_count = if is_list(input), do: length(input), else: 1
+    image_count = if is_list(input), do: Enum.count(input, &is_map/1), else: 0
 
     {cost, cost_metadata} = call_cost(endpoint, response, usage, 0)
 
@@ -5300,6 +5641,7 @@ defmodule PhoenixKitAI do
           %{
             input_count: input_count,
             dimensions: endpoint.dimensions,
+            image_count: image_count,
             # Debug context (source tracking)
             source: source,
             stacktrace: stacktrace,
