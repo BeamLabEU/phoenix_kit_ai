@@ -377,7 +377,7 @@ defmodule PhoenixKitAI.Images.Regions do
           nil
       end
 
-    %{
+    result = %{
       id: id,
       statement: text,
       verdict: verdict,
@@ -386,6 +386,12 @@ defmodule PhoenixKitAI.Images.Regions do
       box: if(image, do: box_or_nil(answer["box_2d"], format)),
       answered: true
     }
+
+    # "Contradicted" must point at the image that shows it; without one it is
+    # a claim about the statement, not evidence from the images.
+    if verdict == :contradicted and is_nil(image),
+      do: %{result | verdict: :insufficient} |> Map.put(:downgraded, :no_evidence_image),
+      else: result
   end
 
   defp box_or_nil(raw, format) do

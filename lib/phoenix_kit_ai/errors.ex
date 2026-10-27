@@ -65,6 +65,10 @@ defmodule PhoenixKitAI.Errors do
   def message(:invalid_labels), do: gettext("Labels must be a list of words")
   def message(:invalid_run), do: gettext("A run must be named with a text")
   def message(:item_timeout), do: gettext("The item took too long and was stopped")
+
+  def message(:missing_in_group),
+    do: gettext("The answer for this item was missing from its group's answer")
+
   def message({:item_exit, _tag}), do: gettext("The item failed with an internal error")
   def message({:invalid_budget, _reason}), do: gettext("The budget must be an amount in dollars")
   def message({:exception, _kind}), do: gettext("The item failed with an internal error")
@@ -146,6 +150,10 @@ defmodule PhoenixKitAI.Errors do
   end
 
   def message({:no_json_in_response, _text}), do: gettext("The model did not answer with JSON")
+
+  def message({:output_truncated, _text}),
+    do:
+      gettext("The answer was cut off at the output limit; allow more output tokens (max_tokens)")
 
   def message({:model_not_listed, model}) do
     gettext("The provider's model list does not include %{model}", model: model)

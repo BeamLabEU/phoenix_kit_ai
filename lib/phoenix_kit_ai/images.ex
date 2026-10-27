@@ -100,6 +100,7 @@ defmodule PhoenixKitAI.Images do
           | {:capabilities_unavailable, term()}
           | {:no_image_in_response, String.t() | nil}
           | {:no_json_in_response, String.t() | nil}
+          | {:output_truncated, String.t() | nil}
           | {:content_policy, String.t()}
           | atom()
           | {atom(), term()}
@@ -636,8 +637,10 @@ defmodule PhoenixKitAI.Images do
   `:reasoning_effort`, `:reasoning_max_tokens`, `:reasoning_exclude` —
   the endpoint's stored reasoning settings are not applied to vision).
 
-  Returns `{:ok, %{text, json, usage, latency_ms, model}}`; `json` is nil
-  unless requested. A JSON answer that does not parse is
+  Returns `{:ok, %{text, json, truncated, usage, latency_ms, model}}`; `json` is nil
+  unless requested, and `truncated` says the answer stopped at the output
+  limit (`max_tokens`). A JSON request whose answer was cut off is
+  `{:error, {:output_truncated, text}}` instead, even if the text parses. A JSON answer that does not parse is
   `{:error, {:no_json_in_response, text}}`; `:on_no_json`, a one-arity
   function, first receives the unparsed result (usage and `:prompt`
   included) so the paid call can still be logged.
@@ -725,16 +728,28 @@ defmodule PhoenixKitAI.Images do
   # built first so a prose answer's usage can still reach `:on_no_json`.
   defp described(response, endpoint, opts) do
     text = content_text(response)
+    truncated = Completion.truncated?(response)
 
     result = %{
       text: text,
       json: nil,
+      truncated: truncated,
       usage: Completion.extract_usage(response),
       latency_ms: response["latency_ms"],
       model: response["model"] || endpoint.model
     }
 
-    case StructuredOutput.parse(text, StructuredOutput.requested?(opts)) do
+    json? = StructuredOutput.requested?(opts)
+
+    # A JSON answer cut off at the output limit is not an answer, even when
+    # what came back happens to parse: the paid call is logged, the caller
+    # gets the reason (raise `max_tokens`).
+    parsed =
+      if json? and truncated,
+        do: {:error, {:output_truncated, text}},
+        else: StructuredOutput.parse(text, json?)
+
+    case parsed do
       {:ok, json} ->
         {:ok, %{result | json: json}}
 

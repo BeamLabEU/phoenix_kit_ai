@@ -150,7 +150,15 @@ defmodule PhoenixKitAI.Images.RegionsTest do
 
       assert [a, b, c] = Regions.parse_statements(json, st, "google/gemini-3.8-flash", 1)
       assert %{id: :a, verdict: :supported, image: 1, box: %Box{}, answered: true} = a
-      assert %{id: :b, verdict: :contradicted, image: nil, box: nil} = b
+      # "Contradicted" names no image (0): not evidence, so it is reported as insufficient.
+      assert %{
+               id: :b,
+               verdict: :insufficient,
+               downgraded: :no_evidence_image,
+               image: nil,
+               box: nil
+             } = b
+
       assert %{id: :c, verdict: :insufficient, answered: false, evidence: nil} = c
     end
 

@@ -1202,6 +1202,23 @@ Test database `phoenix_kit_ai_test`.
   no `minimum` / `maximum`: Anthropic's strict mode refuses them. The verbs, formats,
   measured model behaviour and what stays in a host app:
   `dev_docs/guides/image-processing.md` ("Locating and comparing").
+- Vision answers cut off at the output limit (`Completion.truncated?/1`:
+  `finish_reason` `"length"` / `"max_tokens"`): a JSON request — vision or
+  chat — is `{:error, {:output_truncated, text}}` (billed; a vision row is
+  marked `unparsed` + `truncated`), a text answer carries `truncated: true`.
+  `fallback_models:` on `describe_image/3` / `extract_text/3` (and the
+  verbs built on them) re-runs the whole verb with the next `model:` only
+  for `fallback_reason?/1` errors — never a refusal, a key or balance error
+  or an input error — and lists failed attempts in `:fallbacks` (tags only,
+  no provider text); it is not part of the cache key. Vision calls pass
+  `safety_errors: true` to `Completion.chat_completion/3`, so a 400/403/422
+  safety refusal is `{:content_policy, _}` there as in the image adapters;
+  plain chat keeps `{:api_error, status}` (its retry rules depend on it).
+  `vision_batch(group: n)` (describe only) packs plain items into one call
+  with a per-item answer schema and an equal cost share.
+  `check_statements/4`: `:contradicted` without an image is reported
+  `:insufficient` (`downgraded:`); `confirm:` re-asks the contradicted
+  statements and keeps only agreed ones.
 - Image processing is provider-neutral by construction: callers name an
   endpoint and operations, adapters own the HTTP shape, and options are
   fitted to the model's published capabilities before anything is sent —

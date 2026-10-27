@@ -43,7 +43,8 @@ defmodule PhoenixKitAI.VisionBatch do
   @verbs [:describe_image, :extract_text, :detect_regions, :check_statements]
 
   # Batch options; everything else is passed on to every call.
-  @batch_keys [:verb, :concurrency, :budget, :item_timeout, :labels]
+  @batch_keys [:verb, :concurrency, :budget, :item_timeout, :labels, :group]
+  @max_group 8
 
   @default_concurrency 4
   @max_concurrency 32
@@ -121,6 +122,7 @@ defmodule PhoenixKitAI.VisionBatch do
     verb = Keyword.get(opts, :verb, :describe_image)
 
     with :ok <- check_verb(verb),
+         {:ok, group} <- check_group(opts, verb),
          {:ok, items} <- normalize_items(items),
          {:ok, budget} <- budget(opts[:budget]),
          {:ok, endpoint} <- PhoenixKitAI.resolve_endpoint(endpoint) do
@@ -136,27 +138,40 @@ defmodule PhoenixKitAI.VisionBatch do
       initial_stop = if budget && Decimal.compare(budget, 0) != :gt, do: :budget
       {:ok, state} = Agent.start_link(fn -> %{spent: Decimal.new(0), stop: initial_stop} end)
 
+      units = units(items, group)
+
       try do
-        results =
-          items
+        flat =
+          units
           |> stream(
-            fn item -> run_item(item, verb, endpoint, call_opts, opts, budget, state) end,
+            fn unit -> run_unit(unit, verb, endpoint, call_opts, opts, budget, state) end,
             max_concurrency: concurrency(opts[:concurrency]),
             ordered: true,
-            timeout: item_timeout(opts[:item_timeout]),
+            timeout: unit_timeout(opts[:item_timeout], group),
             on_timeout: :kill_task
           )
-          |> Enum.zip(items)
-          |> Enum.map(fn
-            {{:ok, result}, _item} ->
-              result
+          |> Enum.zip(units)
+          |> Enum.flat_map(fn
+            {{:ok, results}, _unit} ->
+              results
 
-            {{:exit, :timeout}, item} ->
-              item_result(item.id, :error, nil, :item_timeout, nil)
+            {{:exit, :timeout}, unit} ->
+              Enum.map(unit, &item_result(&1.id, :error, nil, :item_timeout, nil))
 
-            {{:exit, reason}, item} ->
-              item_result(item.id, :error, nil, {:item_exit, exit_tag(reason)}, nil)
+            {{:exit, reason}, unit} ->
+              Enum.map(
+                unit,
+                &item_result(&1.id, :error, nil, {:item_exit, exit_tag(reason)}, nil)
+              )
           end)
+
+        # Back in the order the items were given (a unit's results follow its items).
+        results =
+          units
+          |> List.flatten()
+          |> Enum.zip(flat)
+          |> Enum.sort_by(fn {item, _} -> item.index end)
+          |> Enum.map(fn {_, r} -> r end)
 
         %{stop: stop} = Agent.get(state, & &1)
 
@@ -186,6 +201,189 @@ defmodule PhoenixKitAI.VisionBatch do
     case Process.whereis(PhoenixKit.TaskSupervisor) do
       pid when is_pid(pid) -> Task.Supervisor.async_stream_nolink(pid, items, fun, opts)
       nil -> Task.async_stream(items, fun, opts)
+    end
+  end
+
+  # A unit is one item, or (`group: n`) up to n plain items asked in one call.
+  defp run_unit([item], verb, endpoint, call_opts, opts, budget, state),
+    do: [run_item(item, verb, endpoint, call_opts, opts, budget, state)]
+
+  defp run_unit(group, :describe_image, endpoint, call_opts, opts, budget, state) do
+    if Agent.get(state, & &1.stop) do
+      Enum.map(group, &item_result(&1.id, :skipped, nil, nil, nil))
+    else
+      _ = PhoenixKitAI.take_unparsed_cost()
+      images = Enum.flat_map(group, &List.wrap(&1.images))
+
+      outcome =
+        try do
+          PhoenixKitAI.describe_image(endpoint, images, group_opts(group, call_opts, opts))
+        rescue
+          exception -> {:error, {:exception, exception.__struct__}}
+        catch
+          kind, _reason -> {:error, {:exception, kind}}
+        end
+
+      results = group_results(group, outcome, opts)
+      Enum.each(results, &record(state, &1, budget, false))
+      results
+    end
+  end
+
+  # Items that carry their own prompt or options run alone; the rest are
+  # packed `group` at a time, in order.
+  defp units(items, 1), do: Enum.map(items, &[&1])
+
+  defp units(items, group) do
+    {plain, own} =
+      Enum.split_with(items, &(not Map.has_key?(&1, :prompt) and not Map.has_key?(&1, :opts)))
+
+    Enum.chunk_every(plain, group) ++ Enum.map(own, &[&1])
+  end
+
+  defp group_opts(group, call_opts, opts) do
+    {lines, _next} =
+      group
+      |> Enum.with_index(1)
+      |> Enum.map_reduce(1, fn {item, k}, first ->
+        c = length(List.wrap(item.images))
+        imgs = if c == 1, do: "image #{first}", else: "images #{first}-#{first + c - 1}"
+        {"item #{k} = #{imgs}", first + c}
+      end)
+
+    base = opts[:prompt] || PhoenixKitAI.Images.default_question()
+
+    prompt =
+      "This request covers #{length(group)} separate items, each with its own images: " <>
+        Enum.join(lines, "; ") <>
+        ". Do the following for EACH item on its own, using only that item's images, and " <>
+        "answer once per item in `items`, with its number in `item`:\n\n" <> base
+
+    call_opts
+    |> Keyword.drop([:json, :schema, :prompt])
+    |> Keyword.merge(prompt: prompt, schema: group_schema(opts[:schema]))
+    |> scale_max_tokens(length(group))
+  end
+
+  defp group_schema(item_schema) do
+    answer =
+      case item_schema do
+        %{} = schema -> schema
+        _ -> %{"type" => "string", "description" => "The answer for this item"}
+      end
+
+    %{
+      "type" => "object",
+      "additionalProperties" => false,
+      "required" => ["items"],
+      "properties" => %{
+        "items" => %{
+          "type" => "array",
+          "items" => %{
+            "type" => "object",
+            "additionalProperties" => false,
+            "required" => ["item", "answer"],
+            "properties" => %{
+              "item" => %{
+                "type" => "integer",
+                "description" => "The item's number, 1 = the first"
+              },
+              "answer" => answer
+            }
+          }
+        }
+      }
+    }
+  end
+
+  defp scale_max_tokens(opts, n) do
+    case opts[:max_tokens] do
+      m when is_integer(m) -> Keyword.put(opts, :max_tokens, m * n)
+      _ -> opts
+    end
+  end
+
+  # One result per item of the group. The call's cost is shared equally; an
+  # answer the call left out is an error for that item only.
+  defp group_results(group, {:ok, result}, opts) do
+    n = length(group)
+    share = share(result[:cost], n)
+
+    answers =
+      for %{"item" => k, "answer" => a} <- (result.json || %{})["items"] || [],
+          is_integer(k),
+          into: %{},
+          do: {k, a}
+
+    group
+    |> Enum.with_index(1)
+    |> Enum.map(fn {item, k} ->
+      case Map.fetch(answers, k) do
+        {:ok, a} ->
+          item_result(item.id, :ok, grouped_answer(a, result, share, n, opts), nil, share)
+
+        :error ->
+          item_result(item.id, :error, nil, :missing_in_group, nil)
+      end
+    end)
+  end
+
+  defp group_results(group, {:error, {tag, _} = reason}, _opts)
+       when tag in [:no_json_in_response, :output_truncated] do
+    share = share(PhoenixKitAI.take_unparsed_cost(), length(group))
+    Enum.map(group, &item_result(&1.id, :unparsed, nil, reason, share))
+  end
+
+  defp group_results(group, {:error, reason}, _opts),
+    do: Enum.map(group, &item_result(&1.id, :error, nil, reason, nil))
+
+  defp grouped_answer(answer, result, share, n, opts) do
+    {text, json} =
+      if is_map(opts[:schema]), do: {nil, answer}, else: {if(is_binary(answer), do: answer), nil}
+
+    base = %{
+      text: text,
+      json: json,
+      model: result.model,
+      request_uuid: result[:request_uuid],
+      cost: share,
+      group_size: n
+    }
+
+    if result[:fallbacks], do: Map.put(base, :fallbacks, result.fallbacks), else: base
+  end
+
+  defp share(nil, _n), do: nil
+  defp share(%Decimal{} = cost, n), do: Decimal.div(cost, n)
+
+  defp check_group(opts, verb) do
+    case Keyword.get(opts, :group, 1) do
+      1 -> {:ok, 1}
+      n when is_integer(n) and n > 1 and n <= @max_group -> groupable(n, verb, opts)
+      other -> {:error, {:unsupported_option, :group, other}}
+    end
+  end
+
+  defp groupable(_n, verb, _opts) when verb != :describe_image,
+    do: {:error, {:unsupported_option, :group, verb}}
+
+  defp groupable(n, _verb, opts) do
+    cond do
+      opts[:json] == true and not is_map(opts[:schema]) ->
+        {:error, {:unsupported_option, :group, :json_without_schema}}
+
+      opts[:regions] not in [nil, false, []] ->
+        {:error, {:unsupported_option, :group, :regions}}
+
+      true ->
+        {:ok, n}
+    end
+  end
+
+  defp unit_timeout(ms, group) do
+    case item_timeout(ms) do
+      :infinity -> :infinity
+      t -> t * group
     end
   end
 
@@ -250,8 +448,10 @@ defmodule PhoenixKitAI.VisionBatch do
 
   defp to_item_result(id, {:ok, result}), do: item_result(id, :ok, result, nil, result[:cost])
 
-  defp to_item_result(id, {:error, {:no_json_in_response, _} = reason}),
-    do: item_result(id, :unparsed, nil, reason, nil)
+  # Answered and billed, but unusable: not JSON, or cut off at the output limit.
+  defp to_item_result(id, {:error, {tag, _} = reason})
+       when tag in [:no_json_in_response, :output_truncated],
+       do: item_result(id, :unparsed, nil, reason, nil)
 
   defp to_item_result(id, {:error, reason}), do: item_result(id, :error, nil, reason, nil)
 
@@ -314,13 +514,13 @@ defmodule PhoenixKitAI.VisionBatch do
      |> Enum.with_index()
      |> Enum.map(fn
        {%{images: images} = item, index} ->
-         item |> Map.put(:images, images) |> Map.put_new(:id, index)
+         item |> Map.put(:images, images) |> Map.put_new(:id, index) |> Map.put(:index, index)
 
-       {{id, images}, _index} ->
-         %{id: id, images: images}
+       {{id, images}, index} ->
+         %{id: id, images: images, index: index}
 
        {images, index} ->
-         %{id: index, images: images}
+         %{id: index, images: images, index: index}
      end)}
   end
 

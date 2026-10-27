@@ -259,6 +259,27 @@ an item that dies is an error for that item, not for the caller.
 The calls are tagged with one `run:`, so `run_costs/2` gives the full
 cost afterwards, unparsed answers included.
 
+### When a call goes wrong
+
+- **Cut off:** an answer that stopped at the output limit is never passed
+  off as complete. A JSON request returns `{:error, {:output_truncated,
+  text}}` (billed and logged); a text answer comes back with
+  `truncated: true`. Raise `max_tokens` — a long drafting answer can need
+  several times the default.
+- **Another model can do it:** `fallback_models: ["google/gemini-3.8-flash"]`
+  moves to the next model on a safety block (cheap models filter more
+  pages, mature but harmless scenes included), an unparsed or cut-off
+  answer, or a provider outage. A refusal by caps, limits or blocks, a bad
+  key or an exhausted balance never falls back, because another model would
+  get the same. `:fallbacks` on the answer says which models failed first.
+- **Many small items:** `vision_batch(group: 3)` asks three items in one
+  call, so the instructions are paid for once. In a 830-image test that cut
+  the reading cost by about a third at the same quality.
+- **A statement marked contradicted:** require the evidence. A verdict with
+  no deciding image is reported as insufficient, and `confirm: true` (or
+  other images) asks a second time and keeps only what both checks agree
+  on — a single check flipped true statements to false in testing.
+
 ### Runs
 
 `run:` / `step:` on any verb tag every row the call writes. `run_costs/2`
