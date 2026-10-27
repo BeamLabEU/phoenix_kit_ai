@@ -3031,6 +3031,11 @@ defmodule PhoenixKitAI do
     end
   end
 
+  defp embed_image_item?(%{"content" => parts}) when is_list(parts),
+    do: Enum.any?(parts, &match?(%{"type" => "image_url"}, &1))
+
+  defp embed_image_item?(_item), do: false
+
   # Vectors are comparable only within one model and one size: `space`
   # names both, so a host can refuse to compare vectors from two spaces.
   defp embedding_space(response, endpoint) do
@@ -3063,12 +3068,25 @@ defmodule PhoenixKitAI do
       end
     end)
     |> case do
-      {:ok, items} -> {:ok, Enum.reverse(items)}
+      {:ok, items} -> {:ok, items |> Enum.reverse() |> uniform_embed_items()}
       error -> error
     end
   end
 
   defp prepare_embed_input(single, opts), do: prepare_embed_input([single], opts)
+
+  # OpenRouter takes a list of strings or a list of multimodal objects, never
+  # a mix (HTTP 400 `invalid_union`): once one item is an image, every text
+  # goes as a text part too. A text-only list stays plain strings.
+  defp uniform_embed_items(items) do
+    if Enum.any?(items, &is_map/1),
+      do:
+        Enum.map(items, fn
+          text when is_binary(text) -> %{"content" => [%{"type" => "text", "text" => text}]}
+          item -> item
+        end),
+      else: items
+  end
 
   defp embed_item(text, _opts) when is_binary(text), do: {:ok, text}
   defp embed_item({:image, image}, opts), do: image_embed_item(image, nil, opts)
@@ -5621,7 +5639,7 @@ defmodule PhoenixKitAI do
        ) do
     usage = Completion.extract_usage(response)
     input_count = if is_list(input), do: length(input), else: 1
-    image_count = if is_list(input), do: Enum.count(input, &is_map/1), else: 0
+    image_count = if is_list(input), do: Enum.count(input, &embed_image_item?/1), else: 0
 
     {cost, cost_metadata} = call_cost(endpoint, response, usage, 0)
 

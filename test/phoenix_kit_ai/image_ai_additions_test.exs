@@ -98,7 +98,11 @@ defmodule PhoenixKitAI.ImageAIAdditionsTest do
                  "plain text"
                ])
 
-      assert_received {:request_body, %{"input" => [img, captioned, "plain text"]}}
+      # OpenRouter refuses a list mixing strings and multimodal objects
+      # (400 invalid_union): with an image in the list, texts are objects too.
+      assert_received {:request_body, %{"input" => [img, captioned, text]}}
+      assert %{"content" => [%{"type" => "text", "text" => "plain text"}]} = text
+      assert Enum.all?([img, captioned, text], &is_map/1)
 
       assert %{
                "content" => [
@@ -117,6 +121,23 @@ defmodule PhoenixKitAI.ImageAIAdditionsTest do
       assert row.metadata["image_count"] == 2
       assert row.metadata["input_count"] == 3
       refute inspect(row.metadata) =~ "base64"
+    end
+
+    test "a text-only list stays plain strings" do
+      ep = endpoint(model: "openai/text-embedding-3-small", dimensions: nil)
+      test = self()
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        {:ok, raw, conn} = Plug.Conn.read_body(conn)
+        send(test, {:request_body, Jason.decode!(raw)})
+
+        Req.Test.json(conn, %{
+          "data" => [%{"index" => 0, "embedding" => [1.0]}, %{"index" => 1, "embedding" => [0.5]}]
+        })
+      end)
+
+      assert {:ok, _} = PhoenixKitAI.embed(ep.uuid, ["a", "b"])
+      assert_received {:request_body, %{"input" => ["a", "b"]}}
     end
 
     test "a single image is accepted on its own" do
