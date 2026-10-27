@@ -1214,6 +1214,9 @@ Test database `phoenix_kit_ai_test`.
   `safety_errors: true` to `Completion.chat_completion/3`, so a 400/403/422
   safety refusal is `{:content_policy, _}` there as in the image adapters;
   plain chat keeps `{:api_error, status}` (its retry rules depend on it).
+  A model id the provider does not serve (OpenRouter's 400 "not a valid
+  model ID", a 404 "model … not found / does not exist") is
+  `:model_not_found` for every call (`ProviderError.class/2`).
   `vision_batch(group: n)` (describe only) packs plain items into one call
   with a per-item answer schema and an equal cost share.
   `check_statements/4`: `:contradicted` without an image is reported

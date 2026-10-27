@@ -212,6 +212,43 @@ defmodule PhoenixKitAI.VisionRobustnessTest do
                )
     end
 
+    test "a model id the provider does not serve is model_not_found, and falls back" do
+      ep = endpoint()
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        {b, conn} = body(conn)
+
+        if b["model"] == "google/gone-model",
+          do:
+            conn
+            |> Plug.Conn.put_status(400)
+            |> Req.Test.json(%{
+              "error" => %{
+                "message" => "google/gone-model is not a valid model ID",
+                "code" => 400
+              }
+            }),
+          else: answer(conn, "A chair.")
+      end)
+
+      assert {:ok,
+              %{
+                text: "A chair.",
+                fallbacks: [%{model: "google/gone-model", error: :model_not_found}]
+              }} =
+               PhoenixKitAI.describe_image(ep.uuid, @jpeg,
+                 model: "google/gone-model",
+                 fallback_models: ["google/gemini-3.8-flash"],
+                 cache: false
+               )
+
+      assert PhoenixKitAI.Completion.handle_error_status(
+               404,
+               ~s({"error":{"message":"The model `gpt-x` does not exist"}})
+             ) ==
+               {:error, :model_not_found}
+    end
+
     test "a spend-cap refusal never falls back" do
       ep = endpoint()
       Req.Test.stub(__MODULE__, &answer(&1, "A chair.", cost: 0.01))
