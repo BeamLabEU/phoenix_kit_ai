@@ -14,16 +14,28 @@ defmodule PhoenixKitAI.VisionBatch do
 
   * the money spent reaches `budget:` (dollars, a `Decimal` or a decimal
     string; items already running finish, so a batch overshoots by at most
-    its in-flight items), or
+    its in-flight items; `0` starts nothing). Only priced calls count: an
+    item whose call has no cost — a provider reporting none, for a model
+    no price is known for — spends nothing as far as the budget can tell,
+    or
   * an item is refused for a reason every later item would hit too: a
     spend cap, a task limit, a switched-off or blocked task, an unfit model,
     an exhausted provider balance, a bad key, a missing or disabled
-    endpoint.
+    endpoint, an endpoint with no model or connection. When an item's own
+    `opts:` change who asks or what runs (`user_uuid:`, `task:`, `model:`,
+    `models:`), only the refusals that do not depend on those stop the
+    batch — an exhausted balance, a bad key, the site's or the endpoint's
+    spend cap.
+
+  Items run unlinked under core's `PhoenixKit.TaskSupervisor` when it is
+  running (a crashed item is an error for that item, not a crash of the
+  caller), else as linked tasks.
 
   All calls carry `run:` (the caller's, else a generated `"batch-<uuid>"`)
   and `step:` (the caller's, else the verb's name), so
-  `PhoenixKitAI.run_costs/2` totals the batch afterwards — including the
-  billed cost of unparsed answers, which an item's own `cost` cannot show.
+  `PhoenixKitAI.run_costs/2` totals the batch afterwards. An `:unparsed`
+  item carries the cost its answer was billed, and that counts toward the
+  budget; a cache hit costs nothing.
   """
 
   alias PhoenixKitAI.{Guard, Money}
@@ -46,8 +58,29 @@ defmodule PhoenixKitAI.VisionBatch do
     :api_key_forbidden,
     :insufficient_credits,
     :money_migration_required,
-    :model_not_found
+    :model_not_found,
+    :endpoint_no_model,
+    :integration_deleted,
+    :integration_not_configured
   ]
+
+  # The fatal refusals that hold whoever asks and whatever runs: these stop
+  # a batch even when items override `user_uuid:`, `task:` or `model:`.
+  @account_atoms [
+    :endpoint_not_found,
+    :endpoint_disabled,
+    :invalid_endpoint_identifier,
+    :invalid_api_key,
+    :api_key_forbidden,
+    :insufficient_credits,
+    :money_migration_required,
+    :endpoint_no_model,
+    :integration_deleted,
+    :integration_not_configured
+  ]
+
+  # Item options that change who asks or what runs.
+  @scope_keys [:user_uuid, :task, :model, :models, :guard_admission]
   @fatal_tags [
     :budget_exceeded,
     :budget_unmigrated,
@@ -99,12 +132,14 @@ defmodule PhoenixKitAI.VisionBatch do
         |> Keyword.drop(@batch_keys)
         |> Keyword.merge(run: run_tag, step: step)
 
-      {:ok, state} = Agent.start_link(fn -> %{spent: Decimal.new(0), stop: nil} end)
+      # A zero budget starts nothing.
+      initial_stop = if budget && Decimal.compare(budget, 0) != :gt, do: :budget
+      {:ok, state} = Agent.start_link(fn -> %{spent: Decimal.new(0), stop: initial_stop} end)
 
       try do
         results =
           items
-          |> Task.async_stream(
+          |> stream(
             fn item -> run_item(item, verb, endpoint, call_opts, opts, budget, state) end,
             max_concurrency: concurrency(opts[:concurrency]),
             ordered: true,
@@ -113,8 +148,14 @@ defmodule PhoenixKitAI.VisionBatch do
           )
           |> Enum.zip(items)
           |> Enum.map(fn
-            {{:ok, result}, _item} -> result
-            {{:exit, _reason}, item} -> item_result(item.id, :error, nil, :item_timeout, nil)
+            {{:ok, result}, _item} ->
+              result
+
+            {{:exit, :timeout}, item} ->
+              item_result(item.id, :error, nil, :item_timeout, nil)
+
+            {{:exit, reason}, item} ->
+              item_result(item.id, :error, nil, {:item_exit, exit_tag(reason)}, nil)
           end)
 
         %{stop: stop} = Agent.get(state, & &1)
@@ -138,10 +179,22 @@ defmodule PhoenixKitAI.VisionBatch do
     end
   end
 
+  # Unlinked under core's task supervisor when it runs, so an item that
+  # dies in a way `rescue`/`catch` cannot see (a kill, a crashing linked
+  # child) is an `{:exit, reason}` for that item, not the caller's death.
+  defp stream(items, fun, opts) do
+    case Process.whereis(PhoenixKit.TaskSupervisor) do
+      pid when is_pid(pid) -> Task.Supervisor.async_stream_nolink(pid, items, fun, opts)
+      nil -> Task.async_stream(items, fun, opts)
+    end
+  end
+
   defp run_item(item, verb, endpoint, call_opts, opts, budget, state) do
     if Agent.get(state, & &1.stop) do
       item_result(item.id, :skipped, nil, nil, nil)
     else
+      _ = PhoenixKitAI.take_unparsed_cost()
+
       outcome =
         try do
           call(verb, endpoint, item, call_opts, opts)
@@ -152,7 +205,14 @@ defmodule PhoenixKitAI.VisionBatch do
         end
 
       result = to_item_result(item.id, outcome)
-      record(state, result, budget)
+
+      # An unparsed answer was billed: its cost counts toward the budget.
+      result =
+        if result.status == :unparsed,
+          do: %{result | cost: PhoenixKitAI.take_unparsed_cost()},
+          else: result
+
+      record(state, result, budget, scoped?(item))
       result
     end
   end
@@ -198,14 +258,14 @@ defmodule PhoenixKitAI.VisionBatch do
   defp item_result(id, status, result, error, cost),
     do: %{id: id, status: status, result: result, error: error, cost: cost}
 
-  defp record(state, result, budget) do
+  defp record(state, result, budget, scoped?) do
     Agent.update(state, fn st ->
       spent = if result.cost, do: Decimal.add(st.spent, result.cost), else: st.spent
 
       stop =
         cond do
           st.stop -> st.stop
-          result.status == :error and fatal?(result.error) -> {:error, result.error}
+          result.status == :error and fatal?(result.error, scoped?) -> {:error, result.error}
           budget && Decimal.compare(spent, budget) != :lt -> :budget
           true -> nil
         end
@@ -214,9 +274,29 @@ defmodule PhoenixKitAI.VisionBatch do
     end)
   end
 
-  defp fatal?(reason) when reason in @fatal_atoms, do: true
-  defp fatal?(reason) when is_tuple(reason) and elem(reason, 0) in @fatal_tags, do: true
-  defp fatal?(_reason), do: false
+  # Only the shape of an exit reason, never its terms (they can carry data).
+  defp exit_tag({tag, _}) when is_atom(tag), do: tag
+  defp exit_tag(tag) when is_atom(tag), do: tag
+  defp exit_tag(_reason), do: :unknown
+
+  # An item that overrides who asks or what runs may be refused for its own
+  # sake (that user's cap, that model's fitness): only account-wide
+  # refusals stop the batch then.
+  defp fatal?(reason, true), do: account_wide?(reason)
+  defp fatal?(reason, false) when reason in @fatal_atoms, do: true
+  defp fatal?(reason, false) when is_tuple(reason) and elem(reason, 0) in @fatal_tags, do: true
+  defp fatal?(_reason, false), do: false
+
+  defp account_wide?(reason) when reason in @account_atoms, do: true
+  defp account_wide?({:budget_exceeded, scope}) when scope in [:global, :endpoint], do: true
+  defp account_wide?(_reason), do: false
+
+  defp scoped?(item) do
+    case Map.get(item, :opts) do
+      opts when is_list(opts) -> Enum.any?(@scope_keys, &Keyword.has_key?(opts, &1))
+      _ -> false
+    end
+  end
 
   defp counts(results) do
     base = %{ok: 0, error: 0, unparsed: 0, skipped: 0}

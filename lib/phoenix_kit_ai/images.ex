@@ -836,8 +836,10 @@ defmodule PhoenixKitAI.Images do
     fields = normalize_fields(opts[:fields])
     prompt = text_prompt(images, fields, opts)
 
-    boxes? = opts[:boxes] == true
     base_schema = text_schema_with_fields(opts[:schema] || @text_schema, fields)
+    # Boxes need blocks to sit on: a caller schema without `blocks` gets none,
+    # and the prompt does not ask for what the schema cannot hold.
+    boxes? = opts[:boxes] == true and is_map(get_in(base_schema, ["properties", "blocks"]))
 
     describe_opts =
       opts

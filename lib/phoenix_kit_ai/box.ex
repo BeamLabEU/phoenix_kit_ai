@@ -28,6 +28,9 @@ defmodule PhoenixKitAI.Box do
   `format_for/1` picks one for a model id: a call's `box_format:` wins, then
   `config :phoenix_kit_ai, box_formats: %{"some/model-prefix" => :xy_1000}`
   (longest matching prefix), then the built-in table, then `:yx_1000`.
+  A model nobody listed is assumed to follow the prompt; one that writes x
+  first then comes back transposed with nothing to show it, so check a new
+  model on an image whose layout you know before relying on its boxes.
   """
 
   require Logger
@@ -41,15 +44,18 @@ defmodule PhoenixKitAI.Box do
   @formats [:yx_1000, :xy_1000, :xy_fraction, :yx_fraction]
 
   # Models whose answers do not follow the `[ymin, xmin, ymax, xmax]` the
-  # prompts ask for. Matched as prefixes of the model id that answered.
+  # prompts ask for, by model family: matched as a prefix of the id the
+  # answer names with any vendor prefix taken off (`qwen/qwen3-vl-…`,
+  # `qwen3-vl-…` and `novita/qwen/qwen3-vl-…` are all `qwen3-vl`).
   @builtin_formats %{
-    "qwen/qwen2.5-vl" => :xy_1000,
-    "qwen/qwen3-vl" => :xy_1000,
-    "qwen/qwen-vl" => :xy_1000
+    "qwen2.5-vl" => :xy_1000,
+    "qwen3-vl" => :xy_1000,
+    "qwen-vl" => :xy_1000
   }
 
-  # Below this area (a fraction of the image) a box is noise, not a region.
-  @min_area 1.0e-6
+  # Larger coordinates than this are not coordinates (and would not divide
+  # into a float).
+  @max_coordinate 1.0e9
 
   @doc "The formats `new/2` reads."
   @spec formats() :: [format()]
@@ -68,7 +74,7 @@ defmodule PhoenixKitAI.Box do
   """
   @spec new(term(), format()) :: {:ok, t()} | :error
   def new([a, b, c, d] = values, format) when format in @formats do
-    if Enum.all?(values, &is_number/1) do
+    if Enum.all?(values, &(is_number(&1) and abs(&1) <= @max_coordinate)) do
       scale = if format in [:yx_1000, :xy_1000], do: 1000, else: 1
       [a, b, c, d] = Enum.map([a, b, c, d], &clamp(&1 / scale))
 
@@ -82,7 +88,9 @@ defmodule PhoenixKitAI.Box do
         y1: max(y0, y1)
       }
 
-      if area(box) > @min_area, do: {:ok, box}, else: :error
+      # Only a box that keeps no area at all is refused: the smallest cell of
+      # the 0-1000 grid is a real box.
+      if area(box) > 0.0, do: {:ok, box}, else: :error
     else
       :error
     end
@@ -118,23 +126,31 @@ defmodule PhoenixKitAI.Box do
         _ -> %{}
       end
 
-    model = String.downcase(model)
+    ids = id_forms(String.downcase(model))
 
     [configured, @builtin_formats]
     |> Enum.find_value(fn table ->
       table
-      |> Enum.filter(fn {prefix, _} ->
-        is_binary(prefix) and String.starts_with?(model, String.downcase(prefix))
+      |> Enum.filter(fn {prefix, format} ->
+        is_binary(prefix) and valid_format(format, :config) != nil and
+          Enum.any?(ids, &String.starts_with?(&1, String.downcase(prefix)))
       end)
       |> Enum.max_by(fn {prefix, _} -> String.length(prefix) end, fn -> nil end)
       |> case do
         nil -> nil
-        {_prefix, format} -> valid_format(format, :config)
+        {_prefix, format} -> format
       end
     end)
   end
 
   defp configured_format(_model), do: nil
+
+  # The id and every form of it with leading vendor segments taken off:
+  # "novita/qwen/qwen3-vl-8b" -> ["novita/qwen/qwen3-vl-8b", "qwen/qwen3-vl-8b", "qwen3-vl-8b"].
+  defp id_forms(id) do
+    parts = String.split(id, "/")
+    for n <- 0..(length(parts) - 1), do: parts |> Enum.drop(n) |> Enum.join("/")
+  end
 
   defp valid_format(nil, _where), do: nil
   defp valid_format(format, _where) when format in @formats, do: format

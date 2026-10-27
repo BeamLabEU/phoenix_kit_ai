@@ -215,8 +215,12 @@ prompt said. So the reading is chosen by the model that *answered*
 `config :phoenix_kit_ai, box_formats:` by model-id prefix, then the
 built-in table, then `:yx_1000`). Nothing guesses the order from the
 numbers — a plausible-looking guess is worse than a known table. A box
-that is not four numbers or has no area left after clamping is dropped
-and counted (`dropped_regions`), never repaired.
+that is not four numbers or has no area left after clamping is never
+repaired: a region with one is dropped and counted (`dropped_regions`), a
+text block or a statement keeps its place with `box: nil`. A model the
+table does not know is read as `[ymin, xmin, ymax, xmax]` — if it writes
+x first, its boxes come back transposed and nothing can tell, so check a
+new model once and add it to `:box_formats`.
 
 How *good* boxes are differs much more between models than how good
 their text is. On the same pages, some models placed panels well and
@@ -244,8 +248,14 @@ gate, caps, task limits, cache and limiter, each with its own result:
 `:ok`, `:error`, `:unparsed` (answered without the JSON asked for — billed,
 no result) or `:skipped`. A failed image never produces output and never
 fails the rest. It stops starting new items when `budget:` is spent (the
-items already running finish) or on a refusal every later item would hit
-(a cap, a task limit, an unfit model, an exhausted balance, a bad key).
+items already running finish; unparsed answers count, cache hits cost
+nothing, and a call with no known price cannot count) or on a refusal
+every later item would hit (a cap, a task limit, an unfit model, an
+exhausted balance, a bad key, an endpoint with no model or connection).
+When items carry their own `user_uuid:`, `task:` or `model:`, one item's
+refusal for its own user or model does not stop the others; only
+account-wide ones do. Items run unlinked under core's task supervisor, so
+an item that dies is an error for that item, not for the caller.
 The calls are tagged with one `run:`, so `run_costs/2` gives the full
 cost afterwards, unparsed answers included.
 

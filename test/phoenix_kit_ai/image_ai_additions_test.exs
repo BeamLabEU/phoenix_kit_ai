@@ -12,6 +12,7 @@ defmodule PhoenixKitAI.ImageAIAdditionsTest do
 
   import Ecto.Query
 
+  alias PhoenixKit.Test.Fixtures
   alias PhoenixKitAI.{Box, Request}
   alias PhoenixKitAI.Test.Repo, as: TestRepo
 
@@ -158,8 +159,12 @@ defmodule PhoenixKitAI.ImageAIAdditionsTest do
       ep = endpoint(model: "google/gemini-embedding-2")
       Req.Test.stub(__MODULE__, fn _conn -> flunk("no request expected") end)
 
+      assert {:error, :endpoint_not_found} = PhoenixKitAI.embed(Ecto.UUID.generate(), [])
       assert {:error, :invalid_embedding_input} = PhoenixKitAI.embed(ep.uuid, ["ok", 42])
       assert {:error, :empty_input} = PhoenixKitAI.embed(ep.uuid, [])
+
+      assert {:error, :invalid_embedding_input} =
+               PhoenixKitAI.embed(ep.uuid, [%{image: @jpeg, text: :red}])
 
       assert {:error, {:unsafe_url, _}} =
                PhoenixKitAI.embed(ep.uuid, [{:image, "http://127.0.0.1/x.jpg"}])
@@ -317,6 +322,32 @@ defmodule PhoenixKitAI.ImageAIAdditionsTest do
              ])
     end
 
+    test "boxes: true with a caller schema without blocks asks for no boxes" do
+      ep = endpoint()
+
+      stub_json(%{
+        "text" => "A",
+        "language" => "en",
+        "confidence" => 1,
+        "has_illegible_text" => false
+      })
+
+      schema = %{
+        "type" => "object",
+        "properties" => %{"text" => %{"type" => "string"}},
+        "required" => ["text"],
+        "additionalProperties" => false
+      }
+
+      assert {:ok, %{blocks: []}} =
+               PhoenixKitAI.extract_text(ep.uuid, @jpeg, boxes: true, schema: schema)
+
+      assert_received {:request_body,
+                       %{"messages" => [%{"content" => [%{"text" => prompt} | _]}]}}
+
+      refute prompt =~ "box_2d"
+    end
+
     test "without boxes: blocks have no box key" do
       ep = endpoint()
 
@@ -372,6 +403,39 @@ defmodule PhoenixKitAI.ImageAIAdditionsTest do
       assert %{id: 3, verdict: :insufficient, answered: false} = lamp
     end
 
+    test "sends the numbered statements and the verdict schema" do
+      ep = endpoint()
+      stub_json(%{"results" => []})
+
+      assert {:ok, _} =
+               PhoenixKitAI.check_statements(ep.uuid, ["first claim", "second claim"], [
+                 @jpeg,
+                 @png
+               ])
+
+      assert_received {:request_body,
+                       %{
+                         "messages" => [%{"content" => [%{"text" => prompt} | images]}],
+                         "response_format" => rf
+                       }}
+
+      assert prompt =~ "1. first claim\n2. second claim"
+      assert prompt =~ "There are 2 images"
+      assert length(images) == 2
+
+      assert get_in(rf, [
+               "json_schema",
+               "schema",
+               "properties",
+               "results",
+               "items",
+               "properties",
+               "verdict",
+               "enum"
+             ]) ==
+               ["supported", "contradicted", "insufficient"]
+    end
+
     test "statements must be texts" do
       ep = endpoint()
       assert {:error, :empty_input} = PhoenixKitAI.check_statements(ep.uuid, [], @jpeg)
@@ -401,15 +465,23 @@ defmodule PhoenixKitAI.ImageAIAdditionsTest do
 
       assert {:ok, _} = PhoenixKitAI.describe_image(ep.uuid, @png, json: true, run: "other-run")
 
-      # A refused call is tagged too.
-      {:ok, disabled} = PhoenixKitAI.update_endpoint(ep, %{enabled: false})
+      # A refused call (a spend cap the first calls reached) writes a tagged row too.
+      {:ok, _} = PhoenixKitAI.Budget.set_limit(:endpoint, "0.0005")
+      on_exit(fn -> PhoenixKitAI.Budget.set_limit(:endpoint, 0) end)
 
-      assert {:error, _} =
-               PhoenixKitAI.describe_image(disabled.uuid, @png, run: "import-1", step: "describe")
+      assert {:error, {:budget_exceeded, :endpoint}} =
+               PhoenixKitAI.describe_image(ep.uuid, @png,
+                 prompt: "Again",
+                 run: "import-1",
+                 step: "describe"
+               )
 
       tagged = Enum.filter(rows(ep), &(&1.metadata["run"] == "import-1"))
+      assert length(tagged) == 3
+      assert [refused] = Enum.filter(tagged, &(&1.metadata["refused"] == true))
+      assert refused.metadata["step"] == "describe"
 
-      assert Enum.map(tagged, & &1.metadata["step"]) |> Enum.sort() |> Enum.uniq() == [
+      assert tagged |> Enum.map(& &1.metadata["step"]) |> Enum.sort() |> Enum.uniq() == [
                "describe",
                "locate"
              ]
@@ -417,7 +489,9 @@ defmodule PhoenixKitAI.ImageAIAdditionsTest do
       assert {:ok, %{run: "import-1", total: total, by_step: by_step}} =
                PhoenixKitAI.run_costs("import-1")
 
-      assert total.calls == length(tagged)
+      assert total.calls == 3
+      assert total.refused == 1
+      assert total.errors == 1
       assert Decimal.equal?(by_step["locate"].cost, Decimal.new("0.0004"))
       assert by_step["locate"].calls == 1
 
@@ -430,6 +504,57 @@ defmodule PhoenixKitAI.ImageAIAdditionsTest do
 
   # list_requests/1 answers `{requests, total}`.
   defp requests_of({list, _total}) when is_list(list), do: list
+
+  describe "run tags and the request cache" do
+    test "two runs over the same input share one cache entry" do
+      ep = endpoint()
+      test = self()
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        send(test, :provider_called)
+
+        Req.Test.json(conn, %{
+          "model" => "google/gemini-3.8-flash",
+          "choices" => [%{"message" => %{"role" => "assistant", "content" => ~s({"ok":true})}}],
+          "usage" => Map.put(@tokens, "cost", 0.001)
+        })
+      end)
+
+      assert {:ok, _} =
+               PhoenixKitAI.describe_image(ep.uuid, @jpeg,
+                 json: true,
+                 cache: true,
+                 run: "a",
+                 step: "x"
+               )
+
+      assert {:ok, _} =
+               PhoenixKitAI.describe_image(ep.uuid, @jpeg,
+                 json: true,
+                 cache: true,
+                 run: "b",
+                 step: "y"
+               )
+
+      assert_received :provider_called
+      refute_received :provider_called
+
+      # The hit hands back the hit's own cost (zero), not the first call's.
+      assert {:ok, %{cost: hit_cost}} =
+               PhoenixKitAI.describe_image(ep.uuid, @jpeg,
+                 json: true,
+                 cache: true,
+                 run: "b",
+                 step: "y"
+               )
+
+      assert Decimal.equal?(hit_cost, 0)
+
+      # Both runs still see their own rows, the later ones zero-cost hits.
+      assert {:ok, %{total: %{calls: 1, cached: 0}}} = PhoenixKitAI.run_costs("a")
+      assert {:ok, %{total: %{calls: 2, cached: 2}}} = PhoenixKitAI.run_costs("b")
+    end
+  end
 
   describe "vision_batch/3" do
     test "a result per item: ok, unparsed and bad input side by side, tagged with one run" do
@@ -471,7 +596,8 @@ defmodule PhoenixKitAI.ImageAIAdditionsTest do
 
       assert %{id: :bad, status: :error, error: :invalid_image_input} = bad
       assert counts == %{ok: 1, unparsed: 1, error: 1, skipped: 0}
-      assert Decimal.equal?(cost, Decimal.new("0.001"))
+      # The unparsed item carries its billed cost, so both answers count.
+      assert Decimal.equal?(cost, Decimal.new("0.002"))
 
       # The unparsed answer was billed: run_costs sees it, the item's cost does not.
       assert {:ok,
@@ -497,6 +623,62 @@ defmodule PhoenixKitAI.ImageAIAdditionsTest do
                  budget: "1.00",
                  cache: false
                )
+    end
+
+    test "billed unparsed answers count toward the budget" do
+      ep = endpoint()
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        Req.Test.json(conn, %{
+          "model" => "google/gemini-3.8-flash",
+          "choices" => [%{"message" => %{"role" => "assistant", "content" => "no json here"}}],
+          "usage" => Map.put(@tokens, "cost", 0.5)
+        })
+      end)
+
+      items = for i <- 1..5, do: %{id: i, images: @jpeg <> <<i>>}
+
+      assert {:ok, %{stopped: :budget, counts: %{unparsed: 2, skipped: 3}, items: [first | _]}} =
+               PhoenixKitAI.vision_batch(ep.uuid, items,
+                 json: true,
+                 concurrency: 1,
+                 budget: "1.00",
+                 cache: false
+               )
+
+      assert Decimal.equal?(first.cost, Decimal.new("0.5"))
+    end
+
+    test "a refusal of one item's own user does not stop the others" do
+      ep = endpoint()
+      capped = Fixtures.user_fixture()
+      other = Fixtures.user_fixture()
+      stub_json(%{"ok" => true}, "google/gemini-3.8-flash", 0.0004)
+
+      # $0.0003 a day per user: the capped user's first call reaches it.
+      {:ok, _} = PhoenixKitAI.Budget.set_limit(:user, "0.0003")
+      on_exit(fn -> PhoenixKitAI.Budget.set_limit(:user, 0) end)
+
+      items = [
+        %{id: 1, images: @jpeg, opts: [user_uuid: capped.uuid]},
+        %{id: 2, images: @jpeg <> <<2>>, opts: [user_uuid: capped.uuid]},
+        %{id: 3, images: @jpeg <> <<3>>, opts: [user_uuid: other.uuid]}
+      ]
+
+      assert {:ok, %{stopped: nil, items: [one, two, three]}} =
+               PhoenixKitAI.vision_batch(ep.uuid, items, json: true, concurrency: 1, cache: false)
+
+      assert one.status == :ok
+      assert %{status: :error, error: {:budget_exceeded, :user}} = two
+      assert three.status == :ok
+    end
+
+    test "a zero budget starts nothing" do
+      ep = endpoint()
+      Req.Test.stub(__MODULE__, fn _conn -> flunk("no request expected") end)
+
+      assert {:ok, %{stopped: :budget, counts: %{skipped: 2}}} =
+               PhoenixKitAI.vision_batch(ep.uuid, [@jpeg, @png], budget: "0")
     end
 
     test "stops on a refusal every later item would hit" do

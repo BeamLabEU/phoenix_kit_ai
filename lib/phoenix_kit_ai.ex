@@ -3016,7 +3016,11 @@ defmodule PhoenixKitAI do
           trace
         )
 
-      {:ok, result |> Map.drop([:usage, :latency_ms]) |> put_request_uuid(:request_uuid, row)}
+      {:ok,
+       result
+       |> Map.drop([:usage, :latency_ms])
+       |> put_request_uuid(:request_uuid, row)
+       |> put_cost(row)}
     end
   end
 
@@ -3094,7 +3098,13 @@ defmodule PhoenixKitAI do
   defp embed_item({:image, image, text}, opts) when is_binary(text),
     do: image_embed_item(image, text, opts)
 
-  defp embed_item(%{image: image} = item, opts), do: image_embed_item(image, item[:text], opts)
+  defp embed_item(%{image: image, text: text}, opts) when is_binary(text) or is_nil(text),
+    do: image_embed_item(image, text, opts)
+
+  defp embed_item(%{image: _image, text: _not_text}, _opts),
+    do: {:error, :invalid_embedding_input}
+
+  defp embed_item(%{image: image}, opts), do: image_embed_item(image, nil, opts)
   defp embed_item(_other, _opts), do: {:error, :invalid_embedding_input}
 
   defp image_embed_item(image, text, opts) do
@@ -3185,6 +3195,14 @@ defmodule PhoenixKitAI do
     end
   end
 
+  @unparsed_cost_key {__MODULE__, :last_unparsed_cost}
+
+  @doc false
+  # The cost of the last vision answer in this process that came back
+  # without the JSON asked for (and clears it): see `log_unparsed_answer/5`.
+  @spec take_unparsed_cost() :: Decimal.t() | nil
+  def take_unparsed_cost, do: Process.delete(@unparsed_cost_key)
+
   # The cost the call's usage row carries (nil when the call has none, as
   # for a provider reporting no usage and no price for the model).
   defp put_cost(result, {:ok, %Request{cost: cost}}) when is_map(result),
@@ -3201,15 +3219,22 @@ defmodule PhoenixKitAI do
     Keyword.put(opts, :on_no_json, fn raw ->
       # `unparsed: true` keeps the billed-but-unusable answer apart from a
       # good one in reports (`run_costs/2` counts them).
-      log_image_op_request(
-        endpoint,
-        "vision",
-        prompt || raw[:prompt],
-        images,
-        raw,
-        %{unparsed: true},
-        trace
-      )
+      logged =
+        log_image_op_request(
+          endpoint,
+          "vision",
+          prompt || raw[:prompt],
+          images,
+          raw,
+          %{unparsed: true},
+          trace
+        )
+
+      # The error the verb returns (`{:no_json_in_response, text}`) has no
+      # room for the cost it ran up; `vision_batch/3`, which calls the verb in
+      # this same process, reads it to keep its budget honest.
+      with {:ok, %Request{cost: cost}} <- logged, do: Process.put(@unparsed_cost_key, cost)
+      logged
     end)
   end
 
@@ -3338,7 +3363,7 @@ defmodule PhoenixKitAI do
   # row either.
   defp cached_row(_endpoint, verb, _model, _row, false) do
     fn value ->
-      {:replace, if(is_map(value), do: Map.put(value, request_uuid_key(verb), nil), else: value)}
+      {:replace, hit_value(value, verb, nil)}
     end
   end
 
@@ -3377,9 +3402,19 @@ defmodule PhoenixKitAI do
           _ -> nil
         end
 
-      {:replace, if(is_map(value), do: Map.put(value, request_uuid_key(verb), uuid), else: value)}
+      {:replace, hit_value(value, verb, uuid)}
     end
   end
+
+  # What a hit hands back: the stored answer naming this hit's row, and —
+  # for a result that carries one — this hit's cost, which is zero, not the
+  # first call's.
+  defp hit_value(value, verb, uuid) when is_map(value) do
+    value = Map.put(value, request_uuid_key(verb), uuid)
+    if Map.has_key?(value, :cost), do: Map.put(value, :cost, Decimal.new(0)), else: value
+  end
+
+  defp hit_value(value, _verb, _uuid), do: value
 
   # A hit's row must never fail the hit: a database error is logged and
   # read as "no row".
@@ -3856,6 +3891,9 @@ defmodule PhoenixKitAI do
       :verify,
       :task,
       :guard_admission,
+      # bookkeeping tags: which run asked, not what is asked
+      :run,
+      :step,
       # delivery options: how the call is made, not what is asked
       :retry,
       :timeout,
@@ -4008,9 +4046,9 @@ defmodule PhoenixKitAI do
     # `models:` is an OpenRouter chat option; an embedding never sends it
     opts = opts |> call_model_opts() |> Keyword.delete(:models)
 
-    with {:ok, input} <- prepare_embed_input(input, opts),
-         {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
-         {:ok, admission} <- authorize(endpoint, opts, :embed, []) do
+    with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
+         {:ok, admission} <- authorize(endpoint, opts, :embed, []),
+         {:ok, input} <- prepare_embed_input(input, opts) do
       # A call's `model:` is the model sent, checked, cached and logged.
       endpoint = with_call_model(endpoint, opts)
       # Capture caller info (source + stacktrace + context)
@@ -4378,7 +4416,9 @@ defmodule PhoenixKitAI do
       source: opts[:source],
       user_uuid: opts[:user_uuid],
       capture_request_content: opts[:capture_request_content],
-      task: opts[:task]
+      task: opts[:task],
+      run: opts[:run],
+      step: opts[:step]
     ]
 
     case compare_images(checker, original, data, check_opts) do

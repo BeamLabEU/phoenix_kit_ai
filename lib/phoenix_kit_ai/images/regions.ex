@@ -17,6 +17,10 @@ defmodule PhoenixKitAI.Images.Regions do
 
   alias PhoenixKitAI.Box
 
+  # No `minimum` / `maximum` / `minItems` anywhere in these schemas: strict
+  # structured-output modes differ on numeric keywords (Anthropic's refuses
+  # them), so the ranges live in the descriptions and the parsers enforce
+  # them.
   @box_2d %{
     "type" => "array",
     "items" => %{"type" => "number"},
@@ -64,14 +68,11 @@ defmodule PhoenixKitAI.Images.Regions do
           "box_2d" => @box_2d,
           "image" => %{
             "type" => "integer",
-            "minimum" => 1,
-            "description" => "Which image it is on, 1 = the first"
+            "description" => "Which image it is on, 1 = the first (an integer, at least 1)"
           },
           "confidence" => %{
             "type" => "number",
-            "minimum" => 0,
-            "maximum" => 1,
-            "description" => "How sure you are that it is there and correctly placed"
+            "description" => "How sure you are that it is there and correctly placed, 0 to 1"
           }
         },
         "required" => ["label", "description", "box_2d", "image", "confidence"],
@@ -188,13 +189,16 @@ defmodule PhoenixKitAI.Images.Regions do
 
   defp region(%{"box_2d" => raw} = entry, format, image_count) do
     with label when is_binary(label) and label != "" <- entry["label"],
-         {:ok, box} <- Box.new(raw, format) do
+         {:ok, box} <- Box.new(raw, format),
+         # With several images a box on an image that does not exist is not
+         # moved to another one: the region is dropped and counted.
+         image when is_integer(image) <- image_index(entry["image"], image_count, nil) do
       {:ok,
        %{
          label: label,
          description: if(is_binary(entry["description"]), do: entry["description"]),
          box: box,
-         image: image_index(entry["image"], image_count),
+         image: image,
          confidence: confidence(entry["confidence"])
        }}
     else
@@ -265,7 +269,6 @@ defmodule PhoenixKitAI.Images.Regions do
           "properties" => %{
             "n" => %{
               "type" => "integer",
-              "minimum" => 1,
               "description" => "The statement's number"
             },
             "verdict" => %{
@@ -279,7 +282,6 @@ defmodule PhoenixKitAI.Images.Regions do
             },
             "image" => %{
               "type" => "integer",
-              "minimum" => 0,
               "description" => "The image that decides it, 1 = the first; 0 when none does"
             },
             "box_2d" => @box_2d
@@ -304,12 +306,15 @@ defmodule PhoenixKitAI.Images.Regions do
       "You check statements against images. The images are the only authority: do not use " <>
         "anything you know about the subject from elsewhere.",
       "For each numbered statement decide:\n" <>
-        "- supported: the images show what the statement says. Different wording, a summary, " <>
-        "or a missing minor detail is still supported.\n" <>
+        "- supported: the images show everything the statement claims. Different wording or " <>
+        "a summary of what is shown is still supported.\n" <>
         "- contradicted: the images show something that makes the statement false in a way " <>
         "that matters (a different person, object, action, number or outcome).\n" <>
-        "- insufficient: the images neither show nor rule it out.",
-      "Judge the substance, not the phrasing; do not reject a statement over a technicality. " <>
+        "- insufficient: the images neither show nor rule it out — including a statement that " <>
+        "adds something the images do not show (a price, a count, a name, another object).",
+      "Judge the substance, not the phrasing: do not call a statement contradicted over a " <>
+        "technicality, and do not call it supported for the part you can see when the rest " <>
+        "is not shown. " <>
         "Give the image that decides it and a `box_2d` around the deciding detail; for " <>
         "insufficient, image 0 and box_2d [0, 0, 0, 0].",
       box_instruction(),
@@ -362,8 +367,15 @@ defmodule PhoenixKitAI.Images.Regions do
   defp statement_result(%{id: id, text: text}, answer, format, image_count) do
     verdict = verdict(answer["verdict"])
 
+    # `image` 0 is the model saying no image decides it: no pointer.
     image =
-      if verdict == :insufficient, do: nil, else: image_index(answer["image"], image_count, nil)
+      case answer["image"] do
+        n when verdict != :insufficient and is_integer(n) and n >= 1 ->
+          image_index(n, image_count, nil)
+
+        _ ->
+          nil
+      end
 
     %{
       id: id,
@@ -394,9 +406,10 @@ defmodule PhoenixKitAI.Images.Regions do
 
   defp images_line(_count), do: nil
 
-  defp image_index(value, count, default \\ 1)
+  # The 1-based image a model named, or nil when it named none that exists.
+  # With one image there is only one it can be on.
   defp image_index(n, count, _default) when is_integer(n) and n >= 1 and n <= count, do: n
-  defp image_index(_n, 1, default) when default != nil, do: 1
+  defp image_index(_n, 1, _default), do: 1
   defp image_index(_n, _count, default), do: default
 
   defp confidence(c) when is_number(c) and c >= 0 and c <= 1, do: c / 1

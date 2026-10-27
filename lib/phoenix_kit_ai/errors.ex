@@ -65,6 +65,7 @@ defmodule PhoenixKitAI.Errors do
   def message(:invalid_labels), do: gettext("Labels must be a list of words")
   def message(:invalid_run), do: gettext("A run must be named with a text")
   def message(:item_timeout), do: gettext("The item took too long and was stopped")
+  def message({:item_exit, _tag}), do: gettext("The item failed with an internal error")
   def message({:invalid_budget, _reason}), do: gettext("The budget must be an amount in dollars")
   def message({:exception, _kind}), do: gettext("The item failed with an internal error")
 

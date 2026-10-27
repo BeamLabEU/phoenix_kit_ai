@@ -654,8 +654,10 @@ provided the API exposes `<base_url>/chat/completions` and `/models`.
   success, error, refusal, cache hit — through the admission's
   `row_metadata` / `task_metadata`. `run_costs/2` totals a run by step and
   model; `list_requests/1` and `get_usage_stats/1` filter by `run:` /
-  `step:`. Not part of the cache key. The tag has no index: pass `since:` on
-  a large journal.
+  `step:`. Not part of the cache key (`cacheable/1` drops them), so two
+  runs over the same input share an entry. `process_image(verify:)` passes
+  them to its check. The tag has no index: pass `since:` on a large
+  journal.
 - **Image embeddings**: `embed/3` takes images (`{:image, input}`,
   `%{image:, text:}`), checked and inlined by `Images.normalize_inputs/2`
   and sent as OpenRouter multimodal `content` inputs; the image bytes are
@@ -1192,9 +1194,12 @@ Test database `phoenix_kit_ai_test`.
   `vision_batch/3` runs any of them over many items with a status per item
   (`:ok` / `:error` / `:unparsed` / `:skipped`) and stops on `budget:` or
   on a refusal every later item would hit (`VisionBatch`'s fatal list).
-  Every vision result now carries `:cost` (the row's; `log_usage/1` hands
-  it back in async mode too). An unparsed vision answer's row carries
-  `metadata.unparsed: true` (a chat call's does not). The verbs, formats,
+  Every vision result carries `:cost` — the row's (`log_usage/1` hands it
+  back in async mode too), zero on a cache hit (`hit_value/3`). An unparsed
+  vision answer's row carries `metadata.unparsed: true` (a chat call's does
+  not), and its cost reaches `vision_batch/3`'s budget through the process
+  dictionary (`take_unparsed_cost/0`, same process). The new schemas carry
+  no `minimum` / `maximum`: Anthropic's strict mode refuses them. The verbs, formats,
   measured model behaviour and what stays in a host app:
   `dev_docs/guides/image-processing.md` ("Locating and comparing").
 - Image processing is provider-neutral by construction: callers name an

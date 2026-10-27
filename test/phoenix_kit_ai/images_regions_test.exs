@@ -49,11 +49,23 @@ defmodule PhoenixKitAI.Images.RegionsTest do
                Regions.parse_regions(list, "google/gemini-2.5-flash", 1)
     end
 
-    test "an image number out of range falls back to the first image; a confidence out of range is nil" do
-      list = [%{"label" => "cat", "box_2d" => [1, 1, 500, 500], "image" => 9, "confidence" => 7}]
+    test "with several images, a region on an image that does not exist is dropped, not moved" do
+      list = [
+        %{"label" => "cat", "box_2d" => [1, 1, 500, 500], "image" => 9, "confidence" => 0.5},
+        %{"label" => "cat", "box_2d" => [1, 1, 500, 500], "image" => 2.0, "confidence" => 0.5},
+        %{"label" => "cat", "box_2d" => [1, 1, 500, 500], "image" => 3, "confidence" => 7}
+      ]
 
-      assert {[%{image: 1, confidence: nil, description: nil}], 0} =
+      assert {[%{image: 3, confidence: nil, description: nil}], 2} =
                Regions.parse_regions(list, nil, 3)
+    end
+
+    test "with one image, every region is on it" do
+      list = [
+        %{"label" => "cat", "box_2d" => [1, 1, 500, 500], "image" => 9, "confidence" => 0.5}
+      ]
+
+      assert {[%{image: 1}], 0} = Regions.parse_regions(list, nil, 1)
     end
 
     test "anything but a list is no regions" do
@@ -173,10 +185,12 @@ defmodule PhoenixKitAI.Images.RegionsTest do
       assert prompt =~ "Ignore the background."
     end
 
-    test "the statements prompt numbers the statements and warns against technicalities" do
+    test "the statements prompt numbers the statements, warns against technicalities and against half-shown claims" do
       prompt = Regions.statements_prompt(["one", "two"], 1, nil)
       assert prompt =~ "1. one\n2. two"
       assert prompt =~ "technicality"
+      assert prompt =~ "adds something the images do not show"
+      refute prompt =~ "missing minor detail"
     end
   end
 end

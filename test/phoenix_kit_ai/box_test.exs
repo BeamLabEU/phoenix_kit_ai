@@ -38,6 +38,11 @@ defmodule PhoenixKitAI.BoxTest do
       assert :error = Box.new(["1", 2, 3, 4], :yx_1000)
       assert :error = Box.new(nil, :yx_1000)
       assert :error = Box.new([1, 2, 3, 4], :pixels)
+      assert :error = Box.new([:erlang.bsl(1, 2000), 0, 1, 2], :yx_1000)
+    end
+
+    test "the smallest cell of the 0-1000 grid is a box" do
+      assert {:ok, %Box{}} = Box.new([100, 100, 101, 101], :yx_1000)
     end
   end
 
@@ -50,6 +55,21 @@ defmodule PhoenixKitAI.BoxTest do
     test "Qwen-VL writes x first" do
       assert Box.format_for("qwen/qwen3-vl-235b-a22b-instruct") == :xy_1000
       assert Box.format_for("Qwen/Qwen2.5-VL-72B-Instruct") == :xy_1000
+    end
+
+    test "a vendor prefix, none, or several do not hide the family" do
+      assert Box.format_for("qwen3-vl-235b-a22b-instruct-2507") == :xy_1000
+      assert Box.format_for("novita/qwen/qwen3-vl-235b-a22b-instruct-2507") == :xy_1000
+      assert Box.format_for("acme/new-vl") == :yx_1000
+    end
+
+    test "an unknown format in config does not hide a valid shorter prefix" do
+      Application.put_env(:phoenix_kit_ai, :box_formats, %{
+        "qwen/qwen3-vl-235b" => :nope,
+        "qwen/" => :xy_fraction
+      })
+
+      assert Box.format_for("qwen/qwen3-vl-235b-a22b") == :xy_fraction
     end
 
     test "config wins over the built-in table, the longest prefix first" do
