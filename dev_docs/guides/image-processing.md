@@ -284,7 +284,6 @@ leave the cache key to the default.
   ids to try after the call's own model — not `models:`, which is
   OpenRouter's own routing list, which OpenRouter applies inside one call
   and other providers never receive.
-  `compare_images/4` takes no fallbacks.
 - **Many small items:** `vision_batch(group: 3)` asks three items in one
   call, so the instructions are paid for once. In a 830-image test that cut
   the reading cost by about a third at the same quality.

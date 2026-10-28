@@ -4737,7 +4737,8 @@ defmodule PhoenixKitAI do
   @doc """
   Checks an edited image against its original with a vision endpoint:
   same subject, text and logos intact, unwanted changes. See
-  `PhoenixKitAI.Images.compare/4`. Logged as a `"vision"` request.
+  `PhoenixKitAI.Images.compare/4`. `fallback_models:` works as on
+  `describe_image/3`. Logged as a `"vision"` request.
   """
   @spec compare_images(
           String.t() | Endpoint.t(),
@@ -4746,7 +4747,15 @@ defmodule PhoenixKitAI do
           keyword()
         ) ::
           {:ok, map()} | {:error, term()}
-  def compare_images(endpoint_uuid, before, after_image, opts \\ []) do
+  def compare_images(endpoint_uuid, before, after_image, opts \\ []),
+    do:
+      with_fallback_models(
+        endpoint_uuid,
+        opts,
+        &do_compare_images(endpoint_uuid, before, after_image, &1)
+      )
+
+  defp do_compare_images(endpoint_uuid, before, after_image, opts) do
     with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
          {:ok, admission} <-
            authorize(endpoint, opts, :compare_images, Guard.implied_needs(:compare_images, opts)) do

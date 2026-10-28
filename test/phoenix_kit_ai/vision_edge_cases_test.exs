@@ -210,6 +210,37 @@ defmodule PhoenixKitAI.VisionEdgeCasesTest do
       assert calls() == 0
     end
 
+    test "compare_images/4 falls back too" do
+      ep = endpoint()
+
+      verdict =
+        Jason.encode!(%{
+          "same_subject" => true,
+          "text_and_logos_preserved" => true,
+          "unwanted_changes" => [],
+          "summary" => "Background cleaned."
+        })
+
+      counting_stub(fn conn, b ->
+        if b["model"] == "google/gemini-3.8-flash",
+          do: answer(conn, "prose"),
+          else: answer(conn, verdict, model: b["model"])
+      end)
+
+      assert {:ok,
+              %{
+                passed: true,
+                model: "m/two",
+                fallbacks: [%{model: "google/gemini-3.8-flash", error: :no_json_in_response}]
+              }} =
+               PhoenixKitAI.compare_images(ep.uuid, @jpeg, @png,
+                 fallback_models: ["m/two"],
+                 cache: false
+               )
+
+      assert calls() == 2
+    end
+
     test "when every model fails, the last error comes back and each attempt is a row" do
       ep = endpoint()
       counting_stub(fn conn, b -> answer(conn, "prose", model: b["model"]) end)
