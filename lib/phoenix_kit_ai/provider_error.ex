@@ -105,9 +105,12 @@ defmodule PhoenixKitAI.ProviderError do
   # endpoint was set up): OpenRouter answers 400 "… is not a valid model ID",
   # others 404 "model … not found" / "does not exist".
   defp unknown_model?(status, error) when status in [400, 404] do
-    is_binary(error["message"]) and
-      error["message"] =~
-        ~r/not a valid model|model[^.]{0,80}(not found|does not exist|not exist)|no such model|unknown model/i
+    message = if is_binary(error["message"]), do: error["message"], else: ""
+
+    field(error, ["code"]) in ["model_not_found", "invalid_model"] or
+      (message =~
+         ~r/not a valid model|\bmodel\b.{0,80}?\b(not found|does not exist|doesn't exist)|no such model|unknown model/i and
+         not (message =~ ~r/account|billing|quota|credit|balance|payment|key/i))
   end
 
   defp unknown_model?(_status, _error), do: false

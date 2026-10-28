@@ -192,7 +192,7 @@ defmodule PhoenixKitAI.Images.Regions do
          {:ok, box} <- Box.new(raw, format),
          # With several images a box on an image that does not exist is not
          # moved to another one: the region is dropped and counted.
-         image when is_integer(image) <- image_index(entry["image"], image_count, nil) do
+         image when is_integer(image) <- image_index(entry["image"], image_count) do
       {:ok,
        %{
          label: label,
@@ -371,7 +371,7 @@ defmodule PhoenixKitAI.Images.Regions do
     image =
       case answer["image"] do
         n when verdict != :insufficient and is_integer(n) and n >= 1 ->
-          image_index(n, image_count, nil)
+          image_index(n, image_count)
 
         _ ->
           nil
@@ -414,9 +414,9 @@ defmodule PhoenixKitAI.Images.Regions do
 
   # The 1-based image a model named, or nil when it named none that exists.
   # With one image there is only one it can be on.
-  defp image_index(n, count, _default) when is_integer(n) and n >= 1 and n <= count, do: n
-  defp image_index(_n, 1, _default), do: 1
-  defp image_index(_n, _count, default), do: default
+  defp image_index(n, count) when is_integer(n) and n >= 1 and n <= count, do: n
+  defp image_index(_n, 1), do: 1
+  defp image_index(_n, _count), do: nil
 
   defp confidence(c) when is_number(c) and c >= 0 and c <= 1, do: c / 1
   defp confidence(_c), do: nil

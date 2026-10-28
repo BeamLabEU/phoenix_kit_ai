@@ -137,8 +137,7 @@ defmodule PhoenixKitAI.Images do
 
   def normalize_inputs(images, opts) when is_list(images) do
     max = Keyword.get(opts, :max_input_bytes, HTTP.max_image_bytes())
-    # All inputs together may take four times one image's allowance.
-    total_max = Keyword.get(opts, :max_total_input_bytes, max * 4)
+    total_max = max_total_input_bytes(opts)
 
     images
     |> Enum.reduce_while({:ok, [], 0}, fn image, {:ok, acc, total} ->
@@ -155,6 +154,21 @@ defmodule PhoenixKitAI.Images do
   end
 
   def normalize_inputs(_other, _opts), do: {:error, :invalid_image_input}
+
+  @doc false
+  # All inputs of one call together may take four times one image's allowance.
+  @spec max_total_input_bytes(keyword()) :: pos_integer()
+  def max_total_input_bytes(opts) do
+    max = Keyword.get(opts, :max_input_bytes, HTTP.max_image_bytes())
+    Keyword.get(opts, :max_total_input_bytes, max * 4)
+  end
+
+  @doc false
+  # The bytes an input list carries inline (a URL counts as 0: its size is
+  # known only once fetched).
+  @spec input_bytes(term()) :: non_neg_integer()
+  def input_bytes(images),
+    do: images |> List.wrap() |> Enum.map(&(image_bytes(&1) || 0)) |> Enum.sum()
 
   defp collect_ref({:ok, ref}, acc, total), do: {:cont, {:ok, [ref | acc], total}}
   defp collect_ref({:error, _} = error, _acc, _total), do: {:halt, error}

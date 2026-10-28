@@ -599,7 +599,7 @@ defmodule PhoenixKitAI.ImageAIAdditionsTest do
       # The unparsed item carries its billed cost, so both answers count.
       assert Decimal.equal?(cost, Decimal.new("0.002"))
 
-      # The unparsed answer was billed: run_costs sees it, the item's cost does not.
+      # The journal agrees: both rows are billed, the unparsed one marked.
       assert {:ok,
               %{
                 total: %{calls: 2, errors: 0, unparsed: 1, cost: run_cost},

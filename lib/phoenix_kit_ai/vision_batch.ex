@@ -38,6 +38,8 @@ defmodule PhoenixKitAI.VisionBatch do
   budget; a cache hit costs nothing.
   """
 
+  require Logger
+
   alias PhoenixKitAI.{Guard, Money}
 
   @verbs [:describe_image, :extract_text, :detect_regions, :check_statements]
@@ -51,20 +53,6 @@ defmodule PhoenixKitAI.VisionBatch do
   @default_item_timeout 300_000
 
   # Refusals every later item of the batch would get too.
-  @fatal_atoms [
-    :endpoint_not_found,
-    :endpoint_disabled,
-    :invalid_endpoint_identifier,
-    :invalid_api_key,
-    :api_key_forbidden,
-    :insufficient_credits,
-    :money_migration_required,
-    :model_not_found,
-    :endpoint_no_model,
-    :integration_deleted,
-    :integration_not_configured
-  ]
-
   # The fatal refusals that hold whoever asks and whatever runs: these stop
   # a batch even when items override `user_uuid:`, `task:` or `model:`.
   @account_atoms [
@@ -79,6 +67,10 @@ defmodule PhoenixKitAI.VisionBatch do
     :integration_deleted,
     :integration_not_configured
   ]
+
+  # Refusals every later item of the batch would get too: the account-wide
+  # ones, and a model the provider does not serve.
+  @fatal_atoms @account_atoms ++ [:model_not_found]
 
   # Item options that change who asks or what runs.
   @scope_keys [:user_uuid, :task, :model, :models, :guard_admission]
@@ -138,7 +130,7 @@ defmodule PhoenixKitAI.VisionBatch do
       initial_stop = if budget && Decimal.compare(budget, 0) != :gt, do: :budget
       {:ok, state} = Agent.start_link(fn -> %{spent: Decimal.new(0), stop: initial_stop} end)
 
-      units = units(items, group)
+      units = units(items, group, PhoenixKitAI.Images.max_total_input_bytes(call_opts))
 
       try do
         flat =
@@ -216,29 +208,53 @@ defmodule PhoenixKitAI.VisionBatch do
       images = Enum.flat_map(group, &List.wrap(&1.images))
 
       outcome =
-        try do
+        safely(fn ->
           PhoenixKitAI.describe_image(endpoint, images, group_opts(group, call_opts, opts))
-        rescue
-          exception -> {:error, {:exception, exception.__struct__}}
-        catch
-          kind, _reason -> {:error, {:exception, kind}}
-        end
+        end)
 
       results = group_results(group, outcome, opts)
+      # Billed but unusable answers in this unit (failed fallback attempts), shared like the call.
+      results = add_shares(results, PhoenixKitAI.take_unparsed_cost())
       Enum.each(results, &record(state, &1, budget, false))
       results
     end
   end
 
   # Items that carry their own prompt or options run alone; the rest are
-  # packed `group` at a time, in order.
-  defp units(items, 1), do: Enum.map(items, &[&1])
+  # packed `group` at a time, in order, and a group closes early rather
+  # than carry more image bytes than one call may (items that would each
+  # pass alone must not fail together).
+  defp units(items, 1, _max_bytes), do: Enum.map(items, &[&1])
 
-  defp units(items, group) do
+  defp units(items, group, max_bytes) do
     {plain, own} =
       Enum.split_with(items, &(not Map.has_key?(&1, :prompt) and not Map.has_key?(&1, :opts)))
 
-    Enum.chunk_every(plain, group) ++ Enum.map(own, &[&1])
+    packed =
+      Enum.chunk_while(
+        plain,
+        {[], 0},
+        fn item, {acc, bytes} ->
+          size = PhoenixKitAI.Images.input_bytes(item.images)
+
+          cond do
+            acc == [] ->
+              {:cont, {[item], size}}
+
+            length(acc) < group and bytes + size <= max_bytes ->
+              {:cont, {[item | acc], bytes + size}}
+
+            true ->
+              {:cont, Enum.reverse(acc), {[item], size}}
+          end
+        end,
+        fn
+          {[], _} -> {:cont, {[], 0}}
+          {acc, _} -> {:cont, Enum.reverse(acc), {[], 0}}
+        end
+      )
+
+    packed ++ Enum.map(own, &[&1])
   end
 
   defp group_opts(group, call_opts, opts) do
@@ -304,38 +320,59 @@ defmodule PhoenixKitAI.VisionBatch do
   end
 
   # One result per item of the group. The call's cost is shared equally; an
-  # answer the call left out is an error for that item only.
+  # answer the call left out, or gave in the wrong shape, is an error for
+  # that item only.
   defp group_results(group, {:ok, result}, opts) do
     n = length(group)
     share = share(result[:cost], n)
-
-    answers =
-      for %{"item" => k, "answer" => a} <- (result.json || %{})["items"] || [],
-          is_integer(k),
-          into: %{},
-          do: {k, a}
+    answers = group_answers(result.json, n)
 
     group
     |> Enum.with_index(1)
     |> Enum.map(fn {item, k} ->
-      case Map.fetch(answers, k) do
-        {:ok, a} ->
-          item_result(item.id, :ok, grouped_answer(a, result, share, n, opts), nil, share)
-
-        :error ->
-          item_result(item.id, :error, nil, :missing_in_group, nil)
+      with {:ok, a} <- Map.fetch(answers, k),
+           true <- answer_fits?(a, opts[:schema]) do
+        item_result(item.id, :ok, grouped_answer(a, result, share, n, opts), nil, share)
+      else
+        _ ->
+          # The call was paid for this item too: it keeps its share.
+          item_result(item.id, :error, nil, :missing_in_group, share)
       end
     end)
   end
 
+  # Billed but unusable: the cost is added per item by `add_shares/2`.
   defp group_results(group, {:error, {tag, _} = reason}, _opts)
        when tag in [:no_json_in_response, :output_truncated] do
-    share = share(PhoenixKitAI.take_unparsed_cost(), length(group))
-    Enum.map(group, &item_result(&1.id, :unparsed, nil, reason, share))
+    Enum.map(group, &item_result(&1.id, :unparsed, nil, reason, nil))
   end
 
   defp group_results(group, {:error, reason}, _opts),
     do: Enum.map(group, &item_result(&1.id, :error, nil, reason, nil))
+
+  # The answers by item number. Strict schemas cannot bound `item` (Anthropic
+  # refuses `minimum`), so a model that counts from 0 is read as such when
+  # its numbers are exactly 0..n-1; a number given twice answers neither.
+  defp group_answers(%{"items" => entries}, n) when is_list(entries) do
+    pairs = for %{"item" => k, "answer" => a} <- entries, is_integer(k), do: {k, a}
+    keys = Enum.map(pairs, &elem(&1, 0))
+    shift = if Enum.sort(keys) == Enum.to_list(0..(n - 1)//1), do: 1, else: 0
+    twice = keys |> Enum.frequencies() |> Enum.filter(&(elem(&1, 1) > 1)) |> Map.new()
+
+    for {k, a} <- pairs, not Map.has_key?(twice, k), into: %{}, do: {k + shift, a}
+  end
+
+  defp group_answers(_json, _n), do: %{}
+
+  # No schema asks for a text answer; an object or array schema for that.
+  defp answer_fits?(a, schema) when not is_map(schema), do: is_binary(a)
+  defp answer_fits?(a, %{"type" => "object"}), do: is_map(a)
+  defp answer_fits?(a, %{type: "object"}), do: is_map(a)
+  defp answer_fits?(a, %{"type" => "array"}), do: is_list(a)
+  defp answer_fits?(a, %{type: "array"}), do: is_list(a)
+  defp answer_fits?(a, %{"type" => "string"}), do: is_binary(a)
+  defp answer_fits?(a, %{type: "string"}), do: is_binary(a)
+  defp answer_fits?(a, _schema), do: not is_nil(a)
 
   defp grouped_answer(answer, result, share, n, opts) do
     {text, json} =
@@ -352,6 +389,17 @@ defmodule PhoenixKitAI.VisionBatch do
 
     if result[:fallbacks], do: Map.put(base, :fallbacks, result.fallbacks), else: base
   end
+
+  defp add_shares(results, nil), do: results
+
+  defp add_shares(results, %Decimal{} = extra) do
+    each = share(extra, length(results))
+    Enum.map(results, &%{&1 | cost: add(&1.cost, each)})
+  end
+
+  defp add(nil, b), do: b
+  defp add(a, nil), do: a
+  defp add(a, b), do: Decimal.add(a, b)
 
   defp share(nil, _n), do: nil
   defp share(%Decimal{} = cost, n), do: Decimal.div(cost, n)
@@ -394,21 +442,14 @@ defmodule PhoenixKitAI.VisionBatch do
       _ = PhoenixKitAI.take_unparsed_cost()
 
       outcome =
-        try do
-          call(verb, endpoint, item, call_opts, opts)
-        rescue
-          exception -> {:error, {:exception, exception.__struct__}}
-        catch
-          kind, _reason -> {:error, {:exception, kind}}
-        end
+        safely(fn -> call(verb, endpoint, item, call_opts, opts) end)
 
       result = to_item_result(item.id, outcome)
 
-      # An unparsed answer was billed: its cost counts toward the budget.
-      result =
-        if result.status == :unparsed,
-          do: %{result | cost: PhoenixKitAI.take_unparsed_cost()},
-          else: result
+      # Unusable answers were billed (an unparsed or cut-off answer, a failed
+      # fallback attempt, a failed confirmation): their cost counts toward the
+      # budget and the item's cost, on top of what the answer itself cost.
+      result = %{result | cost: add(result.cost, PhoenixKitAI.take_unparsed_cost())}
 
       record(state, result, budget, scoped?(item))
       result
@@ -416,10 +457,16 @@ defmodule PhoenixKitAI.VisionBatch do
   end
 
   defp call(:describe_image, endpoint, item, call_opts, _opts),
-    do: PhoenixKitAI.describe_image(endpoint, item.images, item_opts(item, call_opts))
+    do:
+      PhoenixKitAI.describe_image(
+        endpoint,
+        item.images,
+        item_opts(item, call_opts, :describe_image)
+      )
 
   defp call(:extract_text, endpoint, item, call_opts, _opts),
-    do: PhoenixKitAI.extract_text(endpoint, item.images, item_opts(item, call_opts))
+    do:
+      PhoenixKitAI.extract_text(endpoint, item.images, item_opts(item, call_opts, :extract_text))
 
   defp call(:detect_regions, endpoint, item, call_opts, opts),
     do:
@@ -427,7 +474,7 @@ defmodule PhoenixKitAI.VisionBatch do
         endpoint,
         item.images,
         Map.get(item, :labels) || opts[:labels],
-        item_opts(item, call_opts)
+        item_opts(item, call_opts, :detect_regions)
       )
 
   defp call(:check_statements, endpoint, item, call_opts, _opts),
@@ -436,14 +483,41 @@ defmodule PhoenixKitAI.VisionBatch do
         endpoint,
         Map.get(item, :statements) || [],
         item.images,
-        item_opts(item, call_opts)
+        item_opts(item, call_opts, :check_statements)
       )
 
-  # An item's own `prompt:` and `opts:` go over the batch's.
-  defp item_opts(item, call_opts) do
+  # An item's own `prompt:` and `opts:` go over the batch's. For the verbs
+  # with a fixed prompt of their own, an item's `prompt:` is added to it as
+  # `instructions:` instead of being silently replaced.
+  defp item_opts(item, call_opts, verb) do
     call_opts
-    |> then(fn o -> if item[:prompt], do: Keyword.put(o, :prompt, item.prompt), else: o end)
+    |> then(fn o ->
+      case {item[:prompt], verb} do
+        {nil, _} -> o
+        {p, :describe_image} -> Keyword.put(o, :prompt, p)
+        {p, _} -> Keyword.put(o, :instructions, p)
+      end
+    end)
     |> Keyword.merge(Map.get(item, :opts) || [])
+  end
+
+  # One item must not fail the batch, so a crash in its call is an error for
+  # that item — logged with the exception's module and stack only (its message
+  # and terms can carry the item's data), so a programming error still shows.
+  defp safely(fun) do
+    fun.()
+  rescue
+    exception ->
+      Logger.error(
+        "[PhoenixKitAI.VisionBatch] item crashed: " <>
+          inspect(exception.__struct__) <> "\n" <> Exception.format_stacktrace(__STACKTRACE__)
+      )
+
+      {:error, {:exception, exception.__struct__}}
+  catch
+    kind, _reason ->
+      Logger.error("[PhoenixKitAI.VisionBatch] item exited: #{kind}")
+      {:error, {:exception, kind}}
   end
 
   defp to_item_result(id, {:ok, result}), do: item_result(id, :ok, result, nil, result[:cost])

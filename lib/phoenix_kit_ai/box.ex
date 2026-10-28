@@ -43,6 +43,9 @@ defmodule PhoenixKitAI.Box do
 
   @formats [:yx_1000, :xy_1000, :xy_fraction, :yx_fraction]
 
+  # The grid the prompts ask models to write boxes on.
+  @grid 1000
+
   # Models whose answers do not follow the `[ymin, xmin, ymax, xmax]` the
   # prompts ask for, by model family: matched as a prefix of the id the
   # answer names with any vendor prefix taken off (`qwen/qwen3-vl-…`,
@@ -75,7 +78,7 @@ defmodule PhoenixKitAI.Box do
   @spec new(term(), format()) :: {:ok, t()} | :error
   def new([a, b, c, d] = values, format) when format in @formats do
     if Enum.all?(values, &(is_number(&1) and abs(&1) <= @max_coordinate)) do
-      scale = if format in [:yx_1000, :xy_1000], do: 1000, else: 1
+      scale = if format in [:yx_1000, :xy_1000], do: @grid, else: 1
       [a, b, c, d] = Enum.map([a, b, c, d], &clamp(&1 / scale))
 
       {x0, y0, x1, y1} =
@@ -108,7 +111,8 @@ defmodule PhoenixKitAI.Box do
   @doc """
   The format a model writes its boxes in: the call's `box_format:`, then the
   `:box_formats` config (longest matching prefix of the model id), then the
-  built-in table, then `:yx_1000`. An unknown format in config or on a call
+  built-in table (longest prefix), then `:yx_1000`. Any matching config entry
+  wins over the built-in table, however short its prefix. An unknown format in config or on a call
   is ignored with a warning.
   """
   @spec format_for(String.t() | nil, keyword()) :: format()
@@ -155,10 +159,17 @@ defmodule PhoenixKitAI.Box do
   defp valid_format(nil, _where), do: nil
   defp valid_format(format, _where) when format in @formats, do: format
 
+  # Warned once per value and node: config is read on every parsed answer.
   defp valid_format(other, where) do
-    Logger.warning(
-      "[PhoenixKitAI.Box] unknown box format #{inspect(other)} (#{where}) — expected one of #{inspect(@formats)}"
-    )
+    key = {__MODULE__, :warned, other}
+
+    unless :persistent_term.get(key, false) do
+      :persistent_term.put(key, true)
+
+      Logger.warning(
+        "[PhoenixKitAI.Box] unknown box format #{inspect(other, limit: 5, printable_limit: 40)} (#{where}) — expected one of #{inspect(@formats)}"
+      )
+    end
 
     nil
   end

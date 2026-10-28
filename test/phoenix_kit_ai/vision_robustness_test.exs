@@ -500,7 +500,7 @@ defmodule PhoenixKitAI.VisionRobustnessTest do
 
       assert counts == %{supported: 1, contradicted: 1, insufficient: 1}
       assert Decimal.equal?(cost, Decimal.new("0.004"))
-      assert is_binary(uuid)
+      assert %Request{status: "success"} = TestRepo.get(Request, uuid)
 
       assert_receive {:check, first}
       assert_receive {:check, second}

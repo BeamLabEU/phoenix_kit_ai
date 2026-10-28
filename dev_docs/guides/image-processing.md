@@ -257,28 +257,45 @@ refusal for its own user or model does not stop the others; only
 account-wide ones do. Items run unlinked under core's task supervisor, so
 an item that dies is an error for that item, not for the caller.
 The calls are tagged with one `run:`, so `run_costs/2` gives the full
-cost afterwards, unparsed answers included.
+cost afterwards. An item's `cost` already includes its unparsed answers
+and billed fallback attempts; an item that timed out may still have been
+billed, at a cost nothing here knows. An item's own `prompt:` replaces the
+prompt of `describe_image` and becomes extra `instructions:` for the other
+verbs, whose prompt is built in. `concurrency:` is the batch's own
+setting, not the limiter's (that one is per provider, in config), and a
+caller `cache: [key: …]` would give every item the first item's answer —
+leave the cache key to the default.
 
 ### When a call goes wrong
 
 - **Cut off:** an answer that stopped at the output limit is never passed
   off as complete. A JSON request returns `{:error, {:output_truncated,
   text}}` (billed and logged); a text answer comes back with
-  `truncated: true`. Raise `max_tokens` — a long drafting answer can need
+  `truncated: true`. This holds for `complete/3` with a JSON format as for
+  the image verbs. Raise `max_tokens` — a long drafting answer can need
   several times the default.
 - **Another model can do it:** `fallback_models: ["google/gemini-3.8-flash"]`
   moves to the next model on a safety block (cheap models filter more
   pages, mature but harmless scenes included), an unparsed or cut-off
   answer, or a provider outage. A refusal by caps, limits or blocks, a bad
   key or an exhausted balance never falls back, because another model would
-  get the same. `:fallbacks` on the answer says which models failed first.
+  get the same. `:fallbacks` on the answer says which models failed first,
+  each with the cost it was billed. `fallback_models:` is a list of model
+  ids to try after the call's own model — not `models:`, which is
+  OpenRouter's own routing list, which OpenRouter applies inside one call
+  and other providers never receive.
+  `compare_images/4` takes no fallbacks.
 - **Many small items:** `vision_batch(group: 3)` asks three items in one
   call, so the instructions are paid for once. In a 830-image test that cut
   the reading cost by about a third at the same quality.
 - **A statement marked contradicted:** require the evidence. A verdict with
   no deciding image is reported as insufficient, and `confirm: true` (or
   other images) asks a second time and keeps only what both checks agree
-  on — a single check flipped true statements to false in testing.
+  on — a single check flipped true statements to false in testing. The
+  second check never comes from the cache; a verdict downgraded to
+  insufficient is not asked again, and when the second check fails every
+  contradicted verdict becomes unconfirmed insufficient, with
+  `confirm_error` naming the kind of failure and its cost added.
 
 ### Runs
 

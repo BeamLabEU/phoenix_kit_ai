@@ -66,6 +66,17 @@ defmodule PhoenixKitAI.Errors do
   def message(:invalid_run), do: gettext("A run must be named with a text")
   def message(:item_timeout), do: gettext("The item took too long and was stopped")
 
+  def message(:labels_look_like_options),
+    do: gettext("Labels must be a list of words; pass options as the fourth argument")
+
+  def message(:invalid_fallback_models),
+    do: gettext("Fallback models must be a list of model ids")
+
+  def message(:invalid_confirm), do: gettext("confirm: must be true or a list of images")
+
+  def message({:unsupported_option, :group, reason}),
+    do: gettext("A batch cannot group items here (%{reason})", reason: inspect(reason))
+
   def message(:missing_in_group),
     do: gettext("The answer for this item was missing from its group's answer")
 
