@@ -14,7 +14,9 @@ is no hardcoded provider whitelist. Implements the `PhoenixKit.Module`
 behaviour for auto-discovery by the host application; it is a library, and the
 host supplies endpoint and router (`config/` exists only for tests).
 
-- **Depends on:** `phoenix_kit` `~> 2.64` (Hex; the floor carries V223's
+- **Depends on:** `phoenix_kit` `>= 2.65.0 and < 4.0.0` (Hex; 2.65 is the
+  first core with the `file_references/0` and `expected_schema/0` callbacks,
+  and 3.x stops creating this module's tables; the floor also carries V223's
   dollar-valued request cost and removes the legacy account reference;
   `PhoenixKit.Module.oban_crons/0` ships in 2.63, needed to schedule the nightly
   journal cleanup (`PhoenixKitAI.JournalPruneWorker`);
@@ -35,8 +37,9 @@ host supplies endpoint and router (`config/` exists only for tests).
 ## What this module does NOT do
 
 - **No column change for `phoenix_kit_ai_endpoints`, `_prompts` or
-  `_requests` in core.** Core's chain still creates them first (history), but
-  since V5 of this module's chain adopts them and owns their shape; core
+  `_requests` in core.** Core 2.x's chain created them first; core 3.x no
+  longer does, and V5 of this module's chain adopts or builds them and owns
+  their shape; core
   refuses a migration that touches a module table (V223 was the last). A
   change is a new version in `PhoenixKitAI.Migrations`, then schema +
   changeset edits here — see "Database & migrations".
@@ -715,11 +718,11 @@ provided the API exposes `<base_url>/chat/completions` and `/models`.
 ## Database & migrations
 
 Tables `phoenix_kit_ai_endpoints`, `phoenix_kit_ai_prompts` and
-`phoenix_kit_ai_requests` were created by core's versioned chain before this
-module had one. **V5 adopts them** (see below): the chain owns their shape, so
+`phoenix_kit_ai_requests` were created by core 2.x's versioned chain before
+this module had one; core 3.x does not create them. **V5 adopts them** (see below): the chain owns their shape, so
 a schema change to one is a new version here, never a core migration (core
 refuses them since V223). Core's V135 baseline plus V164, V169, V193 and V223
-shaped them; the floor `~> 2.64` carries all of those.
+shaped them; the floor 2.65 carries all of those.
 
 `migration_module/0` returns `PhoenixKitAI.Migrations`, the module's own
 chain for all of its tables (`mix phoenix_kit.update` runs it after core's). Version marker: `COMMENT ON TABLE phoenix_kit_ai_model_capabilities
