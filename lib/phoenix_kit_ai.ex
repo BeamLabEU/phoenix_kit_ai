@@ -3069,15 +3069,23 @@ defmodule PhoenixKitAI do
   defp prepare_embed_input([], _opts), do: {:error, :empty_input}
 
   defp prepare_embed_input(list, opts) when is_list(list) do
+    max_bytes = PhoenixKitAI.Images.max_total_input_bytes(opts)
+
     list
-    |> Enum.reduce_while({:ok, []}, fn item, {:ok, acc} ->
+    |> Enum.reduce_while({:ok, [], 0}, fn item, {:ok, acc, total} ->
       case embed_item(item, opts) do
-        {:ok, prepared} -> {:cont, {:ok, [prepared | acc]}}
-        {:error, _} = error -> {:halt, error}
+        {:ok, prepared, bytes} when total + bytes <= max_bytes ->
+          {:cont, {:ok, [prepared | acc], total + bytes}}
+
+        {:ok, _prepared, bytes} ->
+          {:halt, {:error, {:image_too_large, total + bytes, max_bytes}}}
+
+        {:error, _} = error ->
+          {:halt, error}
       end
     end)
     |> case do
-      {:ok, items} -> {:ok, items |> Enum.reverse() |> uniform_embed_items()}
+      {:ok, items, _total} -> {:ok, items |> Enum.reverse() |> uniform_embed_items()}
       error -> error
     end
   end
@@ -3097,7 +3105,7 @@ defmodule PhoenixKitAI do
       else: items
   end
 
-  defp embed_item(text, _opts) when is_binary(text), do: {:ok, text}
+  defp embed_item(text, _opts) when is_binary(text), do: {:ok, text, 0}
   defp embed_item({:image, image}, opts), do: image_embed_item(image, nil, opts)
 
   defp embed_item({:image, image, text}, opts) when is_binary(text),
@@ -3121,7 +3129,7 @@ defmodule PhoenixKitAI do
           do: [%{"type" => "text", "text" => text}, part],
           else: [part]
 
-      {:ok, %{"content" => content}}
+      {:ok, %{"content" => content}, PhoenixKitAI.Images.input_bytes(image)}
     end
   end
 
@@ -3317,6 +3325,18 @@ defmodule PhoenixKitAI do
       now when is_nil(before) -> now
       now -> if Decimal.gt?(now, before), do: Decimal.sub(now, before)
     end
+  end
+
+  # Once a compound result includes these costs, the batch must not add them
+  # again. Keep earlier failed attempts available for the batch to collect.
+  defp take_unparsed_cost_since(before) do
+    cost = unparsed_cost_since(before)
+
+    if is_nil(before),
+      do: Process.delete(@unparsed_cost_key),
+      else: Process.put(@unparsed_cost_key, before)
+
+    cost
   end
 
   # The cost the call's usage row carries (nil when the call has none, as
@@ -3529,7 +3549,8 @@ defmodule PhoenixKitAI do
   # first call's.
   defp hit_value(value, verb, uuid) when is_map(value) do
     value = Map.put(value, request_uuid_key(verb), uuid)
-    if Map.has_key?(value, :cost), do: Map.put(value, :cost, Decimal.new(0)), else: value
+    cost_key = if verb == :embed, do: "cost", else: :cost
+    if Map.has_key?(value, cost_key), do: Map.put(value, cost_key, Decimal.new(0)), else: value
   end
 
   defp hit_value(value, _verb, _uuid), do: value
@@ -4174,8 +4195,8 @@ defmodule PhoenixKitAI do
   - `{:ok, response}` - Response with embeddings, in the order given, plus
     `"space"` — `"<model>:<dimensions>"`: vectors are comparable only
     within one space, so store it next to them — and `"cost"`, the
-    logged cost in dollars (a `Decimal`; nil when no price is known or
-    under `request_log_mode: :async`, where the row is not written yet)
+    logged cost in dollars (a `Decimal`; nil when no price is known).
+    It is available with asynchronous request logging too; a cache hit costs zero.
   - `{:error, reason}` - Error atom or tagged tuple.
   """
   @spec embed(String.t() | Endpoint.t(), embed_input() | [embed_input()], keyword()) ::
@@ -4965,7 +4986,7 @@ defmodule PhoenixKitAI do
           {:ok,
            first
            |> drop_unconfirmed(reason)
-           |> Map.update(:cost, nil, &add_costs(&1, unparsed_cost_since(before)))}
+           |> Map.update(:cost, nil, &add_costs(&1, take_unparsed_cost_since(before)))}
       end
     end
   end

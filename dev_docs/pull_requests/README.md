@@ -104,3 +104,10 @@ The ten latest merged PRs were checked for an existing GPT review. #54 and
 | [#56](2026/56-playground-cost-async-log/GPT_REVIEW.md) | Logged cost is awaited even when the queue fills after enqueueing |
 | [#57](2026/57-journal-retention/GPT_REVIEW.md) | Manual cleanup handles flag reasons alone; revoked management drops retention previews |
 | [#58](2026/58-permission-sweep/GPT_REVIEW.md) | Scope refresh hides private reasons and closes unauthorised endpoint forms; dependency audit repaired |
+
+## GPT review — 2026-10-29
+
+[#59](2026/59-image-ai-building-blocks/GPT_REVIEW.md) was the only newly
+unreviewed PR among the ten latest merges. Fixed argument values leaking
+through batch crash logs, cached embedding costs, combined embedding image
+limits, duplicate confirmation costs, and premature stops of mixed-user batches.

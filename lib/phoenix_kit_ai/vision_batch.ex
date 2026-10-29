@@ -23,7 +23,7 @@ defmodule PhoenixKitAI.VisionBatch do
     an exhausted provider balance, a bad key, a missing or disabled
     endpoint, an endpoint with no model or connection. When an item's own
     `opts:` change who asks or what runs (`user_uuid:`, `task:`, `model:`,
-    `models:`), only the refusals that do not depend on those stop the
+    `models:`, `fallback_models:`), only the refusals that do not depend on those stop the
     batch — an exhausted balance, a bad key, the site's or the endpoint's
     spend cap.
 
@@ -73,7 +73,7 @@ defmodule PhoenixKitAI.VisionBatch do
   @fatal_atoms @account_atoms ++ [:model_not_found]
 
   # Item options that change who asks or what runs.
-  @scope_keys [:user_uuid, :task, :model, :models, :guard_admission]
+  @scope_keys [:user_uuid, :task, :model, :models, :fallback_models, :guard_admission]
   @fatal_tags [
     :budget_exceeded,
     :budget_unmigrated,
@@ -128,7 +128,15 @@ defmodule PhoenixKitAI.VisionBatch do
 
       # A zero budget starts nothing.
       initial_stop = if budget && Decimal.compare(budget, 0) != :gt, do: :budget
-      {:ok, state} = Agent.start_link(fn -> %{spent: Decimal.new(0), stop: initial_stop} end)
+
+      {:ok, state} =
+        Agent.start_link(fn ->
+          %{
+            spent: Decimal.new(0),
+            stop: initial_stop,
+            scoped?: Enum.any?(items, &scoped?/1)
+          }
+        end)
 
       units = units(items, group, PhoenixKitAI.Images.max_total_input_bytes(call_opts))
 
@@ -215,7 +223,7 @@ defmodule PhoenixKitAI.VisionBatch do
       results = group_results(group, outcome, opts)
       # Billed but unusable answers in this unit (failed fallback attempts), shared like the call.
       results = add_shares(results, PhoenixKitAI.take_unparsed_cost())
-      Enum.each(results, &record(state, &1, budget, false))
+      Enum.each(results, &record(state, &1, budget))
       results
     end
   end
@@ -451,7 +459,7 @@ defmodule PhoenixKitAI.VisionBatch do
       # budget and the item's cost, on top of what the answer itself cost.
       result = %{result | cost: add(result.cost, PhoenixKitAI.take_unparsed_cost())}
 
-      record(state, result, budget, scoped?(item))
+      record(state, result, budget)
       result
     end
   end
@@ -510,7 +518,7 @@ defmodule PhoenixKitAI.VisionBatch do
     exception ->
       Logger.error(
         "[PhoenixKitAI.VisionBatch] item crashed: " <>
-          inspect(exception.__struct__) <> "\n" <> Exception.format_stacktrace(__STACKTRACE__)
+          inspect(exception.__struct__) <> "\n" <> safe_stacktrace(__STACKTRACE__)
       )
 
       {:error, {:exception, exception.__struct__}}
@@ -518,6 +526,17 @@ defmodule PhoenixKitAI.VisionBatch do
     kind, _reason ->
       Logger.error("[PhoenixKitAI.VisionBatch] item exited: #{kind}")
       {:error, {:exception, kind}}
+  end
+
+  # Erlang exception frames may carry argument values rather than an arity.
+  # Keep the call sites for diagnosis without formatting those values.
+  defp safe_stacktrace(stacktrace) do
+    stacktrace
+    |> Enum.map(fn
+      {mod, fun, args, location} when is_list(args) -> {mod, fun, length(args), location}
+      frame -> frame
+    end)
+    |> Exception.format_stacktrace()
   end
 
   defp to_item_result(id, {:ok, result}), do: item_result(id, :ok, result, nil, result[:cost])
@@ -532,14 +551,14 @@ defmodule PhoenixKitAI.VisionBatch do
   defp item_result(id, status, result, error, cost),
     do: %{id: id, status: status, result: result, error: error, cost: cost}
 
-  defp record(state, result, budget, scoped?) do
+  defp record(state, result, budget) do
     Agent.update(state, fn st ->
       spent = if result.cost, do: Decimal.add(st.spent, result.cost), else: st.spent
 
       stop =
         cond do
           st.stop -> st.stop
-          result.status == :error and fatal?(result.error, scoped?) -> {:error, result.error}
+          result.status == :error and fatal?(result.error, st.scoped?) -> {:error, result.error}
           budget && Decimal.compare(spent, budget) != :lt -> :budget
           true -> nil
         end
@@ -553,9 +572,9 @@ defmodule PhoenixKitAI.VisionBatch do
   defp exit_tag(tag) when is_atom(tag), do: tag
   defp exit_tag(_reason), do: :unknown
 
-  # An item that overrides who asks or what runs may be refused for its own
-  # sake (that user's cap, that model's fitness): only account-wide
-  # refusals stop the batch then.
+  # If any item overrides who asks or what runs, even a refusal of the batch's
+  # default user/model need not apply to the other items. Only account-wide
+  # refusals stop that batch.
   defp fatal?(reason, true), do: account_wide?(reason)
   defp fatal?(reason, false) when reason in @fatal_atoms, do: true
   defp fatal?(reason, false) when is_tuple(reason) and elem(reason, 0) in @fatal_tags, do: true
