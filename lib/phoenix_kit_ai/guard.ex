@@ -129,6 +129,8 @@ defmodule PhoenixKitAI.Guard do
 
   @type admission :: %{
           task: String.t() | nil,
+          run: String.t() | nil,
+          step: String.t() | nil,
           needs: [TaskSpec.need()],
           warnings: [String.t()],
           require_parameters: boolean(),
@@ -175,6 +177,8 @@ defmodule PhoenixKitAI.Guard do
 
     admission = %{
       task: task_key(opts),
+      run: run_tag(opts[:run]),
+      step: run_tag(opts[:step]),
       needs: needs,
       warnings: [],
       require_parameters: false,
@@ -314,18 +318,43 @@ defmodule PhoenixKitAI.Guard do
   def row_metadata(admission, stripped) do
     %{}
     |> put_present(:task, admission.task)
+    |> put_present(:run, Map.get(admission, :run))
+    |> put_present(:step, Map.get(admission, :step))
     |> put_present(:guard_warnings, admission.warnings)
     |> put_present(:stripped_params, stripped)
   end
 
-  @doc "`%{task: key}` for a call that names a task, `%{}` otherwise — for a row written before any admission."
+  @doc "`%{task: key}` for a call that names a task (plus its `run:` / `step:` tags), `%{}` otherwise — for a row written before any admission."
   @spec task_metadata(keyword()) :: map()
   def task_metadata(opts) do
     case task_key(opts) do
       nil -> %{}
       key -> %{task: key}
     end
+    |> put_present(:run, run_tag(opts[:run]))
+    |> put_present(:step, run_tag(opts[:step]))
   end
+
+  @run_tag_max 200
+
+  @doc """
+  A call's `run:` / `step:` tag as it is stored on its rows: a string of at
+  most #{@run_tag_max} characters (an atom or integer is turned into one), or
+  nil for anything else or an empty string.
+  """
+  @spec run_tag(term()) :: String.t() | nil
+  def run_tag(tag) when is_binary(tag) do
+    case String.trim(tag) do
+      "" -> nil
+      trimmed -> String.slice(trimmed, 0, @run_tag_max)
+    end
+  end
+
+  def run_tag(tag) when is_atom(tag) and tag not in [nil, true, false],
+    do: run_tag(Atom.to_string(tag))
+
+  def run_tag(tag) when is_integer(tag), do: Integer.to_string(tag)
+  def run_tag(_tag), do: nil
 
   @doc "Whether a call with an unknown capability is refused (module setting, default off)."
   @spec verified_only?() :: boolean()

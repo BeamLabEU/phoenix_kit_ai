@@ -65,6 +65,7 @@ defmodule PhoenixKitAI.Providers.OpenAICompatible do
         :require_parameters
       ])
       |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+      |> Keyword.put(:safety_errors, true)
 
     Completion.chat_completion(endpoint, messages, chat_opts)
   end

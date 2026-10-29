@@ -127,7 +127,7 @@ defmodule PhoenixKitAI do
   alias PhoenixKitAI.Guard
   alias PhoenixKitAI.GuardBlocks
   alias PhoenixKitAI.GuardEvents
-  alias PhoenixKitAI.Images.{ImageModel, ImageModels, Operations}
+  alias PhoenixKitAI.Images.{ImageModel, ImageModels, Operations, Regions}
   alias PhoenixKitAI.ManualPrice
   alias PhoenixKitAI.Money
   alias PhoenixKitAI.ProviderError
@@ -2780,7 +2780,9 @@ defmodule PhoenixKitAI do
     if PhoenixKitAI.RequestLog.async?() and Request.changeset(%Request{}, attrs).valid? do
       uuid = UUIDv7.generate()
       :ok = PhoenixKitAI.RequestLog.enqueue({uuid, attrs})
-      {:ok, %Request{uuid: uuid}}
+      # The row is not written yet; the uuid and the cost it will carry are
+      # known, so a verb can still hand both back.
+      {:ok, %Request{uuid: uuid, cost: Map.get(attrs, :cost)}}
     else
       create_request(attrs)
     end
@@ -3014,14 +3016,112 @@ defmodule PhoenixKitAI do
           trace
         )
 
-      {:ok, result |> Map.drop([:usage, :latency_ms]) |> put_request_uuid(:request_uuid, row)}
+      {:ok,
+       result
+       |> Map.drop([:usage, :latency_ms])
+       |> put_request_uuid(:request_uuid, row)
+       |> put_cost(row)}
     end
   end
 
   defp run_embed(endpoint, input, merged_opts, trace) do
     with {:ok, response} <- PhoenixKitAI.Completion.embeddings(endpoint, input, merged_opts) do
       logged = log_embedding_request(endpoint, input, response, trace)
-      {:ok, put_request_uuid(response, "request_uuid", logged)}
+
+      {:ok,
+       response
+       |> Map.put("space", embedding_space(response, endpoint))
+       |> Map.put("cost", logged_cost(logged))
+       |> put_request_uuid("request_uuid", logged)}
+    end
+  end
+
+  defp embed_image_item?(%{"content" => parts}) when is_list(parts),
+    do: Enum.any?(parts, &match?(%{"type" => "image_url"}, &1))
+
+  defp embed_image_item?(_item), do: false
+
+  defp logged_cost({:ok, %Request{cost: cost}}), do: cost
+  defp logged_cost(_logged), do: nil
+
+  # Vectors are comparable only within one model and one size: `space`
+  # names both, so a host can refuse to compare vectors from two spaces.
+  defp embedding_space(response, endpoint) do
+    dims =
+      case response["data"] do
+        [%{"embedding" => vector} | _] when is_list(vector) -> length(vector)
+        _ -> nil
+      end
+
+    model = response["model"] || endpoint.model
+    if dims, do: "#{model}:#{dims}", else: model
+  end
+
+  # What `embed/3` takes: a string, or a list of strings and images. An
+  # image is `{:image, input}`, `%{image: input}`, or with a caption for a
+  # joint vector `{:image, input, text}` / `%{image: input, text: text}` —
+  # `input` anything the image verbs take (bytes, `%{data:, content_type:}`,
+  # `%{url:}`, a data or https URL). Images are checked like the vision
+  # verbs' (bytes become a data URL within the size limits; a URL is passed
+  # through after the fetch host policy) and sent as
+  # OpenRouter's multimodal `{"content": [image_url part]}` inputs.
+  defp prepare_embed_input(input, _opts) when is_binary(input), do: {:ok, input}
+  defp prepare_embed_input([], _opts), do: {:error, :empty_input}
+
+  defp prepare_embed_input(list, opts) when is_list(list) do
+    list
+    |> Enum.reduce_while({:ok, []}, fn item, {:ok, acc} ->
+      case embed_item(item, opts) do
+        {:ok, prepared} -> {:cont, {:ok, [prepared | acc]}}
+        {:error, _} = error -> {:halt, error}
+      end
+    end)
+    |> case do
+      {:ok, items} -> {:ok, items |> Enum.reverse() |> uniform_embed_items()}
+      error -> error
+    end
+  end
+
+  defp prepare_embed_input(single, opts), do: prepare_embed_input([single], opts)
+
+  # OpenRouter takes a list of strings or a list of multimodal objects, never
+  # a mix (HTTP 400 `invalid_union`): once one item is an image, every text
+  # goes as a text part too. A text-only list stays plain strings.
+  defp uniform_embed_items(items) do
+    if Enum.any?(items, &is_map/1),
+      do:
+        Enum.map(items, fn
+          text when is_binary(text) -> %{"content" => [%{"type" => "text", "text" => text}]}
+          item -> item
+        end),
+      else: items
+  end
+
+  defp embed_item(text, _opts) when is_binary(text), do: {:ok, text}
+  defp embed_item({:image, image}, opts), do: image_embed_item(image, nil, opts)
+
+  defp embed_item({:image, image, text}, opts) when is_binary(text),
+    do: image_embed_item(image, text, opts)
+
+  defp embed_item(%{image: image, text: text}, opts) when is_binary(text) or is_nil(text),
+    do: image_embed_item(image, text, opts)
+
+  defp embed_item(%{image: _image, text: _not_text}, _opts),
+    do: {:error, :invalid_embedding_input}
+
+  defp embed_item(%{image: image}, opts), do: image_embed_item(image, nil, opts)
+  defp embed_item(_other, _opts), do: {:error, :invalid_embedding_input}
+
+  defp image_embed_item(image, text, opts) do
+    with {:ok, [ref]} <- PhoenixKitAI.Images.normalize_inputs([image], opts) do
+      part = %{"type" => "image_url", "image_url" => %{"url" => ref}}
+
+      content =
+        if is_binary(text) and text != "",
+          do: [%{"type" => "text", "text" => text}, part],
+          else: [part]
+
+      {:ok, %{"content" => content}}
     end
   end
 
@@ -3089,10 +3189,142 @@ defmodule PhoenixKitAI do
     opts = log_unparsed_answer(opts, endpoint, prompt, images, trace)
 
     with {:ok, result} <- PhoenixKitAI.Images.describe(endpoint, images, opts) do
-      logged = log_image_op_request(endpoint, "vision", prompt, images, result, %{}, trace)
-      {:ok, result |> Map.take([:text, :json, :model]) |> put_request_uuid(:request_uuid, logged)}
+      extra = if result[:regions], do: %{region_count: length(result.regions)}, else: %{}
+      logged = log_image_op_request(endpoint, "vision", prompt, images, result, extra, trace)
+
+      {:ok,
+       result
+       |> Map.take([:text, :json, :model, :truncated, :regions, :dropped_regions])
+       |> put_request_uuid(:request_uuid, logged)
+       |> put_cost(logged)}
     end
   end
+
+  # The per-process sum of billed but unusable vision answers (see
+  # `take_unparsed_cost/0`).
+  @unparsed_cost_key {__MODULE__, :last_unparsed_cost}
+
+  # `fallback_models: [model, ...]` on a vision verb: when a call fails for a
+  # reason another model could fix — a safety block, an answer that is not the
+  # JSON asked for or was cut off, a provider outage, a model or parameters
+  # the provider cannot serve — the same call is made again with the next
+  # model (`model:` set to it), through the whole gate, cache and usage row.
+  # Never on a refusal (caps, limits, blocks, an unfit model), a bad key or
+  # balance, or a caller's input error: another model would get the same.
+  # The answer lists the models that failed before it in `:fallbacks`.
+  defp with_fallback_models(endpoint_uuid, opts, call) do
+    case Keyword.get(opts, :fallback_models) do
+      [_ | _] = models ->
+        # Every entry a model id: an empty or non-string one would send one
+        # model while the guard checks another.
+        if Enum.all?(models, &(is_binary(&1) and String.trim(&1) != "")),
+          do: try_models(endpoint_uuid, Keyword.delete(opts, :fallback_models), models, call, []),
+          else: {:error, :invalid_fallback_models}
+
+      empty when empty in [nil, []] ->
+        call.(Keyword.delete(opts, :fallback_models))
+
+      _not_a_list ->
+        {:error, :invalid_fallback_models}
+    end
+  end
+
+  defp try_models(endpoint_uuid, opts, rest, call, failed) do
+    before = Process.get(@unparsed_cost_key)
+
+    case call.(opts) do
+      {:ok, result} when is_map(result) ->
+        {:ok,
+         if(failed == [], do: result, else: Map.put(result, :fallbacks, Enum.reverse(failed)))}
+
+      {:error, reason} = error ->
+        case {fallback_reason?(reason), rest} do
+          {true, [next | more]} ->
+            tried = %{
+              model: opts[:model] || endpoint_model(endpoint_uuid),
+              error: fallback_tag(reason),
+              # what the failed attempt was billed (an unparsed or cut-off answer), else nil
+              cost: unparsed_cost_since(before)
+            }
+
+            try_models(endpoint_uuid, Keyword.put(opts, :model, next), more, call, [
+              tried | failed
+            ])
+
+          _ ->
+            error
+        end
+    end
+  end
+
+  defp endpoint_model(%Endpoint{model: model}), do: model
+
+  defp endpoint_model(uuid) do
+    case resolve_endpoint(uuid) do
+      {:ok, %Endpoint{model: model}} -> model
+      _ -> nil
+    end
+  end
+
+  @fallback_tags [
+    :content_policy,
+    :no_json_in_response,
+    :output_truncated,
+    :no_provider_for_params,
+    :connection_error
+  ]
+
+  @doc false
+  # Whether a vision verb's error is one another model could avoid (see
+  # `with_fallback_models/3`). Public for VisionBatch and the tests.
+  @spec fallback_reason?(term()) :: boolean()
+  def fallback_reason?({tag, _}) when tag in @fallback_tags, do: true
+
+  def fallback_reason?({:api_error, status})
+      when is_integer(status) and (status >= 500 or status == 408),
+      do: true
+
+  def fallback_reason?(reason)
+      when reason in [
+             :model_not_found,
+             :request_timeout,
+             :rate_limited,
+             :invalid_response_format,
+             :invalid_json_response
+           ],
+      do: true
+
+  def fallback_reason?(_reason), do: false
+
+  # The kind of error only, never its text (a refusal's text can paraphrase the request).
+  defp fallback_tag({tag, _}) when is_atom(tag), do: tag
+  defp fallback_tag({tag, _, _}) when is_atom(tag), do: tag
+  defp fallback_tag(tag) when is_atom(tag), do: tag
+  defp fallback_tag(_reason), do: :error
+
+  @doc false
+  # The summed cost of the vision answers in this process that were billed
+  # but unusable (not the JSON asked for, or cut off) since the last take,
+  # and clears it: see `log_unparsed_answer/5`. `vision_batch/3` reads it
+  # per item; an error tuple has no room for the money it ran up.
+  @spec take_unparsed_cost() :: Decimal.t() | nil
+  def take_unparsed_cost, do: Process.delete(@unparsed_cost_key)
+
+  # What was added to that sum since `before` (a value read earlier), or nil.
+  defp unparsed_cost_since(before) do
+    case Process.get(@unparsed_cost_key) do
+      nil -> nil
+      now when is_nil(before) -> now
+      now -> if Decimal.gt?(now, before), do: Decimal.sub(now, before)
+    end
+  end
+
+  # The cost the call's usage row carries (nil when the call has none, as
+  # for a provider reporting no usage and no price for the model).
+  defp put_cost(result, {:ok, %Request{cost: cost}}) when is_map(result),
+    do: Map.put(result, :cost, cost)
+
+  defp put_cost(result, _logged) when is_map(result), do: Map.put(result, :cost, nil)
 
   # A JSON request answered in prose still cost a provider call. The vision
   # layer hands that answer to `:on_no_json` before returning the error, so
@@ -3101,7 +3333,26 @@ defmodule PhoenixKitAI do
   # A nil `prompt` takes the one the vision layer actually sent.
   defp log_unparsed_answer(opts, endpoint, prompt, images, trace) do
     Keyword.put(opts, :on_no_json, fn raw ->
-      log_image_op_request(endpoint, "vision", prompt || raw[:prompt], images, raw, %{}, trace)
+      # `unparsed: true` keeps the billed-but-unusable answer apart from a
+      # good one in reports (`run_costs/2` counts them).
+      logged =
+        log_image_op_request(
+          endpoint,
+          "vision",
+          prompt || raw[:prompt],
+          images,
+          raw,
+          if(raw[:truncated], do: %{unparsed: true, truncated: true}, else: %{unparsed: true}),
+          trace
+        )
+
+      # The error the verb returns (`{:no_json_in_response, text}`) has no
+      # room for the cost it ran up; `vision_batch/3`, which calls the verb in
+      # this same process, reads it to keep its budget honest.
+      with {:ok, %Request{cost: %Decimal{} = cost}} <- logged,
+           do: Process.put(@unparsed_cost_key, add_costs(Process.get(@unparsed_cost_key), cost))
+
+      logged
     end)
   end
 
@@ -3129,7 +3380,8 @@ defmodule PhoenixKitAI do
       {:ok,
        result
        |> Map.drop([:usage, :latency_ms, :prompt])
-       |> put_request_uuid(:request_uuid, logged)}
+       |> put_request_uuid(:request_uuid, logged)
+       |> put_cost(logged)}
     end
   end
 
@@ -3229,7 +3481,7 @@ defmodule PhoenixKitAI do
   # row either.
   defp cached_row(_endpoint, verb, _model, _row, false) do
     fn value ->
-      {:replace, if(is_map(value), do: Map.put(value, request_uuid_key(verb), nil), else: value)}
+      {:replace, hit_value(value, verb, nil)}
     end
   end
 
@@ -3268,9 +3520,19 @@ defmodule PhoenixKitAI do
           _ -> nil
         end
 
-      {:replace, if(is_map(value), do: Map.put(value, request_uuid_key(verb), uuid), else: value)}
+      {:replace, hit_value(value, verb, uuid)}
     end
   end
+
+  # What a hit hands back: the stored answer naming this hit's row, and —
+  # for a result that carries one — this hit's cost, which is zero, not the
+  # first call's.
+  defp hit_value(value, verb, uuid) when is_map(value) do
+    value = Map.put(value, request_uuid_key(verb), uuid)
+    if Map.has_key?(value, :cost), do: Map.put(value, :cost, Decimal.new(0)), else: value
+  end
+
+  defp hit_value(value, _verb, _uuid), do: value
 
   # A hit's row must never fail the hit: a database error is logged and
   # read as "no row".
@@ -3309,6 +3571,8 @@ defmodule PhoenixKitAI do
     |> maybe_filter_by(:model, Keyword.get(opts, :model))
     |> maybe_filter_by(:source, Keyword.get(opts, :source))
     |> maybe_filter_by(:source_prefix, Keyword.get(opts, :source_prefix))
+    |> maybe_filter_by(:run, Guard.run_tag(Keyword.get(opts, :run)))
+    |> maybe_filter_by(:step, Guard.run_tag(Keyword.get(opts, :step)))
     |> maybe_filter_since(Keyword.get(opts, :since))
     |> maybe_filter_until(Keyword.get(opts, :until))
   end
@@ -3337,6 +3601,13 @@ defmodule PhoenixKitAI do
   defp maybe_filter_by(query, :source, source),
     do: where(query, [r], fragment("?->>'source' = ?", r.metadata, ^source))
 
+  # The rows of one `run:` (and one `step:` of it), as tagged by the call.
+  defp maybe_filter_by(query, :run, run) when is_binary(run),
+    do: where(query, [r], fragment("?->>'run' = ?", r.metadata, ^run))
+
+  defp maybe_filter_by(query, :step, step) when is_binary(step),
+    do: where(query, [r], fragment("?->>'step' = ?", r.metadata, ^step))
+
   # Every source starting with the prefix ("MyApp." counts all of an app's
   # callers); LIKE metacharacters in the prefix are matched literally.
   defp maybe_filter_by(query, :source_prefix, ""), do: query
@@ -3350,7 +3621,16 @@ defmodule PhoenixKitAI do
   # given, so existing cache entries keep their keys.
   defp caller_material(caller_key, opts) do
     base = {:caller_key, caller_key, opts[:schema], opts[:json] == true, opts[:fields]}
-    if opts[:images_as], do: {base, opts[:images_as]}, else: base
+    base = if opts[:images_as], do: {base, opts[:images_as]}, else: base
+
+    # Options that change the answer's shape: a cached answer without regions
+    # or boxes must not serve a call that asks for them. Added only when set,
+    # so existing caller keys keep their entries.
+    case Keyword.take(opts, [:regions, :boxes, :box_format])
+         |> Enum.reject(fn {_, v} -> v in [nil, false] end) do
+      [] -> base
+      shape -> {base, Enum.sort(shape)}
+    end
   end
 
   defp escape_like(text),
@@ -3688,8 +3968,9 @@ defmodule PhoenixKitAI do
         {:ok, response} ->
           {:ok, response}
 
-        # The provider answered and its row is written; only the parse failed.
-        {:error, {:no_json_in_response, _}} = error ->
+        # The provider answered and its row is written; only the parse failed
+        # (or the answer stopped at the output limit).
+        {:error, {tag, _}} = error when tag in [:no_json_in_response, :output_truncated] ->
           error
 
         {:error, reason} ->
@@ -3738,6 +4019,10 @@ defmodule PhoenixKitAI do
       :verify,
       :task,
       :guard_admission,
+      # bookkeeping tags: which run asked, not what is asked
+      :run,
+      :step,
+      :fallback_models,
       # delivery options: how the call is made, not what is asked
       :retry,
       :timeout,
@@ -3769,8 +4054,14 @@ defmodule PhoenixKitAI do
         _ -> nil
       end
 
-    with {:ok, json} <- StructuredOutput.parse(text, true) do
-      {:ok, Map.put(response, "json", json)}
+    # An answer that stopped at the output limit is no answer, even when the
+    # part that came back parses.
+    if Completion.truncated?(response) do
+      {:error, {:output_truncated, text}}
+    else
+      with {:ok, json} <- StructuredOutput.parse(text, true) do
+        {:ok, Map.put(response, "json", json)}
+      end
     end
   end
 
@@ -3827,13 +4118,30 @@ defmodule PhoenixKitAI do
     complete(endpoint_uuid, messages, opts)
   end
 
+  @typedoc """
+  One input of `embed/3`: a text, or an image — `{:image, input}` /
+  `%{image: input}` — optionally with a caption embedded with it
+  (`{:image, input, text}` / `%{image: input, text: text}`). `input` is any
+  `t:PhoenixKitAI.Images.input/0`.
+  """
+  @type embed_input ::
+          String.t()
+          | {:image, PhoenixKitAI.Images.input()}
+          | {:image, PhoenixKitAI.Images.input(), String.t()}
+          | %{required(:image) => PhoenixKitAI.Images.input(), optional(:text) => String.t()}
+
   @doc """
   Makes an embeddings request using a configured endpoint.
 
   ## Parameters
 
   - `endpoint_uuid` - Endpoint UUID string or Endpoint struct
-  - `input` - Text or list of texts to embed
+  - `input` - Text, or a list of texts and images (see `t:embed_input/0`).
+    Images need a multimodal embedding model on the endpoint (on
+    OpenRouter e.g. `google/gemini-embedding-2`,
+    `voyageai/voyage-multimodal-3.5`); they are checked like the image
+    verbs' inputs (bytes are sent as a data URL, an http(s) URL is passed
+    through after the host check), and a text model answers them with an error
   - `opts` - Optional parameter overrides
 
   ## Options
@@ -3857,19 +4165,28 @@ defmodule PhoenixKitAI do
         source: "SemanticSearch"
       )
 
+      # Images, and an image with its caption, in one call
+      {:ok, %{"data" => [photo, captioned], "space" => space}} =
+        PhoenixKitAI.embed(endpoint_uuid, [{:image, jpeg}, {:image, png, "red leather sofa"}])
+
   ## Returns
 
-  - `{:ok, response}` - Response with embeddings
+  - `{:ok, response}` - Response with embeddings, in the order given, plus
+    `"space"` — `"<model>:<dimensions>"`: vectors are comparable only
+    within one space, so store it next to them — and `"cost"`, the
+    logged cost in dollars (a `Decimal`; nil when no price is known or
+    under `request_log_mode: :async`, where the row is not written yet)
   - `{:error, reason}` - Error atom or tagged tuple.
   """
-  @spec embed(String.t() | Endpoint.t(), String.t() | list(String.t()), keyword()) ::
+  @spec embed(String.t() | Endpoint.t(), embed_input() | [embed_input()], keyword()) ::
           {:ok, map()} | {:error, term()}
   def embed(endpoint_uuid, input, opts \\ []) do
     # `models:` is an OpenRouter chat option; an embedding never sends it
     opts = opts |> call_model_opts() |> Keyword.delete(:models)
 
     with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
-         {:ok, admission} <- authorize(endpoint, opts, :embed, []) do
+         {:ok, admission} <- authorize(endpoint, opts, :embed, []),
+         {:ok, input} <- prepare_embed_input(input, opts) do
       # A call's `model:` is the model sent, checked, cached and logged.
       endpoint = with_call_model(endpoint, opts)
       # Capture caller info (source + stacktrace + context)
@@ -4206,9 +4523,10 @@ defmodule PhoenixKitAI do
          _type,
          _prompt,
          _images,
-         {:no_json_in_response, _},
+         {tag, _},
          _trace
-       ),
+       )
+       when tag in [:no_json_in_response, :output_truncated],
        do: :ok
 
   defp log_failed_unless_input_error(endpoint, type, prompt, images, reason, trace) do
@@ -4237,7 +4555,9 @@ defmodule PhoenixKitAI do
       source: opts[:source],
       user_uuid: opts[:user_uuid],
       capture_request_content: opts[:capture_request_content],
-      task: opts[:task]
+      task: opts[:task],
+      run: opts[:run],
+      step: opts[:step]
     ]
 
     case compare_images(checker, original, data, check_opts) do
@@ -4252,15 +4572,44 @@ defmodule PhoenixKitAI do
   Asks a vision-capable endpoint about `images`: free text, or a parsed
   JSON object with `schema:` / `json: true`. See `PhoenixKitAI.Images.describe/3`.
   Logged as a `"vision"` request.
+
+  The result carries `truncated: true` when the answer stopped at the output
+  limit (`max_tokens`); a JSON request whose answer was cut off is
+  `{:error, {:output_truncated, text}}` instead — billed, logged, never a
+  half answer.
+
+  `fallback_models: [model, ...]` tries the next model when a call fails for
+  a reason another model could avoid: a safety block (`{:content_policy, _}`),
+  an answer that is not the JSON asked for or was cut off, a provider outage
+  (5xx, timeout, rate limit), or a model or parameters the provider cannot
+  serve. Each attempt is a full call (gate, cache, usage row) with `model:`
+  set to that model; a refusal (caps, limits, blocks, an unfit model), a bad
+  key or balance, or a caller's input error never falls back. The answer
+  lists the failed attempts in `:fallbacks` (`[%{model, error}]`, the error
+  as its tag only).
   """
   @spec describe_image(
           String.t() | Endpoint.t(),
           [PhoenixKitAI.Images.input()] | PhoenixKitAI.Images.input(),
           keyword()
         ) ::
-          {:ok, %{text: String.t() | nil, json: map() | nil, model: String.t() | nil}}
+          {:ok,
+           %{
+             required(:text) => String.t() | nil,
+             required(:json) => map() | list() | nil,
+             required(:model) => String.t() | nil,
+             optional(:truncated) => boolean(),
+             optional(:regions) => [map()],
+             optional(:dropped_regions) => non_neg_integer(),
+             optional(:request_uuid) => String.t() | nil,
+             optional(:cost) => Decimal.t() | nil,
+             optional(:fallbacks) => [%{model: String.t() | nil, error: atom()}]
+           }}
           | {:error, term()}
-  def describe_image(endpoint_uuid, images, opts \\ []) do
+  def describe_image(endpoint_uuid, images, opts \\ []),
+    do: with_fallback_models(endpoint_uuid, opts, &do_describe_image(endpoint_uuid, images, &1))
+
+  defp do_describe_image(endpoint_uuid, images, opts) do
     images = List.wrap(images)
 
     with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
@@ -4310,7 +4659,9 @@ defmodule PhoenixKitAI do
   reading order with typed blocks, the language, a legibility score and
   any named `fields:` the caller asked for. See
   `PhoenixKitAI.Images.extract_text/3` for the options. Logged as a
-  `"vision"` request; `cache:` and the spend caps apply.
+  `"vision"` request; `cache:` and the spend caps apply. A cut-off answer
+  is `{:error, {:output_truncated, text}}`; `fallback_models:` works as on
+  `describe_image/3`.
 
       {:ok, %{text: text, fields: %{"ean" => ean}}} =
         PhoenixKitAI.extract_text(endpoint_uuid, label_jpeg,
@@ -4323,6 +4674,9 @@ defmodule PhoenixKitAI do
         ) ::
           {:ok,
            %{
+             optional(:request_uuid) => String.t() | nil,
+             optional(:cost) => Decimal.t() | nil,
+             optional(:fallbacks) => [%{model: String.t() | nil, error: atom()}],
              text: String.t(),
              blocks: [map()],
              language: String.t() | nil,
@@ -4333,7 +4687,10 @@ defmodule PhoenixKitAI do
              model: String.t() | nil
            }}
           | {:error, term()}
-  def extract_text(endpoint_uuid, images, opts \\ []) do
+  def extract_text(endpoint_uuid, images, opts \\ []),
+    do: with_fallback_models(endpoint_uuid, opts, &do_extract_text(endpoint_uuid, images, &1))
+
+  defp do_extract_text(endpoint_uuid, images, opts) do
     images = List.wrap(images)
 
     with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
@@ -4380,7 +4737,8 @@ defmodule PhoenixKitAI do
   @doc """
   Checks an edited image against its original with a vision endpoint:
   same subject, text and logos intact, unwanted changes. See
-  `PhoenixKitAI.Images.compare/4`. Logged as a `"vision"` request.
+  `PhoenixKitAI.Images.compare/4`. `fallback_models:` works as on
+  `describe_image/3`. Logged as a `"vision"` request.
   """
   @spec compare_images(
           String.t() | Endpoint.t(),
@@ -4389,7 +4747,15 @@ defmodule PhoenixKitAI do
           keyword()
         ) ::
           {:ok, map()} | {:error, term()}
-  def compare_images(endpoint_uuid, before, after_image, opts \\ []) do
+  def compare_images(endpoint_uuid, before, after_image, opts \\ []),
+    do:
+      with_fallback_models(
+        endpoint_uuid,
+        opts,
+        &do_compare_images(endpoint_uuid, before, after_image, &1)
+      )
+
+  defp do_compare_images(endpoint_uuid, before, after_image, opts) do
     with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
          {:ok, admission} <-
            authorize(endpoint, opts, :compare_images, Guard.implied_needs(:compare_images, opts)) do
@@ -4426,6 +4792,363 @@ defmodule PhoenixKitAI do
       end
     end
   end
+
+  @doc """
+  Finds things in images and says where they are: every visible instance of
+  each of `labels` (a list of words — `["logo", "price tag"]`, a person's
+  name, a part of a car — or `nil` for every notable thing), each with a
+  `PhoenixKitAI.Box`. Options go fourth: a keyword list passed as `labels`
+  is refused with `{:error, :labels_look_like_options}`.
+
+      {:ok, %{regions: [%{label: "logo", box: box, image: 1} | _]}} =
+        PhoenixKitAI.detect_regions(endpoint_uuid, photo, ["logo"])
+
+  Returns `{:ok, %{regions: [%{label, description, box, image, confidence}],
+  dropped_regions, model, request_uuid, cost}}`. `image` is which image the
+  region is on (1 = the first). An empty list is a valid answer. Entries
+  whose box the model got wrong in shape are left out and counted in
+  `dropped_regions`. The boxes are read in the format the answering model
+  writes (`PhoenixKitAI.Box.format_for/2`; a call's `box_format:` wins).
+
+  It is `describe_image/3` with its own prompt and schema, so it takes the
+  same options (`model:`, `task:`, `user_uuid:`, `cache:`, `run:`, `step:`,
+  sampling) plus `instructions:` — extra wording for the prompt. Logged as a
+  `"vision"` request. How exact the boxes are depends a lot on the model:
+  some place them well, others answer with boxes that are nowhere near the
+  thing, so check a model on your own images before relying on it.
+  """
+  @spec detect_regions(
+          String.t() | Endpoint.t(),
+          [PhoenixKitAI.Images.input()] | PhoenixKitAI.Images.input(),
+          [String.t() | atom()] | String.t() | nil,
+          keyword()
+        ) :: {:ok, map()} | {:error, term()}
+  def detect_regions(endpoint_uuid, images, labels \\ nil, opts \\ []) do
+    images = List.wrap(images)
+
+    with {:ok, labels} <- region_labels(labels) do
+      describe_opts =
+        opts
+        |> Keyword.drop([:instructions, :regions, :question, :json, :schema])
+        |> Keyword.put(
+          :prompt,
+          Regions.detect_prompt(labels, length(images), opts[:instructions])
+        )
+        |> Keyword.put(:schema, Regions.detect_schema(labels))
+
+      with {:ok, result} <- describe_image(endpoint_uuid, images, describe_opts) do
+        {regions, dropped} =
+          Regions.parse_regions(
+            (result.json || %{})["regions"],
+            result.model,
+            length(images),
+            opts
+          )
+
+        {:ok,
+         %{
+           regions: regions,
+           dropped_regions: dropped,
+           model: result.model,
+           request_uuid: result[:request_uuid],
+           cost: result[:cost]
+         }
+         |> put_fallbacks(result)}
+      end
+    end
+  end
+
+  defp put_fallbacks(map, %{fallbacks: f}), do: Map.put(map, :fallbacks, f)
+  defp put_fallbacks(map, _result), do: map
+
+  defp region_labels(nil), do: {:ok, nil}
+  defp region_labels([{key, _} | _]) when is_atom(key), do: {:error, :labels_look_like_options}
+  defp region_labels(label) when is_binary(label), do: region_labels([label])
+
+  defp region_labels(labels) when is_list(labels) do
+    if Enum.all?(labels, &(is_binary(&1) or (is_atom(&1) and not is_nil(&1)))),
+      do: {:ok, labels |> Enum.map(&to_string/1) |> Enum.reject(&(&1 == "")) |> Enum.uniq()},
+      else: {:error, :invalid_labels}
+  end
+
+  defp region_labels(_labels), do: {:error, :invalid_labels}
+
+  @doc """
+  Checks statements against images: for each one, do the images support
+  it, contradict it, or not show enough to say? Use it to check text
+  written about a picture before it is published — a product listing
+  against its photos, an AI-written description against its image, a
+  report against the photos attached to it.
+
+      {:ok, %{results: [%{verdict: :contradicted, evidence: evidence} | _]}} =
+        PhoenixKitAI.check_statements(endpoint_uuid, ["The sofa is red leather"], photo)
+
+  `statements` is a list of texts, or of `%{id: id, text: text}` /
+  `{id, text}` to keep your own ids (else the 1-based position is the id).
+
+  Returns `{:ok, %{results: [%{id, statement, verdict, evidence, image, box,
+  answered}], counts: %{supported, contradicted, insufficient}, model,
+  request_uuid, cost}}` with `verdict` one of `:supported`, `:contradicted`,
+  `:insufficient`; `image` and `box` point at the deciding detail (nil for
+  insufficient). A statement the model skipped is `:insufficient` with
+  `answered: false`.
+
+  The prompt tells the model to judge substance, not wording, because a
+  strict model otherwise rejects true statements over technicalities. A
+  verdict is still a model's reading: treat `:contradicted` as "look at
+  this", not as proof. Options as `describe_image/3`, plus
+  `instructions:`. Logged as a `"vision"` request.
+
+  A `:contradicted` verdict must name the image that shows it; one that
+  names none is reported as `:insufficient` with `downgraded:
+  :no_evidence_image`. A single check can flip a true statement, so
+  `confirm:` asks again about every contradicted statement — `true` on the
+  same images, or a list of other images — and keeps the verdict only when
+  the second check agrees (`confirmed: true`); otherwise it becomes
+  `:insufficient` with `unconfirmed: true`. Both checks' evidence is kept
+  (`evidence`, `confirm_evidence`), `cost` is the sum, the second call's row
+  is `confirm_request_uuid`. The second check bypasses the cache, and a
+  downgraded verdict is not asked again. When the second check fails,
+  every contradicted verdict becomes unconfirmed `:insufficient`,
+  `confirm_error` names the kind of failure, and any billed cost is still
+  added. Any other `confirm:` value is `{:error, :invalid_confirm}`.
+  Planted false statements are a cheap way to see
+  whether a model is honest enough before trusting its `:supported`.
+  """
+  @spec check_statements(
+          String.t() | Endpoint.t(),
+          [String.t() | {term(), String.t()} | %{id: term(), text: String.t()}],
+          [PhoenixKitAI.Images.input()] | PhoenixKitAI.Images.input(),
+          keyword()
+        ) :: {:ok, map()} | {:error, term()}
+  def check_statements(endpoint_uuid, statements, images, opts \\ []) do
+    {confirm, opts} = Keyword.pop(opts, :confirm)
+
+    with :ok <- valid_confirm(confirm),
+         {:ok, first} <- do_check_statements(endpoint_uuid, statements, images, opts) do
+      confirm_contradictions(endpoint_uuid, first, images, confirm, opts)
+    end
+  end
+
+  # `confirm:` — a contradiction stands only when a second, independent check
+  # agrees: `true` asks again on the same images, a list of images asks on
+  # those. One that the second check does not contradict becomes
+  # `:insufficient` with `unconfirmed: true`; one it does gets `confirmed: true`.
+  defp confirm_contradictions(_endpoint_uuid, first, _images, confirm, _opts)
+       when confirm in [nil, false],
+       do: {:ok, first}
+
+  defp confirm_contradictions(endpoint_uuid, first, images, confirm, opts) do
+    contradicted =
+      first.results
+      |> Enum.with_index()
+      |> Enum.filter(fn {r, _} -> r.verdict == :contradicted end)
+
+    confirm_images = if confirm == true, do: images, else: confirm
+
+    if contradicted == [] do
+      {:ok, first}
+    else
+      # Re-asked by position (ids may repeat), and never from the cache: an
+      # identical second request would otherwise be the first answer again.
+      again = Enum.map(contradicted, fn {r, i} -> %{id: i, text: r.statement} end)
+      opts = Keyword.put(opts, :cache, false)
+      before = Process.get(@unparsed_cost_key)
+
+      case do_check_statements(endpoint_uuid, again, confirm_images, opts) do
+        {:ok, second} ->
+          {:ok, merge_confirmation(first, second)}
+
+        # The second check failed: nothing is confirmed, so nothing stays
+        # contradicted; an unusable answer it was billed for still counts.
+        {:error, reason} ->
+          {:ok,
+           first
+           |> drop_unconfirmed(reason)
+           |> Map.update(:cost, nil, &add_costs(&1, unparsed_cost_since(before)))}
+      end
+    end
+  end
+
+  defp merge_confirmation(first, second) do
+    # `second`'s ids are the positions of the re-asked statements in `first`.
+    by_index = Map.new(second.results, &{&1.id, &1})
+
+    results =
+      first.results
+      |> Enum.with_index()
+      |> Enum.map(fn {r, i} -> confirm_one(r, by_index[i]) end)
+
+    Map.merge(first, %{
+      results: results,
+      counts: verdict_counts(results),
+      cost: add_costs(first[:cost], second[:cost]),
+      confirm_request_uuid: second[:request_uuid]
+    })
+  end
+
+  defp confirm_one(%{verdict: :contradicted} = r, %{verdict: :contradicted} = s),
+    do: Map.merge(r, %{confirmed: true, confirm_evidence: s.evidence})
+
+  defp confirm_one(%{verdict: :contradicted} = r, s),
+    do:
+      Map.merge(r, %{verdict: :insufficient, unconfirmed: true, confirm_evidence: s && s.evidence})
+
+  defp confirm_one(r, _s), do: r
+
+  defp drop_unconfirmed(first, reason) do
+    results =
+      Enum.map(first.results, fn
+        %{verdict: :contradicted} = r ->
+          Map.merge(r, %{verdict: :insufficient, unconfirmed: true})
+
+        r ->
+          r
+      end)
+
+    # Only the kind of failure: a provider's text can paraphrase the request.
+    Map.merge(first, %{
+      results: results,
+      counts: verdict_counts(results),
+      confirm_error: fallback_tag(reason)
+    })
+  end
+
+  defp valid_confirm(c) when c in [nil, false, true], do: :ok
+  defp valid_confirm([_ | _]), do: :ok
+  defp valid_confirm(_other), do: {:error, :invalid_confirm}
+
+  defp add_costs(nil, b), do: b
+  defp add_costs(a, nil), do: a
+  defp add_costs(a, b), do: Decimal.add(a, b)
+
+  defp do_check_statements(endpoint_uuid, statements, images, opts) do
+    images = List.wrap(images)
+
+    with {:ok, statements} <- normalize_statements(statements) do
+      describe_opts =
+        opts
+        |> Keyword.drop([:instructions, :regions, :question, :json, :schema])
+        |> Keyword.put(
+          :prompt,
+          Regions.statements_prompt(
+            Enum.map(statements, & &1.text),
+            length(images),
+            opts[:instructions]
+          )
+        )
+        |> Keyword.put(:schema, Regions.statements_schema())
+
+      with {:ok, result} <- describe_image(endpoint_uuid, images, describe_opts) do
+        results =
+          Regions.parse_statements(result.json, statements, result.model, length(images), opts)
+
+        counts = verdict_counts(results)
+
+        {:ok,
+         %{
+           results: results,
+           counts: counts,
+           model: result.model,
+           request_uuid: result[:request_uuid],
+           cost: result[:cost]
+         }
+         |> put_fallbacks(result)}
+      end
+    end
+  end
+
+  defp verdict_counts(results) do
+    Enum.reduce(results, %{supported: 0, contradicted: 0, insufficient: 0}, fn r, acc ->
+      Map.update!(acc, r.verdict, &(&1 + 1))
+    end)
+  end
+
+  defp normalize_statements([]), do: {:error, :empty_input}
+
+  defp normalize_statements(list) when is_list(list) do
+    list
+    |> Enum.with_index(1)
+    |> Enum.reduce_while({:ok, []}, fn
+      {text, i}, {:ok, acc} when is_binary(text) and text != "" ->
+        {:cont, {:ok, [%{id: i, text: text} | acc]}}
+
+      {{id, text}, _i}, {:ok, acc} when is_binary(text) and text != "" ->
+        {:cont, {:ok, [%{id: id, text: text} | acc]}}
+
+      {%{text: text} = s, i}, {:ok, acc} when is_binary(text) and text != "" ->
+        {:cont, {:ok, [%{id: Map.get(s, :id, i), text: text} | acc]}}
+
+      _other, _acc ->
+        {:halt, {:error, :invalid_statements}}
+    end)
+    |> case do
+      {:ok, list} -> {:ok, Enum.reverse(list)}
+      error -> error
+    end
+  end
+
+  defp normalize_statements(_other), do: {:error, :invalid_statements}
+
+  @doc """
+  Runs one vision verb over many items — describing, reading or locating
+  a folder of product photos, the pages of an import, a night's uploads —
+  with a result per item. See `PhoenixKitAI.VisionBatch` for how it stops.
+
+      {:ok, %{items: items, cost: cost, stopped: nil}} =
+        PhoenixKitAI.vision_batch(endpoint_uuid, [%{id: 1, images: jpeg}, %{id: 2, images: png}],
+          verb: :extract_text, concurrency: 8, budget: "2.00")
+
+  An item is `%{id: id, images: images}` (plus an item's own `:prompt` —
+  the prompt for `:describe_image`, extra `instructions:` for the other
+  verbs — `:labels` for `:detect_regions`, `:statements` for
+  `:check_statements`, `:opts` for that call), `{id, images}`, or the
+  images alone (id = its index).
+
+  Options: `verb:` — `:describe_image` (default), `:extract_text`,
+  `:detect_regions` or `:check_statements`; `concurrency:` (default 4, at
+  most 32); `budget:` — dollars (`Decimal` or decimal string) after which
+  no new item starts; `item_timeout:` (ms, default 300 000); `labels:` for
+  `:detect_regions`; `run:` / `step:` tags; `group:` (2–8, `:describe_image`
+  only) — ask that many items in one call, so the prompt travels once: the
+  answer has one entry per item (the item's `schema:`, or text), the call's
+  cost is shared equally, an item the answer leaves out (or answers twice,
+  or in the wrong shape) is `{:error, :missing_in_group}` and keeps its
+  share, a group closes early rather than carry more image bytes than one
+  call may, and items with their own `prompt:` or
+  `opts:` still run alone; every other option is passed to each call
+  (`prompt:`, `schema:`, `model:`, `fallback_models:`, `task:`,
+  `user_uuid:`, …). `concurrency:` is the batch's own, so the
+  `PhoenixKitAI.Limiter` option of that name cannot be passed through; set
+  the limiter per provider in config. A caller `cache: [key: …]` is one key
+  for every item, so every item would get the first item's answer: leave
+  the key to the default, which hashes each item's images.
+
+  Returns `{:ok, %{run, verb, items: [%{id, status, result, error, cost}],
+  cost, counts: %{ok, error, unparsed, skipped}, stopped}}`: `status` is
+  `:ok`, `:error`, `:unparsed` (the model answered without valid JSON —
+  billed, no result) or `:skipped` (not started after the batch stopped);
+  `stopped` is nil, `:budget`, or `{:error, reason}` for a refusal every
+  later item would hit. `cost` sums the items' costs, unparsed answers and
+  billed fallback attempts included; `run_costs/2` on `run` totals the
+  journal rows. A call that times out (`item_timeout:`) may still be billed
+  by the provider: its cost is unknown here, and the provider's own row, if
+  any, is the only record.
+  """
+  @spec vision_batch(String.t() | Endpoint.t(), list(), keyword()) ::
+          {:ok, PhoenixKitAI.VisionBatch.t()} | {:error, term()}
+  def vision_batch(endpoint_uuid, items, opts \\ []),
+    do: PhoenixKitAI.VisionBatch.run(endpoint_uuid, items, opts)
+
+  @doc """
+  What one run cost: the totals of every usage row tagged with `run:` —
+  in all, per `step:` and per model. See `PhoenixKitAI.Runs.costs/2`.
+
+      {:ok, %{total: %{cost: cost, calls: calls}, by_step: steps}} =
+        PhoenixKitAI.run_costs("import-2026-10-27", since: started_at)
+  """
+  @spec run_costs(term(), keyword()) :: {:ok, PhoenixKitAI.Runs.t()} | {:error, :invalid_run}
+  def run_costs(run, opts \\ []), do: PhoenixKitAI.Runs.costs(run, opts)
 
   @doc """
   The image models the endpoint's provider offers, with what each accepts
@@ -5281,6 +6004,7 @@ defmodule PhoenixKitAI do
        ) do
     usage = Completion.extract_usage(response)
     input_count = if is_list(input), do: length(input), else: 1
+    image_count = if is_list(input), do: Enum.count(input, &embed_image_item?/1), else: 0
 
     {cost, cost_metadata} = call_cost(endpoint, response, usage, 0)
 
@@ -5300,6 +6024,7 @@ defmodule PhoenixKitAI do
           %{
             input_count: input_count,
             dimensions: endpoint.dimensions,
+            image_count: image_count,
             # Debug context (source tracking)
             source: source,
             stacktrace: stacktrace,

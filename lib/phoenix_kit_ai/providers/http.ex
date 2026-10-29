@@ -91,12 +91,19 @@ defmodule PhoenixKitAI.Providers.HTTP do
   message}`, so pipelines can stop retrying instead of looping on a
   generic `{:api_error, 400}`.
   """
+  @account_words ~r/api[ _-]?key|account|billing|quota|credit|balance|payment|subscription|unauthori[sz]ed|forbidden key/i
+
   @spec error(non_neg_integer(), term()) :: {:error, term()}
   def error(status, body) do
     text = body_string(body)
 
+    # A recognised account error (an exhausted balance, a rate limit, an
+    # unknown model) is never a safety refusal, whatever words it uses; and a
+    # message about the key, account, billing or quota is not one either.
     with true <- status in [400, 403, 422],
+         nil <- ProviderError.class(status, ProviderError.parse(text)),
          message when is_binary(message) <- Completion.extract_error_message(text),
+         false <- Regex.match?(@account_words, message),
          true <-
            Regex.match?(
              ~r/safety|content[ _-]?policy|moderat|blocked|prohibited|violat/i,

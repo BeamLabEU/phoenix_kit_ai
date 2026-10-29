@@ -49,7 +49,7 @@ defmodule PhoenixKitAI.OpenRouterClient do
   #     config :phoenix_kit_ai, embedding_models: [
   #       %{"id" => "custom/model", "name" => "Custom", ...}
   #     ]
-  @embedding_models_last_updated "2026-03-24"
+  @embedding_models_last_updated "2026-10-27"
 
   @doc """
   Validates an OpenRouter API key by making a request to the /models endpoint.
@@ -443,6 +443,36 @@ defmodule PhoenixKitAI.OpenRouterClient do
         "context_length" => 8192,
         "dimensions" => 4096,
         "pricing" => %{"prompt" => 0.00000002, "completion" => 0}
+      },
+      # Multimodal: these also embed images (`PhoenixKitAI.embed/3` with
+      # `{:image, input}`), into the same space as their text.
+      %{
+        "id" => "google/gemini-embedding-2",
+        "name" => "Gemini Embedding 2",
+        "description" => "Google's multimodal embedding model (text and images in one space)",
+        "context_length" => 8192,
+        "dimensions" => 3072,
+        "input_modalities" => ["text", "image"],
+        "pricing" => %{"prompt" => 0.0000002, "completion" => 0}
+      },
+      %{
+        "id" => "voyageai/voyage-multimodal-3.5",
+        "name" => "Voyage Multimodal 3.5",
+        "description" => "Voyage AI's multimodal embedding model (text and images)",
+        "context_length" => 32_000,
+        "dimensions" => 1024,
+        "input_modalities" => ["text", "image"],
+        "pricing" => %{"prompt" => 0.00000012, "completion" => 0}
+      },
+      %{
+        "id" => "nvidia/llama-nemotron-embed-vl-1b-v2:free",
+        "name" => "Llama Nemotron Embed VL 1B v2 (free)",
+        "description" =>
+          "NVIDIA's free multimodal embedding model (text and images; free-tier rate limits)",
+        "context_length" => 131_072,
+        "dimensions" => 2048,
+        "input_modalities" => ["text", "image"],
+        "pricing" => %{"prompt" => 0, "completion" => 0}
       }
     ]
   end

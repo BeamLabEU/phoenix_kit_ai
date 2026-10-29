@@ -32,6 +32,8 @@ defmodule PhoenixKitAI.Completion do
     ProviderError
   }
 
+  alias PhoenixKitAI.Providers.HTTP
+
   @timeout 120_000
   @retry_statuses [408, 429, 500, 502, 503, 504]
   @retry_defaults [max_attempts: 3, base_delay: 1_000, max_delay: 30_000, retry_timeouts: false]
@@ -116,10 +118,10 @@ defmodule PhoenixKitAI.Completion do
 
     case Limiter.run(endpoint, opts, fn -> http_post(url, headers, body, opts) end) do
       {:ok, %{status_code: 200, body: response_body}} ->
-        response_body |> parse_success_response(start_time) |> with_sent_params(body)
+        response_body |> parse_success_response(start_time, opts) |> with_sent_params(body)
 
       {:ok, %{status_code: status, body: response_body}} ->
-        status |> handle_error_status(response_body) |> with_sent_params(body)
+        status |> error_status(response_body, opts) |> with_sent_params(body)
 
       {:error, reason} when reason in [:concurrency_limit_timeout, :concurrency_queue_full] ->
         {:error, reason}
@@ -133,7 +135,18 @@ defmodule PhoenixKitAI.Completion do
     end
   end
 
-  defp parse_success_response(response_body, start_time) do
+  # Vision calls ask for safety refusals to be told apart (`safety_errors:
+  # true`, set by the vision adapter): a 400/403/422 whose message reads as
+  # one is `{:content_policy, message}`, as the image adapters report it,
+  # so a caller can move to another model. Plain chat keeps the generic
+  # mapping its callers (and their retry rules) rely on.
+  defp error_status(status, response_body, opts) do
+    if Keyword.get(opts, :safety_errors) == true,
+      do: HTTP.error(status, response_body),
+      else: handle_error_status(status, response_body)
+  end
+
+  defp parse_success_response(response_body, start_time, opts \\ []) do
     latency_ms = System.monotonic_time(:millisecond) - start_time
 
     case Jason.decode(response_body) do
@@ -144,7 +157,7 @@ defmodule PhoenixKitAI.Completion do
       # would replay it.
       {:ok, %{"error" => %{"code" => code}} = response}
       when not is_map_key(response, "choices") ->
-        error_in_body(code, response_body)
+        error_in_body(code, response_body, opts)
 
       {:ok, response} ->
         {:ok, Map.put(response, "latency_ms", latency_ms)}
@@ -154,8 +167,21 @@ defmodule PhoenixKitAI.Completion do
     end
   end
 
-  defp error_in_body(code, body) when is_integer(code), do: handle_error_status(code, body)
-  defp error_in_body(_code, _body), do: {:error, :invalid_response_format}
+  defp error_in_body(code, body, opts) when is_integer(code), do: error_status(code, body, opts)
+  defp error_in_body(_code, _body, _opts), do: {:error, :invalid_response_format}
+
+  @doc """
+  Whether a chat-shaped answer stopped at the output limit: the first
+  choice's `finish_reason` is `"length"` (OpenAI's, OpenRouter's and most
+  compatible providers' word for it) or `"max_tokens"` (Anthropic's).
+  """
+  @spec truncated?(map()) :: boolean()
+  # Compared case-insensitively: Gemini's OpenAI-compatible surface
+  # reports "MAX_TOKENS".
+  def truncated?(%{"choices" => [%{"finish_reason" => reason} | _]}) when is_binary(reason),
+    do: String.downcase(reason) in ["length", "max_tokens"]
+
+  def truncated?(_response), do: false
 
   @doc false
   # Public for testability. Maps an HTTP status + response body to a

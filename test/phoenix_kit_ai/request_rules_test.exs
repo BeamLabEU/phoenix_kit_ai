@@ -525,8 +525,12 @@ defmodule PhoenixKitAI.RequestRulesTest do
 
       assert {:error, {:no_provider_for_params, []}} = Completion.handle_error_status(404, body)
 
-      other = Jason.encode!(%{"error" => %{"message" => "Model not found"}})
+      other = Jason.encode!(%{"error" => %{"message" => "Not Found"}})
       assert {:error, {:api_error, 404}} = Completion.handle_error_status(404, other)
+
+      # A model the provider does not serve has its own reason (`ProviderError.class/2`).
+      missing = Jason.encode!(%{"error" => %{"message" => "Model not found"}})
+      assert {:error, :model_not_found} = Completion.handle_error_status(404, missing)
     end
   end
 

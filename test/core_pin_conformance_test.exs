@@ -12,8 +12,9 @@ defmodule PhoenixKitAI.CorePinConformanceTest do
   outright, with no degraded mode. Nothing else in this repo's own test run
   would notice, which is why the check is a test rather than a convention.
 
-  The floor is 2.64: V223 stores request costs as decimal dollars and removes
-  the legacy account reference. The optional `PhoenixKit.Module.oban_crons/0`
+  The floor is 2.65, the first core with the `file_references/0` and
+  `expected_schema/0` callbacks; it also carries V223, which stores request
+  costs as decimal dollars and removes the legacy account reference. The optional `PhoenixKit.Module.oban_crons/0`
   callback ships in 2.63 and schedules guard-event pruning. Activity logging and actor
   resolution also require at least 2.38. Core 1.7 is excluded as well: core 2.0.0 squashed the migration chain
   to a V135 floor.

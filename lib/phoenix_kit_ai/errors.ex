@@ -55,6 +55,38 @@ defmodule PhoenixKitAI.Errors do
   def message(:invalid_response_format), do: gettext("Invalid response format")
   def message(:invalid_image_input), do: gettext("Invalid image input")
 
+  def message(:invalid_embedding_input),
+    do: gettext("Embedding input must be text or an image")
+
+  def message(:invalid_statements),
+    do: gettext("Statements must be a list of texts")
+
+  def message(:invalid_batch_items), do: gettext("Batch items must be a list")
+  def message(:invalid_labels), do: gettext("Labels must be a list of words")
+  def message(:invalid_run), do: gettext("A run must be named with a text")
+  def message(:item_timeout), do: gettext("The item took too long and was stopped")
+
+  def message(:labels_look_like_options),
+    do: gettext("Labels must be a list of words; pass options as the fourth argument")
+
+  def message(:invalid_fallback_models),
+    do: gettext("Fallback models must be a list of model ids")
+
+  def message(:invalid_confirm), do: gettext("confirm: must be true or a list of images")
+
+  def message({:unsupported_option, :group, reason}),
+    do: gettext("A batch cannot group items here (%{reason})", reason: inspect(reason))
+
+  def message(:missing_in_group),
+    do: gettext("The answer for this item was missing from its group's answer")
+
+  def message({:item_exit, _tag}), do: gettext("The item failed with an internal error")
+  def message({:invalid_budget, _reason}), do: gettext("The budget must be an amount in dollars")
+  def message({:exception, _kind}), do: gettext("The item failed with an internal error")
+
+  def message({:unsupported_batch_verb, verb}),
+    do: gettext("A batch cannot run %{verb}", verb: inspect(verb))
+
   # The model answered with prose (usually a refusal) instead of an image.
   # The prose travels in the tuple so the request log keeps the reason;
   # the user-facing message stays generic.
@@ -129,6 +161,10 @@ defmodule PhoenixKitAI.Errors do
   end
 
   def message({:no_json_in_response, _text}), do: gettext("The model did not answer with JSON")
+
+  def message({:output_truncated, _text}),
+    do:
+      gettext("The answer was cut off at the output limit; allow more output tokens (max_tokens)")
 
   def message({:model_not_listed, model}) do
     gettext("The provider's model list does not include %{model}", model: model)

@@ -96,9 +96,24 @@ defmodule PhoenixKitAI.ProviderError do
     cond do
       field(error, ["metadata", "limit_source"]) == "openrouter_in_flight_budget" -> :rate_limited
       money?(status, error) -> :insufficient_credits
+      unknown_model?(status, error) -> :model_not_found
       true -> nil
     end
   end
+
+  # A model id the provider does not serve (misspelled, or retired since the
+  # endpoint was set up): OpenRouter answers 400 "… is not a valid model ID",
+  # others 404 "model … not found" / "does not exist".
+  defp unknown_model?(status, error) when status in [400, 404] do
+    message = if is_binary(error["message"]), do: error["message"], else: ""
+
+    field(error, ["code"]) in ["model_not_found", "invalid_model"] or
+      (message =~
+         ~r/not a valid model|\bmodel\b.{0,80}?\b(not found|does not exist|doesn't exist)|no such model|unknown model/i and
+         not (message =~ ~r/account|billing|quota|credit|balance|payment|key/i))
+  end
+
+  defp unknown_model?(_status, _error), do: false
 
   defp money?(status, error) do
     code_string(field(error, ["code"])) in @zai_money or

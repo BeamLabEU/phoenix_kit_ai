@@ -57,7 +57,7 @@ defmodule PhoenixKitAI.Images do
   import Bitwise
 
   alias PhoenixKitAI.{Completion, Endpoint, Provider, StructuredOutput}
-  alias PhoenixKitAI.Images.{ImageModel, ImageModels, Operations}
+  alias PhoenixKitAI.Images.{ImageModel, ImageModels, Operations, Regions}
   alias PhoenixKitAI.Providers.{HTTP, OpenAICompatible}
 
   @request_options ~w(aspect_ratio resolution size quality background output_format output_compression n seed response_format style mask)a
@@ -100,6 +100,7 @@ defmodule PhoenixKitAI.Images do
           | {:capabilities_unavailable, term()}
           | {:no_image_in_response, String.t() | nil}
           | {:no_json_in_response, String.t() | nil}
+          | {:output_truncated, String.t() | nil}
           | {:content_policy, String.t()}
           | atom()
           | {atom(), term()}
@@ -136,8 +137,7 @@ defmodule PhoenixKitAI.Images do
 
   def normalize_inputs(images, opts) when is_list(images) do
     max = Keyword.get(opts, :max_input_bytes, HTTP.max_image_bytes())
-    # All inputs together may take four times one image's allowance.
-    total_max = Keyword.get(opts, :max_total_input_bytes, max * 4)
+    total_max = max_total_input_bytes(opts)
 
     images
     |> Enum.reduce_while({:ok, [], 0}, fn image, {:ok, acc, total} ->
@@ -154,6 +154,21 @@ defmodule PhoenixKitAI.Images do
   end
 
   def normalize_inputs(_other, _opts), do: {:error, :invalid_image_input}
+
+  @doc false
+  # All inputs of one call together may take four times one image's allowance.
+  @spec max_total_input_bytes(keyword()) :: pos_integer()
+  def max_total_input_bytes(opts) do
+    max = Keyword.get(opts, :max_input_bytes, HTTP.max_image_bytes())
+    Keyword.get(opts, :max_total_input_bytes, max * 4)
+  end
+
+  @doc false
+  # The bytes an input list carries inline (a URL counts as 0: its size is
+  # known only once fetched).
+  @spec input_bytes(term()) :: non_neg_integer()
+  def input_bytes(images),
+    do: images |> List.wrap() |> Enum.map(&(image_bytes(&1) || 0)) |> Enum.sum()
 
   defp collect_ref({:ok, ref}, acc, total), do: {:cont, {:ok, [ref | acc], total}}
   defp collect_ref({:error, _} = error, _acc, _total), do: {:halt, error}
@@ -636,8 +651,10 @@ defmodule PhoenixKitAI.Images do
   `:reasoning_effort`, `:reasoning_max_tokens`, `:reasoning_exclude` —
   the endpoint's stored reasoning settings are not applied to vision).
 
-  Returns `{:ok, %{text, json, usage, latency_ms, model}}`; `json` is nil
-  unless requested. A JSON answer that does not parse is
+  Returns `{:ok, %{text, json, truncated, usage, latency_ms, model}}`; `json` is nil
+  unless requested, and `truncated` says the answer stopped at the output
+  limit (`max_tokens`). A JSON request whose answer was cut off is
+  `{:error, {:output_truncated, text}}` instead, even if the text parses. A JSON answer that does not parse is
   `{:error, {:no_json_in_response, text}}`; `:on_no_json`, a one-arity
   function, first receives the unparsed result (usage and `:prompt`
   included) so the paid call can still be logged.
@@ -646,6 +663,7 @@ defmodule PhoenixKitAI.Images do
   def describe(endpoint, images, opts \\ []) do
     endpoint = if opts[:model], do: %{endpoint | model: opts[:model]}, else: endpoint
     opts = Keyword.put(opts, :prompt, opts[:prompt] || opts[:question] || default_question())
+    opts = with_region_request(opts)
 
     with {:ok, refs} <- normalize_inputs(images, opts) do
       {suffix, response_format} = StructuredOutput.request(opts)
@@ -674,9 +692,49 @@ defmodule PhoenixKitAI.Images do
       # The retry without `response_format` lives here, not in the adapter,
       # so a provider with its own `vision/3` keeps it.
       with {:ok, response} <-
-             vision_with_fallback(endpoint, messages, vision_opts, response_format) do
-        described(response, endpoint, opts)
+             vision_with_fallback(endpoint, messages, vision_opts, response_format),
+           {:ok, result} <- described(response, endpoint, opts) do
+        {:ok, with_regions(result, opts, length(refs))}
       end
+    end
+  end
+
+  # `regions:` (true, or a list of what to locate) turns the question into a
+  # JSON answer with a `regions` list: the caller's own `schema:` gets the
+  # property added, otherwise the answer is `description` + `regions` and the
+  # result's `text` is the description.
+  defp with_region_request(opts) do
+    case region_labels(opts[:regions]) do
+      :none ->
+        opts
+
+      labels ->
+        opts
+        |> Keyword.put(:prompt, opts[:prompt] <> "\n\n" <> Regions.describe_regions_line(labels))
+        |> Keyword.put(:schema, Regions.with_regions(opts[:schema], labels))
+        |> Keyword.put(:region_answer, if(opts[:schema], do: :caller_schema, else: :description))
+    end
+  end
+
+  defp region_labels(true), do: nil
+  defp region_labels([_ | _] = labels), do: Enum.map(labels, &to_string/1)
+  defp region_labels(_other), do: :none
+
+  defp with_regions(result, opts, count) do
+    case opts[:region_answer] do
+      nil ->
+        result
+
+      answer ->
+        json = result.json || %{}
+        {regions, dropped} = Regions.parse_regions(json["regions"], result.model, count, opts)
+
+        text =
+          if answer == :description and is_binary(json["description"]),
+            do: json["description"],
+            else: result.text
+
+        Map.merge(result, %{text: text, regions: regions, dropped_regions: dropped})
     end
   end
 
@@ -684,16 +742,28 @@ defmodule PhoenixKitAI.Images do
   # built first so a prose answer's usage can still reach `:on_no_json`.
   defp described(response, endpoint, opts) do
     text = content_text(response)
+    truncated = Completion.truncated?(response)
 
     result = %{
       text: text,
       json: nil,
+      truncated: truncated,
       usage: Completion.extract_usage(response),
       latency_ms: response["latency_ms"],
       model: response["model"] || endpoint.model
     }
 
-    case StructuredOutput.parse(text, StructuredOutput.requested?(opts)) do
+    json? = StructuredOutput.requested?(opts)
+
+    # A JSON answer cut off at the output limit is not an answer, even when
+    # what came back happens to parse: the paid call is logged, the caller
+    # gets the reason (raise `max_tokens`).
+    parsed =
+      if json? and truncated,
+        do: {:error, {:output_truncated, text}},
+        else: StructuredOutput.parse(text, json?)
+
+    case parsed do
       {:ok, json} ->
         {:ok, %{result | json: json}}
 
@@ -795,11 +865,31 @@ defmodule PhoenixKitAI.Images do
     fields = normalize_fields(opts[:fields])
     prompt = text_prompt(images, fields, opts)
 
+    base_schema = text_schema_with_fields(opts[:schema] || @text_schema, fields)
+    # Boxes need blocks to sit on: a caller schema without `blocks` gets none,
+    # and the prompt does not ask for what the schema cannot hold.
+    boxes? = opts[:boxes] == true and is_map(get_in(base_schema, ["properties", "blocks"]))
+
     describe_opts =
       opts
-      |> Keyword.drop([:fields, :language, :layout, :instructions, :question, :json, :images_as])
-      |> Keyword.put(:prompt, prompt)
-      |> Keyword.put(:schema, text_schema_with_fields(opts[:schema] || @text_schema, fields))
+      |> Keyword.drop([
+        :fields,
+        :language,
+        :layout,
+        :instructions,
+        :question,
+        :json,
+        :images_as,
+        :regions
+      ])
+      |> Keyword.put(
+        :prompt,
+        if(boxes?, do: prompt <> "\n" <> Regions.text_boxes_line(), else: prompt)
+      )
+      |> Keyword.put(
+        :schema,
+        if(boxes?, do: Regions.text_schema_with_boxes(base_schema), else: base_schema)
+      )
 
     with {:ok, result} <- describe(endpoint, images, describe_opts) do
       # Shaped defensively: on the no-`response_format` retry the schema is
@@ -810,7 +900,8 @@ defmodule PhoenixKitAI.Images do
       {:ok,
        %{
          text: string_or(json["text"], result.text || ""),
-         blocks: blocks(json["blocks"]),
+         blocks:
+           blocks(json["blocks"]) |> with_block_boxes(boxes?, json["blocks"], result.model, opts),
          language: string_or(json["language"], nil),
          confidence: if(is_number(json["confidence"]), do: json["confidence"]),
          has_illegible_text: json["has_illegible_text"] == true,
@@ -839,6 +930,20 @@ defmodule PhoenixKitAI.Images do
   end
 
   defp blocks(_other), do: []
+
+  # `boxes: true`: each block gets `:box`, a `PhoenixKitAI.Box` or nil when
+  # the model gave none or an unusable one. Without it the blocks keep the
+  # shape they always had.
+  defp with_block_boxes(blocks, false, _raw, _model, _opts), do: blocks
+
+  defp with_block_boxes(blocks, true, raw, model, opts) do
+    {boxes, _bad} = Regions.block_boxes(raw, model, opts)
+    boxes = boxes ++ List.duplicate(nil, max(0, length(blocks) - length(boxes)))
+
+    blocks
+    |> Enum.zip(boxes)
+    |> Enum.map(fn {block, box} -> Map.put(block, :box, box) end)
+  end
 
   # `fields:` as a map of name → description, a list of names, or a
   # keyword list; anything else describing a field is inspected, not
