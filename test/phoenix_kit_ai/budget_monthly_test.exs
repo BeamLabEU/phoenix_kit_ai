@@ -69,7 +69,17 @@ defmodule PhoenixKitAI.BudgetMonthlyTest do
     end)
   end
 
-  defp month_start, do: TaskLimits.windows().month |> elem(0)
+  # The instant the local month began, worked out by Postgres from the zone —
+  # not by `TaskLimits.windows/2`, which the cap itself uses.
+  defp month_start do
+    %{rows: [[start]]} =
+      TestRepo.query!(
+        "SELECT date_trunc('month', now() AT TIME ZONE $1) AT TIME ZONE $1",
+        [@zone]
+      )
+
+    start
+  end
 
   # A usage row written at `at`, `cost` dollars.
   defp usage_row(endpoint, at, cost, status \\ "success") do
@@ -138,6 +148,30 @@ defmodule PhoenixKitAI.BudgetMonthlyTest do
       usage_row(ep, DateTime.utc_now(), "1000.00")
       assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "q")
     end
+
+    test "a cap that is set but not a number is said so, once per node and value", %{
+      endpoint: ep
+    } do
+      stub_chat(self())
+      {:ok, _} = PhoenixKit.Settings.update_setting_with_module("ai_monthly_cap", "$100", "ai")
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          for _ <- 1..3, do: assert({:ok, _} = PhoenixKitAI.ask(ep.uuid, "q"))
+        end)
+
+      assert [_one] = Regex.scan(~r/ai_monthly_cap is set but is not a number/, log)
+      refute log =~ "$100"
+
+      # A different bad value is a new fact; a blank is not a mistake.
+      {:ok, _} = PhoenixKit.Settings.update_setting_with_module("ai_monthly_cap", "100 USD", "ai")
+      again = ExUnit.CaptureLog.capture_log(fn -> Budget.limit(:global_month) end)
+      assert again =~ "ai_monthly_cap is set but is not a number"
+
+      {:ok, _} = PhoenixKit.Settings.update_setting_with_module("ai_monthly_cap", " ", "ai")
+      blank = ExUnit.CaptureLog.capture_log(fn -> Budget.limit(:global_month) end)
+      refute blank =~ "not a number"
+    end
   end
 
   describe "the check" do
@@ -192,30 +226,26 @@ defmodule PhoenixKitAI.BudgetMonthlyTest do
     end
 
     test "a month is longer than the rolling day the other caps look at", %{endpoint: ep} do
-      # A row from a few days ago, inside this month, counts for the monthly
-      # cap only. On the first days of a month there is no such row: then a
-      # row at the month's first instant must count instead.
-      from = month_start()
-      now = DateTime.utc_now()
+      # A row a minute into the month counts for the monthly cap always. The
+      # rolling day counts it only while it is under 24 hours old, which
+      # depends on the date the test runs, so the expectation is computed.
+      at = DateTime.add(month_start(), 60, :second)
       {:ok, _} = Budget.set_limit(:global, "1.00")
       {:ok, _} = Budget.set_limit(:global_month, "1.00")
+      usage_row(ep, at, "2.00")
 
-      if DateTime.diff(now, from) > 25 * 3600 do
-        usage_row(ep, DateTime.add(from, 60, :second), "2.00")
+      in_rolling_day? = DateTime.diff(DateTime.utc_now(), at) < 24 * 3600
 
-        assert [%{scope: :global, spent: day}, %{scope: :global_month, spent: month}] =
-                 Budget.status(ep, [])
+      assert [%{scope: :global, spent: day}, %{scope: :global_month, spent: month}] =
+               Budget.status(ep, [])
 
-        assert dollars?(day, "0") and dollars?(month, "2")
-        stub_chat(self())
+      assert dollars?(day, if(in_rolling_day?, do: "2", else: "0"))
+      assert dollars?(month, "2")
 
-        assert {:error, {:budget_exceeded, :global_month}} = PhoenixKitAI.ask(ep.uuid, "q")
-        refute_received :provider_called
-      else
-        usage_row(ep, from, "2.00")
-        assert %{spent: month} = month_status(ep)
-        assert dollars?(month, "2")
-      end
+      stub_chat(self())
+      assert {:error, {:budget_exceeded, scope}} = PhoenixKitAI.ask(ep.uuid, "q")
+      assert scope == if(in_rolling_day?, do: :global, else: :global_month)
+      refute_received :provider_called
     end
 
     test "failed calls do not count", %{endpoint: ep} do
@@ -366,29 +396,32 @@ defmodule PhoenixKitAI.BudgetMonthlyTest do
     test "a successful read clears the flag, so a later outage is logged again", %{endpoint: ep} do
       {:ok, _} = Budget.set_limit(:global_month, "1.00")
       flags = RequestCache.flags_table()
-      :ets.insert(flags, {{Budget, :read_failed, :all}, true})
+      :ets.insert(flags, {{Budget, :read_failed, :global_month}, true})
+      :ets.insert(flags, {{Budget, :read_failed, :global}, true})
 
       assert %{spent: _} = month_status(ep)
-      assert :ets.lookup(flags, {Budget, :read_failed, :all}) == []
+      assert :ets.lookup(flags, {Budget, :read_failed, :global_month}) == []
+      # Another scope's flag is not this read's to clear.
+      assert :ets.member(flags, {Budget, :read_failed, :global})
     end
 
     test "a successful call-count read clears the flag", %{endpoint: ep} do
       {:ok, _} = Budget.set_limit(:user_calls, 5)
       flags = RequestCache.flags_table()
-      :ets.insert(flags, {{Budget, :read_failed, :all}, true})
+      :ets.insert(flags, {{Budget, :read_failed, :user_calls}, true})
 
       user = Fixtures.user_fixture()
       assert [%{scope: :user_calls}] = Budget.status(ep, user_uuid: user.uuid)
-      assert :ets.lookup(flags, {Budget, :read_failed, :all}) == []
+      assert :ets.lookup(flags, {Budget, :read_failed, :user_calls}) == []
     end
 
     test "a successful money read clears the flag", %{endpoint: ep} do
       {:ok, _} = Budget.set_limit(:global, "1.00")
       flags = RequestCache.flags_table()
-      :ets.insert(flags, {{Budget, :read_failed, :all}, true})
+      :ets.insert(flags, {{Budget, :read_failed, :global}, true})
 
       assert [%{scope: :global}] = Budget.status(ep, [])
-      assert :ets.lookup(flags, {Budget, :read_failed, :all}) == []
+      assert :ets.lookup(flags, {Budget, :read_failed, :global}) == []
     end
 
     test "a month sum served from the cache leaves the flag set", %{endpoint: ep} do
@@ -396,7 +429,7 @@ defmodule PhoenixKitAI.BudgetMonthlyTest do
       on_exit(fn -> Application.put_env(:phoenix_kit_ai, :budget_month_cache_ttl, 0) end)
       {:ok, _} = Budget.set_limit(:global_month, "1.00")
       flags = RequestCache.flags_table()
-      key = {Budget, :read_failed, :all}
+      key = {Budget, :read_failed, :global_month}
 
       assert %{spent: _} = month_status(ep)
       :ets.insert(flags, {key, true})

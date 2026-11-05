@@ -689,13 +689,13 @@ defmodule PhoenixKitAI.ImageAIAdditionsTest do
       assert {:ok,
               %{
                 stopped: {:error, {:budget_exceeded, :global_month}},
-                counts: %{ok: 1, skipped: skipped},
-                items: [first | _]
+                counts: %{ok: 1, skipped: 2},
+                items: [first | rest]
               }} =
                PhoenixKitAI.vision_batch(ep.uuid, items, json: true, concurrency: 1, cache: false)
 
       assert first.status == :ok
-      assert skipped >= 1
+      assert Enum.all?(rest, &(&1.status == :skipped))
     end
 
     test "a zero budget starts nothing" do

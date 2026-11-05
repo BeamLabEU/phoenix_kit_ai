@@ -738,11 +738,16 @@ defmodule PhoenixKitAI.GuardEvents do
 
   # The window a budget refusal is signalled once in: the local day, or the
   # local month for the monthly cap.
-  defp budget_window(:global_month, now),
-    do: {TaskLimits.period_keys(now).month, elem(TaskLimits.windows(now).month, 1)}
+  # The zone is read once, so the key and the end of the window agree.
+  defp budget_window(:global_month, now) do
+    zone = TaskLimits.zone()
+    {TaskLimits.period_keys(now, zone).month, elem(TaskLimits.windows(now, zone).month, 1)}
+  end
 
-  defp budget_window(_scope, now),
-    do: {TaskLimits.period_keys(now).day, elem(TaskLimits.windows(now).day, 1)}
+  defp budget_window(_scope, now) do
+    zone = TaskLimits.zone()
+    {TaskLimits.period_keys(now, zone).day, elem(TaskLimits.windows(now, zone).day, 1)}
+  end
 
   defp budget_text(_email, :global_month) do
     gettext(

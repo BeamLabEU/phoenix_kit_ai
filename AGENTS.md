@@ -256,9 +256,11 @@ Repo-local aliases:
 - Spend caps (`ai_daily_cap*` over the trailing 24 hours, `ai_monthly_cap` over
   the site time zone's calendar month, scope `:global_month`) read the usage
   table; concurrent callers overshoot by their
-  in-flight calls (the monthly sum also by up to 30 s of calls: it is cached),
-  and a database error fails open (logged once per outage per node). Treat a
-  cap as a brake on a runaway day, not as a hard invoice ceiling.
+  in-flight calls (the monthly sum also by up to 30 s of calls: it is cached,
+  except between the warn percent and the cap),
+  and a database error fails open (logged once per outage per scope per node;
+  the monthly cap then uses the last good sum). Treat a cap as a brake on a
+  runaway day, not as a hard invoice ceiling.
 - The journal is no longer forever for its readers once a period is set.
   A total "for all time" (`get_usage_stats/1`, the Endpoints and Usage
   tabs) covers only what is kept — the tabs say "for the retained period,
@@ -434,7 +436,8 @@ translation sweep's last outcome, written by `PhoenixKitAI.TranslationSweep`.
 Spend caps (`PhoenixKitAI.Budget`): `ai_daily_cap`,
 `ai_daily_cap_per_endpoint`, `ai_daily_cap_per_user` — dollar strings per
 trailing 24 hours — and `ai_monthly_cap` (the whole site per calendar month of
-the `time_zone` setting, scope `:global_month`, its sum cached 30 s), `0` = no cap (the released `ai_daily_budget*` keys held
+the `time_zone` setting, scope `:global_month`, its sum cached 30 s unless
+near the cap), `0` = no cap (the released `ai_daily_budget*` keys held
 millionths; V4 copies them over and a scope with only its old key refuses
 calls) — plus `ai_daily_calls_per_user` (a count of
 successful calls per user, scope `:user_calls`), and `ai_budget_warn_percent` (default 80),
