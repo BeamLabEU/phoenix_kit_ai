@@ -1300,6 +1300,12 @@ defmodule PhoenixKitAI do
     ]
   end
 
+  @doc """
+  The module's processes, for core to supervise: the realtime sessions' supervisor,
+  the request cache, the task registry's builder, the capability cache, the guard's
+  watcher, the endpoint and credential cache, the concurrency limiter and the usage
+  row writer.
+  """
   @impl PhoenixKit.Module
   @spec children() :: [Supervisor.child_spec() | module() | {module(), term()}]
   def children do
@@ -1327,8 +1333,8 @@ defmodule PhoenixKitAI do
   def migration_module, do: PhoenixKitAI.Migrations
 
   @doc """
-  The manifest of this module's tables, for `mix phoenix_kit.repair` and
-  `mix phoenix_kit.doctor`; see `PhoenixKitAI.ExpectedSchema`.
+  The generated manifest of this module's tables, for `mix phoenix_kit.repair`
+  and `mix phoenix_kit.doctor`.
   """
   @impl PhoenixKit.Module
   def expected_schema, do: PhoenixKitAI.ExpectedSchema

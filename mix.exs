@@ -201,7 +201,7 @@ defmodule PhoenixKitAI.MixProject do
     [
       main: "PhoenixKitAI",
       filter_modules: &doc_module?/2,
-      skip_code_autolink_to: &skip_autolink?/1,
+      skip_code_autolink_to: &hidden?/1,
       source_ref: "v#{@version}"
     ]
   end
@@ -216,16 +216,13 @@ defmodule PhoenixKitAI.MixProject do
     PhoenixKitAI.Components.AITranslate.
   )
 
-  # ExDoc `:filter_modules` callback. Also hides `*Worker` modules.
-  defp doc_module?(module, _metadata) do
-    name = inspect(module)
+  # ExDoc `:filter_modules` callback.
+  defp doc_module?(module, _metadata), do: not hidden?(inspect(module))
 
-    not (Enum.any?(@undocumented_prefixes, &String.starts_with?(name, &1)) or
-           String.ends_with?(name, "Worker"))
-  end
-
-  # Keeps backticked mentions of hidden modules as plain code, not dead links.
-  defp skip_autolink?(reference) do
-    Enum.any?(@undocumented_prefixes, &String.starts_with?(reference, &1))
+  # Also ExDoc's `:skip_code_autolink_to`, so a backticked mention of a hidden
+  # module stays plain code instead of a dead link. Hides `*Worker` modules too.
+  defp hidden?(name) do
+    Enum.any?(@undocumented_prefixes, &String.starts_with?(name, &1)) or
+      String.ends_with?(name, "Worker")
   end
 end

@@ -5,9 +5,8 @@ defmodule PhoenixKitAI.Providers.OpenAI do
     * Editing: `POST <base_url>/images/edits` as multipart form data —
       the GPT Image models take the sources as `image[]` files, never as
       URLs, so data URLs are decoded to bytes and http(s) references are
-      downloaded first (`PhoenixKitAI.Providers.HTTP.fetch_image/2`). A
-      `:mask` option (PNG whose transparent pixels may be repainted) is
-      sent as the `mask` file.
+      downloaded first. A `:mask` option (PNG whose transparent pixels may
+      be repainted) is sent as the `mask` file.
     * Generation: `POST <base_url>/images/generations` (JSON).
 
   OpenAI sizes images with `size` (`1024x1024`, `1536x1024`, `1024x1536`,

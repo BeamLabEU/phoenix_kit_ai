@@ -32,10 +32,10 @@ defmodule PhoenixKitAI.Recommendations do
   (`estimate: :journal`); else nothing is known (`estimate: :rough`) and the
   rows are ranked by the input price alone, with no price per call.
 
-  Inside each group the rows are ranked so. A model is in `verified` when
-  `PhoenixKitAI.Tasks.assess/2` says `:fit`, in `possible` when it says
-  `{:unknown, _}`, nowhere when it says `{:unfit, _}`; it must answer in
-  text unless image generation is among the needs. Retired models are left
+  Inside each group the rows are ranked so. A model is in `verified` when its
+  fitness for the needs is `:fit`, in `possible` when it is `{:unknown, _}`,
+  nowhere when it is `{:unfit, _}`; it must answer in text unless image
+  generation is among the needs. Retired models are left
   out; deprecated ones are marked. The `/models` of
   Anthropic, DeepSeek and Mistral list no prices, so their models are
   unpriced (they are never mapped to an OpenRouter model by name), and no

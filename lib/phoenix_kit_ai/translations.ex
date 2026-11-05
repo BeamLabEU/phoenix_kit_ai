@@ -259,10 +259,10 @@ defmodule PhoenixKitAI.Translations do
   global key behind their back.
 
   This is plain text, not a structured term list. Whatever an operator
-  stores is passed through verbatim (see
-  `PhoenixKitAI.Translation.build_variables/4`) — a Markdown table, a
-  bullet list or prose all work, because the consumer is a language
-  model, not a parser. The value is NOT validated or size-capped here:
+  stores is passed through verbatim into the prompt's `{{Glossary}}` slot
+  — a Markdown table, a bullet list or prose all work, because the
+  consumer is a language model, not a parser. The value is NOT validated
+  or size-capped here:
   it is operator-authored configuration, and it is spent as prompt
   tokens on every translation call, so its length is the operator's
   cost decision to make.
