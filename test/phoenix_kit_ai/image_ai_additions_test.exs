@@ -673,6 +673,31 @@ defmodule PhoenixKitAI.ImageAIAdditionsTest do
       assert three.status == :ok
     end
 
+    test "the site's monthly cap stops a batch whose items are for different users" do
+      ep = endpoint()
+      stub_json(%{"ok" => true}, "google/gemini-3.8-flash", 0.0004)
+
+      # $0.0003 a month for the whole site: the first call reaches it.
+      {:ok, _} = PhoenixKitAI.Budget.set_limit(:global_month, "0.0003")
+      on_exit(fn -> PhoenixKitAI.Budget.set_limit(:global_month, 0) end)
+
+      items =
+        for {n, user} <- [{1, Fixtures.user_fixture()}, {2, Fixtures.user_fixture()}, {3, nil}] do
+          %{id: n, images: @jpeg <> <<n>>, opts: [user_uuid: user && user.uuid]}
+        end
+
+      assert {:ok,
+              %{
+                stopped: {:error, {:budget_exceeded, :global_month}},
+                counts: %{ok: 1, skipped: skipped},
+                items: [first | _]
+              }} =
+               PhoenixKitAI.vision_batch(ep.uuid, items, json: true, concurrency: 1, cache: false)
+
+      assert first.status == :ok
+      assert skipped >= 1
+    end
+
     test "a zero budget starts nothing" do
       ep = endpoint()
       Req.Test.stub(__MODULE__, fn _conn -> flunk("no request expected") end)

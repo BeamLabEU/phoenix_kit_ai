@@ -581,7 +581,11 @@ defmodule PhoenixKitAI.VisionBatch do
   defp fatal?(_reason, false), do: false
 
   defp account_wide?(reason) when reason in @account_atoms, do: true
-  defp account_wide?({:budget_exceeded, scope}) when scope in [:global, :endpoint], do: true
+  # The site's caps (the rolling day and the calendar month) and the endpoint's hold
+  # for every item, whoever it is for.
+  defp account_wide?({:budget_exceeded, scope}) when scope in [:global, :global_month, :endpoint],
+    do: true
+
   defp account_wide?(_reason), do: false
 
   defp scoped?(item) do
