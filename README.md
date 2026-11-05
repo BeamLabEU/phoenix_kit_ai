@@ -1025,7 +1025,7 @@ the right one manually. DeepSeek currently exposes chat models only.
 
 ```bash
 mix deps.get          # Install dependencies
-mix precommit         # compile + format + credo --strict + dialyzer
+mix precommit         # compile + docs + format + credo --strict + dialyzer
 mix test              # Run all tests
 mix format            # Format code
 mix credo --strict    # Linting

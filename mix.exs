@@ -80,6 +80,8 @@ defmodule PhoenixKitAI.MixProject do
         # process — the hex.* archive tasks aren't resolvable via Mix.Task.run
         # inside an alias.
         "cmd mix hex.audit",
+        # A mention of something hidden is a dead link on HexDocs, and only this says so.
+        "docs --warnings-as-errors",
         "quality.ci"
       ]
     ]

@@ -88,7 +88,7 @@ host supplies endpoint and router (`config/` exists only for tests).
 mix deps.get
 mix test                     # the alias tries `ecto.create` first; aborts if the test database is unusable
 PK_AI_SKIP_DB=1 mix test     # no Postgres on this machine: unit tests only (never in CI or before a release)
-mix precommit                # compile --warnings-as-errors + format + credo --strict + dialyzer; run before every commit
+mix precommit                # compile --warnings-as-errors + docs --warnings-as-errors + format + credo --strict + dialyzer; run before every commit
 ```
 
 `phoenix_kit*` deps resolve from Hex. To run against a local checkout, export
