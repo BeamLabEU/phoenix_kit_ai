@@ -26,10 +26,11 @@ defmodule PhoenixKitAI.Budget do
 
   Because it scans a month of rows, the monthly sum is reused for 30 seconds
   (`config :phoenix_kit_ai, budget_month_cache_ttl: milliseconds`, `0` =
-  off), except between the warn percent and the cap, where every check scans:
-  spend can pass the cap by 30 seconds of calls only while it is far below it.
-  When the scan fails, the last good sum of the month is used (zero if there
-  is none) and calls do not scan again for 5 seconds.
+  off), except from 90% of the cap up to it, where it is reused for 2 seconds
+  at most: spend can pass the cap by 30 seconds of calls only while it is far
+  below it. When the scan fails, the last good sum of the month is used (zero
+  if there is none), calls do not scan again for 5 seconds, and a sum that has
+  grown 10 minutes old is logged again every 10 minutes.
 
   The released versions kept these caps under `ai_daily_budget*` in integer
   millionths of a dollar (`"5000000"` was $5). The module's migration chain
@@ -103,9 +104,18 @@ defmodule PhoenixKitAI.Budget do
   # How long the month's spend sum is reused: the sum scans a whole month of
   # rows, which a busy site cannot afford on every call.
   @month_cache_ttl_ms 30_000
+  # From this share of the cap up, the cached sum is reused for a couple of
+  # seconds only: a 30 second window of spend can cross the cap from there.
+  @month_zone_percent 90
+  @month_zone_ttl_ms 2_000
   # After a failed month scan, how long calls stop retrying it (they serve the
   # last good sum, or zero) instead of each running the slow query again.
   @month_failure_backoff_ms 5_000
+  # How long a running scan holds the others off when they have a sum to serve.
+  @month_scan_lease_ms 5_000
+  # A sum served after failed scans is reported again (once per interval) when
+  # it is at least this old.
+  @stale_notice_ms 10 * 60_000
   @default_warn_percent 80
   @window_seconds 24 * 60 * 60
 
@@ -158,8 +168,8 @@ defmodule PhoenixKitAI.Budget do
   Spent / limit / remaining for every scope that has a cap (the user scope
   only when `user_uuid:` is given), with no warnings or refusals — hosts show
   it, `check/2` acts on it. It fills the monthly sum's cache and reads through
-  it: the monthly `:global_month` spend can be up to 30 seconds old, unless it
-  is between the warn percent and the cap. Takes an endpoint struct or uuid.
+  it: the monthly `:global_month` spend can be up to 30 seconds old (2 seconds
+  from 90% of the cap up). Takes an endpoint struct or uuid.
   Money is dollars (`Decimal`), `:user_calls` a count. A scope still in the
   released versions' settings only is left out (`check/2` refuses on it).
   """
@@ -430,16 +440,19 @@ defmodule PhoenixKitAI.Budget do
   # spent, like the other scopes.
   #
   # With the cache on:
-  # - Between the warn percent and the cap the cache is bypassed: it exists
-  #   for the stretch where the cap is far away (or already reached, where
-  #   nothing more is spent), and an overshoot of a window of calls matters
-  #   most just below the cap.
+  # - From 90% of the cap up to it, a sum is reused for 2 seconds at most: a
+  #   30 second window of calls is only safe while the cap is far away, and
+  #   how far is "far" does not depend on the notification setting. (At the cap
+  #   nothing more is spent, so the full TTL stays.)
   # - A failed scan is never stored as a sum. The last good sum of the same
   #   month (even an expired one) is served instead, or zero when there is
-  #   none, and for a few seconds calls do not scan again.
-  # - At expiry every concurrent caller scans (no single-flight: it would need
-  #   a lock that a crashed caller can leave behind, and the scan is skipped
-  #   anyway on most calls).
+  #   none, and for a few seconds calls do not scan again. A sum that old is
+  #   logged again every few minutes (`log_stale/3`).
+  # - A scan with an earlier sum to fall back on leaves a short lease behind
+  #   (`month_scanning`): callers arriving meanwhile serve that sum instead of
+  #   scanning too. The lease lapses on its own, so a scanner that crashes
+  #   leaves nothing behind. With no earlier sum every caller scans, there is
+  #   nothing else to answer with.
   @doc false
   def month_sum(since, limit, fun) do
     ttl = Application.get_env(:phoenix_kit_ai, :budget_month_cache_ttl, @month_cache_ttl_ms)
@@ -449,39 +462,51 @@ defmodule PhoenixKitAI.Budget do
       now = System.monotonic_time(:millisecond)
       entry = cache_read(table, since)
 
-      if fresh_entry?(entry, now, limit),
+      if fresh_entry?(entry, now, limit, ttl),
         do: elem(entry, 0),
-        else: scan_month(table, since, ttl, entry, fun)
+        else: scan_month(table, since, entry, now, fun)
     else
       fun.() |> read_ok(:global_month)
     end
   end
 
-  defp fresh_entry?({sum, expires_at}, now, limit), do: expires_at > now and settled?(sum, limit)
-  defp fresh_entry?(nil, _now, _limit), do: false
+  defp fresh_entry?({sum, scanned_at}, now, limit, ttl),
+    do: now - scanned_at < entry_ttl(sum, limit, ttl)
 
-  # Far from the cap (under the warn percent) or at it: a stale sum costs
-  # nothing.
-  defp settled?(sum, limit) do
-    threshold = Decimal.div(Decimal.mult(limit, warn_percent()), 100)
-    Decimal.lt?(sum, threshold) or not Decimal.lt?(sum, limit)
+  defp fresh_entry?(nil, _now, _limit, _ttl), do: false
+
+  defp entry_ttl(sum, limit, ttl) do
+    zone_start = Decimal.div(Decimal.mult(limit, @month_zone_percent), 100)
+
+    if Decimal.lt?(sum, zone_start) or not Decimal.lt?(sum, limit),
+      do: ttl,
+      else: min(ttl, @month_zone_ttl_ms)
   end
 
-  defp scan_month(table, since, ttl, entry, fun) do
-    if backing_off?(table, since) do
-      stale_sum(entry)
-    else
-      case run_scan(fun) do
-        {:ok, sum} ->
-          read_ok(sum, :global_month)
-          cache_write(table, since, sum, ttl)
-          sum
+  defp scan_month(table, since, entry, now, fun) do
+    cond do
+      until?(table, :month_failed, since, now) ->
+        log_stale(entry, now)
+        stale_sum(entry)
 
-        {:failed, class} ->
-          backoff_write(table, since)
-          log_read_failed(:global_month, class)
-          stale_sum(entry)
-      end
+      entry != nil and until?(table, :month_scanning, since, now) ->
+        stale_sum(entry)
+
+      true ->
+        if entry, do: put_until(table, :month_scanning, since, now)
+
+        case run_scan(fun) do
+          {:ok, sum} ->
+            read_ok(sum, :global_month)
+            cache_write(table, since, sum, now)
+            sum
+
+          {:failed, class} ->
+            put_until(table, :month_failed, since, System.monotonic_time(:millisecond))
+            log_read_failed(:global_month, class)
+            log_stale(entry, now)
+            stale_sum(entry)
+        end
     end
   end
 
@@ -493,47 +518,84 @@ defmodule PhoenixKitAI.Budget do
     :exit, _ -> {:failed, "exit"}
   end
 
-  defp stale_sum({sum, _expires_at}), do: sum
+  defp stale_sum({sum, _scanned_at}), do: sum
   defp stale_sum(nil), do: Decimal.new(0)
+
+  # The first failure is logged by `log_read_failed/2`; this is the reminder
+  # that the sum in use keeps getting older, since spend after it is not
+  # counted: at most once per interval, from the time the sum is that old.
+  defp log_stale({_sum, scanned_at}, now) when now - scanned_at >= @stale_notice_ms do
+    table = PhoenixKitAI.RequestCache.flags_table()
+    key = {__MODULE__, :stale_notice, :global_month}
+
+    last =
+      case :ets.lookup(table, key) do
+        [{_key, at}] -> at
+        _ -> nil
+      end
+
+    if is_nil(last) or now - last >= @stale_notice_ms do
+      :ets.insert(table, {key, now})
+
+      Logger.warning(
+        "[PhoenixKitAI] the global_month spend cap is still using a monthly sum that is " <>
+          "#{div(now - scanned_at, 60_000)} minutes old because the usage table keeps " <>
+          "failing: spend since then is not counted"
+      )
+    end
+
+    :ok
+  rescue
+    ArgumentError -> :ok
+  end
+
+  defp log_stale(_entry, _now), do: :ok
 
   defp cache_read(table, since) do
     case :ets.lookup(table, {__MODULE__, :month_spent, since}) do
-      [{_key, {sum, expires_at}}] -> {sum, expires_at}
+      [{_key, {sum, scanned_at}}] -> {sum, scanned_at}
       _ -> nil
     end
   rescue
     ArgumentError -> nil
   end
 
-  defp backing_off?(table, since) do
-    case :ets.lookup(table, {__MODULE__, :month_failed, since}) do
-      [{_key, until}] -> until > System.monotonic_time(:millisecond)
+  defp until?(table, kind, since, now) do
+    case :ets.lookup(table, {__MODULE__, kind, since}) do
+      [{_key, until}] -> until > now
       _ -> false
     end
   rescue
     ArgumentError -> false
   end
 
-  defp backoff_write(table, since) do
-    until = System.monotonic_time(:millisecond) + @month_failure_backoff_ms
-    :ets.insert(table, {{__MODULE__, :month_failed, since}, until})
+  # A failure ends the scan's lease and starts the backoff.
+  defp put_until(table, :month_failed, since, from) do
+    :ets.delete(table, {__MODULE__, :month_scanning, since})
+    :ets.insert(table, {{__MODULE__, :month_failed, since}, from + @month_failure_backoff_ms})
+  rescue
+    ArgumentError -> true
+  end
+
+  defp put_until(table, :month_scanning, since, from) do
+    :ets.insert(table, {{__MODULE__, :month_scanning, since}, from + @month_scan_lease_ms})
   rescue
     ArgumentError -> true
   end
 
   # Entries for other month starts are dead weight: drop them. A good scan
-  # also ends a backoff.
-  defp cache_write(table, since, sum, ttl) do
-    :ets.select_delete(table, [
-      {{{__MODULE__, :month_spent, :"$1"}, :_}, [{:"=/=", :"$1", {:const, since}}], [true]}
-    ])
+  # also ends a backoff and its own lease. `scanned_at` is the instant the scan
+  # began, so the age of the sum is never understated.
+  defp cache_write(table, since, sum, scanned_at) do
+    for kind <- [:month_spent, :month_failed, :month_scanning] do
+      :ets.select_delete(table, [
+        {{{__MODULE__, kind, :"$1"}, :_}, [{:"=/=", :"$1", {:const, since}}], [true]}
+      ])
+    end
 
     :ets.delete(table, {__MODULE__, :month_failed, since})
-
-    :ets.insert(
-      table,
-      {{__MODULE__, :month_spent, since}, {sum, System.monotonic_time(:millisecond) + ttl}}
-    )
+    :ets.delete(table, {__MODULE__, :month_scanning, since})
+    :ets.insert(table, {{__MODULE__, :month_spent, since}, {sum, scanned_at}})
   rescue
     ArgumentError -> true
   end

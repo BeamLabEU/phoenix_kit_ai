@@ -39,8 +39,8 @@ What a check costs: one cached batch read of the cap settings (the
 settings cache is invalidated on every write, so a new cap applies at
 once) and, per scope that has a cap, one aggregate over the last 24 hours
 of success rows (since the start of the month for the monthly cap, whose sum
-is reused for 30 seconds, see below). With no caps set the requests table is
-not touched.
+is reused for 30 seconds, 2 near the cap, see below). With no caps set the
+requests table is not touched.
 
 Semantics, in order of how often they surprise:
 
@@ -56,36 +56,45 @@ Semantics, in order of how often they surprise:
   `"1,000"`) reads as no cap, as a blank does, but a warning says so (once per
   node and per distinct value, never quoting it): a cap that switched itself
   off should not do it silently.
-- **The monthly sum is cached for 30 seconds, except near the cap.** Unlike
-  the daily windows the month's sum scans every success row since the month
-  began, which on a busy site is too much to run before every provider call.
-  The sum is kept in the module's ETS flags table, keyed by the month's start
-  (a new month, or another `time_zone`, never reuses it), for `config
+- **The monthly sum is cached for 30 seconds, and for 2 near the cap.**
+  Unlike the daily windows the month's sum scans every success row since the
+  month began, which on a busy site is too much to run before every provider
+  call. The sum is kept in the module's ETS flags table, keyed by the month's
+  start (a new month, or another `time_zone`, never reuses it), for `config
   :phoenix_kit_ai, budget_month_cache_ttl: 30_000` milliseconds (`0` = off; the
   test config sets it to `0`). A TTL that is not a positive integer means no
-  cache. The cache is for the stretch where the cap is far away, so it is not
-  used between the warn percent (`ai_budget_warn_percent`, default 80) and the
-  cap: there every check scans the month, and the overshoot is only the
-  in-flight calls, as for the daily caps. Under the warn percent spend can
-  pass the line by up to 30 seconds of calls; at the cap nothing more is spent,
-  so the cached sum stays. This is the simpler of two options (the other being
-  to add each logged call's cost to the cached sum) and costs one month scan
-  per check in the last fifth of the budget. `status/2` reads through (and
-  fills) the same cache, so its monthly spend can be 30 seconds old outside
-  that stretch.
+  cache. The cache is for the stretch where the cap is far away. From 90% of
+  the cap up to it a sum is reused for 2 seconds at most (a fixed line, not
+  `ai_budget_warn_percent`: a notification setting, even `100`, does not
+  decide how exactly money is counted). The bound on the overshoot: below 90%
+  it is the spend of one TTL (30 s) minus the headroom to the cap, which is a
+  tenth of the cap or more (so on a $100 cap a site would have to spend $10 in
+  30 seconds); from 90% up it is the spend of 2 seconds plus the in-flight
+  calls. At the cap nothing more is spent, so the cached sum stays. The cache
+  is per node: with N nodes every figure above is up to N times larger. This
+  is the simpler of two options (the other being to add each logged call's
+  cost to the cached sum); the cost is at most one month scan per 2 seconds per
+  node in the last tenth of the budget. `status/2` reads through (and fills)
+  the same cache, so its monthly spend can be 30 seconds old.
 - **A failed month scan serves the last good sum.** A failed read is never
   stored as a sum. The month's last good sum (even an expired one) is used
   instead, or zero if the node has none, and for 5 seconds calls do not scan
   again, so a month scan that times out is not retried by every call on a
   database that is already struggling. The cap is still not enforced on a
-  fresh sum while reads fail; it is fail-open, as below. With the cache off
-  (`0`) a failed read is zero spend, like the other scopes.
-- **No single-flight at expiry.** When the cached sum expires, every caller
-  arriving before the first scan finishes scans too. A lock to make them wait
-  would have to survive a crashed scanner (a timeout, a node kill) and is not
-  worth it here: the same stampede is accepted by the module's other caches,
-  the scan is skipped on most calls, and a failing scan is held off by the
-  backoff above.
+  fresh sum while reads fail; it is fail-open, as below, and spend after the
+  last good scan is not counted, for as long as scans fail (the cap trips late,
+  never early). The first failure is logged once per outage; once the sum in
+  use is 10 minutes old the module logs a second warning, naming its age, and
+  repeats it every 10 minutes, so an operator can tell that the cap has been
+  running on old data. With the cache off (`0`) a failed read is zero spend,
+  like the other scopes.
+- **One scan at a time per node, where there is a sum to serve.** A scan that
+  has an earlier sum of the month to fall back on leaves a 5 second lease
+  behind (`month_scanning`); callers arriving meanwhile serve that sum instead
+  of running the same scan, and a good scan removes the lease. A scanner that
+  crashes leaves nothing behind: the lease lapses by itself. With no earlier
+  sum (a fresh node, or a new month) every caller scans, since there is
+  nothing else to answer with; that is a single burst, not a standing load.
 - **Reached means stopped.** `remaining <= 0` refuses; a cap of exactly
   the amount spent is not room for one more call.
 - **Cached answers are refused too.** A cap is a stop switch: once spent,
@@ -139,7 +148,7 @@ Core's requests table carries single-column indexes on `inserted_at`,
 will want `(endpoint_uuid, inserted_at) WHERE status = 'success'` in core.
 The monthly sum is the same `inserted_at` range over a longer window, so no
 index makes it cheap (it is an aggregate over the month's rows): that is why
-it is cached for 30 seconds.
+it is cached (30 seconds, 2 near the cap).
 
 ## Request cache (`PhoenixKitAI.RequestCache`)
 

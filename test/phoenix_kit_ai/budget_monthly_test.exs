@@ -350,7 +350,7 @@ defmodule PhoenixKitAI.BudgetMonthlyTest do
       {:ok, _} = Budget.set_limit(:global_month, "100")
       usage_row(ep, DateTime.utc_now(), "1.00")
 
-      expired = {Decimal.new(99), System.monotonic_time(:millisecond) - 1}
+      expired = {Decimal.new(99), System.monotonic_time(:millisecond) - 31_000}
       :ets.insert(RequestCache.flags_table(), {{Budget, :month_spent, month_start()}, expired})
 
       assert %{spent: spent} = month_status(ep)
