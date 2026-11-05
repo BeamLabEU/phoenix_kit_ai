@@ -19,7 +19,8 @@ defmodule PhoenixKitAI.Retention do
   technical guard sits under every boundary, whatever its origin: the
   floor (`floor/2`). Journal rows and guard events newer than local
   midnight two days before the current month began are never deleted —
-  the day and month limits, the 24-hour spend cap and the month's forgiven
+  the day and month limits, the 24-hour spend cap, the monthly spend cap
+  (`ai_monthly_cap`, which sums the current month) and the month's forgiven
   limits read them — and content newer than 24 hours is never cleared. A
   shorter period is clamped to the floor (`effective_cutoff/3`). The event
   an active block was set from is never deleted nor cleared while the

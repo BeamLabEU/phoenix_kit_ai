@@ -145,10 +145,12 @@ defmodule PhoenixKitAI.TaskLimits do
   # WINDOWS
   # ===========================================
 
-  @doc "The local day and month that contain `now`, as half-open UTC windows."
-  @spec windows(DateTime.t()) :: %{day: window(), month: window()}
-  def windows(now \\ DateTime.utc_now()) do
-    zone = zone()
+  @doc """
+  The local day and month that contain `now`, as half-open UTC windows. The
+  time zone is the site's unless the caller already holds it (`zone`).
+  """
+  @spec windows(DateTime.t(), String.t() | nil) :: %{day: window(), month: window()}
+  def windows(now \\ DateTime.utc_now(), zone \\ zone()) do
     today = TimeZone.local_date(now, zone)
     first = Date.beginning_of_month(today)
 
@@ -162,13 +164,17 @@ defmodule PhoenixKitAI.TaskLimits do
   end
 
   @doc ~s(The local day and month of `now` as keys: `%{day: "2026-10-22", month: "2026-10"}`.)
-  @spec period_keys(DateTime.t()) :: %{day: String.t(), month: String.t()}
-  def period_keys(now \\ DateTime.utc_now()) do
-    today = now |> TimeZone.local_date(zone()) |> Date.to_iso8601()
+  @spec period_keys(DateTime.t(), String.t() | nil) :: %{day: String.t(), month: String.t()}
+  def period_keys(now \\ DateTime.utc_now(), zone \\ zone()) do
+    today = now |> TimeZone.local_date(zone) |> Date.to_iso8601()
     %{day: today, month: String.slice(today, 0, 7)}
   end
 
-  defp zone, do: Settings.get_setting("time_zone", "0")
+  @doc false
+  # The site's time zone setting, for a caller that needs the keys and the
+  # windows of one zone reading.
+  @spec zone() :: String.t() | nil
+  def zone, do: Settings.get_setting("time_zone", "0")
 
   # ===========================================
   # LIMITS IN FORCE

@@ -24,6 +24,7 @@ counted in the wrong unit.
 | setting | scope |
 |---|---|
 | `ai_daily_cap` | every call the module makes |
+| `ai_monthly_cap` | every call the module makes, in the current calendar month of the site time zone (`:global_month`) |
 | `ai_daily_cap_per_endpoint` | one endpoint |
 | `ai_daily_cap_per_user` | one `user_uuid:` |
 | `ai_budget_warn_percent` | warn once per crossing (default 80) |
@@ -37,12 +38,63 @@ settings module; there is no admin form yet.
 What a check costs: one cached batch read of the cap settings (the
 settings cache is invalidated on every write, so a new cap applies at
 once) and, per scope that has a cap, one aggregate over the last 24 hours
-of success rows. With no caps set the requests table is not touched.
+of success rows (since the start of the month for the monthly cap, whose sum
+is reused for 30 seconds, 2 near the cap, see below). With no caps set the
+requests table is not touched.
 
 Semantics, in order of how often they surprise:
 
 - **Rolling window, not a calendar day.** Spend from 23:00 still counts at
   09:00; a row older than 24 hours drops out mid-morning and frees spend.
+- **The monthly cap is a calendar month.** `ai_monthly_cap` sums the same
+  success rows as the global daily cap from the local midnight that starts the
+  month (Settings → `time_zone`, the month window of
+  `PhoenixKitAI.TaskLimits.windows/2`) and starts again at zero on the first.
+  It refuses with `{:error, {:budget_exceeded, :global_month}}`; the daily and
+  monthly site caps can both be set and either refuses when reached. A
+  setting only: no migration. A value that is set but not a number (`"$100"`,
+  `"1,000"`) reads as no cap, as a blank does, but a warning says so (once per
+  node and per distinct value, never quoting it): a cap that switched itself
+  off should not do it silently.
+- **The monthly sum is cached for 30 seconds, and for 2 near the cap.**
+  Unlike the daily windows the month's sum scans every success row since the
+  month began, which on a busy site is too much to run before every provider
+  call. The sum is kept in the module's ETS flags table, keyed by the month's
+  start (a new month, or another `time_zone`, never reuses it), for `config
+  :phoenix_kit_ai, budget_month_cache_ttl: 30_000` milliseconds (`0` = off; the
+  test config sets it to `0`). A TTL that is not a positive integer means no
+  cache. The cache is for the stretch where the cap is far away. From 90% of
+  the cap up to it a sum is reused for 2 seconds at most (a fixed line, not
+  `ai_budget_warn_percent`: a notification setting, even `100`, does not
+  decide how exactly money is counted). The bound on the overshoot: below 90%
+  it is the spend of one TTL (30 s) minus the headroom to the cap, which is a
+  tenth of the cap or more (so on a $100 cap a site would have to spend $10 in
+  30 seconds); from 90% up it is the spend of 2 seconds plus the in-flight
+  calls. At the cap nothing more is spent, so the cached sum stays. The cache
+  is per node: with N nodes every figure above is up to N times larger. This
+  is the simpler of two options (the other being to add each logged call's
+  cost to the cached sum); the cost is at most one month scan per 2 seconds per
+  node in the last tenth of the budget. `status/2` reads through (and fills)
+  the same cache, so its monthly spend can be 30 seconds old.
+- **A failed month scan serves the last good sum.** A failed read is never
+  stored as a sum. The month's last good sum (even an expired one) is used
+  instead, or zero if the node has none, and for 5 seconds calls do not scan
+  again, so a month scan that times out is not retried by every call on a
+  database that is already struggling. The cap is still not enforced on a
+  fresh sum while reads fail; it is fail-open, as below, and spend after the
+  last good scan is not counted, for as long as scans fail (the cap trips late,
+  never early). The first failure is logged once per outage; once the sum in
+  use is 10 minutes old the module logs a second warning, naming its age, and
+  repeats it every 10 minutes, so an operator can tell that the cap has been
+  running on old data. With the cache off (`0`) a failed read is zero spend,
+  like the other scopes.
+- **One scan at a time per node, where there is a sum to serve.** A scan that
+  has an earlier sum of the month to fall back on leaves a 5 second lease
+  behind (`month_scanning`); callers arriving meanwhile serve that sum instead
+  of running the same scan, and a good scan removes the lease. A scanner that
+  crashes leaves nothing behind: the lease lapses by itself. With no earlier
+  sum (a fresh node, or a new month) every caller scans, since there is
+  nothing else to answer with; that is a single burst, not a standing load.
 - **Reached means stopped.** `remaining <= 0` refuses; a cap of exactly
   the amount spent is not room for one more call.
 - **Cached answers are refused too.** A cap is a stop switch: once spent,
@@ -55,15 +107,25 @@ Semantics, in order of how often they surprise:
   `task`), so the journal shows who was turned away; it counts toward no
   cap and no usage sink (`handle_ai_usage/1`) receives it. It is also a
   `limit_reached` guard event (scope `budget:<scope>`), and the guard's
-  watchers are told once per local day (`PhoenixKitAI.GuardEvents`).
+  watchers are told once per local day (`PhoenixKitAI.GuardEvents`); for the
+  monthly cap once per local month, since it only lifts when the month turns
+  (or the cap is raised). That holds even when the cap is raised and reached
+  again in the same month: the later refusals are refusals as ever, but not a
+  new event or notice.
 - **Task limits come first.** A call that names a declared task is checked
   against the task's calendar-day and month limits (`PhoenixKitAI.TaskLimits`)
-  before the caps; the caps stay the site-wide rolling-24-hour safety net.
+  before the caps; the caps stay the site-wide safety net (the rolling 24
+  hours, and the calendar month for `ai_monthly_cap`).
 - **No reservation.** The check reads the table; concurrent callers can
   overshoot by their in-flight calls. Atomic reservation is a TODO.
 - **Fails open.** A database error reads as zero spend and no cap, so a
   blip does not refuse every call. The panel split on this; availability
-  won, and the module logs the failure.
+  won, and the module logs a warning naming the exception class, once per
+  outage per scope per node (each scope's flag is cleared by that scope's next
+  successful database read, not by another scope's read and not by a sum served
+  from the month cache), so the first failure is visible without a flood while
+  the database is down. For the monthly cap the value used meanwhile is the
+  last good sum, not zero.
 - **Warnings fire from `check/2` only.** `status/2` is pure so a dashboard
   polling it does not consume the once-per-crossing warning. The flags
   live in a small ETS table (never `persistent_term`, whose writes are a
@@ -84,6 +146,9 @@ Core's requests table carries single-column indexes on `inserted_at`,
 `endpoint_uuid`, `user_uuid` and `status`. The trailing-24-hour sums use
 `inserted_at` and filter the rest; a busy install with per-endpoint caps
 will want `(endpoint_uuid, inserted_at) WHERE status = 'success'` in core.
+The monthly sum is the same `inserted_at` range over a longer window, so no
+index makes it cheap (it is an aggregate over the month's rows): that is why
+it is cached (30 seconds, 2 near the cap).
 
 ## Request cache (`PhoenixKitAI.RequestCache`)
 

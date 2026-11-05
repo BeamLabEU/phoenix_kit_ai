@@ -63,8 +63,8 @@ defmodule PhoenixKitAI do
   - `schema:` / `json: true` on `ask/3`, `complete/3`, `describe_image/3` -
     a JSON answer; see `PhoenixKitAI.StructuredOutput`.
   - Every verb returns `{:error, {:budget_exceeded, scope}}` once a spend
-    cap is reached (`PhoenixKitAI.Budget`), cached answers included, and
-    every usage row emits `[:phoenix_kit_ai, :request]`.
+    cap (daily or monthly) is reached (`PhoenixKitAI.Budget`), cached
+    answers included, and every usage row emits `[:phoenix_kit_ai, :request]`.
 
   ### Usage Tracking
   - `list_requests/1` - List requests with pagination/filters
@@ -5498,7 +5498,8 @@ defmodule PhoenixKitAI do
   # (`Guard.check/4`, `implied` being what the call itself shows); the
   # task's own limits (`TaskLimits.check/3`, skipped for a call that holds
   # an admission of `Guard.admit/4` for its task and user); when caps are
-  # set, the last 24 hours of spend must leave room — a refusal there is
+  # set, the spend in each cap's window (the last 24 hours, or this calendar
+  # month for the monthly cap) must leave room — a refusal there is
   # also a guard event (`GuardEvents.budget_refused/4`). The request cache
   # comes after, then HTTP.
   #

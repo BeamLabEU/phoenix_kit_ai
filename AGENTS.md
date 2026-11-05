@@ -253,9 +253,15 @@ Repo-local aliases:
   an `endpoint_uuid` or `prompt_uuid` that names no row. Task limits read a
   `user_uuid:` that is not a uuid as no user: the task's own limits apply,
   the per-user ones do not. Cap the endpoint or the site for visitors.
-- Spend caps read the usage table; concurrent callers overshoot by their
-  in-flight calls, and a database error fails open. Treat a cap as a brake
-  on a runaway day, not as a hard invoice ceiling.
+- Spend caps (`ai_daily_cap*` over the trailing 24 hours, `ai_monthly_cap` over
+  the site time zone's calendar month, scope `:global_month`) read the usage
+  table; concurrent callers overshoot by their
+  in-flight calls (the monthly sum also by up to 30 s of calls: it is cached,
+  for 2 s only from 90% of the cap up),
+  and a database error fails open (logged once per outage per scope per node;
+  the monthly cap then uses the last good sum, and says so again every 10
+  minutes once that sum is that old). Treat a cap as a brake on a
+  runaway day, not as a hard invoice ceiling.
 - The journal is no longer forever for its readers once a period is set.
   A total "for all time" (`get_usage_stats/1`, the Endpoints and Usage
   tabs) covers only what is kept — the tabs say "for the retained period,
@@ -430,7 +436,9 @@ Settings: `ai_enabled` (boolean, default `false`) is the module toggle;
 translation sweep's last outcome, written by `PhoenixKitAI.TranslationSweep`.
 Spend caps (`PhoenixKitAI.Budget`): `ai_daily_cap`,
 `ai_daily_cap_per_endpoint`, `ai_daily_cap_per_user` — dollar strings per
-trailing 24 hours, `0` = no cap (the released `ai_daily_budget*` keys held
+trailing 24 hours — and `ai_monthly_cap` (the whole site per calendar month of
+the `time_zone` setting, scope `:global_month`, its sum cached 30 s, 2 s
+from 90% of the cap up), `0` = no cap (the released `ai_daily_budget*` keys held
 millionths; V4 copies them over and a scope with only its old key refuses
 calls) — plus `ai_daily_calls_per_user` (a count of
 successful calls per user, scope `:user_calls`), and `ai_budget_warn_percent` (default 80),
