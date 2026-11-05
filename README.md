@@ -132,14 +132,18 @@ answer against the schema locally — check the keys you depend on.
 ### Spend caps and the request cache
 
 ```elixir
-# Caps in US dollars, as a string or a Decimal; trailing 24 hours; 0 = no cap.
+# Caps in US dollars, as a string or a Decimal; 0 = no cap. The daily caps look
+# at the trailing 24 hours, the monthly one at the calendar month of the site
+# time zone.
 # An integer other than 0 is refused ({:error, :ambiguous_amount}): releases
 # before this one took integer millionths of a dollar.
 PhoenixKitAI.Budget.set_limit(:global, "5")       # $5 per rolling day for the whole install
+PhoenixKitAI.Budget.set_limit(:global_month, "100") # $100 per calendar month for the whole install
 PhoenixKitAI.Budget.set_limit(:user, "0.10")      # $0.10 per rolling day per user_uuid
 
 # user_uuid must be a PhoenixKit user uuid (the usage row has a foreign key on it)
 {:error, {:budget_exceeded, :user}} = PhoenixKitAI.ask(ep, "…", user_uuid: current_user.uuid)
+# scopes: :global, :global_month, :endpoint, :user, :user_calls
 PhoenixKitAI.Budget.status(endpoint_uuid, user_uuid: current_user.uuid)  # spent / limit / remaining per scope
 PhoenixKitAI.get_usage_stats(user_uuid: current_user.uuid, since: yesterday)  # what they spent
 
@@ -150,7 +154,9 @@ PhoenixKitAI.get_usage_stats(user_uuid: current_user.uuid, since: yesterday)  # 
 {:ok, _} = PhoenixKitAI.ask(ep, prompt, cache: :refresh)
 ```
 
-Caps cover the trailing 24 hours (not a calendar day), are checked before
+The daily caps cover the trailing 24 hours (not a calendar day); the
+monthly one (`ai_monthly_cap`) the calendar month of the site time zone and
+starts again on the first. Caps are checked before
 every provider call — cached answers included, so a spent cap stops the
 site — and warn once at 80 %. The cache is in-memory (ETS), keyed on what
 would be sent (or on your own `cache: [key: …]`), shared across users
