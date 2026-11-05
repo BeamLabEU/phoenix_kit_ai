@@ -139,6 +139,41 @@ the model must take audio: the guard refuses a model that does not with
 (`whisper-1`, `gpt-4o-transcribe`) gets `POST /audio/transcriptions`. The usage
 row keeps the audio's format, size and length, never the audio.
 
+### Dictation on a page
+
+`PhoenixKitAI.Web.Components.Dictate` puts a recording button on a page and gives
+the page the words: core's audio recorder, `transcribe/3` off the LiveView process,
+the busy state and the error messages, with no upload or JavaScript of your own.
+It needs a core with `PhoenixKitWeb.Components.Core.AudioRecorder`; on an older one
+it shows nothing to record with.
+
+```heex
+<.live_component
+  module={PhoenixKitAI.Web.Components.Dictate}
+  id="inquiry-voice"
+  endpoint="Wood Matrix"
+  model="google/gemini-2.5-flash"
+  instructions={MyApp.Voice.instructions()}
+  label={gettext("Say it instead")}
+  into="inquiry-text"
+  user_uuid={@user_uuid}
+/>
+```
+
+```elixir
+def handle_info({:dictated, "inquiry-voice", text}, socket), do: ...
+```
+
+`text` is trimmed and never empty. `into` is optional: it adds the words to that
+`<textarea>` or `<input>` (`mode={:append}`, `:replace` or `:at_cursor`) and fires
+`input`, so the form's `phx-change` runs; the message comes either way. A LiveView
+that defines `handle_info/2` needs a clause for it, or a catch-all. Any other
+attribute goes to `transcribe/3`, and calls run as the `ai.dictation` task unless
+`task` names your own, so limits, blocks and recommendations are on AI → Tasks.
+
+A failure is shown under the button, translated. With `show_error={false}` the page
+gets `{:dictation_failed, id, reason}` instead, and `Dictate.message/1` has the words.
+
 ### Structured output
 
 ```elixir
@@ -280,8 +315,8 @@ enabled, since a provider has no module switch. Notes:
   warned about and skipped; a raising one is tried again a minute later.
 - A task of a module that is switched off refuses calls with
   `{:error, {:task_disabled, key}}` (a refusal row; a cached answer does not
-  bypass it). With the AI module itself off, its own `ai.translation` and
-  `ai.playground` are refused the same way. Calls without `task:`, or naming
+  bypass it). With the AI module itself off, its own `ai.translation`,
+  `ai.playground` and `ai.dictation` are refused the same way. Calls without `task:`, or naming
   a key nobody declares, are not affected.
 
 ### Task limits

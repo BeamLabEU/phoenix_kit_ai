@@ -535,7 +535,7 @@ msgstr ""
 msgid "Enter your prompt template...\n\nUse {{VariableName}} for dynamic content.\n\nExample:\nTranslate the following text to {{Language}}:\n\n{{Text}}"
 msgstr ""
 
-#: lib/phoenix_kit_ai/request.ex:228
+#: lib/phoenix_kit_ai/request.ex:231
 #: lib/phoenix_kit_ai/web/playground.html.heex:458
 #, elixir-autogen, elixir-format
 msgid "Error"
@@ -1263,7 +1263,7 @@ msgstr ""
 msgid "Streaming Voice (xAI)"
 msgstr ""
 
-#: lib/phoenix_kit_ai/request.ex:227
+#: lib/phoenix_kit_ai/request.ex:230
 #, elixir-autogen, elixir-format
 msgid "Success"
 msgstr ""
@@ -1360,7 +1360,7 @@ msgstr ""
 msgid "Time"
 msgstr ""
 
-#: lib/phoenix_kit_ai/request.ex:229
+#: lib/phoenix_kit_ai/request.ex:232
 #, elixir-autogen, elixir-format
 msgid "Timeout"
 msgstr ""
@@ -1473,7 +1473,7 @@ msgstr ""
 msgid "Unexpected error: %{reason}"
 msgstr ""
 
-#: lib/phoenix_kit_ai/request.ex:231
+#: lib/phoenix_kit_ai/request.ex:234
 #, elixir-autogen, elixir-format
 msgid "Unknown"
 msgstr ""
@@ -2567,7 +2567,7 @@ msgstr ""
 msgid "No provider of this model accepts all the request's parameters. Remove the ones it does not support from the endpoint."
 msgstr ""
 
-#: lib/phoenix_kit_ai/request.ex:230
+#: lib/phoenix_kit_ai/request.ex:233
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:742
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:825
 #, elixir-autogen, elixir-format
@@ -2998,7 +2998,7 @@ msgstr ""
 msgid "one user's spending"
 msgstr ""
 
-#: lib/phoenix_kit_ai.ex:1802
+#: lib/phoenix_kit_ai.ex:1810
 #, elixir-autogen, elixir-format
 msgid "only a holder of ai.manage may declare capabilities while only verified models are allowed"
 msgstr ""
@@ -3641,7 +3641,7 @@ msgstr ""
 msgid "Setting a price needs the “Manage the AI task guard” permission: it decides what the money limits count."
 msgstr ""
 
-#: lib/phoenix_kit_ai.ex:1825
+#: lib/phoenix_kit_ai.ex:1833
 #, elixir-autogen, elixir-format
 msgid "only a holder of ai.manage may set or change a manual price"
 msgstr ""
@@ -4563,4 +4563,69 @@ msgstr ""
 #: lib/phoenix_kit_ai/errors.ex:258
 #, elixir-autogen, elixir-format
 msgid "The provider refused this content"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/dictate.ex:136
+#, elixir-autogen, elixir-format
+msgid "Dictate"
+msgstr ""
+
+#: lib/phoenix_kit_ai.ex:1277
+#, elixir-autogen, elixir-format
+msgid "Dictation"
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/dictate.ex:181
+#, elixir-autogen, elixir-format
+msgid "Dictation isn't available right now."
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/dictate.ex:192
+#, elixir-autogen, elixir-format
+msgid "No AI endpoint is set up for dictation."
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/dictate.ex:174
+#, elixir-autogen, elixir-format
+msgid "Nobody has verified that this endpoint's model can hear. Set an audio model for it."
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/dictate.ex:164
+#, elixir-autogen, elixir-format
+msgid "Still writing down the last recording. Please wait a moment."
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/dictate.ex:197
+#, elixir-autogen, elixir-format
+msgid "That recording is too long. Please try a shorter one."
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/dictate.ex:200
+#, elixir-autogen, elixir-format
+msgid "The AI usage limit has been reached. Please try again later."
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/dictate.ex:170
+#, elixir-autogen, elixir-format
+msgid "This endpoint's model can't hear. Set an audio model for it."
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/dictate.ex:159
+#, elixir-autogen, elixir-format
+msgid "We couldn't hear anything. Please try again, a little closer to the microphone."
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/dictate.ex:195
+#, elixir-autogen, elixir-format
+msgid "We couldn't write that down. Please try again."
+msgstr ""
+
+#: lib/phoenix_kit_ai.ex:1280
+#, elixir-autogen, elixir-format
+msgid "Write down what a person says on a page, word for word."
+msgstr ""
+
+#: lib/phoenix_kit_ai/web/components/dictate.ex:144
+#, elixir-autogen, elixir-format
+msgid "Writing down what you said…"
 msgstr ""

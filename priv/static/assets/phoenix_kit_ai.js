@@ -282,6 +282,42 @@ window.PhoenixKitAIHooks = (function () {
     },
   };
 
+  // Where `Dictate`'s words go in the field named by its `into`. A plain
+  // `<input>` strips a newline from its value, which would run the words
+  // together, so it gets a space. A field with no selection (`type="email"`
+  // and the like) has no cursor to write at.
+  function putDictated(field, mode, text) {
+    const value = field.value;
+    if (mode === "replace" || value === "") {
+      field.value = text;
+    } else if (mode === "at_cursor" && field.selectionStart !== null) {
+      const start = field.selectionStart;
+      const end = field.selectionEnd;
+      const before = start > 0 && !/\s/.test(value[start - 1]) ? " " : "";
+      const after = end < value.length && !/\s/.test(value[end]) ? " " : "";
+      field.setRangeText(before + text + after, start, end, "end");
+    } else {
+      const gap = /\s$/.test(value) ? "" : field.tagName === "TEXTAREA" ? "\n" : " ";
+      field.value = value + gap + text;
+    }
+  }
+
+  // Sits on `Dictate`'s root when it has an `into`. `input` is the event the
+  // form's `phx-change` listens for, so the words count as typed.
+  const PhoenixKitAIDictate = {
+    mounted() {
+      this.handleEvent(`phoenix_kit_ai:dictated:${this.el.id}`, ({ into, mode, text }) => {
+        const field = document.getElementById(into);
+        if (!field) {
+          console.error(`[PhoenixKitAIDictate] no element with the id "${into}"`);
+          return;
+        }
+        putDictated(field, mode, text);
+        field.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+    },
+  };
+
   function base64ToInt16Array(base64Data) {
     const binary = atob(base64Data);
     const bytes = new Uint8Array(binary.length);
@@ -298,5 +334,6 @@ window.PhoenixKitAIHooks = (function () {
     PhoenixKitAIManualModelInput,
     PhoenixKitAIModelGridSearch,
     PhoenixKitAIScrollIntoView,
+    PhoenixKitAIDictate,
   };
 })();

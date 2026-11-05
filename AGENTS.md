@@ -182,7 +182,9 @@ Repo-local aliases:
   the handler resolves the key; the change topics broadcast `{event, uuid}`;
   a catch-all `handle_info/2` logs `PhoenixKitAI.Web.MessageShape.describe/1`,
   never `inspect(msg)`; a translation failure is logged and broadcast as
-  `TranslateWorker.classify_reason/1`'s pair, never the raw reason.
+  `TranslateWorker.classify_reason/1`'s pair, never the raw reason. The one
+  exception is `Dictate`'s `{:dictated, id, text}`: the words are what the page
+  asked for, and the message never leaves the LiveView's own process.
 - **Money** is US dollars as a `Decimal` everywhere (`PhoenixKitAI.Money`).
 - **Error returns** are atoms or `{atom, detail}` tuples, rendered through
   `PhoenixKitAI.Errors.message/1`.
@@ -210,8 +212,8 @@ Repo-local aliases:
   reads `unknown hook found for "…"`). Every hook lives in
   `priv/static/assets/phoenix_kit_ai.js` — `PhoenixKitAIManualModelInput` and
   `PhoenixKitAIModelGridSearch` for the endpoint form, `PhoenixKitAIScrollIntoView`
-  on the playground's `#playground-response` container, `XaiVoiceStream` for
-  realtime audio. The scroll hook is the shape to copy for a page-level
+  on the playground's `#playground-response` container, `PhoenixKitAIDictate` on
+  `Dictate`'s root when it has an `into`, `XaiVoiceStream` for realtime audio. The scroll hook is the shape to copy for a page-level
   listener: the cards dispatch `phx:scroll-into-view` on themselves via
   `phx-mounted` and it bubbles to the container hook, which binds in
   `mounted()` and unbinds in `destroyed()`. A `document.addEventListener` in
@@ -376,7 +378,8 @@ lib/phoenix_kit_ai/
   components/ai_translate*       reusable translate button/glue components
   web/                           admin LiveViews: Endpoints, EndpointForm, Prompts, PromptForm, Playground, Tasks;
                                  journal_retention.ex + components/journal_retention_card.ex (the Usage tab's retention card); access.ex (rights now, per event);
-                                 components/message_content.ex (a stored message's content parts on the request details)
+                                 components/message_content.ex (a stored message's content parts on the request details);
+                                 components/dictate.ex (speech into a page: core's recorder, then `transcribe/3`)
 ```
 
 Notes on the less obvious modules:
@@ -553,6 +556,7 @@ so the context function gets that same, current scope.
 | `:embedding_models` | `[]` | Extra embedding models appended to `OpenRouterClient.fetch_embedding_models/2`; non-list values are warned about and ignored |
 | `:req_options` | `[]` | Extra `Req` opts appended to every HTTP call — tests use it for `Req.Test` plug stubs |
 | `:realtime_module` | `Xai.Realtime` | Swappable realtime client; tests point it at a Mox mock of `Xai.RealtimeBehaviour` |
+| `:audio_recorder` | `PhoenixKitWeb.Components.Core.AudioRecorder` | The recorder `Dictate` renders; tests point it at a stand-in, because the locked core has none |
 | `:provider_adapters` | `%{}` | Provider key → `PhoenixKitAI.Provider` module, merged over the built-in adapters (add a provider without touching this module) |
 | `:image_operations` | `%{}` | Extra or replacement image operations for `PhoenixKitAI.Images.Operations` (string or atom keys) |
 | `:max_image_bytes` | `25_000_000` | Largest image accepted as input or fetched as output by the image verbs |
@@ -926,7 +930,7 @@ Test database `phoenix_kit_ai_test`.
   (success, error, refusal, cache hit, unparsed JSON) carries
   `metadata.task`, and `:task` is not part of the cache key. A key no
   module declares is logged once and the call goes on. This module
-  declares `ai.translation` and `ai.playground`. A host app that is not a
+  declares `ai.translation`, `ai.playground` and `ai.dictation`. A host app that is not a
   kit module lists its own modules in `config :phoenix_kit_ai,
   task_providers:` (run time; part of the registry's rebuild key): read
   after the registered modules, always `enabled: true` (`enabled?/0` is
@@ -1249,6 +1253,24 @@ Test database `phoenix_kit_ai_test`.
   rewrites an existing, operator-editable prompt — so an older install
   adds the line to its prompt by hand; until then the setting is silently
   inert.
+- Dictation (`PhoenixKitAI.Web.Components.Dictate`, a live component): core's
+  `AudioRecorder` makes the clip and delivers it through `target={@myself}`, the
+  component sends it to `transcribe/3` with `start_async` and gives the page
+  `{:dictated, id, text}`, trimmed, never empty; `text: ""` is the failure
+  `:no_speech`. Any attribute of its own (`endpoint`, which also takes a name,
+  `label`, `busy`, `max_seconds`, `into`, `mode`, `show_error`) stays here and every
+  other one is a `transcribe/3` option, so a new option needs no change here. The
+  task is `ai.dictation` unless `task:` says otherwise. Its `:audio_input` need
+  also applies on the `/audio/transcriptions` path, where a speech-to-text model
+  is `:unknown`: it passes, but "only verified models" refuses it until the endpoint
+  declares audio. A failure is shown in the component, not flashed (`put_flash/3`
+  in a live component never reaches the page), and `{:dictation_failed, id,
+  reason}` goes only to a page with `show_error={false}`: a message a LiveView has
+  no clause for crashes it. `{:dictated, …}` needs a clause on any page that defines
+  `handle_info/2`, `into` or not. The recorder is looked up at render, so the module
+  still compiles and runs on a core without it (nothing to record with is shown); a
+  raise in the task reaches `Task`'s crash report, as in any `start_async`, whatever
+  our own log line leaves out. `into` is the `PhoenixKitAIDictate` hook.
 - Located answers: `detect_regions/4`, `check_statements/4`,
   `describe_image/3` with `regions:` and `extract_text/3` with
   `boxes: true` return `PhoenixKitAI.Box` structs. Boxes are asked for as

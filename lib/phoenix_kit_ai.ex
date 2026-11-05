@@ -1243,10 +1243,10 @@ defmodule PhoenixKitAI do
 
   @doc """
   The AI tasks this module runs itself, found by `PhoenixKitAI.Tasks` like
-  any module's `ai_tasks/0`: the translation pipeline and the Playground.
-  Neither needs more than text in and text out. The Playground takes free
-  text, so it shares the `free_text` block group with other free-text
-  tasks.
+  any module's `ai_tasks/0`: the translation pipeline, the Playground and
+  dictation. The first two need no more than text in and text out; dictation
+  needs a model that hears. The Playground takes free text, so it shares the
+  `free_text` block group with other free-text tasks.
   """
   @spec ai_tasks() :: [TaskSpec.t()]
   def ai_tasks do
@@ -1271,6 +1271,14 @@ defmodule PhoenixKitAI do
           dgettext_noop("default", "Let an administrator try endpoints and prompts by hand."),
         needs: [],
         block_group: "free_text"
+      },
+      %TaskSpec{
+        key: "ai.dictation",
+        label: dgettext_noop("default", "Dictation"),
+        gettext_backend: PhoenixKitAI.Gettext,
+        purpose:
+          dgettext_noop("default", "Write down what a person says on a page, word for word."),
+        needs: [:audio_input]
       }
     ]
   end

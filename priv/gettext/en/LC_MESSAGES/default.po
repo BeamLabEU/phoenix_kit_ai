@@ -535,7 +535,7 @@ msgstr "Enter value for %{name}..."
 msgid "Enter your prompt template...\n\nUse {{VariableName}} for dynamic content.\n\nExample:\nTranslate the following text to {{Language}}:\n\n{{Text}}"
 msgstr "Enter your prompt template...\n\nUse {{VariableName}} for dynamic content.\n\nExample:\nTranslate the following text to {{Language}}:\n\n{{Text}}"
 
-#: lib/phoenix_kit_ai/request.ex:228
+#: lib/phoenix_kit_ai/request.ex:231
 #: lib/phoenix_kit_ai/web/playground.html.heex:458
 #, elixir-autogen, elixir-format
 msgid "Error"
@@ -1263,7 +1263,7 @@ msgstr "Status"
 msgid "Streaming Voice (xAI)"
 msgstr "Streaming Voice (xAI)"
 
-#: lib/phoenix_kit_ai/request.ex:227
+#: lib/phoenix_kit_ai/request.ex:230
 #, elixir-autogen, elixir-format
 msgid "Success"
 msgstr "Success"
@@ -1360,7 +1360,7 @@ msgstr "This is taking longer than usual. Translations keep running in the backg
 msgid "Time"
 msgstr "Time"
 
-#: lib/phoenix_kit_ai/request.ex:229
+#: lib/phoenix_kit_ai/request.ex:232
 #, elixir-autogen, elixir-format
 msgid "Timeout"
 msgstr "Timeout"
@@ -1473,7 +1473,7 @@ msgstr "Type your message to the AI..."
 msgid "Unexpected error: %{reason}"
 msgstr "Unexpected error: %{reason}"
 
-#: lib/phoenix_kit_ai/request.ex:231
+#: lib/phoenix_kit_ai/request.ex:234
 #, elixir-autogen, elixir-format
 msgid "Unknown"
 msgstr "Unknown"
@@ -2567,7 +2567,7 @@ msgstr "tools"
 msgid "No provider of this model accepts all the request's parameters. Remove the ones it does not support from the endpoint."
 msgstr "No provider of this model accepts all the request's parameters. Remove the ones it does not support from the endpoint."
 
-#: lib/phoenix_kit_ai/request.ex:230
+#: lib/phoenix_kit_ai/request.ex:233
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:742
 #: lib/phoenix_kit_ai/web/endpoints.html.heex:825
 #, elixir-autogen, elixir-format
@@ -2998,7 +2998,7 @@ msgstr "one user's calls"
 msgid "one user's spending"
 msgstr "one user's spending"
 
-#: lib/phoenix_kit_ai.ex:1802
+#: lib/phoenix_kit_ai.ex:1810
 #, elixir-autogen, elixir-format
 msgid "only a holder of ai.manage may declare capabilities while only verified models are allowed"
 msgstr "only a holder of ai.manage may declare capabilities while only verified models are allowed"
@@ -3641,7 +3641,7 @@ msgstr "The catalogue gives this model a price, which is used first: this price 
 msgid "Setting a price needs the “Manage the AI task guard” permission: it decides what the money limits count."
 msgstr "Setting a price needs the “Manage the AI task guard” permission: it decides what the money limits count."
 
-#: lib/phoenix_kit_ai.ex:1825
+#: lib/phoenix_kit_ai.ex:1833
 #, elixir-autogen, elixir-format
 msgid "only a holder of ai.manage may set or change a manual price"
 msgstr "only a holder of ai.manage may set or change a manual price"
@@ -4564,3 +4564,68 @@ msgstr "The periods changed after this cleanup was queued; nothing was deleted"
 #, elixir-autogen, elixir-format
 msgid "The provider refused this content"
 msgstr "The provider refused this content"
+
+#: lib/phoenix_kit_ai/web/components/dictate.ex:136
+#, elixir-autogen, elixir-format
+msgid "Dictate"
+msgstr "Dictate"
+
+#: lib/phoenix_kit_ai.ex:1277
+#, elixir-autogen, elixir-format
+msgid "Dictation"
+msgstr "Dictation"
+
+#: lib/phoenix_kit_ai/web/components/dictate.ex:181
+#, elixir-autogen, elixir-format
+msgid "Dictation isn't available right now."
+msgstr "Dictation isn't available right now."
+
+#: lib/phoenix_kit_ai/web/components/dictate.ex:192
+#, elixir-autogen, elixir-format
+msgid "No AI endpoint is set up for dictation."
+msgstr "No AI endpoint is set up for dictation."
+
+#: lib/phoenix_kit_ai/web/components/dictate.ex:174
+#, elixir-autogen, elixir-format
+msgid "Nobody has verified that this endpoint's model can hear. Set an audio model for it."
+msgstr "Nobody has verified that this endpoint's model can hear. Set an audio model for it."
+
+#: lib/phoenix_kit_ai/web/components/dictate.ex:164
+#, elixir-autogen, elixir-format
+msgid "Still writing down the last recording. Please wait a moment."
+msgstr "Still writing down the last recording. Please wait a moment."
+
+#: lib/phoenix_kit_ai/web/components/dictate.ex:197
+#, elixir-autogen, elixir-format
+msgid "That recording is too long. Please try a shorter one."
+msgstr "That recording is too long. Please try a shorter one."
+
+#: lib/phoenix_kit_ai/web/components/dictate.ex:200
+#, elixir-autogen, elixir-format
+msgid "The AI usage limit has been reached. Please try again later."
+msgstr "The AI usage limit has been reached. Please try again later."
+
+#: lib/phoenix_kit_ai/web/components/dictate.ex:170
+#, elixir-autogen, elixir-format
+msgid "This endpoint's model can't hear. Set an audio model for it."
+msgstr "This endpoint's model can't hear. Set an audio model for it."
+
+#: lib/phoenix_kit_ai/web/components/dictate.ex:159
+#, elixir-autogen, elixir-format
+msgid "We couldn't hear anything. Please try again, a little closer to the microphone."
+msgstr "We couldn't hear anything. Please try again, a little closer to the microphone."
+
+#: lib/phoenix_kit_ai/web/components/dictate.ex:195
+#, elixir-autogen, elixir-format
+msgid "We couldn't write that down. Please try again."
+msgstr "We couldn't write that down. Please try again."
+
+#: lib/phoenix_kit_ai.ex:1280
+#, elixir-autogen, elixir-format
+msgid "Write down what a person says on a page, word for word."
+msgstr "Write down what a person says on a page, word for word."
+
+#: lib/phoenix_kit_ai/web/components/dictate.ex:144
+#, elixir-autogen, elixir-format
+msgid "Writing down what you said…"
+msgstr "Writing down what you said…"
