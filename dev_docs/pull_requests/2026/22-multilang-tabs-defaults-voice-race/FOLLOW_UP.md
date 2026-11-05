@@ -16,3 +16,7 @@ synchronises on messages rather than sleeps.
 ## Open
 
 None.
+
+## Claude review — 2026-11-05
+
+No open findings; see [the review](CLAUDE_REVIEW.md).

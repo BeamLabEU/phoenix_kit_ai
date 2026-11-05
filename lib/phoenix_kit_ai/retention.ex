@@ -40,7 +40,7 @@ defmodule PhoenixKitAI.Retention do
   alias PhoenixKit.Settings.Setting
   alias PhoenixKit.Users.Auth.Scope
   alias PhoenixKit.Utils.TimeZone
-  alias PhoenixKitAI.{Guard, GuardBlock, GuardEvent, JournalPruneWorker, Request}
+  alias PhoenixKitAI.{Guard, GuardBlock, GuardEvent, JournalPruneWorker, ObanQuery, Request}
 
   # ===========================================
   # POLICY
@@ -72,7 +72,7 @@ defmodule PhoenixKitAI.Retention do
   # the gate but carrying the call's stack, process and, with
   # `capture_request_memory`, its memory (`stacktrace`, `caller_context`),
   # and the failure's reason, which carries a payload on an image call.
-  @content_keys ~w(messages request_payload response response_reasoning response_tool_calls input raw_response stacktrace caller_context error_reason)
+  @content_keys ~w(messages request_payload response response_reasoning response_tool_calls input raw_response stacktrace caller_context error_reason provider_error_message)
 
   # What a run counts: the three kinds and the cleared off-purpose reasons.
   @counters [:content, :requests, :guard_events, :guard_reasons]
@@ -623,15 +623,14 @@ defmodule PhoenixKitAI.Retention do
   def pending_job do
     worker = JournalPruneWorker |> Module.split() |> Enum.join(".")
 
-    query =
-      from(j in Oban.Job,
-        where: j.worker == ^worker and j.state in @pending_states,
-        order_by: [desc: j.id],
-        limit: 1,
-        select: %{state: j.state, inserted_at: j.inserted_at, attempted_at: j.attempted_at}
-      )
-
-    repo().one(query, prefix: Oban.config(Oban).prefix, log: false)
+    from(j in Oban.Job,
+      where: j.worker == ^worker and j.state in @pending_states,
+      order_by: [desc: j.id],
+      limit: 1,
+      select: %{state: j.state, inserted_at: j.inserted_at, attempted_at: j.attempted_at}
+    )
+    |> ObanQuery.scoped()
+    |> repo().one(log: false)
   rescue
     _error -> nil
   catch

@@ -726,9 +726,14 @@ defmodule PhoenixKitAI.TaskLimits do
 
   @doc """
   Sets a task's limits and warn percent: `attrs` takes `"limits"`
-  (`%{"task" => …, "user" => …}`, see the moduledoc; amounts as numbers or
-  strings, blank for none) and `"warn_percent"` (1–100, blank for the
+  (`%{"task" => …, "user" => …}`, see the moduledoc; a money amount as a
+  `Decimal` or a dollar string with its point (`"20.00"`), a count as a number
+  or string, blank for none) and `"warn_percent"` (1–100, blank for the
   default). Needs `ai.manage`; written to the Activity log.
+
+  A money amount in the released versions' shape (an integer, a float, a string
+  of digits only) is refused with `{:error, :ambiguous_amount}`: it cannot be told
+  from millionths of a dollar.
 
   For a task declared with `user_limits: false` a user amount is refused
   (`{:error, :user_limits_off}`, blank ones are not amounts) and the user
@@ -736,12 +741,19 @@ defmodule PhoenixKitAI.TaskLimits do
   """
   @spec update_settings(term(), String.t(), map()) ::
           {:ok, TaskSetting.t()}
-          | {:error, :forbidden | :unknown_task | :user_limits_off | Ecto.Changeset.t()}
+          | {:error,
+             :forbidden
+             | :unknown_task
+             | :user_limits_off
+             | :ambiguous_amount
+             | Ecto.Changeset.t()}
   def update_settings(scope, task_key, attrs) when is_binary(task_key) and is_map(attrs) do
     limits = attrs |> fetch(:limits) |> normalize_scoped()
 
     with :ok <- Guard.authorize_manage(scope),
          {:ok, spec} <- declared_spec(task_key),
+         :ok <- dollars_only(limits.task),
+         :ok <- dollars_only(limits.user),
          :ok <- if(limits.user == %{}, do: :ok, else: user_scope(spec)) do
       setting = settings(task_key) || %TaskSetting{task_key: task_key}
       limits = limits |> stringify_scoped() |> keep_stored_user(spec, setting)
@@ -829,12 +841,26 @@ defmodule PhoenixKitAI.TaskLimits do
     with :ok <- Guard.authorize_manage(scope),
          {:ok, spec} <- declared_spec(task_key),
          :ok <- user_scope(spec),
-         {:ok, user_uuid} <- user(user_uuid) do
-      case normalize(limits) do
-        empty when empty == %{} -> delete_user_limits(scope, task_key, user_uuid)
-        normalized -> upsert_user_limits(scope, task_key, user_uuid, normalized)
-      end
+         {:ok, user_uuid} <- user(user_uuid),
+         normalized = normalize(limits),
+         :ok <- dollars_only(normalized) do
+      if normalized == %{},
+        do: delete_user_limits(scope, task_key, user_uuid),
+        else: upsert_user_limits(scope, task_key, user_uuid, normalized)
     end
+  end
+
+  # `normalize/1` also reads what is stored, where an amount in the released
+  # versions' shape is `:unmigrated` and refuses calls until the migration has
+  # run. Written, it would be stored as that word and read back as no limit:
+  # `{:ok, _}` while the cap disappears.
+  defp dollars_only(limits) do
+    unmigrated? =
+      Enum.any?(limits, fn {_unit, periods} ->
+        Enum.any?(periods, &match?({_period, :unmigrated}, &1))
+      end)
+
+    if unmigrated?, do: {:error, :ambiguous_amount}, else: :ok
   end
 
   defp upsert_user_limits(scope, task_key, user_uuid, limits) do

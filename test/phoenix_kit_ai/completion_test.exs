@@ -18,7 +18,7 @@ defmodule PhoenixKitAI.CompletionTest do
       assert Completion.handle_error_status(429, "") == {:error, :rate_limited}
     end
 
-    test "generic non-2xx returns {:api_error, status} and logs the parsed message" do
+    test "generic non-2xx returns {:api_error, status} and logs the status alone" do
       body = ~s({"error":{"message":"Upstream timeout"}})
 
       log =
@@ -27,8 +27,9 @@ defmodule PhoenixKitAI.CompletionTest do
         end)
 
       assert log =~ "OpenRouter completion failed: 503"
-      assert log =~ "Upstream timeout"
-      # Raw body should NOT be in the log when we have a parsed message
+      # Neither the body nor its message: a provider's words can echo the request
+      # or a key. The request row keeps them, behind the content gate.
+      refute log =~ "Upstream timeout"
       refute log =~ "error\":{\"message"
     end
 
@@ -52,7 +53,8 @@ defmodule PhoenixKitAI.CompletionTest do
           assert Completion.handle_error_status(400, body) == {:error, {:api_error, 400}}
         end)
 
-      assert log =~ "missing required field: model"
+      assert log =~ "OpenRouter completion failed: 400"
+      refute log =~ "missing required field: model"
     end
   end
 

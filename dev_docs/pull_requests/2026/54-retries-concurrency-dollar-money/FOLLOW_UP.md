@@ -19,3 +19,14 @@ See the PR #58 sweep follow-up and the current branch's `mix precommit` and suit
 ## Open
 
 None.
+
+## Claude review — 2026-11-05
+
+See [the review](CLAUDE_REVIEW.md).
+
+- **Fixed:** `concurrency:` options without a key keep the configured limit; a money
+  limit in the old unit is refused rather than silently removed; `retry: nil` leaves
+  the configured policy; `usage` and `models` no longer named as endpoint parameters;
+  OpenRouter's transient 402 is retried; delivery options reach the vision verbs.
+- **Not changed:** `latency_ms` includes the wait (changes what stored rows mean, so a
+  decision first); a 200-with-error body is not retried; two nitpicks.

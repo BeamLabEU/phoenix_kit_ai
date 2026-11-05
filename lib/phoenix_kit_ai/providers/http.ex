@@ -109,7 +109,9 @@ defmodule PhoenixKitAI.Providers.HTTP do
              ~r/safety|content[ _-]?policy|moderat|blocked|prohibited|violat/i,
              message
            ) do
-      result = {:error, {:content_policy, message}}
+      # The one place this text enters: `error_reason`, `error_message` and the
+      # Playground all read it from here.
+      result = {:error, {:content_policy, ProviderError.clean(message) || ""}}
       :ok = ProviderError.note(status, ProviderError.parse(text), result)
       result
     else

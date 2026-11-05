@@ -330,6 +330,25 @@ defmodule PhoenixKitAI.TranscriptionTest do
   end
 
   describe "the transcriptions path" do
+    test "the configured retry applies when the call names none" do
+      Application.put_env(:phoenix_kit_ai, :retry, max_attempts: 2, base_delay: 1, max_delay: 1)
+      on_exit(fn -> Application.delete_env(:phoenix_kit_ai, :retry) end)
+      counter = :counters.new(1, [])
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        :counters.add(counter, 1, 1)
+
+        if :counters.get(counter, 1) == 1,
+          do: Plug.Conn.send_resp(conn, 503, "{}"),
+          else: Req.Test.json(conn, %{"text" => "Hello."})
+      end)
+
+      ep = endpoint!(%{provider: "openai", model: "whisper-1"})
+
+      assert {:ok, %{text: "Hello."}} = PhoenixKitAI.transcribe(ep.uuid, wav(1))
+      assert :counters.get(counter, 1) == 2
+    end
+
     test "posts multipart to /audio/transcriptions for a speech-to-text model" do
       stub(%{"text" => " Hello there. ", "usage" => %{"type" => "duration", "seconds" => 2}})
       ep = endpoint!(%{provider: "openai", model: "whisper-1"})

@@ -232,4 +232,31 @@ defmodule PhoenixKitAI.LimiterTest do
       assert Limiter.run(@ep, [], fn -> :after end) == :after
     end
   end
+
+  describe "a call's options that name neither a key nor a limit" do
+    test "leave the most specific configured key in charge" do
+      Application.put_env(:phoenix_kit_ai, :concurrency, %{
+        "provider:openrouter" => 8,
+        "endpoint:#{@ep.name}" => 2
+      })
+
+      key = "endpoint:#{@ep.name}"
+
+      assert {^key, 2, settings} = Limiter.limit_for(@ep, concurrency: [notify: self()])
+      assert settings[:notify] == self()
+      assert {^key, 2, _} = Limiter.limit_for(@ep, [])
+    end
+
+    test "share the slots of the calls that passed none" do
+      Application.put_env(:phoenix_kit_ai, :concurrency, %{"endpoint:#{@ep.name}" => 2})
+
+      assert {key, 2, _} = Limiter.limit_for(@ep, concurrency: [wait: 10])
+      assert {^key, 2, _} = Limiter.limit_for(@ep, [])
+    end
+
+    test "with nothing configured the call is not limited" do
+      Application.delete_env(:phoenix_kit_ai, :concurrency)
+      assert Limiter.limit_for(@ep, concurrency: [wait: 10]) == nil
+    end
+  end
 end

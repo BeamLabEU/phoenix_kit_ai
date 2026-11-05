@@ -495,13 +495,14 @@ defmodule PhoenixKitAI.RequestRulesTest do
       tools = [%{"type" => "function", "function" => %{"name" => "f", "parameters" => %{}}}]
 
       assert {:error, {:no_provider_for_params, params}} =
-               PhoenixKitAI.ask(ep.uuid, "hi", tools: tools)
+               PhoenixKitAI.ask(ep.uuid, "hi", tools: tools, models: ["other/model"])
 
       # Only what an endpoint's settings put there: the call's own tools and
-      # format are not something to remove from the endpoint.
+      # format, and what this module adds itself, are not something to remove
+      # from the endpoint.
       assert "max_tokens" in params
 
-      for name <- ~w(tools tool_choice parallel_tool_calls response_format messages),
+      for name <- ~w(tools tool_choice parallel_tool_calls response_format messages usage models),
           do: refute(name in params, name)
 
       assert [%{status: "error", error_message: message, metadata: metadata}] =

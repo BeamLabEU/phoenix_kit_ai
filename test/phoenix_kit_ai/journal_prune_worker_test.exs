@@ -159,6 +159,47 @@ defmodule PhoenixKitAI.JournalPruneWorkerTest do
     end
   end
 
+  describe "a manual job whose period changed while it waited" do
+    defp queued_manual(cutoffs, queued_ago) do
+      %Ecto.Changeset{changes: %{args: args}} = JournalPruneWorker.manual_job(cutoffs, nil)
+      JournalPruneWorker.perform(%Oban.Job{args: args, inserted_at: ago(queued_ago)})
+    end
+
+    test "deletes nothing of that kind, and stops when nothing is left" do
+      old = request!(ago(3000 * @day))
+      periods!(%{requests: :forever}, 60)
+
+      assert {:cancel, :periods_changed} =
+               queued_manual(%{requests: min_cutoff(:requests)}, 3600)
+
+      assert exists?(old)
+      assert %{manual: %{status: :failed, error: "periods_changed"}} = Retention.last_run()
+    end
+
+    test "still does the kinds nobody touched" do
+      request = request!(ago(3000 * @day))
+      event = event!(ago(3000 * @day))
+      periods!(%{requests: :forever}, 60)
+
+      assert :ok =
+               queued_manual(
+                 %{requests: min_cutoff(:requests), guard_events: min_cutoff(:guard_events)},
+                 3600
+               )
+
+      assert exists?(request)
+      refute exists?(event)
+    end
+
+    test "a period changed before the job was queued is what the job was asked under" do
+      old = request!(ago(3000 * @day))
+      periods!(%{requests: {3, :month}}, 7200)
+
+      assert :ok = queued_manual(%{requests: min_cutoff(:requests)}, 3600)
+      refute exists?(old)
+    end
+  end
+
   describe "manual" do
     test "deletes by the boundaries in the job, with the actor" do
       actor = Fixtures.user_fixture()

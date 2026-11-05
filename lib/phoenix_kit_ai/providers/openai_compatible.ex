@@ -62,7 +62,10 @@ defmodule PhoenixKitAI.Providers.OpenAICompatible do
         :reasoning_effort,
         :reasoning_max_tokens,
         :reasoning_exclude,
-        :require_parameters
+        :require_parameters,
+        :timeout,
+        :retry,
+        :concurrency
       ])
       |> Enum.reject(fn {_k, v} -> is_nil(v) end)
       |> Keyword.put(:safety_errors, true)
@@ -195,6 +198,10 @@ defmodule PhoenixKitAI.Providers.OpenAICompatible do
 
       {:ok, %{"choices" => []}} ->
         {:error, :no_choices_in_response}
+
+      # A provider error delivered with a 200, as on chat: read as its status.
+      {:ok, %{"error" => %{"code" => code}} = map} when is_integer(code) ->
+        HTTP.error(code, Jason.encode!(map))
 
       {:ok, _} ->
         {:error, :invalid_response_format}

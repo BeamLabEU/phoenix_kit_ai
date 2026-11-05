@@ -67,18 +67,30 @@ defmodule PhoenixKitAI.Limiter do
         nil
 
       per_call when is_list(per_call) ->
-        key = Keyword.get(per_call, :key, default_key(endpoint))
-
-        case Keyword.get(per_call, :limit) || configured_limit(endpoint, key) do
-          limit when is_integer(limit) and limit > 0 ->
-            {key, limit, Keyword.merge(defaults, per_call)}
-
-          _ ->
-            nil
-        end
+        for_call(endpoint, per_call, defaults)
 
       _ ->
         configured(endpoint, defaults)
+    end
+  end
+
+  # Options that name neither a key nor a limit (`wait:`, `notify:`) only change
+  # how this call waits: it takes the same slots as a call without them, or the
+  # endpoint's limit is escaped by anyone asking to see their place in line.
+  defp for_call(endpoint, per_call, defaults) do
+    if Keyword.has_key?(per_call, :key) or Keyword.has_key?(per_call, :limit) do
+      key = Keyword.get(per_call, :key, default_key(endpoint))
+
+      case Keyword.get(per_call, :limit) || configured_limit(endpoint, key) do
+        limit when is_integer(limit) and limit > 0 ->
+          {key, limit, Keyword.merge(defaults, per_call)}
+
+        _ ->
+          nil
+      end
+    else
+      with {key, limit, settings} <- configured(endpoint, defaults),
+           do: {key, limit, Keyword.merge(settings, per_call)}
     end
   end
 

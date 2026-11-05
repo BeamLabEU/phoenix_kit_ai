@@ -181,6 +181,8 @@ defmodule PhoenixKitAI.RetentionContentKeysTest do
   ]
 
   for {name, {provider, verb}} <- @scenarios do
+    gated? = verb != :embedding or provider == :fail
+
     test "#{name}: the gated keys are content keys" do
       provider =
         case unquote(provider) do
@@ -227,8 +229,9 @@ defmodule PhoenixKitAI.RetentionContentKeysTest do
         endpoint
       end
 
-      # embeddings write nothing under the gate
-      assert_gated_in_content_keys(provider, call, unquote(verb) != :embedding)
+      # A successful embedding writes nothing under the gate; a failed one has
+      # the provider's words.
+      assert_gated_in_content_keys(provider, call, unquote(gated?))
     end
   end
 

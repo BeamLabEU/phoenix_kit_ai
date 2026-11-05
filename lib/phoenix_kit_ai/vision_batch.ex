@@ -220,23 +220,36 @@ defmodule PhoenixKitAI.VisionBatch do
           PhoenixKitAI.describe_image(endpoint, images, group_opts(group, call_opts, opts))
         end)
 
-      results = group_results(group, outcome, opts)
-      # Billed but unusable answers in this unit (failed fallback attempts), shared like the call.
-      results = add_shares(results, PhoenixKitAI.take_unparsed_cost())
-      Enum.each(results, &record(state, &1, budget))
-      results
+      # One bad image refuses the whole call before anything reaches the
+      # provider: asked alone, it fails its own item and no other.
+      if input_refused?(outcome) do
+        Enum.map(group, &run_item(&1, :describe_image, endpoint, call_opts, opts, budget, state))
+      else
+        settle_group(group, outcome, opts, budget, state)
+      end
     end
   end
 
-  # Items that carry their own prompt or options run alone; the rest are
-  # packed `group` at a time, in order, and a group closes early rather
-  # than carry more image bytes than one call may (items that would each
-  # pass alone must not fail together).
+  defp input_refused?({:error, reason}), do: PhoenixKitAI.input_error?(reason)
+  defp input_refused?(_outcome), do: false
+
+  defp settle_group(group, outcome, opts, budget, state) do
+    results = group_results(group, outcome, opts)
+    # Billed but unusable answers in this unit (failed fallback attempts), shared like the call.
+    results = add_shares(results, PhoenixKitAI.take_unparsed_cost())
+    Enum.each(results, &record(state, &1, budget))
+    results
+  end
+
+  # Items that carry their own prompt or options run alone, as does one with no
+  # images (nothing in a group would refuse it); the rest are packed `group` at
+  # a time, in order, and a group closes early rather than carry more image
+  # bytes than one call may (items that would each pass alone must not fail
+  # together).
   defp units(items, 1, _max_bytes), do: Enum.map(items, &[&1])
 
   defp units(items, group, max_bytes) do
-    {plain, own} =
-      Enum.split_with(items, &(not Map.has_key?(&1, :prompt) and not Map.has_key?(&1, :opts)))
+    {plain, own} = Enum.split_with(items, &packable?/1)
 
     packed =
       Enum.chunk_while(
@@ -265,6 +278,11 @@ defmodule PhoenixKitAI.VisionBatch do
     packed ++ Enum.map(own, &[&1])
   end
 
+  defp packable?(item) do
+    not Map.has_key?(item, :prompt) and not Map.has_key?(item, :opts) and
+      List.wrap(item.images) != []
+  end
+
   defp group_opts(group, call_opts, opts) do
     {lines, _next} =
       group
@@ -275,7 +293,7 @@ defmodule PhoenixKitAI.VisionBatch do
         {"item #{k} = #{imgs}", first + c}
       end)
 
-    base = opts[:prompt] || PhoenixKitAI.Images.default_question()
+    base = opts[:prompt] || opts[:question] || PhoenixKitAI.Images.default_question()
 
     prompt =
       "This request covers #{length(group)} separate items, each with its own images: " <>
@@ -333,7 +351,7 @@ defmodule PhoenixKitAI.VisionBatch do
   defp group_results(group, {:ok, result}, opts) do
     n = length(group)
     share = share(result[:cost], n)
-    answers = group_answers(result.json, n)
+    answers = group_answers(result.json)
 
     group
     |> Enum.with_index(1)
@@ -359,18 +377,19 @@ defmodule PhoenixKitAI.VisionBatch do
     do: Enum.map(group, &item_result(&1.id, :error, nil, reason, nil))
 
   # The answers by item number. Strict schemas cannot bound `item` (Anthropic
-  # refuses `minimum`), so a model that counts from 0 is read as such when
-  # its numbers are exactly 0..n-1; a number given twice answers neither.
-  defp group_answers(%{"items" => entries}, n) when is_list(entries) do
+  # refuses `minimum`), and items count from 1, so a 0 can only mean the model
+  # counts from 0, also when it left an item out; a number given twice answers
+  # neither.
+  defp group_answers(%{"items" => entries}) when is_list(entries) do
     pairs = for %{"item" => k, "answer" => a} <- entries, is_integer(k), do: {k, a}
     keys = Enum.map(pairs, &elem(&1, 0))
-    shift = if Enum.sort(keys) == Enum.to_list(0..(n - 1)//1), do: 1, else: 0
+    shift = if 0 in keys, do: 1, else: 0
     twice = keys |> Enum.frequencies() |> Enum.filter(&(elem(&1, 1) > 1)) |> Map.new()
 
     for {k, a} <- pairs, not Map.has_key?(twice, k), into: %{}, do: {k + shift, a}
   end
 
-  defp group_answers(_json, _n), do: %{}
+  defp group_answers(_json), do: %{}
 
   # No schema asks for a text answer; an object or array schema for that.
   defp answer_fits?(a, schema) when not is_map(schema), do: is_binary(a)

@@ -285,7 +285,7 @@ defmodule PhoenixKitAI.RetentionTest do
   describe "content_keys/0" do
     test "names the content, the legacy raw response and the debug context" do
       for key <-
-            ~w(messages request_payload response response_reasoning response_tool_calls input raw_response stacktrace caller_context error_reason) do
+            ~w(messages request_payload response response_reasoning response_tool_calls input raw_response stacktrace caller_context error_reason provider_error_message) do
         assert key in Retention.content_keys()
       end
 

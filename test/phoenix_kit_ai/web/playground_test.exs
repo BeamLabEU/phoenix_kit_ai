@@ -145,6 +145,38 @@ defmodule PhoenixKitAI.Web.PlaygroundTest do
       end)
     end
 
+    test "a result that arrives after the endpoint changed stays on its own endpoint",
+         %{conn: conn} do
+      test_pid = self()
+
+      Req.Test.stub(PhoenixKitAI.Web.PlaygroundTest, fn conn ->
+        send(test_pid, {:models_waiting, self()})
+
+        receive do
+          :go -> :ok
+        after
+          2_000 -> :ok
+        end
+
+        Req.Test.json(conn, %{"data" => [%{"id" => "a/model", "name" => "Only on A"}]})
+      end)
+
+      a = fixture_endpoint(name: "A", model: "google/gemini-2.5-flash-image")
+      b = fixture_endpoint(name: "B", model: "google/gemini-2.5-flash-image")
+      {:ok, view, _} = live(conn, "/en/admin/ai/playground")
+      render_change(view, "change", %{"endpoint_uuid" => a.uuid})
+
+      render_click(view, "load_image_models", %{})
+      assert_receive {:models_waiting, request}, 2_000
+
+      render_change(view, "change", %{"endpoint_uuid" => b.uuid})
+      send(request, :go)
+      html = render_async(view, 2_000)
+
+      refute html =~ "Only on A"
+      assert has_element?(view, "button[phx-click=load_image_models]")
+    end
+
     test "loads the model list asynchronously and offers the model's options", %{conn: conn} do
       stub_images(self())
       endpoint = fixture_endpoint(name: "Img", model: "google/gemini-2.5-flash-image")

@@ -169,8 +169,9 @@ Repo-local aliases:
   `error_keys` metadata instead of raw values. `PhoenixKitAI.Translation` also
   writes one `core.ai_translation.requested` entry per dispatched translation,
   giving a unified audit trail of AI spend across every consuming module.
-- **Request-content PII gate**: message bodies, response content and captured
-  reasoning are all persisted only when `capture_request_content?/0` is true;
+- **Request-content PII gate**: message bodies, response content, captured
+  reasoning and a provider's words about a failed call (they can echo the
+  request) are all persisted only when `capture_request_content?/0` is true;
   otherwise the row records `content_redacted: true` and keeps tokens, latency,
   model and cost. Any new field carrying user text must sit behind the same
   gate. A call's `capture_request_content: false` may switch it off for that
@@ -279,7 +280,10 @@ Repo-local aliases:
 - What clearing the content leaves of personal data: the `error_message`
   column (`Errors.message/1` plus the provider's answer, cut and masked;
   a `{:content_policy, text}` refusal is the provider's text, which can
-  paraphrase the request) goes only with the row, by the `requests` period;
+  paraphrase the request) goes only with the row, by the `requests` period,
+  as do `metadata.unresolved_refs` (an id passed as `user_uuid:` that is no
+  user) and the `metadata.provider_error.message` of rows written before those
+  words moved to `provider_error_message`;
   the reasons and lift notes of blocks (`phoenix_kit_ai_guard_blocks`) are
   written by people and no period covers them.
 - Deleting and clearing do not shrink the table files: the space is reused
@@ -357,6 +361,7 @@ lib/phoenix_kit_ai/
   guard_blocks.ex guard_block.ex   blocks of a person in a task's block group: rights, the per-node cache; the V3 schema
   task_limits.ex                 task limits: calendar windows, limits in force, counting from the journal, forgiving
   guard_events.ex guard_watch.ex   guard events, dedupe, watchers, notifications; the model_unfit watch process
+  oban_query.ex                  PhoenixKitAI.ObanQuery — reads of Oban's table, in the schema the host's Oban runs in
   retention.ex                   PhoenixKitAI.Retention — journal retention: periods, boundaries and the floor, preview, foreign-key check, chunked cleanup, last-run stamp; the policy block (who, defaults, limits)
   journal_prune_worker.ex        the nightly and manual cleanup job (Oban, `default` queue, unique)
   guard_events_prune_worker.ex   shim of the old 180-day prune: only queues JournalPruneWorker
@@ -558,13 +563,14 @@ so the context function gets that same, current scope.
 | `:task_providers` | `[]` | A host app's own modules whose `ai_tasks/0` declares AI tasks (see Feature notes) |
 | `:task_registry_callback_timeout_ms` | `5_000` | How long the registry builder waits for one module's `ai_tasks/0`; a timeout counts as a failure |
 | `:task_registry_build_timeout_ms` | `30_000` | How long a caller waits for the builder before answering from the last cached registry |
-| `:retry` | `false` | Retries for chat / embeddings / TTS calls: `true` (defaults) or `[max_attempts: 3, base_delay: 1_000, max_delay: 30_000, retry_timeouts: false]`; a call's `retry:` wins. Retried: HTTP 408/429/500/502/503/504 (never a 429 about money — an exhausted balance or quota) and transport errors other than a timeout; `Retry-After` honoured up to `max_delay`. Off by default so callers with their own retry/snooze logic (`TranslateWorker`) are unaffected |
+| `:retry` | `false` | Retries for chat / embeddings / TTS calls: `true` (defaults) or `[max_attempts: 3, base_delay: 1_000, max_delay: 30_000, retry_timeouts: false]`; a call's `retry:` wins. Retried: HTTP 408/429/500/502/503/504 (never a 429 about money — an exhausted balance or quota), OpenRouter's transient 402 (`:rate_limited`) and transport errors other than a timeout; `Retry-After` honoured up to `max_delay`. Off by default so callers with their own retry/snooze logic (`TranslateWorker`) are unaffected |
 | `:timeout` | `120_000` | Receive/connect timeout (ms) for chat / embeddings / TTS calls; a call's `timeout:` wins |
 | `:concurrency` | `%{}` | Concurrency limits per key, `%{"provider:openrouter" => 8, "endpoint:<name or uuid>" => 2}` — the most specific key wins; a call's `concurrency: [limit:, key:, wait:, notify:]` or `concurrency: false` overrides. See `PhoenixKitAI.Limiter` |
 | `:concurrency_defaults` | `[]` | `wait:` (ms a call waits for a slot, default 30_000) and `max_waiting:` (line length before `:concurrency_queue_full`, default 1_000) |
 | `:endpoint_cache_ttl` / `:credential_cache_ttl` | `300` | Seconds `PhoenixKitAI.Cache` keeps a resolved endpoint / integration credentials; `0` turns that cache off (config/test.exs does). Entries are also dropped on the endpoints broadcast / core's system integrations topic |
 | `:request_log_mode` | `:sync` | `:async` writes usage rows from `PhoenixKitAI.RequestLog` instead of the calling process (same insert, broadcast, telemetry and sinks); `create_request/1` stays synchronous |
 | `:request_log_max_queue` | `10_000` | Async backlog above which callers write synchronously again (no row is dropped) |
+| `:budget_month_cache_ttl` | `30_000` | Milliseconds `PhoenixKitAI.Budget` reuses the month's spend sum (2 s at most from 90% of the cap up); `0` turns the cache off (config/test.exs does) |
 | `:log_cache_hits` | `true` | `false` skips the zero-cost usage row of a cache hit (a call's `log_cache_hit:` wins); the hit telemetry event still fires |
 | `:box_formats` | `%{}` | Model-id prefix → how that model writes a box (`:yx_1000`, `:xy_1000`, `:xy_fraction`, `:yx_fraction`), merged over the built-in table (`PhoenixKitAI.Box.format_for/2`; longest prefix wins; a call's `box_format:` wins over both). An unknown value is ignored with a warning |
 | `:allow_internal_image_urls` | `false` | Lift the image-fetch host policy (loopback / link-local / RFC 1918 / `.local`, resolved addresses included) — tests and air-gapped installs only; separate from the endpoint base-URL switch |
@@ -665,6 +671,9 @@ provided the API exposes `<base_url>/chat/completions` and `/models`.
   $0.00000004 call keeps its cost); other providers don't get it.
 - **Delivery options** — `retry:`, `timeout:`, `concurrency:`, `log_cache_hit:` — change
   how a call is made, not what is asked, so they are dropped from the cache key.
+  The vision verbs take them too; the image adapters do not (see TODOs). In
+  `concurrency:`, options that name neither `key:` nor `limit:` (`wait:`, `notify:`)
+  only change how the call waits: it takes the slots of a call without them.
 - **Endpoints by name**: `get_endpoint_by_name/1` / `resolve_endpoint_by_name/1`
   let an app name an endpoint ("Label reader") instead of carrying its uuid;
   case-insensitive, surrounding spaces ignored on both sides.
@@ -823,7 +832,10 @@ Primary keys are UUIDv7 (`@primary_key {:uuid, UUIDv7, autogenerate: true}`),
 and every table-backed schema must `use PhoenixKit.SchemaPrefix` so its queries
 target the schema core's migrations installed into — a conformance test asserts
 this, because a missing prefix is invisible on public installs and broken on
-prefixed ones.
+prefixed ones. A query skips the prefix the same way when it names a table as a
+string, so kit tables are always queried through their schema (core's
+`PhoenixKit.Settings.Setting` for the settings), and Oban's table, which no schema
+of ours covers, through `PhoenixKitAI.ObanQuery.scoped/1`.
 
 `Request` declares `foreign_key_constraint` for `endpoint_uuid`, `user_uuid`
 and `prompt_uuid`; the prompt constraint has to tolerate two possible index
@@ -847,7 +859,10 @@ Test database `phoenix_kit_ai_test`.
   chain through `Ecto.Migrator` and `PhoenixKitAI.Test.SchemaMigration`. It re-applies newly shipped
   migrations on every boot; the older `Ecto.Migrator.run(TestRepo, [{0, PhoenixKit.Migration}], …)`
   pattern silently stopped re-applying once `0` was recorded in
-  `schema_migrations`, so never reintroduce it.
+  `schema_migrations`, so never reintroduce it. A test database older than core's
+  floor stops the run with `PhoenixKit.Migrations.BelowFloorError`; its advice,
+  `mix test.reset`, is core's alias and does not exist here. Drop the database and
+  let the next `mix test` build it, or point `PGDATABASE` at a new one.
 - `test_helper.exs` explicitly `Code.require_file`s the support modules (Elixir
   1.19's `mix test` no longer auto-loads them), then boots the minimal runtime
   the suite needs: `PhoenixKit.PubSub.Manager`, `PhoenixKit.ModuleRegistry`,
@@ -1030,7 +1045,9 @@ Test database `phoenix_kit_ai_test`.
   old runs nothing and writes no stamp (once a night: a second crontab
   entry, the shim, a host's deliberate second schedule). By hand:
   `run_now/2` queues `JournalPruneWorker.manual_job/2` with the boundaries
-  clamped, and the job clamps them again. One job at a time: Oban
+  clamped, and the job clamps them again and leaves out a kind whose period
+  changed after it was queued (a retry included; with none left it cancels,
+  stamped `periods_changed`). One job at a time: Oban
   uniqueness on the worker over `available` / `scheduled` / `executing` /
   `retryable` (no `:suspended`: Oban's unique query fails with it on a
   database migrated before Oban 14, and the cron inserts through `new/2`),
@@ -1252,6 +1269,14 @@ Test database `phoenix_kit_ai_test`.
   no `minimum` / `maximum`: Anthropic's strict mode refuses them. The verbs, formats,
   measured model behaviour and what stays in a host app:
   `dev_docs/guides/image-processing.md` ("Locating and comparing").
+- A verb that reads a vision answer by key says so with the internal
+  `json_object:` option (`true`, or a key naming a list), set by `extract_text/3`,
+  `detect_regions/4` and `regions:`; an answer of another shape is
+  `{:no_json_in_response, _}`, never a raise after a paid call. `finish_reason`
+  `"content_filter"` (`Completion.filtered?/1`, a 200) is `{:content_policy, _}`
+  and a text answer with no text `:empty_response`, each billed and logged through
+  `:on_no_json`. A new such error joins `Images.billed_answer?/1`, or the call
+  gets a second, zero-cost row.
 - Vision answers cut off at the output limit (`Completion.truncated?/1`:
   `finish_reason` `"length"` / `"max_tokens"`): a JSON request — vision or
   chat — is `{:error, {:output_truncated, text}}` (billed; a vision row is
@@ -1266,9 +1291,16 @@ Test database `phoenix_kit_ai_test`.
   plain chat keeps `{:api_error, status}` (its retry rules depend on it).
   A model id the provider does not serve (OpenRouter's 400 "not a valid
   model ID", a 404 "model … not found / does not exist") is
-  `:model_not_found` for every call (`ProviderError.class/2`).
+  `:model_not_found` for every call (`ProviderError.class/2`). A fallback that
+  is itself refused (`:model_not_found`, `{:model_unfit, _}`,
+  `{:model_unverified, _}`) moves on to the next, and with none left the
+  verb returns the first model's error, so one retired fallback cannot stop
+  a batch.
   `vision_batch(group: n)` (describe only) packs plain items into one call
-  with a per-item answer schema and an equal cost share.
+  with a per-item answer schema and an equal cost share. A group refused on
+  its input (`input_error?/1`, before any provider call) runs its items alone,
+  so one bad image fails one item; a model's item number of 0 means it counts
+  from 0 (`check_statements/4` reads `n` the same way).
   `check_statements/4`: `:contradicted` without an image is reported
   `:insufficient` (`downgraded:`); `confirm:` re-asks the contradicted
   statements and keeps only agreed ones.
@@ -1348,6 +1380,12 @@ folder with no `FOLLOW_UP.md` means "not triaged yet"; a stub file is what
 - No automated `mix test` run (`precommit` stops at dialyzer; no CI
   workflow) — PR #21's open item, waiting on a policy call.
 
+- Review sweep of 2026-11-05, recorded and not changed (each PR's
+  `FOLLOW_UP.md`): `latency_ms` includes the limiter's wait and retry backoff
+  (#54); a run killed mid-way leaves no audit entry for the chunks it committed
+  (#57); a picked connection that becomes usable starts no model fetch (#55);
+  Mistral's top-level error shape and Anthropic's and xAI's out-of-money bodies
+  (#53), which `ProviderError` adds only once documented.
 - `metadata.error_reason` is stored via `inspect/1` in `log_failed_request/7`
   and `log_failed_embedding_request/5`. A raw `reason` value would filter better
   through JSONB, but no consumer filters on it yet. Trigger: the first consumer

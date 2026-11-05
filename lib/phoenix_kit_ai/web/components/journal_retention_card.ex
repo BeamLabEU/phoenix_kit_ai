@@ -528,7 +528,8 @@ defmodule PhoenixKitAI.Web.Components.JournalRetentionCard do
 
   # A run's failure as the stamp keeps it: a refusal of the checks in its
   # sentence; a database or other class as it is (it names no value).
-  @refusal_classes ~w(foreign_key_blocks cutoff_in_future invalid_cutoff invalid_args)
+  @refusal_classes ~w(foreign_key_blocks cutoff_in_future invalid_cutoff invalid_args
+                      periods_changed)
 
   defp failure_text(class) when class in @refusal_classes,
     do: Errors.message({:prune_failed, class})

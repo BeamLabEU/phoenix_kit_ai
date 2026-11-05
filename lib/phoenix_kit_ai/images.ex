@@ -627,7 +627,8 @@ defmodule PhoenixKitAI.Images do
   # ── Vision ─────────────────────────────────────────────────────────────
 
   # What a vision call passes on to the chat request: sampling, the call's
-  # own reasoning options, and the guard's `require_parameters` flag.
+  # own reasoning options, the guard's `require_parameters` flag, and how the
+  # call is delivered (the same `:timeout`, `:retry` and `:concurrency` as chat).
   @vision_options [
     :temperature,
     :max_tokens,
@@ -637,8 +638,15 @@ defmodule PhoenixKitAI.Images do
     :reasoning_effort,
     :reasoning_max_tokens,
     :reasoning_exclude,
-    :require_parameters
+    :require_parameters,
+    :timeout,
+    :retry,
+    :concurrency
   ]
+
+  # What an answer stopped by a content filter is refused as. It names nothing
+  # of the answer: what a filter cut short is the model's words about the input.
+  @filtered "The provider's content filter stopped the answer"
 
   @doc """
   Asks a vision-capable chat endpoint about `images`.
@@ -655,8 +663,11 @@ defmodule PhoenixKitAI.Images do
   unless requested, and `truncated` says the answer stopped at the output
   limit (`max_tokens`). A JSON request whose answer was cut off is
   `{:error, {:output_truncated, text}}` instead, even if the text parses. A JSON answer that does not parse is
-  `{:error, {:no_json_in_response, text}}`; `:on_no_json`, a one-arity
-  function, first receives the unparsed result (usage and `:prompt`
+  `{:error, {:no_json_in_response, text}}`; so is one without the shape a located
+  or extracted answer is read by (internally `:json_object`). An answer a
+  content filter stopped is `{:error, {:content_policy, text}}`, and a text answer
+  with no text `{:error, :empty_response}`. `:on_no_json`, a one-arity
+  function, first receives the result of each of these (usage and `:prompt`
   included) so the paid call can still be logged.
   """
   @spec describe(Endpoint.t(), [input()], keyword()) :: {:ok, map()} | {:error, error()}
@@ -712,6 +723,7 @@ defmodule PhoenixKitAI.Images do
         opts
         |> Keyword.put(:prompt, opts[:prompt] <> "\n\n" <> Regions.describe_regions_line(labels))
         |> Keyword.put(:schema, Regions.with_regions(opts[:schema], labels))
+        |> Keyword.put(:json_object, "regions")
         |> Keyword.put(:region_answer, if(opts[:schema], do: :caller_schema, else: :description))
     end
   end
@@ -753,17 +765,7 @@ defmodule PhoenixKitAI.Images do
       model: response["model"] || endpoint.model
     }
 
-    json? = StructuredOutput.requested?(opts)
-
-    # A JSON answer cut off at the output limit is not an answer, even when
-    # what came back happens to parse: the paid call is logged, the caller
-    # gets the reason (raise `max_tokens`).
-    parsed =
-      if json? and truncated,
-        do: {:error, {:output_truncated, text}},
-        else: StructuredOutput.parse(text, json?)
-
-    case parsed do
+    case parsed_answer(response, text, truncated, opts) do
       {:ok, json} ->
         {:ok, %{result | json: json}}
 
@@ -772,6 +774,61 @@ defmodule PhoenixKitAI.Images do
         error
     end
   end
+
+  # What the answer holds, or why it holds nothing the caller can use. Each
+  # error here was billed, so `described/3` hands it to `:on_no_json`.
+  defp parsed_answer(response, text, truncated, opts) do
+    json? = StructuredOutput.requested?(opts)
+
+    cond do
+      # A filter's verdict arrives as a 200: it is the same refusal as the
+      # 400 of a provider that says it with a status, and text it cut short
+      # is not an answer.
+      Completion.filtered?(response) ->
+        {:error, {:content_policy, @filtered}}
+
+      # A JSON answer cut off at the output limit is not an answer, even when
+      # what came back happens to parse: the paid call is logged, the caller
+      # gets the reason (raise `max_tokens`).
+      json? and truncated ->
+        {:error, {:output_truncated, text}}
+
+      json? ->
+        text |> StructuredOutput.parse(true) |> json_shaped(text, opts[:json_object])
+
+      blank?(text) ->
+        {:error, :empty_response}
+
+      true ->
+        {:ok, nil}
+    end
+  end
+
+  # `:json_object` — what a verb that reads the answer by key needs: `true` an
+  # object, a key an object with a list under it. A JSON array parses, and
+  # `json["regions"]` raises on one: after a paid call, with no row written. An
+  # object without the list would read as "nothing found".
+  defp json_shaped({:ok, json}, text, required) do
+    if shaped?(json, required), do: {:ok, json}, else: {:error, {:no_json_in_response, text}}
+  end
+
+  defp json_shaped(error, _text, _required), do: error
+
+  defp shaped?(_json, nil), do: true
+  defp shaped?(json, true), do: is_map(json)
+  defp shaped?(json, key) when is_binary(key), do: is_map(json) and is_list(json[key])
+
+  defp blank?(nil), do: true
+  defp blank?(text), do: String.trim(text) == ""
+
+  @doc false
+  # Whether `reason` is an answer `:on_no_json` has already received: the call
+  # has its row, with its usage, and the verb must not write a second one.
+  @spec billed_answer?(term()) :: boolean()
+  def billed_answer?(:empty_response), do: true
+  def billed_answer?({:content_policy, @filtered}), do: true
+  def billed_answer?({tag, _}) when tag in [:no_json_in_response, :output_truncated], do: true
+  def billed_answer?(_reason), do: false
 
   @text_schema %{
     "type" => "object",
@@ -882,6 +939,7 @@ defmodule PhoenixKitAI.Images do
         :images_as,
         :regions
       ])
+      |> Keyword.put(:json_object, true)
       |> Keyword.put(
         :prompt,
         if(boxes?, do: prompt <> "\n" <> Regions.text_boxes_line(), else: prompt)
@@ -1111,7 +1169,16 @@ defmodule PhoenixKitAI.Images do
 
     describe_opts =
       opts
-      |> Keyword.take([:model, :temperature, :max_tokens, :on_no_json, :require_parameters])
+      |> Keyword.take([
+        :model,
+        :temperature,
+        :max_tokens,
+        :on_no_json,
+        :require_parameters,
+        :timeout,
+        :retry,
+        :concurrency
+      ])
       |> Keyword.merge(prompt: prompt, schema: @compare_schema, schema_name: "edit_check")
 
     case describe(endpoint, [before, after_image], describe_opts) do

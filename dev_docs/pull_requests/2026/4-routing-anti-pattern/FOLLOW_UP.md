@@ -12,3 +12,7 @@ Re-checked current `AGENTS.md` — pointer is still present at the
 ## Open
 
 None.
+
+## Claude review — 2026-11-05
+
+No open findings; see [the review](CLAUDE_REVIEW.md).

@@ -296,6 +296,39 @@ defmodule PhoenixKitAI.TaskLimitsTest do
     end
   end
 
+  describe "a money limit written in the released unit" do
+    test "update_settings/3 refuses it, and the limit in force stays", %{owner: owner} do
+      scope = owner_scope(owner)
+      set_limits(owner, %{"task" => %{"money" => %{"day" => "2.00"}}})
+
+      for amount <- [5_000_000, 1.5, "20"] do
+        assert {:error, :ambiguous_amount} =
+                 TaskLimits.update_settings(scope, "test.limited", %{
+                   "limits" => %{"task" => %{"money" => %{"day" => amount}}}
+                 })
+      end
+
+      assert %{"task" => %{"money" => %{"day" => "2.00"}}} =
+               TaskLimits.settings("test.limited").limits
+    end
+
+    test "put_user_limits/4 refuses it", %{owner: owner} do
+      user = Fixtures.user_fixture().uuid
+
+      assert {:error, :ambiguous_amount} =
+               TaskLimits.put_user_limits(owner_scope(owner), "test.limited", user, %{
+                 "money" => %{"day" => 5_000_000}
+               })
+    end
+
+    test "a dollar amount with its point is taken", %{owner: owner} do
+      assert {:ok, _} =
+               TaskLimits.update_settings(owner_scope(owner), "test.limited", %{
+                 "limits" => %{"task" => %{"money" => %{"day" => "20.00"}}}
+               })
+    end
+  end
+
   describe "the call-time check" do
     test "competing first saves return changeset errors instead of raising", %{owner: owner} do
       scope = owner_scope(owner)

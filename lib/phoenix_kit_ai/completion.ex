@@ -184,6 +184,17 @@ defmodule PhoenixKitAI.Completion do
 
   def truncated?(_response), do: false
 
+  @doc """
+  Whether a provider's filter stopped a chat-shaped answer: the first choice's
+  `finish_reason` is `"content_filter"`, OpenAI's and OpenRouter's word for it.
+  It comes with a 200, and with no text or with text cut short.
+  """
+  @spec filtered?(map()) :: boolean()
+  def filtered?(%{"choices" => [%{"finish_reason" => reason} | _]}) when is_binary(reason),
+    do: String.downcase(reason) == "content_filter"
+
+  def filtered?(_response), do: false
+
   @doc false
   # Public for testability. Maps an HTTP status + response body to a
   # `{:error, reason}` tuple where `reason` is an atom or tagged tuple.
@@ -228,14 +239,15 @@ defmodule PhoenixKitAI.Completion do
   defp status_error(status, response_body), do: generic_error_status(status, response_body)
 
   defp generic_error_status(status, response_body) do
-    # Log only the parsed error message (not the raw body) to avoid
-    # persisting potentially sensitive provider data to application logs.
+    # The status only, never the provider's words: they can echo the request
+    # or a key. The request row keeps them, trimmed and masked, behind the
+    # content gate (`ProviderError`).
     case extract_error_message(response_body) do
       nil ->
         Logger.warning("OpenRouter completion failed: #{status} (no parsable error body)")
 
-      msg ->
-        Logger.warning("OpenRouter completion failed: #{status} - #{msg}")
+      _message ->
+        Logger.warning("OpenRouter completion failed: #{status}")
     end
 
     {:error, {:api_error, status}}
@@ -243,13 +255,14 @@ defmodule PhoenixKitAI.Completion do
 
   # The parameters a refused request carried, by name — what the error
   # reports, never their values. Only the ones an endpoint's settings put
-  # there: the call's own tools and answer format are not something to
-  # remove from the endpoint.
+  # there: the call's own tools and answer format, and what this module adds
+  # itself (`usage`, `models`), are not something to remove from the endpoint.
   defp with_sent_params({:error, {:no_provider_for_params, _}}, body) do
     params =
       body
       |> Map.drop(
-        ~w(model messages provider stream tools tool_choice parallel_tool_calls response_format)
+        ~w(model messages provider stream tools tool_choice parallel_tool_calls response_format
+           usage models)
       )
       |> Map.keys()
       |> Enum.sort()
@@ -582,6 +595,14 @@ defmodule PhoenixKitAI.Completion do
   # passes a binary body through `to_string/1` unchanged, so try the
   # JSON-with-base64 shape first and fall back to raw bytes.
   defp decode_audio(response_body, format, start_time) do
+    case Jason.decode(response_body) do
+      # A provider error delivered with a 200, as on chat: it is not audio.
+      {:ok, %{"error" => %{"code" => code}}} -> error_in_body(code, response_body, [])
+      _ -> audio_answer(response_body, format, start_time)
+    end
+  end
+
+  defp audio_answer(response_body, format, start_time) do
     latency_ms = System.monotonic_time(:millisecond) - start_time
 
     audio =
@@ -1235,8 +1256,16 @@ defmodule PhoenixKitAI.Completion do
     post_with_retry(url, Map.new(headers), body, opts, retry_policy(opts), 1)
   end
 
+  # A `retry: nil` in the options is no answer: a caller that forwards its own
+  # option passes one, and the configured policy still applies. `false` is an answer.
   defp retry_policy(opts) do
-    case Keyword.get(opts, :retry, Application.get_env(:phoenix_kit_ai, :retry, false)) do
+    retry =
+      case Keyword.get(opts, :retry) do
+        nil -> Application.get_env(:phoenix_kit_ai, :retry, false)
+        given -> given
+      end
+
+    case retry do
       true -> @retry_defaults
       policy when is_list(policy) -> Keyword.merge(@retry_defaults, policy)
       _ -> nil
@@ -1270,10 +1299,12 @@ defmodule PhoenixKitAI.Completion do
   end
 
   # Money sent as a 429 (`ProviderError.class/2`: an exhausted quota or
-  # balance) is never worth a retry: the answer would not change.
+  # balance) is never worth a retry: the answer would not change. A rate limit
+  # is, whatever status it came with (OpenRouter's in-flight budget is a 402).
   defp retryable?({:ok, %{status_code: status, body: body}}, _policy) do
-    status in @retry_statuses and
-      ProviderError.class(status, ProviderError.parse(body)) != :insufficient_credits
+    class = ProviderError.class(status, ProviderError.parse(body))
+
+    class == :rate_limited or (status in @retry_statuses and class != :insufficient_credits)
   end
 
   defp retryable?({:error, :timeout}, policy), do: policy[:retry_timeouts] == true
@@ -1370,7 +1401,7 @@ defmodule PhoenixKitAI.Completion do
   # the human-readable message, or nil if the shape is unrecognised.
   def extract_error_message(body) do
     case Jason.decode(body) do
-      {:ok, %{"error" => %{"message" => message}}} -> message
+      {:ok, %{"error" => %{"message" => message}}} when is_binary(message) -> message
       {:ok, %{"error" => error}} when is_binary(error) -> error
       _ -> nil
     end

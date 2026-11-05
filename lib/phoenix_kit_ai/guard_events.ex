@@ -359,7 +359,8 @@ defmodule PhoenixKitAI.GuardEvents do
   @doc """
   A `PhoenixKitAI.Budget` cap refused a call: a `limit_reached` event (scope
   `budget:<scope>`) and the watchers told, once per local day (once per local
-  month for the monthly cap, which only lifts when the month turns).
+  month for the monthly cap, even when it is raised and reached again that
+  month: the later refusals are not a new event).
   """
   @spec budget_refused(Budget.scope(), Endpoint.t(), keyword(), DateTime.t()) :: :ok
   def budget_refused(scope, %Endpoint{} = endpoint, opts, now \\ DateTime.utc_now()) do

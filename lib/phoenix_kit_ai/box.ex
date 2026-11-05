@@ -52,6 +52,7 @@ defmodule PhoenixKitAI.Box do
   # `qwen3-vl-…` and `novita/qwen/qwen3-vl-…` are all `qwen3-vl`).
   @builtin_formats %{
     "qwen2.5-vl" => :xy_1000,
+    "qwen-2.5-vl" => :xy_1000,
     "qwen3-vl" => :xy_1000,
     "qwen-vl" => :xy_1000
   }

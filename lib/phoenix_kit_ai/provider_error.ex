@@ -171,6 +171,11 @@ defmodule PhoenixKitAI.ProviderError do
   end
 
   @doc false
+  # A provider's words as they are kept anywhere: trimmed, key-shaped words out.
+  @spec clean(String.t()) :: String.t() | nil
+  def clean(text) when is_binary(text), do: message(%{"message" => text})
+
+  @doc false
   # The note of the request that just failed, taken so it reaches one row.
   @spec take() :: map() | nil
   def take, do: Process.delete(@key)
@@ -221,9 +226,12 @@ defmodule PhoenixKitAI.ProviderError do
   defp code_string(code) when is_integer(code), do: Integer.to_string(code)
   defp code_string(code), do: code
 
+  # A NUL goes too: valid in a provider's JSON, refused by Postgres in `text`
+  # and `jsonb`, where it would raise and lose the row.
   defp message(%{"message" => message}) when is_binary(message) do
     message
     |> redact()
+    |> String.replace("\0", "")
     |> String.split()
     |> Enum.join(" ")
     |> cap()

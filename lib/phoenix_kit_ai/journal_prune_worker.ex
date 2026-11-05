@@ -64,14 +64,14 @@ defmodule PhoenixKitAI.JournalPruneWorker do
   def timeout(_job), do: Retention.job_timeout_ms()
 
   @impl Oban.Worker
-  def perform(%Oban.Job{args: %{"mode" => "manual"} = args}) do
+  def perform(%Oban.Job{args: %{"mode" => "manual"} = args} = job) do
     actor = if is_binary(args["actor_uuid"]), do: args["actor_uuid"]
     opts = Keyword.put(run_options(), :actor_uuid, actor)
 
     if PhoenixKitAI.enabled?() do
       case parse_cutoffs(args["cutoffs"]) do
         {:ok, cutoffs} ->
-          :manual |> Retention.run(cutoffs, opts) |> result()
+          run_manual(cutoffs, still_asked(cutoffs, job.inserted_at), opts)
 
         :error ->
           Retention.record_refused(:manual, "invalid_args", opts)
@@ -96,6 +96,36 @@ defmodule PhoenixKitAI.JournalPruneWorker do
         :scheduled |> Retention.run(nightly_cutoffs(now), [now: now] ++ run_options()) |> result()
     end
   end
+
+  # The job's boundaries were confirmed against the periods of that moment and
+  # stay in its arguments through every retry. A kind whose period changed while
+  # the job waited is left out: the change is the newer decision, and a deletion
+  # cannot be taken back. Nothing left means nothing to do.
+  defp run_manual(cutoffs, kept, opts) do
+    if any_cutoff?(cutoffs) and not any_cutoff?(kept) do
+      Retention.record_refused(:manual, "periods_changed", opts)
+      {:cancel, :periods_changed}
+    else
+      :manual |> Retention.run(kept, opts) |> result()
+    end
+  end
+
+  defp any_cutoff?(cutoffs), do: Enum.any?(cutoffs, fn {_kind, at} -> at != nil end)
+
+  defp still_asked(cutoffs, nil), do: cutoffs
+
+  defp still_asked(cutoffs, queued_at) do
+    changed_at = Retention.settings().changed_at
+
+    Map.new(cutoffs, fn {kind, at} ->
+      {kind, if(changed_since?(changed_at[kind], queued_at), do: nil, else: at)}
+    end)
+  end
+
+  defp changed_since?(%DateTime{} = changed, queued_at),
+    do: DateTime.compare(changed, queued_at) == :gt
+
+  defp changed_since?(_changed, _queued_at), do: false
 
   defp result({:ok, _summary}), do: :ok
   defp result(other), do: other

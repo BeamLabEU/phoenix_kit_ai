@@ -38,9 +38,12 @@ defmodule PhoenixKitAI.Request do
     provider says answered, where it is not the one asked for in `model`
     (`answered_model/1`). Image and vision rows record the answered model
     in `model` itself.
-  - `metadata.provider_error`: on a failed call, what the provider said —
-    `status`, `code`, `message` (trimmed, key-shaped words redacted) and
-    `retry_after_s` for an error that is not about money.
+  - `metadata.provider_error`: on a failed call, what is known of the
+    provider's refusal: `status`, `code` and `retry_after_s` for an error that
+    is not about money.
+  - `metadata.provider_error_message`: its words (trimmed, key-shaped words
+    redacted), behind the content gate and cleared with the content. Older rows
+    keep them as `metadata.provider_error.message`.
 
   ## Status Types
 
@@ -327,7 +330,7 @@ defmodule PhoenixKitAI.Request do
   # the same: the same name in any letter case (`Qwen/Qwen3-Embedding-8B` /
   # `qwen/qwen3-embedding-8b`), the same name with a provider prefix on one
   # side only (`gpt-4o` / `openai/gpt-4o`; two different prefixes are two
-  # models), or a dated snapshot (`-2024-08-06`, `-20241022`) of an
+  # models), or a dated snapshot (`-2024-08-06`, `-20241022`, `-0125`) of an
   # undated name asked for. A snapshot other than the one asked for is
   # another model.
   @spec other_model(String.t() | nil, term()) :: String.t() | nil
@@ -337,7 +340,7 @@ defmodule PhoenixKitAI.Request do
 
   def other_model(_asked, _answered), do: nil
 
-  @dated ~r/-(?:\d{4}-\d{2}-\d{2}|\d{8})\z/
+  @dated ~r/-(?:\d{4}-\d{2}-\d{2}|\d{8}|\d{4})\z/
 
   defp same_model?(asked, answered) when is_binary(asked) do
     {asked, answered} = unprefixed(String.downcase(asked), String.downcase(answered))

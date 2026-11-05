@@ -7,3 +7,11 @@ The GPT / Codex review rechecked `follow_offered_provider/2` and `response_usage
 ## Open
 
 None.
+
+## Claude review — 2026-11-05
+
+See [the review](CLAUDE_REVIEW.md).
+
+- **Fixed:** Playground results are tied to the endpoint they were started for.
+- **Not changed:** a connection that becomes usable starts no model fetch; the chip on an
+  OpenRouter cache hit.

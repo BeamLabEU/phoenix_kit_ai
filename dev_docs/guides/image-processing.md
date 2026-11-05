@@ -276,11 +276,13 @@ leave the cache key to the default.
   several times the default.
 - **Another model can do it:** `fallback_models: ["google/gemini-3.8-flash"]`
   moves to the next model on a safety block (cheap models filter more
-  pages, mature but harmless scenes included), an unparsed or cut-off
-  answer, or a provider outage. A refusal by caps, limits or blocks, a bad
-  key or an exhausted balance never falls back, because another model would
-  get the same. `:fallbacks` on the answer says which models failed first,
-  each with the cost it was billed. `fallback_models:` is a list of model
+  pages, mature but harmless scenes included; a `content_filter` finish
+  reason counts), an unparsed, cut-off or empty answer, or a provider outage.
+  A refusal by caps, limits or blocks, a bad key or an exhausted balance never
+  falls back, because another model would get the same. A fallback model that
+  is itself refused (retired, unfit) is skipped; with none left the call returns
+  the first model's error. `:fallbacks` on the answer says which models failed
+  first, each with the cost it was billed. `fallback_models:` is a list of model
   ids to try after the call's own model — not `models:`, which is
   OpenRouter's own routing list, which OpenRouter applies inside one call
   and other providers never receive.

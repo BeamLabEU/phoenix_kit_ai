@@ -339,7 +339,11 @@ defmodule PhoenixKitAI.Images.Regions do
     by_n =
       case json do
         %{"results" => list} when is_list(list) ->
-          for %{"n" => n} = r <- list, is_integer(n), into: %{}, do: {n, r}
+          entries = for %{"n" => n} = r <- list, is_integer(n), do: {n, r}
+          # Statements count from 1, so a 0 can only mean the model counts
+          # from 0; read as it is, every verdict would land one statement off.
+          shift = if Enum.any?(entries, &(elem(&1, 0) == 0)), do: 1, else: 0
+          Map.new(entries, fn {n, r} -> {n + shift, r} end)
 
         _ ->
           %{}

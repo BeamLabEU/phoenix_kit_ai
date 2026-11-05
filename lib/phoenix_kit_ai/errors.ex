@@ -52,6 +52,11 @@ defmodule PhoenixKitAI.Errors do
 
   def message(:invalid_json_response), do: gettext("Invalid JSON response")
   def message(:no_choices_in_response), do: gettext("No choices in response")
+  def message(:empty_response), do: gettext("The model's answer was empty")
+
+  def message(:ambiguous_amount),
+    do: gettext("A money amount is dollars with a decimal point, such as 20.00")
+
   def message(:invalid_response_format), do: gettext("Invalid response format")
   def message(:invalid_image_input), do: gettext("Invalid image input")
 
@@ -250,6 +255,8 @@ defmodule PhoenixKitAI.Errors do
     )
   end
 
+  def message(:content_policy), do: gettext("The provider refused this content")
+
   def message({:content_policy, reason}) do
     gettext("The provider refused this content: %{reason}", reason: reason)
   end
@@ -331,6 +338,9 @@ defmodule PhoenixKitAI.Errors do
 
   def message({:prune_failed, "invalid_args"}),
     do: gettext("The cleanup job's arguments could not be read; nothing was deleted")
+
+  def message({:prune_failed, "periods_changed"}),
+    do: gettext("The periods changed after this cleanup was queued; nothing was deleted")
 
   def message({:prune_failed, _class}), do: gettext("The journal cleanup failed")
 

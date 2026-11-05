@@ -64,6 +64,7 @@ defmodule PhoenixKitAI.TranslationSweep do
 
   alias PhoenixKit.Settings
   alias PhoenixKit.Utils.Multilang
+  alias PhoenixKitAI.ObanQuery
   alias PhoenixKitAI.Translations
 
   @translate_worker "PhoenixKitAI.TranslateWorker"
@@ -176,6 +177,7 @@ defmodule PhoenixKitAI.TranslationSweep do
       where: j.worker == ^worker_name(source) and j.state == "scheduled",
       where: j.scheduled_at > ^now
     )
+    |> ObanQuery.scoped()
     |> repo().update_all(set: [scheduled_at: at])
 
     ensure_scheduled(source)
@@ -194,6 +196,7 @@ defmodule PhoenixKitAI.TranslationSweep do
       limit: 1,
       select: j.scheduled_at
     )
+    |> ObanQuery.scoped()
     |> repo().one()
   end
 
@@ -201,6 +204,7 @@ defmodule PhoenixKitAI.TranslationSweep do
   @spec running?(module()) :: boolean()
   def running?(source) do
     from(j in Oban.Job, where: j.worker == ^worker_name(source) and j.state == "executing")
+    |> ObanQuery.scoped()
     |> repo().exists?()
   end
 
@@ -456,6 +460,7 @@ defmodule PhoenixKitAI.TranslationSweep do
         {fragment("?->>'resource_type'", j.args), fragment("?->>'resource_uuid'", j.args),
          fragment("?->>'target_lang'", j.args)}
     )
+    |> ObanQuery.scoped()
     |> repo().all()
   rescue
     _ -> []
@@ -493,6 +498,7 @@ defmodule PhoenixKitAI.TranslationSweep do
           fragment("?->>'target_lang' = ?->>'target_lang'", j.args, parent_as(:failed_job).args),
         select: 1
       )
+      |> ObanQuery.scoped()
 
     from(j in "oban_jobs",
       as: :failed_job,
@@ -504,6 +510,7 @@ defmodule PhoenixKitAI.TranslationSweep do
         {fragment("?->>'resource_type'", j.args), fragment("?->>'resource_uuid'", j.args),
          fragment("?->>'target_lang'", j.args)}
     )
+    |> ObanQuery.scoped()
     |> repo().all()
     |> Map.new(&{&1, true})
   rescue

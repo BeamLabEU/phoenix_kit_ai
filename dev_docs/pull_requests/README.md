@@ -111,3 +111,33 @@ The ten latest merged PRs were checked for an existing GPT review. #54 and
 unreviewed PR among the ten latest merges. Fixed argument values leaking
 through batch crash logs, cached embedding costs, combined embedding image
 limits, duplicate confirmation costs, and premature stops of mixed-user batches.
+
+## Claude review sweep — 2026-11-05
+
+Every merged PR without a `CLAUDE_REVIEW.md` was reviewed against current main. #40, #42 and
+#47 were closed unmerged. A delegated read covered #53, #54, #55, #57 and #59; each of its
+findings was checked here, and most were reproduced by a failing test first.
+
+| PR | Findings and resolution |
+|---|---|
+| [#3](2026/3-migrate-api-keys-to-integrations/CLAUDE_REVIEW.md) | No open finding |
+| [#4](2026/4-routing-anti-pattern/CLAUDE_REVIEW.md) | No findings |
+| [#7](2026/7-test-helper-ensure-current/CLAUDE_REVIEW.md) | `AGENTS.md` says what to do about a test database below core's floor |
+| [#11](2026/11-translation-default-endpoint/CLAUDE_REVIEW.md) | No open finding |
+| [#12](2026/12-schema-prefix/CLAUDE_REVIEW.md) | Every read of Oban's table takes the instance's prefix; the dedupe was silently off on named-schema installs |
+| [#13](2026/13-suite-drift-uuid-integrations/CLAUDE_REVIEW.md) | A named-schema install no longer marks the legacy migration complete without running it |
+| [#16](2026/16-core-pin-conformance/CLAUDE_REVIEW.md) | No findings |
+| [#18](2026/18-test-db-env/CLAUDE_REVIEW.md) | One nitpick, left |
+| [#22](2026/22-multilang-tabs-defaults-voice-race/CLAUDE_REVIEW.md) | No findings |
+| [#23](2026/23-agents-md-standard/CLAUDE_REVIEW.md) | No open finding |
+| [#32](2026/32-admin-header-trail/CLAUDE_REVIEW.md) | No findings |
+| [#52](2026/52-endpoint-name-tie-tests/CLAUDE_REVIEW.md) | No findings |
+| [#53](2026/53-provider-error-bodies/CLAUDE_REVIEW.md) | Provider's words behind the capture gate, off the log; two raises fixed |
+| [#54](2026/54-retries-concurrency-dollar-money/CLAUDE_REVIEW.md) | Limiter key, a money limit silently removed, `retry: nil`, `usage` named as a setting |
+| [#55](2026/55-endpoint-provider-playground-cost/CLAUDE_REVIEW.md) | Playground results stay on their endpoint |
+| [#57](2026/57-journal-retention/CLAUDE_REVIEW.md) | A queued manual job honours a period changed after it |
+| [#59](2026/59-image-ai-building-blocks/CLAUDE_REVIEW.md) | A JSON array no longer raises after a paid call; unusable answers, refused fallbacks, grouped input |
+| [#60](2026/60-monthly-spend-cap/CLAUDE_REVIEW.md) | No defect; two documentation gaps; one recorded decision raised for the maintainer |
+
+`mix hex.audit` also failed on the lockfile: `ecto`, `phoenix_html` and `ssl_verify_fun` moved
+to their fixed versions.

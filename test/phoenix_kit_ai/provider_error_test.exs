@@ -10,6 +10,8 @@ defmodule PhoenixKitAI.ProviderErrorTest do
   use PhoenixKitAI.DataCase, async: false
 
   alias PhoenixKitAI.Completion
+  alias PhoenixKitAI.Providers.HTTP
+  alias PhoenixKitAI.Request
 
   setup do
     Application.put_env(:phoenix_kit_ai, :req_options,
@@ -221,11 +223,10 @@ defmodule PhoenixKitAI.ProviderErrorTest do
 
       assert row.metadata["error_reason"] == ":insufficient_credits"
 
-      assert row.metadata["provider_error"] == %{
-               "status" => 429,
-               "code" => "1113",
-               "message" => "Insufficient balance or no resource package. Please recharge."
-             }
+      assert row.metadata["provider_error"] == %{"status" => 429, "code" => "1113"}
+
+      assert row.metadata["provider_error_message"] ==
+               "Insufficient balance or no resource package. Please recharge."
     end
 
     test "a money error carries no retry_after, even with the header" do
@@ -291,7 +292,7 @@ defmodule PhoenixKitAI.ProviderErrorTest do
                PhoenixKitAI.complete(ep.uuid, [%{role: "user", content: "hi"}])
 
       row = row_for(ep)
-      message = row.metadata["provider_error"]["message"]
+      message = row.metadata["provider_error_message"]
       assert String.length(message) <= 300
       assert String.starts_with?(message, "word word")
       refute row.error_message =~ "not-for-the-row"
@@ -316,7 +317,7 @@ defmodule PhoenixKitAI.ProviderErrorTest do
       refute inspect(row.metadata) =~ "AbCdEf0123456789"
       refute row.error_message =~ "AbCdEf0123456789"
       refute inspect(row.metadata) =~ "sk-test-key"
-      assert row.metadata["provider_error"]["message"] =~ "Incorrect API key provided"
+      assert row.metadata["provider_error_message"] =~ "Incorrect API key provided"
     end
 
     test "nothing from an earlier call reaches a later row" do
@@ -392,7 +393,8 @@ defmodule PhoenixKitAI.ProviderErrorTest do
       ep = endpoint_fixture()
       assert {:error, _} = PhoenixKitAI.complete(ep.uuid, [%{role: "user", content: "hi"}])
       row = row_for(ep)
-      {row.error_message, row.metadata["provider_error"] || %{}}
+      note = row.metadata["provider_error"] || %{}
+      {row.error_message, Map.put(note, "message", row.metadata["provider_error_message"])}
     end
 
     test "a key-shaped code is left out" do
@@ -569,9 +571,11 @@ defmodule PhoenixKitAI.ProviderErrorTest do
       assert row.metadata["provider_error"] == %{
                "status" => 400,
                "code" => "content_policy_violation",
-               "message" => "Your request was rejected by the safety system",
                "retry_after_s" => 30
              }
+
+      assert row.metadata["provider_error_message"] ==
+               "Your request was rejected by the safety system"
 
       assert row.error_message ==
                "The provider refused this content: Your request was rejected by the safety system (content_policy_violation)"
@@ -677,6 +681,176 @@ defmodule PhoenixKitAI.ProviderErrorTest do
                }) == nil,
                same
       end
+    end
+  end
+
+  describe "the capture gate" do
+    @echo %{"error" => %{"message" => "Your prompt about Mari Tamm's diagnosis was rejected"}}
+
+    test "with capture off the provider's words stay off the row, its code does not" do
+      ep = endpoint_fixture()
+      stub(400, put_in(@echo, ["error", "code"], "invalid_prompt"))
+
+      assert {:error, {:api_error, 400}} =
+               PhoenixKitAI.ask(ep.uuid, "hi", capture_request_content: false)
+
+      row = row_for(ep)
+      refute row.error_message =~ "Mari"
+      refute inspect(row.metadata) =~ "Mari"
+      assert %{"status" => 400, "code" => "invalid_prompt"} = row.metadata["provider_error"]
+    end
+
+    test "with capture on they are kept" do
+      ep = endpoint_fixture()
+      stub(400, @echo)
+
+      assert {:error, {:api_error, 400}} = PhoenixKitAI.ask(ep.uuid, "hi")
+      assert row_for(ep).metadata["provider_error_message"] =~ "Mari"
+    end
+
+    test "a safety refusal's text is left out too" do
+      ep = endpoint_fixture()
+      stub(400, %{"error" => %{"message" => "Blocked by safety: Mari Tamm's photo"}})
+      image = <<0xFF, 0xD8, 0xFF, 0xE0, 0, 16, "JFIF", 0, 1, 2, 3>>
+
+      assert {:error, {:content_policy, _}} =
+               PhoenixKitAI.describe_image(ep.uuid, image, capture_request_content: false)
+
+      row = row_for(ep)
+      refute row.error_message =~ "Mari"
+      refute inspect(row.metadata) =~ "Mari"
+    end
+  end
+
+  describe "what reaches the log" do
+    test "the status, never the provider's words" do
+      ep = endpoint_fixture()
+      stub(400, %{"error" => %{"message" => "key sk-live-abcdefghijkl is disabled for Mari"}})
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:error, {:api_error, 400}} = PhoenixKitAI.ask(ep.uuid, "hi")
+        end)
+
+      assert log =~ "400"
+      refute log =~ "sk-live"
+      refute log =~ "Mari"
+    end
+  end
+
+  describe "an error body of an unexpected shape" do
+    test "a message that is not a string is an error, not a raise" do
+      ep = endpoint_fixture()
+
+      for status <- [400, 404] do
+        stub(status, %{"error" => %{"message" => %{"error" => "nested"}}})
+        assert {:error, {:api_error, ^status}} = PhoenixKitAI.ask(ep.uuid, "hi")
+      end
+    end
+
+    test "a NUL in the provider's words does not lose the row" do
+      ep = endpoint_fixture()
+      stub(400, %{"error" => %{"message" => "bad \u0000 input"}})
+
+      assert {:error, {:api_error, 400}} = PhoenixKitAI.ask(ep.uuid, "hi")
+      assert row_for(ep).metadata["provider_error_message"] == "bad input"
+    end
+  end
+
+  describe "a safety refusal's text" do
+    test "is cut and masked where it is made" do
+      long = String.duplicate("word ", 100)
+      message = "Blocked by safety policy, key sk-abcdefghijklmnop " <> long
+
+      assert {:error, {:content_policy, text}} =
+               HTTP.error(
+                 400,
+                 Jason.encode!(%{"error" => %{"message" => message}})
+               )
+
+      refute text =~ "sk-abcdefghijklmnop"
+      assert String.length(text) <= 300
+    end
+  end
+
+  describe "retry:" do
+    test "waits out OpenRouter's transient 402" do
+      ep = endpoint_fixture()
+      counter = :counters.new(1, [])
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        :counters.add(counter, 1, 1)
+
+        if :counters.get(counter, 1) == 1 do
+          conn
+          |> Plug.Conn.put_resp_content_type("application/json")
+          |> Plug.Conn.send_resp(
+            402,
+            Jason.encode!(%{
+              "error" => %{
+                "message" => "Too much in flight",
+                "metadata" => %{"limit_source" => "openrouter_in_flight_budget"}
+              }
+            })
+          )
+        else
+          Req.Test.json(conn, %{"choices" => [%{"message" => %{"content" => "ok"}}]})
+        end
+      end)
+
+      assert {:ok, _} =
+               PhoenixKitAI.ask(ep.uuid, "hi",
+                 retry: [max_attempts: 2, base_delay: 1, max_delay: 1]
+               )
+    end
+
+    test "still gives up at once on money" do
+      ep = endpoint_fixture()
+      counter = :counters.new(1, [])
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        :counters.add(counter, 1, 1)
+
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(402, Jason.encode!(%{"error" => %{"message" => "No credits"}}))
+      end)
+
+      assert {:error, :insufficient_credits} =
+               PhoenixKitAI.ask(ep.uuid, "hi",
+                 retry: [max_attempts: 3, base_delay: 1, max_delay: 1]
+               )
+
+      assert :counters.get(counter, 1) == 1
+    end
+  end
+
+  describe "an error inside a 200" do
+    test "a TTS call does not take it for audio" do
+      ep = endpoint_fixture(%{model: "voxtral-tts"})
+      stub(200, %{"error" => %{"code" => 402, "message" => "No credits"}})
+
+      assert {:error, :insufficient_credits} = PhoenixKitAI.speak(ep.uuid, "hello")
+    end
+
+    test "the chat image path reads it as the status it names" do
+      ep = endpoint_fixture(%{provider: "mistral", model: "pixtral"})
+      stub(200, %{"error" => %{"code" => 402, "message" => "No credits"}})
+      image = <<0xFF, 0xD8, 0xFF, 0xE0, 0, 16, "JFIF", 0, 1, 2, 3>>
+
+      assert {:error, :insufficient_credits} =
+               PhoenixKitAI.edit_image(ep.uuid, "brighter", [image])
+    end
+  end
+
+  describe "other_model/2 and short dated snapshots" do
+    test "a four-digit snapshot of the name asked for is the same model" do
+      assert Request.other_model("gpt-3.5-turbo", "gpt-3.5-turbo-0125") == nil
+      assert Request.other_model("grok-4", "grok-4-0709") == nil
+    end
+
+    test "another snapshot than the one asked for is still another model" do
+      assert Request.other_model("grok-4-0709", "grok-4-1105") == "grok-4-1105"
     end
   end
 end

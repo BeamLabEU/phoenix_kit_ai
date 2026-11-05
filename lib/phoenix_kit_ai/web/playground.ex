@@ -203,7 +203,7 @@ defmodule PhoenixKitAI.Web.Playground do
          socket
          |> assign(:image_models_loading, true)
          |> assign(:image_models_error, nil)
-         |> start_async(:image_models, fn -> AI.image_models(uuid) end)}
+         |> start_async(:image_models, fn -> {uuid, AI.image_models(uuid)} end)}
     end
   end
 
@@ -245,7 +245,7 @@ defmodule PhoenixKitAI.Web.Playground do
          |> assign(:describing, true)
          |> assign(:edit_error, nil)
          |> assign(:describe_result, nil)
-         |> start_async(:describe, fn -> AI.describe_image(uuid, images, opts) end)}
+         |> start_async(:describe, fn -> {uuid, AI.describe_image(uuid, images, opts)} end)}
     end
   end
 
@@ -280,7 +280,7 @@ defmodule PhoenixKitAI.Web.Playground do
          |> assign(:editing, true)
          |> assign(:edit_error, nil)
          |> assign(:edit_result, nil)
-         |> start_async(:edit, fn -> AI.process_image(uuid, images, operations, opts) end)}
+         |> start_async(:edit, fn -> {uuid, AI.process_image(uuid, images, operations, opts)} end)}
     end
   end
 
@@ -774,65 +774,24 @@ defmodule PhoenixKitAI.Web.Playground do
     end
   end
 
+  # Each task names the endpoint it was started for. A result that arrives after
+  # the endpoint changed clears its busy flag and is dropped: A's models in B's
+  # select would send B a model it does not have. The task is left to finish
+  # rather than cancelled, because killing a paid call would lose its usage row.
   @impl true
-  def handle_async(:image_models, {:ok, result}, socket) do
+  def handle_async(:image_models, {:ok, {uuid, result}}, socket) do
     socket = assign(socket, :image_models_loading, false)
-
-    case result do
-      {:ok, models} ->
-        {:noreply,
-         socket
-         |> assign(:image_models, models)
-         |> assign(:image_models_error, nil)
-         |> assign_edit_capabilities()}
-
-      {:error, :not_supported} ->
-        {:noreply,
-         assign(
-           socket,
-           :image_models_error,
-           gettext("This provider publishes no image model list")
-         )}
-
-      {:error, reason} ->
-        {:noreply, assign(socket, :image_models_error, PhoenixKitAI.Errors.message(reason))}
-    end
+    if current?(socket, uuid), do: image_models_loaded(result, socket), else: {:noreply, socket}
   end
 
-  def handle_async(:edit, {:ok, result}, socket) do
+  def handle_async(:edit, {:ok, {uuid, result}}, socket) do
     socket = assign(socket, :editing, false)
-
-    case result do
-      {:ok, %{images: [image | _]} = response} ->
-        {:noreply,
-         socket
-         |> assign(:edit_result, %{
-           src: image_src(image),
-           text: Map.get(response, :text),
-           prompt: Map.get(response, :prompt),
-           warnings: Map.get(response, :warnings, []),
-           model: Map.get(response, :model),
-           verification: Map.get(response, :verification)
-         })}
-
-      {:ok, _} ->
-        {:noreply, assign(socket, :edit_error, gettext("The model returned no image"))}
-
-      {:error, reason} ->
-        {:noreply, assign(socket, :edit_error, PhoenixKitAI.Errors.message(reason))}
-    end
+    if current?(socket, uuid), do: edit_finished(result, socket), else: {:noreply, socket}
   end
 
-  def handle_async(:describe, {:ok, result}, socket) do
+  def handle_async(:describe, {:ok, {uuid, result}}, socket) do
     socket = assign(socket, :describing, false)
-
-    case result do
-      {:ok, %{text: text, model: model}} ->
-        {:noreply, assign(socket, :describe_result, %{text: text, model: model})}
-
-      {:error, reason} ->
-        {:noreply, assign(socket, :edit_error, PhoenixKitAI.Errors.message(reason))}
-    end
+    if current?(socket, uuid), do: describe_finished(result, socket), else: {:noreply, socket}
   end
 
   # One clause per task: each resets only its own busy flag, so a crashed
@@ -855,6 +814,49 @@ defmodule PhoenixKitAI.Web.Playground do
     log_task_exit(:describe, reason)
     {:noreply, socket |> assign(:describing, false) |> assign(:edit_error, task_failed_message())}
   end
+
+  defp current?(socket, uuid), do: socket.assigns.selected_endpoint_uuid == uuid
+
+  defp image_models_loaded({:ok, models}, socket) do
+    {:noreply,
+     socket
+     |> assign(:image_models, models)
+     |> assign(:image_models_error, nil)
+     |> assign_edit_capabilities()}
+  end
+
+  defp image_models_loaded({:error, :not_supported}, socket) do
+    {:noreply,
+     assign(socket, :image_models_error, gettext("This provider publishes no image model list"))}
+  end
+
+  defp image_models_loaded({:error, reason}, socket),
+    do: {:noreply, assign(socket, :image_models_error, PhoenixKitAI.Errors.message(reason))}
+
+  defp edit_finished({:ok, %{images: [image | _]} = response}, socket) do
+    {:noreply,
+     socket
+     |> assign(:edit_result, %{
+       src: image_src(image),
+       text: Map.get(response, :text),
+       prompt: Map.get(response, :prompt),
+       warnings: Map.get(response, :warnings, []),
+       model: Map.get(response, :model),
+       verification: Map.get(response, :verification)
+     })}
+  end
+
+  defp edit_finished({:ok, _}, socket),
+    do: {:noreply, assign(socket, :edit_error, gettext("The model returned no image"))}
+
+  defp edit_finished({:error, reason}, socket),
+    do: {:noreply, assign(socket, :edit_error, PhoenixKitAI.Errors.message(reason))}
+
+  defp describe_finished({:ok, %{text: text, model: model}}, socket),
+    do: {:noreply, assign(socket, :describe_result, %{text: text, model: model})}
+
+  defp describe_finished({:error, reason}, socket),
+    do: {:noreply, assign(socket, :edit_error, PhoenixKitAI.Errors.message(reason))}
 
   defp log_task_exit(task, reason),
     do: Logger.warning("[PhoenixKitAI.Web.Playground] #{task} task exited: #{inspect(reason)}")

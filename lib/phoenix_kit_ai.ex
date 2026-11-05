@@ -117,6 +117,7 @@ defmodule PhoenixKitAI do
   alias PhoenixKit.PubSub.Manager, as: PubSub
   alias PhoenixKit.Settings
   alias PhoenixKit.Settings.Queries, as: SettingsQueries
+  alias PhoenixKit.Settings.Setting
   alias PhoenixKit.Users.Permissions
   alias PhoenixKit.Utils.Date, as: UtilsDate
   alias PhoenixKit.Utils.Reorder
@@ -532,14 +533,18 @@ defmodule PhoenixKitAI do
     # (module = "integrations", provider in the JSONB). Checking only the
     # legacy shape made operator-created integrations invisible on modern
     # cores — the migration then ran instead of skipping.
+    #
+    # Through the schema, not the table's name: a string source carries no
+    # schema prefix, so on a named-schema install the read failed and the
+    # rescue below recorded a migration that never ran as complete.
     legacy =
-      from(s in "phoenix_kit_settings",
+      from(s in Setting,
         where: like(s.key, "integration:openrouter:%"),
         select: count(s.uuid)
       )
 
     modern =
-      from(s in "phoenix_kit_settings",
+      from(s in Setting,
         where: s.module == "integrations",
         where: fragment("?->>'provider' = ?", s.value_json, "openrouter"),
         select: count(s.uuid)
@@ -3368,7 +3373,15 @@ defmodule PhoenixKitAI do
         # Every entry a model id: an empty or non-string one would send one
         # model while the guard checks another.
         if Enum.all?(models, &(is_binary(&1) and String.trim(&1) != "")),
-          do: try_models(endpoint_uuid, Keyword.delete(opts, :fallback_models), models, call, []),
+          do:
+            try_models(
+              endpoint_uuid,
+              Keyword.delete(opts, :fallback_models),
+              models,
+              call,
+              [],
+              nil
+            ),
           else: {:error, :invalid_fallback_models}
 
       empty when empty in [nil, []] ->
@@ -3379,33 +3392,52 @@ defmodule PhoenixKitAI do
     end
   end
 
-  defp try_models(endpoint_uuid, opts, rest, call, failed) do
+  # `first` is the error of the model asked for, once it has failed. A fallback
+  # model that is itself refused says nothing about the call: the next one is
+  # tried, and with none left the caller hears why the call failed, not that a
+  # fallback was retired. `VisionBatch` reads that error: a refusal of the
+  # fallback would stop a batch whose other items work on the model asked for.
+  defp try_models(endpoint_uuid, opts, rest, call, failed, first) do
     before = Process.get(@unparsed_cost_key)
 
     case call.(opts) do
       {:ok, result} when is_map(result) ->
-        {:ok,
-         if(failed == [], do: result, else: Map.put(result, :fallbacks, Enum.reverse(failed)))}
+        {:ok, with_fallbacks(result, failed)}
 
       {:error, reason} = error ->
-        case {fallback_reason?(reason), rest} do
+        case {next_model?(reason, first), rest} do
           {true, [next | more]} ->
-            tried = %{
-              model: opts[:model] || endpoint_model(endpoint_uuid),
-              error: fallback_tag(reason),
-              # what the failed attempt was billed (an unparsed or cut-off answer), else nil
-              cost: unparsed_cost_since(before)
-            }
-
-            try_models(endpoint_uuid, Keyword.put(opts, :model, next), more, call, [
-              tried | failed
-            ])
+            tried = tried_model(endpoint_uuid, opts, reason, before)
+            opts = Keyword.put(opts, :model, next)
+            try_models(endpoint_uuid, opts, more, call, [tried | failed], first || error)
 
           _ ->
-            error
+            final_error(error, first)
         end
     end
   end
+
+  defp with_fallbacks(result, []), do: result
+  defp with_fallbacks(result, failed), do: Map.put(result, :fallbacks, Enum.reverse(failed))
+
+  defp tried_model(endpoint_uuid, opts, reason, before) do
+    %{
+      model: opts[:model] || endpoint_model(endpoint_uuid),
+      error: fallback_tag(reason),
+      # what the failed attempt was billed (an unparsed or cut-off answer), else nil
+      cost: unparsed_cost_since(before)
+    }
+  end
+
+  defp next_model?(reason, first),
+    do: fallback_reason?(reason) or (first != nil and model_refusal?(reason))
+
+  defp final_error({:error, reason} = error, first),
+    do: if(first != nil and model_refusal?(reason), do: first, else: error)
+
+  defp model_refusal?(:model_not_found), do: true
+  defp model_refusal?({tag, _}) when tag in [:model_unfit, :model_unverified], do: true
+  defp model_refusal?(_reason), do: false
 
   defp endpoint_model(%Endpoint{model: model}), do: model
 
@@ -3440,7 +3472,8 @@ defmodule PhoenixKitAI do
              :request_timeout,
              :rate_limited,
              :invalid_response_format,
-             :invalid_json_response
+             :invalid_json_response,
+             :empty_response
            ],
       do: true
 
@@ -3789,8 +3822,10 @@ defmodule PhoenixKitAI do
 
     # Options that change the answer's shape: a cached answer without regions
     # or boxes must not serve a call that asks for them. Added only when set,
-    # so existing caller keys keep their entries.
-    case Keyword.take(opts, [:regions, :boxes, :box_format])
+    # so existing caller keys keep their entries. `:statement_texts` too: the
+    # verdicts are matched to the statements by number, so an answer about
+    # other statements would be pinned on these ones.
+    case Keyword.take(opts, [:regions, :boxes, :box_format, :statement_texts])
          |> Enum.reject(fn {_, v} -> v in [nil, false] end) do
       [] -> base
       shape -> {base, Enum.sort(shape)}
@@ -4791,35 +4826,28 @@ defmodule PhoenixKitAI do
 
   # A caller mistake (bad input, unknown operation) never reached a
   # provider, so it is not a request worth a usage row.
-  defp input_error?(:empty_input), do: true
-  defp input_error?(:invalid_image_input), do: true
-  defp input_error?(:reference_image_required), do: true
-  defp input_error?({:unknown_operation, _}), do: true
-  defp input_error?({:missing_parameter, _, _}), do: true
-  defp input_error?({:unsupported_option, _, _}), do: true
-  defp input_error?({:too_many_images, _, _}), do: true
-  defp input_error?({:image_too_large, _, _}), do: true
-  defp input_error?({:unsafe_url, _}), do: true
-  defp input_error?({:conflicting_operations, _, _}), do: true
-  defp input_error?({:model_not_listed, _}), do: true
-  defp input_error?({:capabilities_unavailable, _}), do: true
-  defp input_error?(_reason), do: false
+  @doc false
+  # Whether `reason` refuses the caller's input before any provider call. Public
+  # for VisionBatch: such a call cost nothing and wrote no row.
+  @spec input_error?(term()) :: boolean()
+  def input_error?(:empty_input), do: true
+  def input_error?(:invalid_image_input), do: true
+  def input_error?(:reference_image_required), do: true
+  def input_error?({:unknown_operation, _}), do: true
+  def input_error?({:missing_parameter, _, _}), do: true
+  def input_error?({:unsupported_option, _, _}), do: true
+  def input_error?({:too_many_images, _, _}), do: true
+  def input_error?({:image_too_large, _, _}), do: true
+  def input_error?({:unsafe_url, _}), do: true
+  def input_error?({:conflicting_operations, _, _}), do: true
+  def input_error?({:model_not_listed, _}), do: true
+  def input_error?({:capabilities_unavailable, _}), do: true
+  def input_error?(_reason), do: false
 
-  # A prose answer to a JSON request is already logged, with its usage, by
-  # `log_unparsed_answer/5`.
-  defp log_failed_unless_input_error(
-         _endpoint,
-         _type,
-         _prompt,
-         _images,
-         {tag, _},
-         _trace
-       )
-       when tag in [:no_json_in_response, :output_truncated],
-       do: :ok
-
+  # An answer the call was billed for (a prose answer to a JSON request, say) is
+  # already logged, with its usage, by `log_unparsed_answer/5`.
   defp log_failed_unless_input_error(endpoint, type, prompt, images, reason, trace) do
-    if input_error?(reason),
+    if input_error?(reason) or PhoenixKitAI.Images.billed_answer?(reason),
       do: :ok,
       else: log_failed_image_op_request(endpoint, type, prompt, images, reason, trace)
   end
@@ -5124,6 +5152,7 @@ defmodule PhoenixKitAI do
           Regions.detect_prompt(labels, length(images), opts[:instructions])
         )
         |> Keyword.put(:schema, Regions.detect_schema(labels))
+        |> Keyword.put(:json_object, "regions")
 
       with {:ok, result} <- describe_image(endpoint_uuid, images, describe_opts) do
         {regions, dropped} =
@@ -5327,6 +5356,7 @@ defmodule PhoenixKitAI do
           )
         )
         |> Keyword.put(:schema, Regions.statements_schema())
+        |> Keyword.put(:statement_texts, Enum.map(statements, & &1.text))
 
       with {:ok, result} <- describe_image(endpoint_uuid, images, describe_opts) do
         results =
@@ -5609,10 +5639,10 @@ defmodule PhoenixKitAI do
       total_tokens: 0,
       status: "error",
       user_uuid: trace[:user_uuid],
-      error_message: PhoenixKitAI.Errors.message(reason),
+      error_message: failure_text(reason, capture_content),
       metadata: base_metadata |> maybe_add_content(:input, capture_content, fn -> prompt end)
     }
-    |> with_provider_error()
+    |> with_provider_error(capture_content)
     |> log_usage()
   end
 
@@ -6220,30 +6250,45 @@ defmodule PhoenixKitAI do
       request_type: "chat",
       status: "error",
       user_uuid: caller_context[:user_uuid],
-      error_message: error_reason_to_string(reason),
+      error_message: failure_text(reason, capture_content),
       metadata: metadata
     }
-    |> with_provider_error()
+    |> with_provider_error(capture_content)
     |> log_usage()
   end
 
   # What the provider said on the call that just failed
   # (`PhoenixKitAI.ProviderError`): its words after the module's text in
-  # `error_message`, and its status, code, message and Retry-After under
-  # `provider_error` in the metadata.
-  defp with_provider_error(%{error_message: text, metadata: metadata} = attrs) do
+  # `error_message` and under `provider_error_message` in the metadata, its
+  # status, code and Retry-After under `provider_error`. The words can echo the
+  # request, so they sit behind the content gate, and in a key of their own so the
+  # content step can take them (`Retention.content_keys/0`) and leave the rest.
+  defp with_provider_error(%{error_message: text, metadata: metadata} = attrs, capture?) do
     case ProviderError.take() do
       nil ->
         attrs
 
       note ->
+        {words, facts} = Map.pop(note, :message)
+
         %{
           attrs
-          | error_message: ProviderError.describe(text, note),
-            metadata: Map.put(metadata, :provider_error, note)
+          | error_message: ProviderError.describe(text, if(capture?, do: note, else: facts)),
+            metadata:
+              metadata
+              |> Map.put(:provider_error, facts)
+              |> provider_words(words, capture?)
         }
     end
   end
+
+  defp provider_words(metadata, words, true) when is_binary(words),
+    do: Map.put(metadata, :provider_error_message, words)
+
+  defp provider_words(metadata, words, false) when is_binary(words),
+    do: Map.put(metadata, :content_redacted, true)
+
+  defp provider_words(metadata, _words, _capture?), do: metadata
 
   # The model the provider says answered, where it is not the one asked
   # for (a provider may route a request to another model;
@@ -6264,6 +6309,13 @@ defmodule PhoenixKitAI do
   # `error_message` :string column. `Errors.message/1` is total — atoms,
   # tagged tuples, and strings all collapse to a translated string.
   defp error_reason_to_string(reason), do: PhoenixKitAI.Errors.message(reason)
+
+  # A row's `error_message`. A safety refusal's text is the provider's words
+  # about the request: with the content gate shut the row says only what it was.
+  defp failure_text({:content_policy, _text}, false),
+    do: PhoenixKitAI.Errors.message(:content_policy)
+
+  defp failure_text(reason, _capture?), do: error_reason_to_string(reason)
 
   # Whether to persist user/assistant message content to request metadata.
   # Defaults to `true` for parity with the shipped behaviour. Deployments
@@ -6364,7 +6416,7 @@ defmodule PhoenixKitAI do
           guard
         )
     }
-    |> with_provider_error()
+    |> with_provider_error(capture_request_content?())
     |> log_usage()
   end
 
@@ -6471,7 +6523,7 @@ defmodule PhoenixKitAI do
         |> Map.merge(guard)
         |> maybe_add_content(:input, capture_content, fn -> text end)
     }
-    |> with_provider_error()
+    |> with_provider_error(capture_content)
     |> log_usage()
   end
 
@@ -6571,10 +6623,10 @@ defmodule PhoenixKitAI do
       total_tokens: 0,
       status: "error",
       user_uuid: trace[:user_uuid],
-      error_message: error_reason_to_string(reason),
+      error_message: failure_text(reason, capture),
       metadata: metadata
     }
-    |> with_provider_error()
+    |> with_provider_error(capture)
     |> log_usage()
   end
 end

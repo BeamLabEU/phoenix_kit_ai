@@ -41,6 +41,7 @@ defmodule PhoenixKitAI.Translations do
   alias PhoenixKit.PubSub.Manager, as: PubSubManager
   alias PhoenixKit.Settings
   alias PhoenixKitAI.Endpoint
+  alias PhoenixKitAI.ObanQuery
   alias PhoenixKitAI.Request
   alias PhoenixKitAI.TranslateWorker
 
@@ -596,7 +597,7 @@ defmodule PhoenixKitAI.Translations do
       )
       |> scope_where(scope)
 
-    repo.exists?(query)
+    repo.exists?(ObanQuery.scoped(query))
   rescue
     _ -> false
   end
