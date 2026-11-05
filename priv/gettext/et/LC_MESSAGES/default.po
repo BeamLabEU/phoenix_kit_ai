@@ -1845,7 +1845,7 @@ msgid "Remove"
 msgstr "Eemalda"
 
 #: lib/phoenix_kit_ai/errors.ex:98
-#: lib/phoenix_kit_ai/web/playground.ex:850
+#: lib/phoenix_kit_ai/web/playground.ex:848
 #, elixir-autogen, elixir-format
 msgid "The model returned no image"
 msgstr "Mudel ei tagastanud pilti"
@@ -1952,7 +1952,7 @@ msgstr "Mudel ei toeta valikut %{option} = %{value}"
 msgid "This operation needs a reference image"
 msgstr "See toiming vajab viitepilti"
 
-#: lib/phoenix_kit_ai/web/playground.ex:830
+#: lib/phoenix_kit_ai/web/playground.ex:828
 #, elixir-autogen, elixir-format
 msgid "This provider publishes no image model list"
 msgstr "See teenusepakkuja ei avalda pildimudelite loendit"
@@ -1993,7 +1993,7 @@ msgstr "Pilti ei õnnestunud alla laadida"
 msgid "The provider refused this content: %{reason}"
 msgstr "Teenusepakkuja keeldus sellest sisust: %{reason}"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1012
+#: lib/phoenix_kit_ai/web/playground.ex:1010
 #, elixir-autogen, elixir-format
 msgid "%{count} bytes of image data"
 msgstr "%{count} baiti pildiandmeid"
@@ -2005,27 +2005,27 @@ msgid_plural "%{count} images kept from the last run"
 msgstr[0] "%{count} pilt jäi eelmisest käivitusest alles"
 msgstr[1] "%{count} pilti jäi eelmisest käivitusest alles"
 
-#: lib/phoenix_kit_ai/web/playground.ex:992
+#: lib/phoenix_kit_ai/web/playground.ex:990
 #, elixir-autogen, elixir-format
 msgid "%{option} was changed from %{from} to %{to}"
 msgstr "%{option} muudeti: %{from} → %{to}"
 
-#: lib/phoenix_kit_ai/web/playground.ex:985
+#: lib/phoenix_kit_ai/web/playground.ex:983
 #, elixir-autogen, elixir-format
 msgid "%{option} was dropped: the model does not accept %{value}"
 msgstr "%{option} jäeti välja: mudel ei toeta väärtust %{value}"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1008
+#: lib/phoenix_kit_ai/web/playground.ex:1006
 #, elixir-autogen, elixir-format
 msgid "An output image could not be downloaded and is shown from the provider's link"
 msgstr "Väljundpilti ei õnnestunud alla laadida; see kuvatakse teenusepakkuja lingilt"
 
-#: lib/phoenix_kit_ai/web/playground.ex:974
+#: lib/phoenix_kit_ai/web/playground.ex:972
 #, elixir-autogen, elixir-format
 msgid "Aspect ratio"
 msgstr "Külgede suhe"
 
-#: lib/phoenix_kit_ai/web/playground.ex:977
+#: lib/phoenix_kit_ai/web/playground.ex:975
 #, elixir-autogen, elixir-format
 msgid "Background"
 msgstr "Taust"
@@ -2066,12 +2066,12 @@ msgstr "Vabas vormis juhis"
 msgid "Loading…"
 msgstr "Laadimine…"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1021
+#: lib/phoenix_kit_ai/web/playground.ex:1019
 #, elixir-autogen, elixir-format
 msgid "Only JPEG, PNG and WebP images are accepted"
 msgstr "Lubatud on ainult JPEG, PNG ja WebP pildid"
 
-#: lib/phoenix_kit_ai/web/playground.ex:978
+#: lib/phoenix_kit_ai/web/playground.ex:976
 #, elixir-autogen, elixir-format
 msgid "Output format"
 msgstr "Väljundvorming"
@@ -2081,7 +2081,7 @@ msgstr "Väljundvorming"
 msgid "Plain studio background"
 msgstr "Lihtne stuudiotaust"
 
-#: lib/phoenix_kit_ai/web/playground.ex:976
+#: lib/phoenix_kit_ai/web/playground.ex:974
 #, elixir-autogen, elixir-format
 msgid "Quality"
 msgstr "Kvaliteet"
@@ -2106,7 +2106,7 @@ msgstr "Eemalda midagi"
 msgid "Replace the background"
 msgstr "Asenda taust"
 
-#: lib/phoenix_kit_ai/web/playground.ex:975
+#: lib/phoenix_kit_ai/web/playground.ex:973
 #, elixir-autogen, elixir-format
 msgid "Resolution"
 msgstr "Eraldusvõime"
@@ -2116,7 +2116,7 @@ msgstr "Eraldusvõime"
 msgid "Restyle after reference images"
 msgstr "Kujunda ümber näidispiltide järgi"
 
-#: lib/phoenix_kit_ai/web/playground.ex:864
+#: lib/phoenix_kit_ai/web/playground.ex:862
 #, elixir-autogen, elixir-format
 msgid "Something went wrong on our side. Please try again."
 msgstr "Meie poolel läks midagi valesti. Palun proovi uuesti."
@@ -2126,7 +2126,7 @@ msgstr "Meie poolel läks midagi valesti. Palun proovi uuesti."
 msgid "Straighten"
 msgstr "Sirgesta"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1018
+#: lib/phoenix_kit_ai/web/playground.ex:1016
 #, elixir-autogen, elixir-format
 msgid "That file is too large (8 MB at most)"
 msgstr "See fail on liiga suur (kuni 8 MB)"
@@ -2136,7 +2136,7 @@ msgstr "See fail on liiga suur (kuni 8 MB)"
 msgid "The provider's model list could not be fetched"
 msgstr "Teenusepakkuja mudelite loendit ei õnnestunud laadida"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1005
+#: lib/phoenix_kit_ai/web/playground.ex:1003
 #, elixir-autogen, elixir-format
 msgid "The provider's model list could not be fetched; options were not checked"
 msgstr "Teenusepakkuja mudelite loendit ei õnnestunud laadida; valikuid ei kontrollitud"
@@ -2146,12 +2146,12 @@ msgstr "Teenusepakkuja mudelite loendit ei õnnestunud laadida; valikuid ei kont
 msgid "The provider's model list does not include %{model}"
 msgstr "Teenusepakkuja mudelite loend ei sisalda mudelit %{model}"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1000
+#: lib/phoenix_kit_ai/web/playground.ex:998
 #, elixir-autogen, elixir-format
 msgid "The provider's model list does not include %{model}; options were not checked"
 msgstr "Teenusepakkuja mudelite loend ei sisalda mudelit %{model}; valikuid ei kontrollitud"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1023
+#: lib/phoenix_kit_ai/web/playground.ex:1021
 #, elixir-autogen, elixir-format
 msgid "Two images at most"
 msgstr "Kuni kaks pilti"
@@ -4565,7 +4565,7 @@ msgstr "Perioodid muutusid pärast selle puhastuse järjekorda panemist; midagi 
 msgid "The provider refused this content"
 msgstr "Teenusepakkuja keeldus sellest sisust"
 
-#: lib/phoenix_kit_ai/web/components/dictate.ex:136
+#: lib/phoenix_kit_ai/web/components/dictate.ex:133
 #, elixir-autogen, elixir-format
 msgid "Dictate"
 msgstr "Dikteeri"
@@ -4575,47 +4575,47 @@ msgstr "Dikteeri"
 msgid "Dictation"
 msgstr "Dikteerimine"
 
-#: lib/phoenix_kit_ai/web/components/dictate.ex:181
+#: lib/phoenix_kit_ai/web/components/dictate.ex:178
 #, elixir-autogen, elixir-format
 msgid "Dictation isn't available right now."
 msgstr "Dikteerimine pole praegu saadaval."
 
-#: lib/phoenix_kit_ai/web/components/dictate.ex:192
+#: lib/phoenix_kit_ai/web/components/dictate.ex:189
 #, elixir-autogen, elixir-format
 msgid "No AI endpoint is set up for dictation."
 msgstr "Dikteerimiseks pole AI lõpp-punkti seadistatud."
 
-#: lib/phoenix_kit_ai/web/components/dictate.ex:174
+#: lib/phoenix_kit_ai/web/components/dictate.ex:171
 #, elixir-autogen, elixir-format
 msgid "Nobody has verified that this endpoint's model can hear. Set an audio model for it."
 msgstr "Keegi pole kinnitanud, et selle lõpp-punkti mudel kuuleb. Määra sellele helimudel."
 
-#: lib/phoenix_kit_ai/web/components/dictate.ex:164
+#: lib/phoenix_kit_ai/web/components/dictate.ex:161
 #, elixir-autogen, elixir-format
 msgid "Still writing down the last recording. Please wait a moment."
 msgstr "Eelmine salvestis on veel kirjutamisel. Palun oota hetk."
 
-#: lib/phoenix_kit_ai/web/components/dictate.ex:197
+#: lib/phoenix_kit_ai/web/components/dictate.ex:194
 #, elixir-autogen, elixir-format
 msgid "That recording is too long. Please try a shorter one."
 msgstr "See salvestis on liiga pikk. Palun proovi lühemat."
 
-#: lib/phoenix_kit_ai/web/components/dictate.ex:200
+#: lib/phoenix_kit_ai/web/components/dictate.ex:197
 #, elixir-autogen, elixir-format
 msgid "The AI usage limit has been reached. Please try again later."
 msgstr "AI kasutuspiirang on täis. Palun proovi hiljem uuesti."
 
-#: lib/phoenix_kit_ai/web/components/dictate.ex:170
+#: lib/phoenix_kit_ai/web/components/dictate.ex:167
 #, elixir-autogen, elixir-format
 msgid "This endpoint's model can't hear. Set an audio model for it."
 msgstr "Selle lõpp-punkti mudel ei kuule. Määra sellele helimudel."
 
-#: lib/phoenix_kit_ai/web/components/dictate.ex:159
+#: lib/phoenix_kit_ai/web/components/dictate.ex:156
 #, elixir-autogen, elixir-format
 msgid "We couldn't hear anything. Please try again, a little closer to the microphone."
 msgstr "Me ei kuulnud midagi. Palun proovi uuesti, mikrofonile veidi lähemal."
 
-#: lib/phoenix_kit_ai/web/components/dictate.ex:195
+#: lib/phoenix_kit_ai/web/components/dictate.ex:192
 #, elixir-autogen, elixir-format
 msgid "We couldn't write that down. Please try again."
 msgstr "Seda ei õnnestunud üles kirjutada. Palun proovi uuesti."
@@ -4625,7 +4625,7 @@ msgstr "Seda ei õnnestunud üles kirjutada. Palun proovi uuesti."
 msgid "Write down what a person says on a page, word for word."
 msgstr "Kirjuta lehel inimese öeldu sõna-sõnalt üles."
 
-#: lib/phoenix_kit_ai/web/components/dictate.ex:144
+#: lib/phoenix_kit_ai/web/components/dictate.ex:141
 #, elixir-autogen, elixir-format
 msgid "Writing down what you said…"
 msgstr "Kirjutan üles, mida ütlesid…"

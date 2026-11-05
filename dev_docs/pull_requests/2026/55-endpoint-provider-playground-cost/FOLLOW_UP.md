@@ -15,3 +15,6 @@ See [the review](CLAUDE_REVIEW.md).
 - **Fixed:** Playground results are tied to the endpoint they were started for.
 - **Not changed:** a connection that becomes usable starts no model fetch; the chip on an
   OpenRouter cache hit.
+- **Corrected 2026-11-05:** that fix went further than the bug, and threw away a paid edit
+  or description that finished after a switch, with no message. Only the model list is tied
+  to its endpoint now; an edit or a description is shown under the model that gave it.

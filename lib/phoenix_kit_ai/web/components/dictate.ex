@@ -40,8 +40,8 @@ defmodule PhoenixKitAI.Web.Components.Dictate do
 
   Any other attribute is an option of `PhoenixKitAI.transcribe/3`, passed as it
   is: `model`, `instructions`, `language`, `user_uuid`, `task`, `source`, `run`,
-  `step`, and so on. `nil` means not given. The task is `"ai.dictation"` unless
-  `task` names the host's own.
+  `step`, and so on. The task is `"ai.dictation"` unless `task` names the host's
+  own. On any attribute `nil` means not given.
 
   ## What the page gets
 
@@ -79,7 +79,17 @@ defmodule PhoenixKitAI.Web.Components.Dictate do
   @task "ai.dictation"
   @source inspect(__MODULE__)
 
-  @own [:id, :endpoint, :label, :busy, :max_seconds, :into, :mode, :show_error]
+  @defaults %{
+    endpoint: nil,
+    label: nil,
+    busy: false,
+    max_seconds: 180,
+    into: nil,
+    mode: :append,
+    show_error: true
+  }
+
+  @own [:id | Map.keys(@defaults)]
 
   @recorder_errors [:denied, :unavailable, :unreadable, :too_large, :failed]
 
@@ -87,20 +97,7 @@ defmodule PhoenixKitAI.Web.Components.Dictate do
   @with_words [:no_json_in_response, :output_truncated, :content_policy]
 
   @impl true
-  def mount(socket) do
-    {:ok,
-     assign(socket,
-       endpoint: nil,
-       label: nil,
-       busy: false,
-       max_seconds: 180,
-       into: nil,
-       mode: :append,
-       show_error: true,
-       writing?: false,
-       error: nil
-     )}
-  end
+  def mount(socket), do: {:ok, socket |> assign(@defaults) |> assign(writing?: false, error: nil)}
 
   @impl true
   def update(%{audio_recorded: {_id, clip}}, socket), do: {:ok, write_down(socket, clip)}
@@ -109,13 +106,13 @@ defmodule PhoenixKitAI.Web.Components.Dictate do
   def update(assigns, socket) do
     {:ok,
      socket
-     |> assign(Map.take(assigns, @own))
+     |> assign(own(assigns))
      |> assign(:options, options(assigns))}
   end
 
   @impl true
   def handle_async(:transcribe, {:ok, {:ok, text}}, socket),
-    do: {:noreply, socket |> assign(:writing?, false) |> deliver(text)}
+    do: {:noreply, socket |> assign(writing?: false, error: nil) |> deliver(text)}
 
   def handle_async(:transcribe, {:ok, {:error, reason}}, socket),
     do: {:noreply, socket |> assign(:writing?, false) |> fail(reason)}
@@ -143,7 +140,7 @@ defmodule PhoenixKitAI.Web.Components.Dictate do
           <span class="loading loading-spinner loading-xs" aria-hidden="true"></span>
           {gettext("Writing down what you said…")}
         </span>
-        <span :if={@error && !@writing?} class="text-error">{@error}</span>
+        <span :if={@error} class="text-error">{@error}</span>
       </div>
     </div>
     """
@@ -226,10 +223,11 @@ defmodule PhoenixKitAI.Web.Components.Dictate do
   defp resolve(%Endpoint{} = endpoint), do: {:ok, endpoint}
   defp resolve(endpoint) when endpoint in [nil, ""], do: {:error, :no_endpoint}
 
+  # `Ecto.UUID.cast/1` also takes any 16 bytes as a raw uuid: a name of that length.
   defp resolve(endpoint) when is_binary(endpoint) do
     case Ecto.UUID.cast(endpoint) do
-      {:ok, uuid} -> PhoenixKitAI.resolve_endpoint(uuid)
-      :error -> PhoenixKitAI.resolve_endpoint_by_name(endpoint)
+      {:ok, uuid} when byte_size(endpoint) == 36 -> PhoenixKitAI.resolve_endpoint(uuid)
+      _name -> PhoenixKitAI.resolve_endpoint_by_name(endpoint)
     end
   end
 
@@ -256,6 +254,14 @@ defmodule PhoenixKitAI.Web.Components.Dictate do
 
   defp without_words({tag, text}) when tag in @with_words and is_binary(text), do: tag
   defp without_words(reason), do: reason
+
+  # `nil` is not given, also when it replaces a value: `busy={@reading}` on a page
+  # that has not set it yet, or has set it back.
+  defp own(assigns) do
+    assigns
+    |> Map.take(@own)
+    |> Map.new(fn {key, value} -> {key, if(is_nil(value), do: @defaults[key], else: value)} end)
+  end
 
   defp options(assigns) do
     assigns

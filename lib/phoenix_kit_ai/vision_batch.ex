@@ -41,6 +41,7 @@ defmodule PhoenixKitAI.VisionBatch do
   require Logger
 
   alias PhoenixKitAI.{Guard, Money}
+  alias PhoenixKitAI.Images.Regions
 
   @verbs [:describe_image, :extract_text, :detect_regions, :check_statements]
 
@@ -351,7 +352,7 @@ defmodule PhoenixKitAI.VisionBatch do
   defp group_results(group, {:ok, result}, opts) do
     n = length(group)
     share = share(result[:cost], n)
-    answers = group_answers(result.json)
+    answers = group_answers(result.json, n)
 
     group
     |> Enum.with_index(1)
@@ -377,19 +378,18 @@ defmodule PhoenixKitAI.VisionBatch do
     do: Enum.map(group, &item_result(&1.id, :error, nil, reason, nil))
 
   # The answers by item number. Strict schemas cannot bound `item` (Anthropic
-  # refuses `minimum`), and items count from 1, so a 0 can only mean the model
-  # counts from 0, also when it left an item out; a number given twice answers
-  # neither.
-  defp group_answers(%{"items" => entries}) when is_list(entries) do
+  # refuses `minimum`), so a model may count from 0; a number given twice
+  # answers neither.
+  defp group_answers(%{"items" => entries}, n) when is_list(entries) do
     pairs = for %{"item" => k, "answer" => a} <- entries, is_integer(k), do: {k, a}
     keys = Enum.map(pairs, &elem(&1, 0))
-    shift = if 0 in keys, do: 1, else: 0
+    shift = if Regions.counts_from_zero?(keys, n), do: 1, else: 0
     twice = keys |> Enum.frequencies() |> Enum.filter(&(elem(&1, 1) > 1)) |> Map.new()
 
     for {k, a} <- pairs, not Map.has_key?(twice, k), into: %{}, do: {k + shift, a}
   end
 
-  defp group_answers(_json), do: %{}
+  defp group_answers(_json, _n), do: %{}
 
   # No schema asks for a text answer; an object or array schema for that.
   defp answer_fits?(a, schema) when not is_map(schema), do: is_binary(a)

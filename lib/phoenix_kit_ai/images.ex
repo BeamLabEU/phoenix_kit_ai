@@ -822,6 +822,11 @@ defmodule PhoenixKitAI.Images do
   defp blank?(text), do: String.trim(text) == ""
 
   @doc false
+  # What a 200 with `finish_reason: "content_filter"` is read as (`filtered?/1`).
+  @spec filtered_refusal() :: {:content_policy, String.t()}
+  def filtered_refusal, do: {:content_policy, @filtered}
+
+  @doc false
   # Whether `reason` is an answer `:on_no_json` has already received: the call
   # has its row, with its usage, and the verb must not write a second one.
   @spec billed_answer?(term()) :: boolean()

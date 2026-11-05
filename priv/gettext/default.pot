@@ -1845,7 +1845,7 @@ msgid "Remove"
 msgstr ""
 
 #: lib/phoenix_kit_ai/errors.ex:98
-#: lib/phoenix_kit_ai/web/playground.ex:850
+#: lib/phoenix_kit_ai/web/playground.ex:848
 #, elixir-autogen, elixir-format
 msgid "The model returned no image"
 msgstr ""
@@ -1952,7 +1952,7 @@ msgstr ""
 msgid "This operation needs a reference image"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.ex:830
+#: lib/phoenix_kit_ai/web/playground.ex:828
 #, elixir-autogen, elixir-format
 msgid "This provider publishes no image model list"
 msgstr ""
@@ -1993,7 +1993,7 @@ msgstr ""
 msgid "The provider refused this content: %{reason}"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.ex:1012
+#: lib/phoenix_kit_ai/web/playground.ex:1010
 #, elixir-autogen, elixir-format
 msgid "%{count} bytes of image data"
 msgstr ""
@@ -2005,27 +2005,27 @@ msgid_plural "%{count} images kept from the last run"
 msgstr[0] ""
 msgstr[1] ""
 
-#: lib/phoenix_kit_ai/web/playground.ex:992
+#: lib/phoenix_kit_ai/web/playground.ex:990
 #, elixir-autogen, elixir-format
 msgid "%{option} was changed from %{from} to %{to}"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.ex:985
+#: lib/phoenix_kit_ai/web/playground.ex:983
 #, elixir-autogen, elixir-format
 msgid "%{option} was dropped: the model does not accept %{value}"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.ex:1008
+#: lib/phoenix_kit_ai/web/playground.ex:1006
 #, elixir-autogen, elixir-format
 msgid "An output image could not be downloaded and is shown from the provider's link"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.ex:974
+#: lib/phoenix_kit_ai/web/playground.ex:972
 #, elixir-autogen, elixir-format
 msgid "Aspect ratio"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.ex:977
+#: lib/phoenix_kit_ai/web/playground.ex:975
 #, elixir-autogen, elixir-format
 msgid "Background"
 msgstr ""
@@ -2066,12 +2066,12 @@ msgstr ""
 msgid "Loading…"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.ex:1021
+#: lib/phoenix_kit_ai/web/playground.ex:1019
 #, elixir-autogen, elixir-format
 msgid "Only JPEG, PNG and WebP images are accepted"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.ex:978
+#: lib/phoenix_kit_ai/web/playground.ex:976
 #, elixir-autogen, elixir-format
 msgid "Output format"
 msgstr ""
@@ -2081,7 +2081,7 @@ msgstr ""
 msgid "Plain studio background"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.ex:976
+#: lib/phoenix_kit_ai/web/playground.ex:974
 #, elixir-autogen, elixir-format
 msgid "Quality"
 msgstr ""
@@ -2106,7 +2106,7 @@ msgstr ""
 msgid "Replace the background"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.ex:975
+#: lib/phoenix_kit_ai/web/playground.ex:973
 #, elixir-autogen, elixir-format
 msgid "Resolution"
 msgstr ""
@@ -2116,7 +2116,7 @@ msgstr ""
 msgid "Restyle after reference images"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.ex:864
+#: lib/phoenix_kit_ai/web/playground.ex:862
 #, elixir-autogen, elixir-format
 msgid "Something went wrong on our side. Please try again."
 msgstr ""
@@ -2126,7 +2126,7 @@ msgstr ""
 msgid "Straighten"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.ex:1018
+#: lib/phoenix_kit_ai/web/playground.ex:1016
 #, elixir-autogen, elixir-format
 msgid "That file is too large (8 MB at most)"
 msgstr ""
@@ -2136,7 +2136,7 @@ msgstr ""
 msgid "The provider's model list could not be fetched"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.ex:1005
+#: lib/phoenix_kit_ai/web/playground.ex:1003
 #, elixir-autogen, elixir-format
 msgid "The provider's model list could not be fetched; options were not checked"
 msgstr ""
@@ -2146,12 +2146,12 @@ msgstr ""
 msgid "The provider's model list does not include %{model}"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.ex:1000
+#: lib/phoenix_kit_ai/web/playground.ex:998
 #, elixir-autogen, elixir-format
 msgid "The provider's model list does not include %{model}; options were not checked"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/playground.ex:1023
+#: lib/phoenix_kit_ai/web/playground.ex:1021
 #, elixir-autogen, elixir-format
 msgid "Two images at most"
 msgstr ""
@@ -4565,7 +4565,7 @@ msgstr ""
 msgid "The provider refused this content"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/dictate.ex:136
+#: lib/phoenix_kit_ai/web/components/dictate.ex:133
 #, elixir-autogen, elixir-format
 msgid "Dictate"
 msgstr ""
@@ -4575,47 +4575,47 @@ msgstr ""
 msgid "Dictation"
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/dictate.ex:181
+#: lib/phoenix_kit_ai/web/components/dictate.ex:178
 #, elixir-autogen, elixir-format
 msgid "Dictation isn't available right now."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/dictate.ex:192
+#: lib/phoenix_kit_ai/web/components/dictate.ex:189
 #, elixir-autogen, elixir-format
 msgid "No AI endpoint is set up for dictation."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/dictate.ex:174
+#: lib/phoenix_kit_ai/web/components/dictate.ex:171
 #, elixir-autogen, elixir-format
 msgid "Nobody has verified that this endpoint's model can hear. Set an audio model for it."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/dictate.ex:164
+#: lib/phoenix_kit_ai/web/components/dictate.ex:161
 #, elixir-autogen, elixir-format
 msgid "Still writing down the last recording. Please wait a moment."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/dictate.ex:197
+#: lib/phoenix_kit_ai/web/components/dictate.ex:194
 #, elixir-autogen, elixir-format
 msgid "That recording is too long. Please try a shorter one."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/dictate.ex:200
+#: lib/phoenix_kit_ai/web/components/dictate.ex:197
 #, elixir-autogen, elixir-format
 msgid "The AI usage limit has been reached. Please try again later."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/dictate.ex:170
+#: lib/phoenix_kit_ai/web/components/dictate.ex:167
 #, elixir-autogen, elixir-format
 msgid "This endpoint's model can't hear. Set an audio model for it."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/dictate.ex:159
+#: lib/phoenix_kit_ai/web/components/dictate.ex:156
 #, elixir-autogen, elixir-format
 msgid "We couldn't hear anything. Please try again, a little closer to the microphone."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/dictate.ex:195
+#: lib/phoenix_kit_ai/web/components/dictate.ex:192
 #, elixir-autogen, elixir-format
 msgid "We couldn't write that down. Please try again."
 msgstr ""
@@ -4625,7 +4625,7 @@ msgstr ""
 msgid "Write down what a person says on a page, word for word."
 msgstr ""
 
-#: lib/phoenix_kit_ai/web/components/dictate.ex:144
+#: lib/phoenix_kit_ai/web/components/dictate.ex:141
 #, elixir-autogen, elixir-format
 msgid "Writing down what you said…"
 msgstr ""

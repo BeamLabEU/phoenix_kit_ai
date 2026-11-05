@@ -201,6 +201,49 @@ defmodule PhoenixKitAI.Web.PlaygroundTest do
       refute has_element?(view, "select[name='opt[quality]']")
     end
 
+    test "a paid edit that finishes after the endpoint changed is still shown", %{conn: conn} do
+      test_pid = self()
+
+      Req.Test.stub(PhoenixKitAI.Web.PlaygroundTest, fn conn ->
+        case {conn.method, conn.request_path} do
+          {"GET", "/api/v1/images/models"} ->
+            Req.Test.json(conn, %{"data" => []})
+
+          {"POST", "/api/v1/images"} ->
+            send(test_pid, {:edit_waiting, self()})
+
+            receive do
+              :go -> :ok
+            after
+              5_000 -> :ok
+            end
+
+            Req.Test.json(conn, %{
+              "data" => [%{"b64_json" => Base.encode64(@png), "media_type" => "image/png"}]
+            })
+        end
+      end)
+
+      a = fixture_endpoint(name: "A", model: "google/gemini-2.5-flash-image")
+      b = fixture_endpoint(name: "B", model: "google/gemini-2.5-flash-image")
+      {:ok, view, _} = live(conn, "/en/admin/ai/playground")
+      render_change(view, "change", %{"endpoint_uuid" => a.uuid})
+
+      view
+      |> file_input("#playground-image-edit-form", :edit_images, [
+        %{name: "bar.png", content: @png, type: "image/png"}
+      ])
+      |> render_upload("bar.png")
+
+      render_submit(view, "edit_send", %{"edit_prompt" => "", "ops" => ["enhance"]})
+      assert_receive {:edit_waiting, edit_request}, 2_000
+
+      render_change(view, "change", %{"endpoint_uuid" => b.uuid})
+      send(edit_request, :go)
+
+      assert render_async(view, 2_000) =~ "data:image/png;base64,"
+    end
+
     test "a crashed model-list task leaves an edit that is still running alone", %{conn: conn} do
       test_pid = self()
       crash_key = {__MODULE__, :crash_listing}

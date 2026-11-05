@@ -328,6 +328,14 @@ defmodule PhoenixKitAI.Images.Regions do
   end
 
   @doc """
+  Whether a model's numbers for `count` things count from 0. They should count
+  from 1, so a 0 says it does, also when the model left one out, unless a number
+  reaches `count`: then the numbering is right, and the 0 is an extra entry.
+  """
+  @spec counts_from_zero?([integer()], non_neg_integer()) :: boolean()
+  def counts_from_zero?(numbers, count), do: 0 in numbers and Enum.max(numbers) < count
+
+  @doc """
   `check_statements/4`'s results from the model's answer: one per
   statement, in order. A statement the model skipped is `:insufficient`
   with `answered: false`.
@@ -340,9 +348,9 @@ defmodule PhoenixKitAI.Images.Regions do
       case json do
         %{"results" => list} when is_list(list) ->
           entries = for %{"n" => n} = r <- list, is_integer(n), do: {n, r}
-          # Statements count from 1, so a 0 can only mean the model counts
-          # from 0; read as it is, every verdict would land one statement off.
-          shift = if Enum.any?(entries, &(elem(&1, 0) == 0)), do: 1, else: 0
+          numbers = Enum.map(entries, &elem(&1, 0))
+          # Read as it is, every verdict would land one statement off.
+          shift = if counts_from_zero?(numbers, length(statements)), do: 1, else: 0
           Map.new(entries, fn {n, r} -> {n + shift, r} end)
 
         _ ->

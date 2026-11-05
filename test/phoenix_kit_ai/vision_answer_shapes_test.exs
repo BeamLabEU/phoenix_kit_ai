@@ -338,6 +338,45 @@ defmodule PhoenixKitAI.VisionAnswerShapesTest do
     end
   end
 
+  describe "numbering that is right" do
+    test "an extra entry numbered 0 moves no answer of a group" do
+      ep = endpoint()
+
+      stub_answer(
+        Jason.encode!(%{
+          "items" => [
+            %{"item" => 0, "answer" => "an overview"},
+            %{"item" => 1, "answer" => "cat"},
+            %{"item" => 2, "answer" => "dog"},
+            %{"item" => 3, "answer" => "bird"}
+          ]
+        })
+      )
+
+      assert {:ok, %{items: [one, two, three]}} =
+               PhoenixKitAI.vision_batch(ep.uuid, [@jpeg, @png, @jpeg], group: 3, cache: false)
+
+      assert %{status: :ok, result: %{text: "cat"}} = one
+      assert %{status: :ok, result: %{text: "dog"}} = two
+      assert %{status: :ok, result: %{text: "bird"}} = three
+    end
+
+    test "an extra entry numbered 0 moves no verdict" do
+      statements = [%{id: "a", text: "first"}, %{id: "b", text: "second"}]
+
+      json = %{
+        "results" => [
+          %{"n" => 0, "verdict" => "supported", "evidence" => "of nothing"},
+          %{"n" => 1, "verdict" => "supported", "evidence" => "of the first"},
+          %{"n" => 2, "verdict" => "supported", "evidence" => "of the second"}
+        ]
+      }
+
+      assert [%{id: "a", evidence: "of the first"}, %{id: "b", evidence: "of the second"}] =
+               Regions.parse_statements(json, statements, @model, 1)
+    end
+  end
+
   describe "statements" do
     test "a model counting from 0 keeps each verdict on its own statement" do
       statements = [%{id: "a", text: "first"}, %{id: "b", text: "second"}]

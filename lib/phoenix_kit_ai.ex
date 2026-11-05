@@ -3045,7 +3045,6 @@ defmodule PhoenixKitAI do
         usage: PhoenixKitAI.Completion.extract_usage(response),
         latency_ms: response["latency_ms"],
         response_model: response["model"],
-        cost_response: response,
         duration: nil,
         asked: %{messages: messages}
       }
@@ -3126,9 +3125,17 @@ defmodule PhoenixKitAI do
     do: opts |> Keyword.take(@transcription_chat_opts) |> Keyword.put(:safety_errors, true)
 
   defp read_transcript(response, text) do
-    if PhoenixKitAI.Completion.truncated?(response),
-      do: {:error, {:output_truncated, text}},
-      else: parse_transcript(text)
+    cond do
+      # What a filter cut short can parse, and is still not what was said.
+      PhoenixKitAI.Completion.filtered?(response) ->
+        {:error, PhoenixKitAI.Images.filtered_refusal()}
+
+      PhoenixKitAI.Completion.truncated?(response) ->
+        {:error, {:output_truncated, text}}
+
+      true ->
+        parse_transcript(text)
+    end
   end
 
   defp parse_transcript(text) do
@@ -3573,7 +3580,7 @@ defmodule PhoenixKitAI do
           images,
           result,
           %{
-            language: language_tag(result.language),
+            language: Transcription.language_tag(result.language),
             confidence: if(is_number(result.confidence), do: result.confidence),
             has_illegible_text: result.has_illegible_text == true
           },
@@ -3587,12 +3594,6 @@ defmodule PhoenixKitAI do
        |> put_cost(logged)}
     end
   end
-
-  defp language_tag(value) when is_binary(value) do
-    if Regex.match?(~r/\A[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8}){0,3}\z/, value), do: value
-  end
-
-  defp language_tag(_), do: nil
 
   @cached_row_type %{
     complete: "chat",
@@ -4574,8 +4575,9 @@ defmodule PhoenixKitAI do
     `{:audio_too_large, bytes, max}`, `:unknown_audio_format` or
     `:invalid_audio_input`; a refusal of the gate (`{:model_unfit,
     [:audio_input]}`, caps, limits); `{:no_json_in_response, text}` or
-    `{:output_truncated, text}` when a chat answer is not the JSON asked for
-    (billed, its row written); or the provider's error.
+    `{:output_truncated, text}` when a chat answer is not the JSON asked for,
+    `{:content_policy, text}` when a filter stopped it (all billed, their row
+    written); or the provider's error.
 
   Logged as a `"transcription"` request: tokens and cost where the
   provider reports them or a price is known (`PhoenixKitAI.CallCost`), the
@@ -4632,19 +4634,14 @@ defmodule PhoenixKitAI do
           fn -> run_transcribe(endpoint, audio, opts, transport, trace) end
         )
 
-      case result do
-        {:ok, result} ->
-          {:ok, result}
-
-        # The provider answered and the row is written; the answer was not
-        # the JSON asked for, or stopped at the output limit.
-        {:error, {tag, _}} = error when tag in [:no_json_in_response, :output_truncated] ->
-          error
-
-        {:error, reason} ->
-          log_failed_transcription(endpoint, audio, transport, reason, trace)
-          {:error, reason}
+      # An answer that was not the JSON asked for, or stopped at the output limit
+      # or by a filter, was billed and has its row already.
+      with {:error, reason} <- result,
+           false <- PhoenixKitAI.Images.billed_answer?(reason) do
+        log_failed_transcription(endpoint, audio, transport, reason, trace)
       end
+
+      result
     end
   end
 

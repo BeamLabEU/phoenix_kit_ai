@@ -131,6 +131,20 @@ defmodule PhoenixKitAI.TranscriptionUnitTest do
     end
   end
 
+  describe "MessageParts.stored_part/1 on a stored part" do
+    test "a recording read back keeps its size" do
+      sent = %{
+        "type" => "input_audio",
+        "input_audio" => %{"data" => Base.encode64("abcd"), "format" => "wav"}
+      }
+
+      stored = MessageParts.stored_part(sent)
+
+      assert %{"input_audio" => %{"bytes" => 4, "format" => "wav", "omitted" => true}} = stored
+      assert MessageParts.stored_part(stored) == stored
+    end
+  end
+
   describe "Transcription.normalize/2" do
     test "reads the format from the bytes and the length from a WAV header" do
       assert {:ok, %{format: "wav", content_type: "audio/wav", bytes: bytes, seconds: 1.5}} =
@@ -319,6 +333,17 @@ defmodule PhoenixKitAI.TranscriptionUnitTest do
       assert html =~ "https://cdn.test/a.png"
       assert html =~ "File (offer.pdf, "
       refute html =~ secret
+    end
+
+    test "a row's stored recording shows its size" do
+      stored = %{"format" => "wav", "bytes" => 5_800_000, "omitted" => true}
+
+      html =
+        render_component(&MessageContent.content/1,
+          content: [%{"type" => "input_audio", "input_audio" => stored}]
+        )
+
+      assert html =~ ~r/Audio \(wav, \d/
     end
 
     test "string content renders as text, and an old payload loses its bytes for display" do

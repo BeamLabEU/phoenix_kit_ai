@@ -318,6 +318,23 @@ defmodule PhoenixKitAI.Web.Components.DictateTest do
       refute render(view) =~ "Writing down what you said…"
     end
 
+    test "the refusal of a second clip shows while it holds, and not after the words", %{
+      conn: conn,
+      endpoint: endpoint
+    } do
+      view = mount_with(conn, endpoint: endpoint.uuid)
+
+      record(view)
+      assert_receive {:held, task}, @wait
+
+      record(view)
+      assert render(view) =~ "Still writing down the last recording"
+
+      send(task, :release)
+      assert_receive {:dictated, "voice", _text}, @wait
+      refute render(view) =~ "Still writing down the last recording"
+    end
+
     test "a second clip is refused and the first one's words still arrive", %{
       conn: conn,
       endpoint: endpoint
@@ -334,6 +351,27 @@ defmodule PhoenixKitAI.Web.Components.DictateTest do
       send(task, :release)
       assert_receive {:dictated, "voice", _text}, @wait
     end
+  end
+
+  test "nil on an attribute of its own means not given", %{conn: conn, endpoint: endpoint} do
+    view = mount_with(conn, endpoint: endpoint.uuid, busy: nil, max_seconds: nil)
+    assert has_element?(view, ~s(#voice[data-busy="false"][data-seconds="180"]))
+
+    send(view.pid, {:attrs, %{busy: true}})
+    assert has_element?(view, ~s(#voice[data-busy="true"]))
+
+    send(view.pid, {:attrs, %{busy: nil}})
+    assert has_element?(view, ~s(#voice[data-busy="false"]))
+  end
+
+  test "a name of 16 bytes is a name, not a raw uuid", %{conn: conn} do
+    stub()
+    endpoint = fixture_endpoint(name: "Label reader 123", model: "google/gemini-2.5-flash")
+
+    view = mount_with(conn, endpoint: endpoint.name)
+    record(view)
+
+    assert_receive {:dictated, "voice", _text}, @wait
   end
 
   test "the page's busy holds the recorder back on its own", %{conn: conn, endpoint: endpoint} do

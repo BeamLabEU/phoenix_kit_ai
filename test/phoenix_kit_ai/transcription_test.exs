@@ -279,6 +279,40 @@ defmodule PhoenixKitAI.TranscriptionTest do
     end
   end
 
+  describe "an answer the chat path cannot use" do
+    defp stopped_by(reason, content) do
+      chat_answer(content, %{
+        "choices" => [
+          %{
+            "message" => %{"role" => "assistant", "content" => content},
+            "finish_reason" => reason
+          }
+        ]
+      })
+    end
+
+    test "a filter's stop is a refusal with one row, even when what it cut short parses" do
+      stub(stopped_by("content_filter", ~s({"text": "the first half", "language": "en"})))
+      ep = endpoint!()
+
+      assert {:error, {:content_policy, _}} =
+               PhoenixKitAI.transcribe(ep.uuid, wav(1), model: "google/gemini-2.5-flash")
+
+      assert [%{input_tokens: 120} = row] = rows(ep)
+      assert row.metadata["unparsed"] == true
+    end
+
+    test "a refusal by status had no answer, so it gets its failure row" do
+      stub(%{"error" => %{"message" => "Rejected by the safety system"}}, 400)
+      ep = endpoint!()
+
+      assert {:error, {:content_policy, _}} =
+               PhoenixKitAI.transcribe(ep.uuid, wav(1), model: "google/gemini-2.5-flash")
+
+      assert [%{status: "error"}] = rows(ep)
+    end
+  end
+
   describe "the guard's audio need" do
     test "a model the catalogue says does not hear is refused before any request" do
       stub(chat_answer("{}"))
@@ -386,6 +420,27 @@ defmodule PhoenixKitAI.TranscriptionTest do
              } = row.metadata
 
       refute Map.has_key?(row.metadata, "messages")
+    end
+
+    test "a plain-text answer is the words, also when they read as JSON" do
+      ep = endpoint!(%{provider: "openai", model: "whisper-1"})
+
+      for {body, words} <- [{"Hello.\n", "Hello."}, {"42", "42"}, {"null", "null"}, {"", ""}] do
+        Req.Test.stub(__MODULE__, fn conn ->
+          conn
+          |> Plug.Conn.put_resp_content_type("text/plain")
+          |> Plug.Conn.send_resp(200, body)
+        end)
+
+        assert {:ok, %{text: ^words}} = PhoenixKitAI.transcribe(ep.uuid, wav(1), cache: false)
+      end
+    end
+
+    test "a JSON object without the words is no transcript" do
+      stub(%{"result" => "not what was asked for"})
+      ep = endpoint!(%{provider: "openai", model: "whisper-1"})
+
+      assert {:error, :invalid_response_format} = PhoenixKitAI.transcribe(ep.uuid, wav(1))
     end
 
     test "Mistral is not sent the prompt" do

@@ -598,15 +598,15 @@ defmodule PhoenixKitAI.Completion do
     case Jason.decode(response_body) do
       # A provider error delivered with a 200, as on chat: it is not audio.
       {:ok, %{"error" => %{"code" => code}}} -> error_in_body(code, response_body, [])
-      _ -> audio_answer(response_body, format, start_time)
+      decoded -> audio_answer(decoded, response_body, format, start_time)
     end
   end
 
-  defp audio_answer(response_body, format, start_time) do
+  defp audio_answer(decoded, response_body, format, start_time) do
     latency_ms = System.monotonic_time(:millisecond) - start_time
 
     audio =
-      case Jason.decode(response_body) do
+      case decoded do
         {:ok, %{"audio_data" => b64}} when is_binary(b64) ->
           case Base.decode64(b64) do
             {:ok, bytes} -> bytes
@@ -710,9 +710,13 @@ defmodule PhoenixKitAI.Completion do
            model: json["model"] || model
          }}
 
-      # A plain-text body (`response_format: "text"` from a host's
-      # provider default) is the words themselves.
-      {:error, _} when is_binary(response_body) and response_body != "" ->
+      {:ok, decoded} when is_map(decoded) or is_list(decoded) ->
+        {:error, :invalid_response_format}
+
+      # A plain-text body (`response_format: "text"` from a host's provider
+      # default) is the words themselves, also when they read as JSON ("42");
+      # an empty one is no speech.
+      _ when is_binary(response_body) ->
         {:ok,
          %{
            text: response_body,

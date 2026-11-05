@@ -769,9 +769,10 @@ provided the API exposes `<base_url>/chat/completions` and `/models`.
   `billed_audio_seconds` records its count), `transport`, `audio_format`,
   `audio_bytes`, `audio_seconds`, `language`; under the gate the chat
   path's `messages` (the audio a placeholder) or the transcriptions path's
-  `input`, and the words as `response`. An unparsed or cut-off chat answer
-  writes its row (`unparsed`, `truncated`) and returns
-  `{:no_json_in_response, _}` / `{:output_truncated, _}`.
+  `input`, and the words as `response`. An unparsed, cut-off or filtered chat
+  answer writes its row (`unparsed`, `truncated`) and returns
+  `{:no_json_in_response, _}` / `{:output_truncated, _}` / `{:content_policy, _}`
+  (`Images.billed_answer?/1` keeps the failure row from being written as well).
 
 ## Database & migrations
 
@@ -1322,7 +1323,8 @@ Test database `phoenix_kit_ai_test`.
   with a per-item answer schema and an equal cost share. A group refused on
   its input (`input_error?/1`, before any provider call) runs its items alone,
   so one bad image fails one item; a model's item number of 0 means it counts
-  from 0 (`check_statements/4` reads `n` the same way).
+  from 0, unless a number reaches the group's size, and then the 0 is an extra
+  entry (`Regions.counts_from_zero?/2`, which `check_statements/4` reads `n` by).
   `check_statements/4`: `:contradicted` without an image is reported
   `:insufficient` (`downgraded:`); `confirm:` re-asks the contradicted
   statements and keeps only agreed ones.

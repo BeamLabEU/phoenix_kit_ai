@@ -46,12 +46,19 @@ defmodule PhoenixKitAI.MessageParts do
 
   def stored_part(part), do: part
 
-  defp audio_part(%{} = audio, _part) do
-    placeholder =
-      %{"bytes" => payload_bytes(get(audio, "data")), "omitted" => true}
-      |> put_present("format", get(audio, "format"))
+  defp audio_part(%{} = audio, part) do
+    case get(audio, "data") do
+      # No bytes: a stored part read back, which keeps the size it has.
+      nil ->
+        part
 
-    %{"type" => "input_audio", "input_audio" => placeholder}
+      data ->
+        placeholder =
+          %{"bytes" => payload_bytes(data), "omitted" => true}
+          |> put_present("format", get(audio, "format"))
+
+        %{"type" => "input_audio", "input_audio" => placeholder}
+    end
   end
 
   defp audio_part(data, _part) when is_binary(data),

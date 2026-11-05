@@ -24,3 +24,6 @@ See [the review](CLAUDE_REVIEW.md); regressions in `test/phoenix_kit_ai/vision_a
 - **Not changed:** a safety refusal of a grouped call fails its neighbours (re-asking
   costs money, and `group:` is opt-in); `box_format:` applies to fallbacks (documented
   precedence); five nitpicks, listed in the review.
+- **Corrected 2026-11-05:** reading any 0 as counting from 0 also moved a right numbering
+  that had an extra entry numbered 0. A number that reaches the count now means the model
+  counts from 1 (`Regions.counts_from_zero?/2`, shared by groups and statements).

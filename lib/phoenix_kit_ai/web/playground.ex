@@ -245,7 +245,7 @@ defmodule PhoenixKitAI.Web.Playground do
          |> assign(:describing, true)
          |> assign(:edit_error, nil)
          |> assign(:describe_result, nil)
-         |> start_async(:describe, fn -> {uuid, AI.describe_image(uuid, images, opts)} end)}
+         |> start_async(:describe, fn -> AI.describe_image(uuid, images, opts) end)}
     end
   end
 
@@ -280,7 +280,7 @@ defmodule PhoenixKitAI.Web.Playground do
          |> assign(:editing, true)
          |> assign(:edit_error, nil)
          |> assign(:edit_result, nil)
-         |> start_async(:edit, fn -> {uuid, AI.process_image(uuid, images, operations, opts)} end)}
+         |> start_async(:edit, fn -> AI.process_image(uuid, images, operations, opts) end)}
     end
   end
 
@@ -774,25 +774,25 @@ defmodule PhoenixKitAI.Web.Playground do
     end
   end
 
-  # Each task names the endpoint it was started for. A result that arrives after
-  # the endpoint changed clears its busy flag and is dropped: A's models in B's
-  # select would send B a model it does not have. The task is left to finish
-  # rather than cancelled, because killing a paid call would lose its usage row.
+  # The model list names the endpoint it was read for and is dropped once the
+  # endpoint changed: A's models in B's select would send B a model it does not
+  # have. An edit or a description is a paid answer, so it is shown whichever
+  # endpoint is selected by then, under the model that gave it. None of the tasks
+  # is cancelled on a change, because killing a paid call would lose its usage row.
   @impl true
   def handle_async(:image_models, {:ok, {uuid, result}}, socket) do
     socket = assign(socket, :image_models_loading, false)
-    if current?(socket, uuid), do: image_models_loaded(result, socket), else: {:noreply, socket}
+
+    if socket.assigns.selected_endpoint_uuid == uuid,
+      do: image_models_loaded(result, socket),
+      else: {:noreply, socket}
   end
 
-  def handle_async(:edit, {:ok, {uuid, result}}, socket) do
-    socket = assign(socket, :editing, false)
-    if current?(socket, uuid), do: edit_finished(result, socket), else: {:noreply, socket}
-  end
+  def handle_async(:edit, {:ok, result}, socket),
+    do: edit_finished(result, assign(socket, :editing, false))
 
-  def handle_async(:describe, {:ok, {uuid, result}}, socket) do
-    socket = assign(socket, :describing, false)
-    if current?(socket, uuid), do: describe_finished(result, socket), else: {:noreply, socket}
-  end
+  def handle_async(:describe, {:ok, result}, socket),
+    do: describe_finished(result, assign(socket, :describing, false))
 
   # One clause per task: each resets only its own busy flag, so a crashed
   # model listing does not re-enable the buttons of an edit still running.
@@ -814,8 +814,6 @@ defmodule PhoenixKitAI.Web.Playground do
     log_task_exit(:describe, reason)
     {:noreply, socket |> assign(:describing, false) |> assign(:edit_error, task_failed_message())}
   end
-
-  defp current?(socket, uuid), do: socket.assigns.selected_endpoint_uuid == uuid
 
   defp image_models_loaded({:ok, models}, socket) do
     {:noreply,
