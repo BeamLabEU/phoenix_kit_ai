@@ -1,15 +1,39 @@
-## Unreleased
+## 0.28.0 - 2026-11-05
+
+Run `mix phoenix_kit.update` after upgrading: migration V6 adds the `audio_input`
+capability flag. See "Changed" for error returns that are new for existing callers.
 
 ### Added
 
+- **`PhoenixKitAI.Web.Components.Dictate`: speech into a page.** A live component that takes a clip from core's audio recorder, runs `transcribe/3` off the LiveView process and sends the page `{:dictated, id, text}`, trimmed and never empty. With `into` the words also go into a `<textarea>` or `<input>` (`mode`: `:append`, `:replace` or `:at_cursor`) and fire an `input` event, so the form's `phx-change` runs. A failure shows under the button; with `show_error={false}` the page gets `{:dictation_failed, id, reason}` instead, and `message/1` gives the same words. Any other attribute is a `transcribe/3` option, and `endpoint` takes a uuid, a name or a struct. A page that defines `handle_info/2` needs a clause for `{:dictated, …}`. The recorder is not in a released core yet (3.3.0 is the latest): until then the component compiles and shows nothing to record with.
+- The module declares the task **`ai.dictation`** (`needs: [:audio_input]`).
 - **`PhoenixKitAI.transcribe/3`: speech to text**, the reverse of `speak/3`. It takes the recording's bytes (WAV, MP3, FLAC, OGG, WebM, M4A, the format read from the bytes), `%{data:, format:}` or a `data:audio/…` URL, and returns `{:ok, %{text, language, model, transport, duration, request_uuid, cost}}`. A recording without speech is `{:ok, %{text: ""}}`, not an error. It takes one of two paths, picked per provider and model: a chat request with the audio as an `input_audio` part, answered as JSON (OpenRouter always, so Gemini or GPT-4o audio), or `POST /audio/transcriptions` for a speech-to-text model (`whisper-1`, `gpt-4o-transcribe`, Groq, Mistral's Voxtral transcribe). `transport:` picks one by hand. The options are `model:`, `instructions:` (part of the prompt, or Whisper's `prompt`), `language:`, `format:`, `temperature:` (default 0) and those of every verb (`task:`, `user_uuid:`, `cache:`, `capture_request_content:`, …). Each call is logged as a `"transcription"` request with tokens, cost, the audio's format, size and length, never the audio itself. An adapter can name its path with the new optional `PhoenixKitAI.Provider.transcription_transport/2`. New app env: `:max_audio_bytes` (25 MB).
 - **The guard knows audio** (`:audio_input`, a hard need like `:vision`). A chat call with an `input_audio` part, or `transcribe/3` on its chat path, sent to a model that does not take audio is refused with `{:model_unfit, [:audio_input]}` before any request. The flag comes from OpenRouter's and DeepSeek's `audio` input modality; for Anthropic it is `:no`, for Mistral `:unknown`. It can be declared on an endpoint ("Audio" in the Current Model panel) and appears as a badge. Tasks can declare `needs: [:audio_input]`.
 - Migration **V6** adds the `audio_input` flag column to `phoenix_kit_ai_model_capabilities` (`unknown` by default). Run `mix phoenix_kit.update`. Until it has run, the capability snapshot neither loads nor saves, and the cache fills from the catalogues on its first refresh, as with V2.
+- **A site-wide monthly spend cap** (`ai_monthly_cap`, US dollars, `0` or blank for none), next to the daily caps. It covers the calendar month of the site time zone, and a call over it returns `{:error, {:budget_exceeded, :global_month}}` before any provider call. The month's sum is reused for 30 seconds, and read on every check from the warn percent up (`:budget_month_cache_ttl`, milliseconds, `0` for off). Watchers are told of a refusal once per local month. A vision batch stops on it, whoever its items are for.
+- **Images in embeddings:** `embed/3` takes `{:image, input}`, `{:image, input, caption}` and `%{image:, text:}` next to texts for multimodal models. The answer names its `"space"` (`"<model>:<dimensions>"`): vectors from two spaces are not comparable.
+- **Located answers:** `detect_regions/4`, `describe_image/3` with `regions:`, `extract_text/3` with `boxes: true` and `check_statements/4` (supported, contradicted or insufficient, with the deciding image and box; `confirm:` keeps a contradiction only when a second check agrees). All boxes are `PhoenixKitAI.Box`, read in the format of the model that answered (`:box_formats`, a call's `box_format:`).
+- **`vision_batch/3`:** one vision verb over many items with a status per item, a `budget:` stop and a stop on refusals every later item would hit. `group: n` asks several plain items in one call, with an equal share of the cost.
+- **`fallback_models:`** on `describe_image/3`, `extract_text/3` and `compare_images/4` (and the verbs built on them) runs the verb again with the next model on errors another model could avoid; never on a refusal, a key or balance error or an input error.
+- **Runs:** `run:` and `step:` on every verb tag every row the call writes. `run_costs/2` totals a run by step and model, and `list_requests/1` and `get_usage_stats/1` filter by them.
+- Vision results carry `:cost`.
+
+### Changed
+
+- **A JSON answer cut off at the output limit is an error,** vision or chat: `{:error, {:output_truncated, text}}`, billed and logged. A text answer carries `truncated: true`.
+- **A vision verb's safety refusal is `{:content_policy, _}`** (a 400, 403 or 422, or a 200 with `finish_reason: "content_filter"`, as the image adapters already said). Plain chat keeps its generic errors. A text answer with no text is `:empty_response`.
+- **A model id the provider does not serve is `:model_not_found`** on every call, instead of a generic `{:api_error, _}`.
 
 ### Fixed
 
 - **A chat message's audio, images and files are no longer stored as base64 in its usage row.** Each media part is kept as a placeholder with its type, format and size (`PhoenixKitAI.MessageParts`), in both `messages` and `request_payload`. A three-minute WAV used to add about 15 MB to a row, stored twice.
 - **The Usage tab's request details no longer crash on a message whose content is a list of parts.** Opening such a row raised in the template, and the error put up to about 4 KB of the part's base64 into the log. Text parts now show as text and media parts as "Audio (wav, 5.8 MB), not stored". Rows written before this fix show the same way; their bytes are not displayed. A row's `input` (speech, a transcription prompt) now shows too.
+- **Installs with a named schema:** every read of Oban's table now takes the running instance's prefix. Without it the translation dedupe stopped working with no error, and the same translation was billed twice. The legacy key migration is no longer marked complete without having run.
+- **A provider's words about a failed call sit behind the capture gate** (`metadata.provider_error_message`, a retention content key) and stay out of the log; a safety refusal's text is masked. A non-string message or a NUL byte no longer raises, and an error sent with a 200 is not read as audio.
+- **Vision answers:** a JSON array no longer raises out of a verb after a paid call; an object without a regions list is unparsed; a refused fallback no longer stops a batch; one bad image fails one item of a group, not its neighbours; numbering from 0 is read as such, while a right numbering with an extra entry numbered 0 is left as it is; `timeout:`, `retry:` and `concurrency:` reach the vision verbs; a caller's cache key no longer serves the verdicts of other statements.
+- OpenRouter's transient 402 is retried. A `concurrency:` list without a key keeps the endpoint's limit, and `retry: nil` keeps the configured policy.
+- A money limit in the old unit is refused, not removed. A queued manual cleanup leaves out a kind whose period changed after it was queued.
+- The Playground no longer puts endpoint A's model list in endpoint B's select when the endpoint changes during the load.
 
 ## 0.27.0 - 2026-10-27
 
