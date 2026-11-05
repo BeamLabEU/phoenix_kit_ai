@@ -65,3 +65,8 @@ config :logger, level: :warning
 # tests rewrite settings and endpoint rows directly, which a cache would hide.
 # test/phoenix_kit_ai/cache_and_log_test.exs turns it on where it is under test.
 config :phoenix_kit_ai, endpoint_cache_ttl: 0, credential_cache_ttl: 0
+
+# The monthly spend sum (PhoenixKitAI.Budget) is cached for 30 s in production;
+# off here so a test sees the rows it has just written. The monthly budget
+# test turns it on where it is under test.
+config :phoenix_kit_ai, budget_month_cache_ttl: 0

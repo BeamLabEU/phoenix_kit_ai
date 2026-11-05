@@ -12,7 +12,7 @@ defmodule PhoenixKitAI.GuardEvents do
   |---|---|
   | a limit at its warn percent | `limit_warning:<task>:<user or ->:<unit>:<period key>` |
   | a limit reached | `limit_reached:<task>:<user or ->:<unit>:<period key>` |
-  | a `PhoenixKitAI.Budget` refusal | `limit_reached:budget:<scope>:<user, endpoint or ->:<local date>` |
+  | a `PhoenixKitAI.Budget` refusal | `limit_reached:budget:<scope>:<user, endpoint or ->:<local date>` (the local month for the monthly cap) |
   | a model that no longer fits a task | `model_unfit:<task>:<endpoint>:<local date>` |
   | an off-purpose flag | `off_purpose:<task>:<user or ->:<turn_ref or request_uuid>` |
   | the watchers told of a person's flags | `off_purpose_signal:<task>:<user or ->:<local date>` |
@@ -358,14 +358,15 @@ defmodule PhoenixKitAI.GuardEvents do
 
   @doc """
   A `PhoenixKitAI.Budget` cap refused a call: a `limit_reached` event (scope
-  `budget:<scope>`) and the watchers told, once per local day.
+  `budget:<scope>`) and the watchers told, once per local day (once per local
+  month for the monthly cap, which only lifts when the month turns).
   """
   @spec budget_refused(Budget.scope(), Endpoint.t(), keyword(), DateTime.t()) :: :ok
   def budget_refused(scope, %Endpoint{} = endpoint, opts, now \\ DateTime.utc_now()) do
     safely(fn ->
       user_uuid = if is_binary(opts[:user_uuid]), do: opts[:user_uuid]
       spec = Tasks.get(Guard.task_key(opts) || "")
-      day = TaskLimits.period_keys(now).day
+      {period, until} = budget_window(scope, now)
 
       id =
         case scope do
@@ -381,8 +382,8 @@ defmodule PhoenixKitAI.GuardEvents do
                user_uuid: if(scope in [:user, :user_calls], do: user_uuid),
                endpoint_uuid: endpoint.uuid,
                ref: %{"scope" => "budget:#{scope}"},
-               dedupe_key: "limit_reached:budget:#{scope}:#{id}:#{day}",
-               until: elem(TaskLimits.windows(now).day, 1)
+               dedupe_key: "limit_reached:budget:#{scope}:#{id}:#{period}",
+               until: until
              }) do
         log(event)
         tell_watchers(spec, user_uuid, &budget_text(&1, scope))
@@ -735,6 +736,21 @@ defmodule PhoenixKitAI.GuardEvents do
     )
   end
 
+  # The window a budget refusal is signalled once in: the local day, or the
+  # local month for the monthly cap.
+  defp budget_window(:global_month, now),
+    do: {TaskLimits.period_keys(now).month, elem(TaskLimits.windows(now).month, 1)}
+
+  defp budget_window(_scope, now),
+    do: {TaskLimits.period_keys(now).day, elem(TaskLimits.windows(now).day, 1)}
+
+  defp budget_text(_email, :global_month) do
+    gettext(
+      "An AI spending cap (%{cap}) refused a call. Calls are refused until the month turns or the cap is raised.",
+      cap: budget_scope(:global_month)
+    )
+  end
+
   defp budget_text(_email, scope) do
     gettext(
       "An AI spending cap (%{cap}) refused a call. Calls are refused until spending is below it.",
@@ -743,6 +759,7 @@ defmodule PhoenixKitAI.GuardEvents do
   end
 
   defp budget_scope(:global), do: gettext("the whole site")
+  defp budget_scope(:global_month), do: gettext("the whole site, per month")
   defp budget_scope(:endpoint), do: gettext("one endpoint")
   defp budget_scope(:user), do: gettext("one user's spending")
   defp budget_scope(:user_calls), do: gettext("one user's calls")

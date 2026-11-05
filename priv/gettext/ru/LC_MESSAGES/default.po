@@ -1470,7 +1470,7 @@ msgstr "Введите текст для озвучивания…"
 msgid "Type your message to the AI..."
 msgstr "Введите сообщение для AI…"
 
-#: lib/phoenix_kit_ai/errors.ex:329
+#: lib/phoenix_kit_ai/errors.ex:332
 #, elixir-autogen, elixir-format
 msgid "Unexpected error: %{reason}"
 msgstr "Неожиданная ошибка: %{reason}"
@@ -1973,28 +1973,28 @@ msgstr "Слишком много изображений: передано %{cou
 msgid "Unknown image operation: %{operation}"
 msgstr "Неизвестная операция с изображением: %{operation}"
 
-#: lib/phoenix_kit_ai/errors.ex:244
+#: lib/phoenix_kit_ai/errors.ex:247
 #, elixir-autogen, elixir-format
 msgid "Image operations %{first} and %{second} cannot be combined"
 msgstr "Операции %{first} и %{second} нельзя сочетать"
 
-#: lib/phoenix_kit_ai/errors.ex:255
+#: lib/phoenix_kit_ai/errors.ex:258
 #, elixir-autogen, elixir-format
 msgid "Image too large: %{bytes} bytes, the limit is %{max}"
 msgstr "Изображение слишком большое: %{bytes} байт, предел %{max}"
 
-#: lib/phoenix_kit_ai/errors.ex:258
+#: lib/phoenix_kit_ai/errors.ex:261
 #, elixir-autogen, elixir-format
 msgid "That image URL cannot be fetched from here"
 msgstr "Этот URL изображения нельзя загрузить отсюда"
 
-#: lib/phoenix_kit_ai/errors.ex:260
-#: lib/phoenix_kit_ai/errors.ex:261
+#: lib/phoenix_kit_ai/errors.ex:263
+#: lib/phoenix_kit_ai/errors.ex:264
 #, elixir-autogen, elixir-format
 msgid "The image could not be downloaded"
 msgstr "Не удалось загрузить изображение"
 
-#: lib/phoenix_kit_ai/errors.ex:251
+#: lib/phoenix_kit_ai/errors.ex:254
 #, elixir-autogen, elixir-format
 msgid "The provider refused this content: %{reason}"
 msgstr "Провайдер отклонил этот контент: %{reason}"
@@ -2138,7 +2138,7 @@ msgstr "Выровнять"
 msgid "That file is too large (8 MB at most)"
 msgstr "Файл слишком большой (не более 8 МБ)"
 
-#: lib/phoenix_kit_ai/errors.ex:241
+#: lib/phoenix_kit_ai/errors.ex:244
 #, elixir-autogen, elixir-format
 msgid "The provider's model list could not be fetched"
 msgstr "Не удалось получить список моделей провайдера"
@@ -2178,12 +2178,12 @@ msgstr "Увеличить разрешение"
 msgid "The AI budget for the last 24 hours has been used up"
 msgstr "Бюджет ИИ за последние 24 часа исчерпан"
 
-#: lib/phoenix_kit_ai/errors.ex:177
+#: lib/phoenix_kit_ai/errors.ex:180
 #, elixir-autogen, elixir-format
 msgid "This endpoint's budget for the last 24 hours has been used up"
 msgstr "Бюджет этого эндпоинта за последние 24 часа исчерпан"
 
-#: lib/phoenix_kit_ai/errors.ex:180
+#: lib/phoenix_kit_ai/errors.ex:183
 #, elixir-autogen, elixir-format
 msgid "You have used your AI allowance for the last 24 hours"
 msgstr "Вы исчерпали свой лимит ИИ за последние 24 часа"
@@ -2275,7 +2275,7 @@ msgstr "Всего токенов"
 msgid "Variables:"
 msgstr "Переменные:"
 
-#: lib/phoenix_kit_ai/errors.ex:183
+#: lib/phoenix_kit_ai/errors.ex:186
 #, elixir-autogen, elixir-format
 msgid "You have made as many AI requests as allowed for the last 24 hours"
 msgstr "Вы исчерпали допустимое число запросов к ИИ за последние 24 часа"
@@ -2473,7 +2473,7 @@ msgstr "Используемые конечные точки:"
 msgid "Fits"
 msgstr "Подходит"
 
-#: lib/phoenix_kit_ai/errors.ex:221
+#: lib/phoenix_kit_ai/errors.ex:224
 #, elixir-autogen, elixir-format
 msgid "It is not known whether the endpoint's model can do what this task needs (%{needs}). Mark the model's capabilities on the endpoint first."
 msgstr "Неизвестно, умеет ли модель конечной точки то, что нужно задаче (%{needs}). Сначала отметьте возможности модели на конечной точке."
@@ -2510,7 +2510,7 @@ msgstr "Нужно:"
 msgid "No module declares an AI task."
 msgstr "Ни один модуль не объявил задачу AI."
 
-#: lib/phoenix_kit_ai/errors.ex:234
+#: lib/phoenix_kit_ai/errors.ex:237
 #, elixir-autogen, elixir-format
 msgid "No provider of this model accepts all the request's parameters (%{params}). Remove the ones it does not support from the endpoint."
 msgstr "Ни один провайдер этой модели не принимает все параметры запроса (%{params}). Уберите из конечной точки те, что модель не поддерживает."
@@ -2543,7 +2543,7 @@ msgstr "Не удалось прочитать некоторые каталог
 msgid "Tasks"
 msgstr "Задачи"
 
-#: lib/phoenix_kit_ai/errors.ex:215
+#: lib/phoenix_kit_ai/errors.ex:218
 #, elixir-autogen, elixir-format
 msgid "The endpoint's model cannot do what this task needs: %{needs}"
 msgstr "Модель конечной точки не умеет того, что нужно задаче: %{needs}"
@@ -2573,7 +2573,7 @@ msgstr "только текст"
 msgid "tools"
 msgstr "инструменты"
 
-#: lib/phoenix_kit_ai/errors.ex:228
+#: lib/phoenix_kit_ai/errors.ex:231
 #, elixir-autogen, elixir-format
 msgid "No provider of this model accepts all the request's parameters. Remove the ones it does not support from the endpoint."
 msgstr "Ни один провайдер этой модели не принимает все параметры запроса. Уберите из конечной точки те, что модель не поддерживает."
@@ -2706,7 +2706,7 @@ msgstr "≈ Цена вызова"
 msgid "free — the operator's limits and terms apply"
 msgstr "бесплатная — лимиты и условия оператора"
 
-#: lib/phoenix_kit_ai/guard_events.ex:732
+#: lib/phoenix_kit_ai/guard_events.ex:733
 #, elixir-autogen, elixir-format
 msgid "%{email} has reached the %{name} (%{limit}) in the AI task %{task}."
 msgstr "%{email} исчерпал лимит «%{name}» (%{limit}) в задаче ИИ %{task}."
@@ -2721,7 +2721,7 @@ msgstr "Вызов отклоняется, если неизвестно, уме
 msgid "A limit must be a whole number, or dollars for money"
 msgstr "Лимит — целое число, для денег — сумма в долларах"
 
-#: lib/phoenix_kit_ai/guard_events.ex:656
+#: lib/phoenix_kit_ai/guard_events.ex:657
 #, elixir-autogen, elixir-format
 msgid "A user"
 msgstr "Пользователь"
@@ -2736,7 +2736,7 @@ msgstr "Охрана задач ИИ"
 msgid "Add a person…"
 msgstr "Добавить человека…"
 
-#: lib/phoenix_kit_ai/guard_events.ex:739
+#: lib/phoenix_kit_ai/guard_events.ex:755
 #, elixir-autogen, elixir-format
 msgid "An AI spending cap (%{cap}) refused a call. Calls are refused until spending is below it."
 msgstr "Лимит расходов на ИИ (%{cap}) отклонил вызов. Вызовы отклоняются, пока расходы не станут ниже лимита."
@@ -2883,17 +2883,17 @@ msgstr "Задача, в сутки"
 msgid "Task, a month"
 msgstr "Задача, в месяц"
 
-#: lib/phoenix_kit_ai/guard_events.ex:725
+#: lib/phoenix_kit_ai/guard_events.ex:726
 #, elixir-autogen, elixir-format
 msgid "The AI task %{task} has reached its %{name} (%{limit})."
 msgstr "Задача ИИ %{task} исчерпала лимит «%{name}» (%{limit})."
 
-#: lib/phoenix_kit_ai/guard_events.ex:718
+#: lib/phoenix_kit_ai/guard_events.ex:719
 #, elixir-autogen, elixir-format
 msgid "The AI task %{task} has used %{used} of its %{name} (%{limit})."
 msgstr "Задача ИИ %{task} израсходовала %{used} из лимита «%{name}» (%{limit})."
 
-#: lib/phoenix_kit_ai/guard_events.ex:752
+#: lib/phoenix_kit_ai/guard_events.ex:769
 #, elixir-autogen, elixir-format
 msgid "The AI task %{task} uses the endpoint %{endpoint}, whose model now lacks: %{needs}."
 msgstr "Задача ИИ %{task} использует конечную точку %{endpoint}, модели которой теперь не хватает: %{needs}."
@@ -2903,7 +2903,7 @@ msgstr "Задача ИИ %{task} использует конечную точк
 msgid "The change was not saved"
 msgstr "Изменение не сохранено"
 
-#: lib/phoenix_kit_ai/errors.ex:195
+#: lib/phoenix_kit_ai/errors.ex:198
 #, elixir-autogen, elixir-format
 msgid "This AI task has reached its %{name}"
 msgstr "Эта задача ИИ исчерпала лимит «%{name}»"
@@ -2943,17 +2943,17 @@ msgstr "Наблюдатели сохранены"
 msgid "Who is told"
 msgstr "Кому сообщать"
 
-#: lib/phoenix_kit_ai/guard_events.ex:711
+#: lib/phoenix_kit_ai/guard_events.ex:712
 #, elixir-autogen, elixir-format
 msgid "You have reached your %{name} (%{limit}) in the AI task %{task}."
 msgstr "Вы исчерпали лимит «%{name}» (%{limit}) в задаче ИИ %{task}."
 
-#: lib/phoenix_kit_ai/errors.ex:201
+#: lib/phoenix_kit_ai/errors.ex:204
 #, elixir-autogen, elixir-format
 msgid "You have reached your %{name} in this AI task"
 msgstr "Вы исчерпали лимит «%{name}» в этой задаче ИИ"
 
-#: lib/phoenix_kit_ai/guard_events.ex:704
+#: lib/phoenix_kit_ai/guard_events.ex:705
 #, elixir-autogen, elixir-format
 msgid "You have used %{used} of your %{name} (%{limit}) in the AI task %{task}."
 msgstr "Вы израсходовали %{used} из лимита «%{name}» (%{limit}) в задаче ИИ %{task}."
@@ -2964,47 +2964,47 @@ msgstr "Вы израсходовали %{used} из лимита «%{name}» (%
 msgid "You may not change the AI task guard"
 msgstr "У вас нет права менять охрану задач ИИ"
 
-#: lib/phoenix_kit_ai/guard_events.ex:679
+#: lib/phoenix_kit_ai/guard_events.ex:680
 #, elixir-autogen, elixir-format
 msgid "daily request limit"
 msgstr "дневной лимит запросов"
 
-#: lib/phoenix_kit_ai/guard_events.ex:677
+#: lib/phoenix_kit_ai/guard_events.ex:678
 #, elixir-autogen, elixir-format
 msgid "daily spending limit"
 msgstr "дневной лимит расходов"
 
-#: lib/phoenix_kit_ai/guard_events.ex:681
+#: lib/phoenix_kit_ai/guard_events.ex:682
 #, elixir-autogen, elixir-format
 msgid "daily token limit"
 msgstr "дневной лимит токенов"
 
-#: lib/phoenix_kit_ai/guard_events.ex:680
+#: lib/phoenix_kit_ai/guard_events.ex:681
 #, elixir-autogen, elixir-format
 msgid "monthly request limit"
 msgstr "месячный лимит запросов"
 
-#: lib/phoenix_kit_ai/guard_events.ex:678
+#: lib/phoenix_kit_ai/guard_events.ex:679
 #, elixir-autogen, elixir-format
 msgid "monthly spending limit"
 msgstr "месячный лимит расходов"
 
-#: lib/phoenix_kit_ai/guard_events.ex:682
+#: lib/phoenix_kit_ai/guard_events.ex:683
 #, elixir-autogen, elixir-format
 msgid "monthly token limit"
 msgstr "месячный лимит токенов"
 
-#: lib/phoenix_kit_ai/guard_events.ex:746
+#: lib/phoenix_kit_ai/guard_events.ex:763
 #, elixir-autogen, elixir-format
 msgid "one endpoint"
 msgstr "одна конечная точка"
 
-#: lib/phoenix_kit_ai/guard_events.ex:748
+#: lib/phoenix_kit_ai/guard_events.ex:765
 #, elixir-autogen, elixir-format
 msgid "one user's calls"
 msgstr "вызовы одного пользователя"
 
-#: lib/phoenix_kit_ai/guard_events.ex:747
+#: lib/phoenix_kit_ai/guard_events.ex:764
 #, elixir-autogen, elixir-format
 msgid "one user's spending"
 msgstr "расходы одного пользователя"
@@ -3014,7 +3014,7 @@ msgstr "расходы одного пользователя"
 msgid "only a holder of ai.manage may declare capabilities while only verified models are allowed"
 msgstr "пока разрешены только проверенные модели, отмечать возможности может только обладатель права ai.manage"
 
-#: lib/phoenix_kit_ai/guard_events.ex:745
+#: lib/phoenix_kit_ai/guard_events.ex:761
 #, elixir-autogen, elixir-format
 msgid "the whole site"
 msgstr "весь сайт"
@@ -3084,17 +3084,17 @@ msgstr "Не проверено"
 msgid "Without a catalogue (OpenAI, xAI, Z.ai) the capabilities have to be marked on the endpoint, or the calls are refused."
 msgstr "Без каталога (OpenAI, xAI, Z.ai) возможности нужно отметить на конечной точке, иначе вызовы будут отклонены."
 
-#: lib/phoenix_kit_ai/guard_events.ex:767
+#: lib/phoenix_kit_ai/guard_events.ex:784
 #, elixir-autogen, elixir-format
 msgid "%{email} asked the AI task %{task} for something outside its purpose. The flags are on the AI tasks page."
 msgstr "%{email} попросил задачу ИИ %{task} о том, что не входит в её назначение. Отметки — на странице задач ИИ."
 
-#: lib/phoenix_kit_ai/guard_events.ex:802
+#: lib/phoenix_kit_ai/guard_events.ex:819
 #, elixir-autogen, elixir-format
 msgid "%{email} is blocked from the AI task %{task}."
 msgstr "%{email} заблокирован в задаче ИИ %{task}."
 
-#: lib/phoenix_kit_ai/guard_events.ex:806
+#: lib/phoenix_kit_ai/guard_events.ex:823
 #, elixir-autogen, elixir-format
 msgid "%{email} is no longer blocked from the AI task %{task}."
 msgstr "%{email} больше не заблокирован в задаче ИИ %{task}."
@@ -3221,7 +3221,7 @@ msgstr "Эта блокировка уже снята"
 msgid "That person is blocked from this task already"
 msgstr "Этот человек уже заблокирован в этой задаче"
 
-#: lib/phoenix_kit_ai/guard_events.ex:760
+#: lib/phoenix_kit_ai/guard_events.ex:777
 #, elixir-autogen, elixir-format
 msgid "The AI task %{task} was asked for something outside its purpose. The flags are on the AI tasks page."
 msgstr "Задачу ИИ %{task} попросили о том, что не входит в её назначение. Отметки — на странице задач ИИ."
@@ -3231,12 +3231,12 @@ msgstr "Задачу ИИ %{task} попросили о том, что не вх
 msgid "The person cannot use the tasks of the group %{group} until the block is lifted."
 msgstr "Человек не сможет пользоваться задачами группы %{group}, пока блокировку не снимут."
 
-#: lib/phoenix_kit_ai/guard_events.ex:782
+#: lib/phoenix_kit_ai/guard_events.ex:799
 #, elixir-autogen, elixir-format
 msgid "Unusual use of the AI task %{task} by %{email}: %{rule}."
 msgstr "Необычное использование задачи ИИ %{task} (%{email}): %{rule}."
 
-#: lib/phoenix_kit_ai/guard_events.ex:775
+#: lib/phoenix_kit_ai/guard_events.ex:792
 #, elixir-autogen, elixir-format
 msgid "Unusual use of the AI task %{task}: %{rule}."
 msgstr "Необычное использование задачи ИИ %{task}: %{rule}."
@@ -3251,32 +3251,32 @@ msgstr "Когда"
 msgid "Why (seen by those who manage the guard)"
 msgstr "Почему (видят те, кто управляет охраной)"
 
-#: lib/phoenix_kit_ai/guard_events.ex:809
+#: lib/phoenix_kit_ai/guard_events.ex:826
 #, elixir-autogen, elixir-format
 msgid "You are blocked from the AI task %{task} until an administrator lifts the block."
 msgstr "Вы заблокированы в задаче ИИ %{task}, пока администратор не снимет блокировку."
 
-#: lib/phoenix_kit_ai/errors.ex:212
+#: lib/phoenix_kit_ai/errors.ex:215
 #, elixir-autogen, elixir-format
 msgid "You are blocked from this AI task until an administrator lifts the block"
 msgstr "Вы заблокированы в этой задаче ИИ, пока администратор не снимет блокировку"
 
-#: lib/phoenix_kit_ai/guard_events.ex:815
+#: lib/phoenix_kit_ai/guard_events.ex:832
 #, elixir-autogen, elixir-format
 msgid "You are no longer blocked from the AI task %{task}."
 msgstr "Вы больше не заблокированы в задаче ИИ %{task}."
 
-#: lib/phoenix_kit_ai/guard_events.ex:791
+#: lib/phoenix_kit_ai/guard_events.ex:808
 #, elixir-autogen, elixir-format
 msgid "a call from a place the task does not expect"
 msgstr "вызов из места, которого задача не ожидает"
 
-#: lib/phoenix_kit_ai/guard_events.ex:797
+#: lib/phoenix_kit_ai/guard_events.ex:814
 #, elixir-autogen, elixir-format
 msgid "a call of more than %{limit} tokens"
 msgstr "вызов больше чем на %{limit} токенов"
 
-#: lib/phoenix_kit_ai/guard_events.ex:794
+#: lib/phoenix_kit_ai/guard_events.ex:811
 #, elixir-autogen, elixir-format
 msgid "more than %{limit} calls in an hour"
 msgstr "больше %{limit} вызовов за час"
@@ -3694,22 +3694,22 @@ msgstr "Выполняется слишком много AI-запросов; э
 msgid "Too many AI requests are waiting; try again shortly"
 msgstr "Слишком много AI-запросов в очереди; попробуйте чуть позже"
 
-#: lib/phoenix_kit_ai/errors.ex:192
+#: lib/phoenix_kit_ai/errors.ex:195
 #, elixir-autogen, elixir-format
 msgid "AI requests are paused until the latest database update has run"
 msgstr "Запросы к ИИ приостановлены до выполнения последнего обновления базы данных"
 
-#: lib/phoenix_kit_ai/errors.ex:186
+#: lib/phoenix_kit_ai/errors.ex:189
 #, elixir-autogen, elixir-format
 msgid "AI spending limits need an update before AI requests can run again"
 msgstr "Лимиты расходов на ИИ нужно обновить, прежде чем запросы к ИИ снова заработают"
 
-#: lib/phoenix_kit_ai/errors.ex:189
+#: lib/phoenix_kit_ai/errors.ex:192
 #, elixir-autogen, elixir-format
 msgid "This task's spending limit needs an update before it can run again"
 msgstr "Лимит расходов этой задачи нужно обновить, прежде чем она снова заработает"
 
-#: lib/phoenix_kit_ai/guard_events.ex:688
+#: lib/phoenix_kit_ai/guard_events.ex:689
 #, elixir-autogen, elixir-format
 msgid "needs to be set again in dollars"
 msgstr "нужно задать заново в долларах"
@@ -3781,7 +3781,7 @@ msgstr "Объявлено: %{module} (ваше приложение)"
 msgid "Some AI tasks were declared twice; the second declaration is not used:"
 msgstr "Некоторые задачи ИИ объявлены дважды; второе объявление не используется:"
 
-#: lib/phoenix_kit_ai/errors.ex:209
+#: lib/phoenix_kit_ai/errors.ex:212
 #, elixir-autogen, elixir-format
 msgid "This AI task's module is switched off, so the task cannot run"
 msgstr "Модуль этой задачи ИИ выключен, поэтому задачу нельзя выполнить"
@@ -3791,92 +3791,92 @@ msgstr "Модуль этой задачи ИИ выключен, поэтому
 msgid "The AI module is switched off."
 msgstr "Модуль ИИ выключен."
 
-#: lib/phoenix_kit_ai/errors.ex:278
+#: lib/phoenix_kit_ai/errors.ex:281
 #, elixir-autogen, elixir-format
 msgid "A journal cleanup is already running"
 msgstr "Очистка журнала уже идёт"
 
-#: lib/phoenix_kit_ai/errors.ex:291
+#: lib/phoenix_kit_ai/errors.ex:294
 #, elixir-autogen, elixir-format
 msgid "Counting what would be deleted took too long"
 msgstr "Подсчёт удаляемого занял слишком много времени"
 
-#: lib/phoenix_kit_ai/errors.ex:275
+#: lib/phoenix_kit_ai/errors.ex:278
 #, elixir-autogen, elixir-format
 msgid "Invalid retention period for %{kind}"
 msgstr "Недопустимый срок хранения: %{kind}"
 
-#: lib/phoenix_kit_ai/errors.ex:264
+#: lib/phoenix_kit_ai/errors.ex:267
 #, elixir-autogen, elixir-format
 msgid "The AI module is disabled"
 msgstr "Модуль ИИ выключен"
 
-#: lib/phoenix_kit_ai/errors.ex:281
+#: lib/phoenix_kit_ai/errors.ex:284
 #, elixir-autogen, elixir-format
 msgid "The retention periods were changed by someone else; reload the page"
 msgstr "Сроки хранения изменил кто-то другой; обновите страницу"
 
-#: lib/phoenix_kit_ai/errors.ex:263
+#: lib/phoenix_kit_ai/errors.ex:266
 #, elixir-autogen, elixir-format
 msgid "You are not allowed to do this"
 msgstr "У вас нет прав на это действие"
 
-#: lib/phoenix_kit_ai/errors.ex:334
+#: lib/phoenix_kit_ai/errors.ex:337
 #, elixir-autogen, elixir-format
 msgid "guard events"
 msgstr "события охраны задач"
 
-#: lib/phoenix_kit_ai/errors.ex:333
+#: lib/phoenix_kit_ai/errors.ex:336
 #, elixir-autogen, elixir-format
 msgid "journal entries"
 msgstr "записи журнала"
 
-#: lib/phoenix_kit_ai/errors.ex:332
+#: lib/phoenix_kit_ai/errors.ex:335
 #, elixir-autogen, elixir-format
 msgid "the content of journal entries"
 msgstr "содержимое записей журнала"
 
-#: lib/phoenix_kit_ai/errors.ex:267
+#: lib/phoenix_kit_ai/errors.ex:270
 #, elixir-autogen, elixir-format
 msgid "The cleanup boundary for %{kind} is in the future"
 msgstr "Граница очистки (%{kind}) находится в будущем"
 
-#: lib/phoenix_kit_ai/errors.ex:284
+#: lib/phoenix_kit_ai/errors.ex:287
 #, elixir-autogen, elixir-format
 msgid "The table %{table} references the AI journal or the guard events in a way that would block or spread the deletion; nothing was deleted"
 msgstr "Таблица %{table} ссылается на журнал ИИ или события охраны задач так, что удаление было бы заблокировано или затронуло бы чужие данные; ничего не удалено"
 
-#: lib/phoenix_kit_ai/errors.ex:271
+#: lib/phoenix_kit_ai/errors.ex:274
 #, elixir-autogen, elixir-format
 msgid "The cleanup boundary for %{kind} is not a date and time"
 msgstr "Граница очистки (%{kind}) — не дата и время"
 
-#: lib/phoenix_kit_ai/errors.ex:302
+#: lib/phoenix_kit_ai/errors.ex:305
 #, elixir-autogen, elixir-format
 msgid "Choose what to clean up"
 msgstr "Выберите, что очистить"
 
-#: lib/phoenix_kit_ai/errors.ex:301
+#: lib/phoenix_kit_ai/errors.ex:304
 #, elixir-autogen, elixir-format
 msgid "The journal cleanup could not be queued"
 msgstr "Не удалось поставить очистку журнала в очередь"
 
-#: lib/phoenix_kit_ai/errors.ex:322
+#: lib/phoenix_kit_ai/errors.ex:325
 #, elixir-autogen, elixir-format
 msgid "The journal cleanup failed"
 msgstr "Очистка журнала не удалась"
 
-#: lib/phoenix_kit_ai/errors.ex:299
+#: lib/phoenix_kit_ai/errors.ex:302
 #, elixir-autogen, elixir-format
 msgid "The retention periods are being saved by someone else; try again"
 msgstr "Сроки хранения сейчас сохраняет кто-то другой; попробуйте ещё раз"
 
-#: lib/phoenix_kit_ai/errors.ex:296
+#: lib/phoenix_kit_ai/errors.ex:299
 #, elixir-autogen, elixir-format
 msgid "The retention periods could not be saved"
 msgstr "Не удалось сохранить сроки хранения"
 
-#: lib/phoenix_kit_ai/errors.ex:293
+#: lib/phoenix_kit_ai/errors.ex:296
 #, elixir-autogen, elixir-format
 msgid "Unknown kind of journal retention"
 msgstr "Неизвестный вид хранения журнала"
@@ -4268,22 +4268,22 @@ msgstr[0] "год"
 msgstr[1] "года"
 msgstr[2] "лет"
 
-#: lib/phoenix_kit_ai/errors.ex:314
+#: lib/phoenix_kit_ai/errors.ex:317
 #, elixir-autogen, elixir-format
 msgid "A cleanup boundary was in the future; nothing was deleted"
 msgstr "Граница очистки была в будущем; ничего не удалено"
 
-#: lib/phoenix_kit_ai/errors.ex:317
+#: lib/phoenix_kit_ai/errors.ex:320
 #, elixir-autogen, elixir-format
 msgid "A cleanup boundary was not a date and time; nothing was deleted"
 msgstr "Граница очистки не была датой и временем; ничего не удалено"
 
-#: lib/phoenix_kit_ai/errors.ex:309
+#: lib/phoenix_kit_ai/errors.ex:312
 #, elixir-autogen, elixir-format
 msgid "A table references the AI journal or the guard events in a way that would block or spread the deletion; nothing was deleted"
 msgstr "Какая-то таблица ссылается на журнал ИИ или события охраны задач так, что удаление было бы заблокировано или распространилось бы на неё; ничего не удалено"
 
-#: lib/phoenix_kit_ai/errors.ex:305
+#: lib/phoenix_kit_ai/errors.ex:308
 #, elixir-autogen, elixir-format
 msgid "Counting what would be deleted failed"
 msgstr "Не удалось посчитать, что будет удалено"
@@ -4293,7 +4293,7 @@ msgstr "Не удалось посчитать, что будет удалено
 msgid "Someone else changed the retention periods; the card shows them now"
 msgstr "Сроки хранения изменил кто-то другой; карточка теперь показывает их"
 
-#: lib/phoenix_kit_ai/errors.ex:320
+#: lib/phoenix_kit_ai/errors.ex:323
 #, elixir-autogen, elixir-format
 msgid "The cleanup job's arguments could not be read; nothing was deleted"
 msgstr "Не удалось прочитать параметры задачи очистки; ничего не удалено"
@@ -4488,3 +4488,18 @@ msgstr "Метки должны быть списком слов; передай
 #, elixir-autogen, elixir-format
 msgid "confirm: must be true or a list of images"
 msgstr "confirm: должно быть true или списком изображений"
+
+#: lib/phoenix_kit_ai/guard_events.ex:748
+#, elixir-autogen, elixir-format
+msgid "An AI spending cap (%{cap}) refused a call. Calls are refused until the month turns or the cap is raised."
+msgstr "Лимит расходов на ИИ (%{cap}) отклонил вызов. Вызовы отклоняются, пока не начнётся новый месяц или лимит не будет повышен."
+
+#: lib/phoenix_kit_ai/errors.ex:177
+#, elixir-autogen, elixir-format
+msgid "The AI budget for this month has been used up"
+msgstr "Бюджет ИИ на этот месяц исчерпан"
+
+#: lib/phoenix_kit_ai/guard_events.ex:762
+#, elixir-autogen, elixir-format
+msgid "the whole site, per month"
+msgstr "весь сайт, за месяц"

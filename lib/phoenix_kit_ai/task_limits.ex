@@ -145,10 +145,12 @@ defmodule PhoenixKitAI.TaskLimits do
   # WINDOWS
   # ===========================================
 
-  @doc "The local day and month that contain `now`, as half-open UTC windows."
-  @spec windows(DateTime.t()) :: %{day: window(), month: window()}
-  def windows(now \\ DateTime.utc_now()) do
-    zone = zone()
+  @doc """
+  The local day and month that contain `now`, as half-open UTC windows. The
+  time zone is the site's unless the caller already holds it (`zone`).
+  """
+  @spec windows(DateTime.t(), String.t() | nil) :: %{day: window(), month: window()}
+  def windows(now \\ DateTime.utc_now(), zone \\ zone()) do
     today = TimeZone.local_date(now, zone)
     first = Date.beginning_of_month(today)
 

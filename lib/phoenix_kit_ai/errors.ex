@@ -173,6 +173,9 @@ defmodule PhoenixKitAI.Errors do
   def message({:budget_exceeded, :global}),
     do: gettext("The AI budget for the last 24 hours has been used up")
 
+  def message({:budget_exceeded, :global_month}),
+    do: gettext("The AI budget for this month has been used up")
+
   def message({:budget_exceeded, :endpoint}),
     do: gettext("This endpoint's budget for the last 24 hours has been used up")
 
