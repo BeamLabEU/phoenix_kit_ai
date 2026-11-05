@@ -19,7 +19,8 @@ defmodule PhoenixKitAI.Provider do
   | anything else | `PhoenixKitAI.Providers.OpenAICompatible` — chat completions with image parts |
 
   Vision (`describe` / `compare`) goes through the adapter's optional
-  `vision/3`, falling back to the chat-completions implementation.
+  `vision/3`, falling back to the chat-completions implementation. Speech
+  to text asks the optional `transcription_transport/2` which path to take.
 
   A host adds or replaces adapters without touching this module:
 
@@ -95,7 +96,16 @@ defmodule PhoenixKitAI.Provider do
   """
   @callback vision(Endpoint.t(), [map()], options()) :: {:ok, map()} | {:error, term()}
 
-  @optional_callbacks vision: 3, image_edit_options: 2
+  @doc """
+  Speech to text: which path `PhoenixKitAI.transcribe/3` takes for `model`
+  on this provider — `:chat` (an `input_audio` part in a chat request) or
+  `:transcriptions` (`POST /audio/transcriptions`). Optional — without it
+  the model's name decides (`PhoenixKitAI.Transcription.by_model/1`). A
+  call's `transport:` wins over both.
+  """
+  @callback transcription_transport(Endpoint.t(), String.t() | nil) :: :chat | :transcriptions
+
+  @optional_callbacks vision: 3, image_edit_options: 2, transcription_transport: 2
 
   @builtin %{
     "openrouter" => PhoenixKitAI.Providers.OpenRouter,

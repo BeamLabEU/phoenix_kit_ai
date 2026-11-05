@@ -32,6 +32,7 @@ defmodule PhoenixKitAI.Web.Endpoints do
   alias PhoenixKitAI.Web.Access
   alias PhoenixKitAI.Web.AuthHelpers
   alias PhoenixKitAI.Web.Components.JournalRetentionCard
+  alias PhoenixKitAI.Web.Components.MessageContent
   alias PhoenixKitAI.Web.JournalRetention
   alias PhoenixKitAI.Web.MessageShape
   alias PhoenixKitAI.Web.SortHelpers

@@ -254,6 +254,16 @@ defmodule PhoenixKitAI.Errors do
     gettext("The provider refused this content: %{reason}", reason: reason)
   end
 
+  def message({:audio_too_large, bytes, max}) do
+    gettext("Recording too large: %{bytes} bytes, the limit is %{max}", bytes: bytes, max: max)
+  end
+
+  def message(:unknown_audio_format),
+    do: gettext("The recording's format could not be told; pass it as format:")
+
+  def message(:invalid_audio_input),
+    do: gettext("The recording must be bytes, a map with data:, or a data URL")
+
   def message({:image_too_large, bytes, max}) do
     gettext("Image too large: %{bytes} bytes, the limit is %{max}", bytes: bytes, max: max)
   end

@@ -153,7 +153,7 @@ it is cached (30 seconds, 2 near the cap).
 ## Request cache (`PhoenixKitAI.RequestCache`)
 
 `cache: true | [ttl: seconds | :infinity, key: term, refresh: boolean] |
-:refresh` on every verb (`speak/3` and `compare_images/4` included).
+:refresh` on every verb (`speak/3`, `transcribe/3` and `compare_images/4` included).
 `config :phoenix_kit_ai, request_cache: [ttl:, sweep:, max_entries:,
 max_value_bytes:, default:]` is read per call; `default: true` opts every
 call in unless it says `cache: false`.

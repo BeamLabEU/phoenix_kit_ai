@@ -908,6 +908,28 @@ defmodule PhoenixKitAI.ExpectedSchema do
         backfill: :default
       },
       %{
+        id: "column:phoenix_kit_ai_model_capabilities.audio_input",
+        owner: :phoenix_kit_ai,
+        check:
+          {:catalog,
+           %{table: "phoenix_kit_ai_model_capabilities", column: "audio_input", kind: :column}},
+        create:
+          "ALTER TABLE __SCHEMA__.phoenix_kit_ai_model_capabilities ADD COLUMN IF NOT EXISTS \"audio_input\" character varying(8) DEFAULT 'unknown'::character varying NOT NULL",
+        since: 1,
+        class: :column,
+        revisions: [
+          {1,
+           %{
+             default: "'unknown'::character varying",
+             type: "character varying(8)",
+             pos: 15,
+             not_null: true
+           }}
+        ],
+        presence: :required,
+        backfill: :default
+      },
+      %{
         id: "column:phoenix_kit_ai_model_capabilities.base_url",
         owner: :phoenix_kit_ai,
         check:
@@ -3140,6 +3162,38 @@ defmodule PhoenixKitAI.ExpectedSchema do
              type: "c",
              columns: ["reason"],
              definition: "CHECK (((reason IS NULL) OR (char_length(reason) <= 500)))",
+             name_template: nil,
+             foreign_table: nil,
+             foreign_columns: nil,
+             on_delete: nil,
+             on_update: nil
+           }}
+        ],
+        presence: :required,
+        backfill: nil
+      },
+      %{
+        id:
+          "constraint:phoenix_kit_ai_model_capabilities.phoenix_kit_ai_model_capabilities_audio_input_check",
+        owner: :phoenix_kit_ai,
+        check:
+          {:catalog,
+           %{
+             name: "phoenix_kit_ai_model_capabilities_audio_input_check",
+             table: "phoenix_kit_ai_model_capabilities",
+             kind: :constraint
+           }},
+        create:
+          "DO $$\nBEGIN\n  IF NOT EXISTS (\n    SELECT 1\n    FROM pg_constraint c\n    JOIN pg_class t ON t.oid = c.conrelid\n    JOIN pg_namespace n ON n.oid = t.relnamespace\n    WHERE c.conname = 'phoenix_kit_ai_model_capabilities_audio_input_check'\n      AND t.relname = 'phoenix_kit_ai_model_capabilities'\n      AND n.nspname = '__SCHEMA__'\n  ) THEN\n    ALTER TABLE __SCHEMA__.phoenix_kit_ai_model_capabilities ADD CONSTRAINT phoenix_kit_ai_model_capabilities_audio_input_check CHECK (((audio_input)::text = ANY ((ARRAY['yes'::character varying, 'no'::character varying, 'unknown'::character varying])::text[])));\n  END IF;\nEND\n$$",
+        since: 1,
+        class: :constraint,
+        revisions: [
+          {1,
+           %{
+             type: "c",
+             columns: ["audio_input"],
+             definition:
+               "CHECK (((audio_input)::text = ANY ((ARRAY['yes'::character varying, 'no'::character varying, 'unknown'::character varying])::text[])))",
              name_template: nil,
              foreign_table: nil,
              foreign_columns: nil,

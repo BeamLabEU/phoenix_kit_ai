@@ -18,7 +18,16 @@ defmodule PhoenixKitAI.Web.CapabilityExplanationsTest do
   alias PhoenixKitAI.Web.Components.CapabilityBadges
   alias PhoenixKitAI.Web.EndpointForm
 
-  @flags [:vision, :file_input, :image_output, :tools, :json_schema, :json, :context]
+  @flags [
+    :vision,
+    :file_input,
+    :audio_input,
+    :image_output,
+    :tools,
+    :json_schema,
+    :json,
+    :context
+  ]
 
   @howto_links [
     "https://developers.openai.com/api/docs/models",

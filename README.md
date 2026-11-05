@@ -14,6 +14,9 @@ behaviour for auto-discovery by a parent Phoenix application.
   syntax, live preview, and variable validation
 - **Completions API** — Single-turn (`ask/3`), multi-turn (`complete/3`),
   and embeddings (`embed/3`)
+- **Speech** — text to speech (`speak/3`) and speech to text
+  (`transcribe/3`, through a chat model that hears or an
+  `/audio/transcriptions` model)
 - **Reasoning capture** — Chain-of-thought from reasoning models
   (DeepSeek-R1, Mistral Magistral, OpenAI o-series, Anthropic extended
   thinking) automatically persisted to request metadata
@@ -113,6 +116,28 @@ Run `mix deps.get` and start the server. The module appears in:
 # With dimension override
 {:ok, response} = PhoenixKitAI.embed(endpoint.uuid, "Hello", dimensions: 512)
 ```
+
+### Speech to text
+
+```elixir
+# `wav` is the recording's bytes (WAV, MP3, FLAC, OGG, WebM, M4A)
+{:ok, %{text: text, language: language}} =
+  PhoenixKitAI.transcribe(endpoint.uuid, wav,
+    # an endpoint whose own model does not hear can name one that does
+    model: "google/gemini-2.5-flash",
+    instructions: "A customer ordering plywood. Write sizes as 2500×1250.",
+    language: "et"
+  )
+
+# No speech in the recording is an answer, not an error
+{:ok, %{text: ""}} = PhoenixKitAI.transcribe(endpoint.uuid, silence)
+```
+
+On OpenRouter the audio goes as an `input_audio` part of a chat request and
+the model must take audio: the guard refuses a model that does not with
+`{:error, {:model_unfit, [:audio_input]}}`. A speech-to-text model elsewhere
+(`whisper-1`, `gpt-4o-transcribe`) gets `POST /audio/transcriptions`. The usage
+row keeps the audio's format, size and length, never the audio.
 
 ### Structured output
 
@@ -578,7 +603,7 @@ config :phoenix_kit_ai,
   # with `metadata.content_redacted: true`). A call can only narrow this:
   # `capture_request_content: false` on complete/3 or an image verb redacts
   # that call; `true` on a call never overrides a global `false`
-  # (speak/3 and embed/3 ignore the per-call option).
+  # (speak/3 and embed/3 ignore the per-call option; transcribe/3 honours it).
   capture_request_content: true,
 
   # Capture process memory in request `caller_context` (default off).

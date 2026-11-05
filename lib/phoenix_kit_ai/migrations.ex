@@ -90,6 +90,13 @@ defmodule PhoenixKitAI.Migrations do
   allows nothing) — and deletes the new cap keys, also ones set after V4 (the
   old keys still hold the released values).
 
+  ## V6: audio in
+
+    * One more flag on `phoenix_kit_ai_model_capabilities`: `audio_input`
+      (`yes`, `no` or `unknown`, default `unknown`) — whether the model
+      takes audio with a chat request (`PhoenixKitAI.Capabilities`, the
+      guard's `:audio_input` need). Down to 5 drops the column.
+
   ## Version marker
 
   `COMMENT ON TABLE phoenix_kit_ai_model_capabilities IS 'ai_schema:<N>'`.
@@ -106,7 +113,7 @@ defmodule PhoenixKitAI.Migrations do
 
   alias PhoenixKit.Migrations.Postgres.Helpers
 
-  @current_version 5
+  @current_version 6
   @default_prefix "public"
   @marker_prefix "ai_schema:"
   @version_table "phoenix_kit_ai_model_capabilities"
@@ -233,6 +240,7 @@ defmodule PhoenixKitAI.Migrations do
   defp version_up(3, prefix, _target), do: v3_statements(prefix)
   defp version_up(4, prefix, _target), do: v4_statements(prefix)
   defp version_up(5, _prefix, _target), do: []
+  defp version_up(6, prefix, _target), do: v6_statements(prefix)
 
   defp version_down(1, prefix),
     do: [
@@ -249,6 +257,16 @@ defmodule PhoenixKitAI.Migrations do
   # V5 adopted core's tables; undoing it drops nothing (the rows are people's
   # endpoints, prompts and usage history).
   defp version_down(5, _prefix), do: []
+
+  defp version_down(6, prefix),
+    do: [
+      "ALTER TABLE #{Helpers.qualify_table(@version_table, prefix)} DROP COLUMN IF EXISTS audio_input"
+    ]
+
+  # ── V6: audio in ──────────────────────────────────────────────────────
+
+  defp v6_statements(prefix),
+    do: [flag_column(Helpers.qualify_table(@version_table, prefix), "audio_input")]
 
   # ── V5: adoption of core's tables ─────────────────────────────────────
   #

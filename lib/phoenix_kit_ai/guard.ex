@@ -9,17 +9,18 @@ defmodule PhoenixKitAI.Guard do
 
   | verb | implied |
   |---|---|
-  | `complete/3`, `ask/3`, `ask_with_prompt/4`, `complete_with_system_prompt/5` | `image_url` parts in the messages → `:vision`; `file` parts → `:file_input` (string or atom keys either way); `tools:` → `:tools`; `schema:` / `json:` → `:json` |
+  | `complete/3`, `ask/3`, `ask_with_prompt/4`, `complete_with_system_prompt/5` | `image_url` parts in the messages → `:vision`; `file` parts → `:file_input`; `input_audio` parts → `:audio_input` (string or atom keys either way); `tools:` → `:tools`; `schema:` / `json:` → `:json` |
   | `describe_image/3` | `:vision`; `:json` with `schema:` / `json:` |
   | `extract_text/3`, `compare_images/4` | `:vision`, `:json` |
   | `generate_image/3`, `edit_image/4`, `process_image/4` | `:image_output` (images given to a generation model are not vision) |
+  | `transcribe/3` | `:audio_input`, `:json` on the chat path; nothing on the `/audio/transcriptions` path (a speech-to-text model is not a chat model, and no catalogue lists it) |
   | `embed/3`, `speak/3` | nothing |
 
   The model checked is the one the verb sends: a `model:` override of the
   vision and image verbs, the endpoint's model otherwise.
 
-  A hard need (`:vision`, `:file_input`, `:image_output`, `:tools`,
-  `:json_schema`) the model says no to
+  A hard need (`:vision`, `:file_input`, `:audio_input`, `:image_output`,
+  `:tools`, `:json_schema`) the model says no to
   refuses the call with `{:error, {:model_unfit, missing}}`. A need nobody
   knows about lets the call through, unless the module setting
   `ai_guard_verified_models_only` is on — then it refuses with
@@ -126,6 +127,7 @@ defmodule PhoenixKitAI.Guard do
           | :describe_image
           | :extract_text
           | :compare_images
+          | :transcribe
 
   @type admission :: %{
           task: String.t() | nil,
@@ -149,6 +151,7 @@ defmodule PhoenixKitAI.Guard do
     []
     |> add_if(:vision, has_part?(messages, "image_url"))
     |> add_if(:file_input, has_part?(messages, "file"))
+    |> add_if(:audio_input, has_part?(messages, "input_audio"))
     |> add_if(:tools, match?([_ | _], opts[:tools]))
     |> add_if(:json, json_requested?(opts))
   end
@@ -162,6 +165,14 @@ defmodule PhoenixKitAI.Guard do
   def implied_needs(verb, _opts, _input)
       when verb in [:generate_image, :edit_image, :process_image],
       do: [:image_output]
+
+  # `transport:` is the path `PhoenixKitAI.Transcription.transport/2` chose.
+  def implied_needs(:transcribe, opts, _input) do
+    case opts[:transport] do
+      :transcriptions -> []
+      _chat -> [:audio_input, :json]
+    end
+  end
 
   def implied_needs(_verb, _opts, _input), do: []
 

@@ -1,3 +1,16 @@
+## Unreleased
+
+### Added
+
+- **`PhoenixKitAI.transcribe/3`: speech to text**, the reverse of `speak/3`. It takes the recording's bytes (WAV, MP3, FLAC, OGG, WebM, M4A, the format read from the bytes), `%{data:, format:}` or a `data:audio/…` URL, and returns `{:ok, %{text, language, model, transport, duration, request_uuid, cost}}`. A recording without speech is `{:ok, %{text: ""}}`, not an error. It takes one of two paths, picked per provider and model: a chat request with the audio as an `input_audio` part, answered as JSON (OpenRouter always, so Gemini or GPT-4o audio), or `POST /audio/transcriptions` for a speech-to-text model (`whisper-1`, `gpt-4o-transcribe`, Groq, Mistral's Voxtral transcribe). `transport:` picks one by hand. The options are `model:`, `instructions:` (part of the prompt, or Whisper's `prompt`), `language:`, `format:`, `temperature:` (default 0) and those of every verb (`task:`, `user_uuid:`, `cache:`, `capture_request_content:`, …). Each call is logged as a `"transcription"` request with tokens, cost, the audio's format, size and length, never the audio itself. An adapter can name its path with the new optional `PhoenixKitAI.Provider.transcription_transport/2`. New app env: `:max_audio_bytes` (25 MB).
+- **The guard knows audio** (`:audio_input`, a hard need like `:vision`). A chat call with an `input_audio` part, or `transcribe/3` on its chat path, sent to a model that does not take audio is refused with `{:model_unfit, [:audio_input]}` before any request. The flag comes from OpenRouter's and DeepSeek's `audio` input modality; for Anthropic it is `:no`, for Mistral `:unknown`. It can be declared on an endpoint ("Audio" in the Current Model panel) and appears as a badge. Tasks can declare `needs: [:audio_input]`.
+- Migration **V6** adds the `audio_input` flag column to `phoenix_kit_ai_model_capabilities` (`unknown` by default). Run `mix phoenix_kit.update`. Until it has run, the capability snapshot neither loads nor saves, and the cache fills from the catalogues on its first refresh, as with V2.
+
+### Fixed
+
+- **A chat message's audio, images and files are no longer stored as base64 in its usage row.** Each media part is kept as a placeholder with its type, format and size (`PhoenixKitAI.MessageParts`), in both `messages` and `request_payload`. A three-minute WAV used to add about 15 MB to a row, stored twice.
+- **The Usage tab's request details no longer crash on a message whose content is a list of parts.** Opening such a row raised in the template, and the error put up to about 4 KB of the part's base64 into the log. Text parts now show as text and media parts as "Audio (wav, 5.8 MB), not stored". Rows written before this fix show the same way; their bytes are not displayed. A row's `input` (speech, a transcription prompt) now shows too.
+
 ## 0.27.0 - 2026-10-27
 
 ### Added

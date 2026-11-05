@@ -1,7 +1,7 @@
 defmodule PhoenixKitAI.Web.Components.CapabilityBadges do
   @moduledoc """
-  The badges for what a model can do (images, documents, image generation,
-  tools, JSON schema) as its catalogue says: one per capability it has, a
+  The badges for what a model can do (images, documents, audio, image
+  generation, tools, JSON schema) as its catalogue says: one per capability it has, a
   grey one with "?" where nobody verified it (never styled like a missing
   one, which has no badge), one "unknown" badge when nothing is known, and
   Anthropic's lifecycle when the model is leaving. Shared by the endpoint
@@ -76,6 +76,7 @@ defmodule PhoenixKitAI.Web.Components.CapabilityBadges do
   @doc "The capability in words."
   def label(:vision), do: gettext("Images")
   def label(:file_input), do: gettext("Documents")
+  def label(:audio_input), do: gettext("Audio")
   def label(:image_output), do: gettext("Image generation")
   def label(:tools), do: gettext("Tools")
   def label(:json_schema), do: gettext("JSON schema")
@@ -83,7 +84,16 @@ defmodule PhoenixKitAI.Web.Components.CapabilityBadges do
   def label(:context), do: gettext("Context")
 
   # The capabilities explained, in the glossary's order.
-  @explained [:vision, :file_input, :image_output, :tools, :json_schema, :json, :context]
+  @explained [
+    :vision,
+    :file_input,
+    :audio_input,
+    :image_output,
+    :tools,
+    :json_schema,
+    :json,
+    :context
+  ]
 
   @doc "The capabilities `explain/1` knows, in the glossary's order."
   def explained, do: @explained
@@ -115,6 +125,19 @@ defmodule PhoenixKitAI.Web.Components.CapabilityBadges do
       check:
         gettext(
           "How to tell: the model card at the operator or on OpenRouter lists file or PDF input; or send a test request with a document."
+        )
+    }
+
+  def explain(:audio_input),
+    do: %{
+      what:
+        gettext(
+          "Audio: the model can listen to a recording sent with the request — a voice message, a call."
+        ),
+      needed_by: gettext("Needed by tasks that write down or understand what was said."),
+      check:
+        gettext(
+          "How to tell: the model card at the operator or on OpenRouter lists audio input; or send a test request with a recording."
         )
     }
 

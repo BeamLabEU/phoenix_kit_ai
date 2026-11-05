@@ -3,8 +3,8 @@ defmodule PhoenixKitAI.RetentionContentKeysTest do
   Every metadata key the request loggers write under the
   `capture_request_content?` gate is in `PhoenixKitAI.Retention.content_keys/0`.
 
-  Each kind of row (chat, tool calls, embeddings, TTS, images, vision; the
-  success and the failure) is written twice by one helper with the same
+  Each kind of row (chat, tool calls, embeddings, TTS, images, vision,
+  transcription; the success and the failure) is written twice by one helper with the same
   inputs — capture on, capture off — and every key whose presence or value
   differs must be a content key (or the `content_redacted` marker). That
   also catches a key only whose value is gated, as an image failure's
@@ -19,6 +19,9 @@ defmodule PhoenixKitAI.RetentionContentKeysTest do
 
   @png <<0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A>>
   @jpeg <<0xFF, 0xD8, 0xFF, 0xE0, 0, 16, "JFIF">>
+  @wav <<"RIFF", 40::little-32, "WAVE", "fmt ", 16::little-32, 1::little-16, 1::little-16,
+         16_000::little-32, 32_000::little-32, 2::little-16, 16::little-16, "data", 4::little-32,
+         0, 0, 0, 0>>
 
   @tool_call %{
     "id" => "call_1",
@@ -170,7 +173,11 @@ defmodule PhoenixKitAI.RetentionContentKeysTest do
     image_failure: {:fail, :image},
     vision: {:ok, :vision},
     vision_failure: {:fail, :vision},
-    vision_unparsed: {:ok, :vision_json}
+    vision_unparsed: {:ok, :vision_json},
+    transcription_chat: {:transcript, :transcribe},
+    transcription_chat_unparsed: {:ok, :transcribe},
+    transcription_failure: {:fail, :transcribe},
+    transcription_stt: {:transcript, :transcribe_stt}
   ]
 
   for {name, {provider, verb}} <- @scenarios do
@@ -187,6 +194,23 @@ defmodule PhoenixKitAI.RetentionContentKeysTest do
             fn ->
               stub(&json(&1, 200, chat_answer(%{"content" => nil, "tool_calls" => [@tool_call]})))
             end
+
+          :transcript ->
+            fn ->
+              stub(fn conn ->
+                case conn.request_path do
+                  "/v1/audio/transcriptions" ->
+                    json(conn, 200, %{"text" => "secret words", "language" => "en"})
+
+                  _chat ->
+                    json(
+                      conn,
+                      200,
+                      chat_answer(%{"content" => ~s({"text": "secret words", "language": "en"})})
+                    )
+                end
+              end)
+            end
         end
 
       endpoint =
@@ -194,6 +218,7 @@ defmodule PhoenixKitAI.RetentionContentKeysTest do
           :embedding -> endpoint!(%{model: "openai/text-embedding-3-small"})
           :tts -> endpoint!(%{provider: "mistral", model: "voxtral-mini-tts-2603"})
           :image -> endpoint!(%{provider: "openai", model: "gpt-image-1"})
+          :transcribe_stt -> endpoint!(%{provider: "openai", model: "whisper-1"})
           _ -> endpoint!(%{})
         end
 
@@ -214,6 +239,12 @@ defmodule PhoenixKitAI.RetentionContentKeysTest do
   defp call(:embedding, ep), do: PhoenixKitAI.embed(ep.uuid, "secret text", cache: false)
   defp call(:tts, ep), do: PhoenixKitAI.speak(ep.uuid, "secret text", cache: false)
   defp call(:image, ep), do: PhoenixKitAI.generate_image(ep.uuid, "a secret cat", cache: false)
+
+  defp call(:transcribe, ep),
+    do: PhoenixKitAI.transcribe(ep.uuid, @wav, instructions: "a secret subject", cache: false)
+
+  defp call(:transcribe_stt, ep),
+    do: PhoenixKitAI.transcribe(ep.uuid, @wav, instructions: "a secret subject", cache: false)
 
   defp call(:vision, ep),
     do: PhoenixKitAI.describe_image(ep.uuid, @jpeg, prompt: "what is secret here?", cache: false)

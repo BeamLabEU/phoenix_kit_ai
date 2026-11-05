@@ -214,10 +214,10 @@ defmodule PhoenixKitAI.MigrationsTest do
 
   describe "the chain as built at boot" do
     test "is at the current version, with its table" do
-      assert Migrations.current_version() == 5
-      assert marker() == "ai_schema:5"
+      assert Migrations.current_version() == 6
+      assert marker() == "ai_schema:6"
       assert existing_tables() == @tables
-      assert Migrations.migrated_version_runtime() == 5
+      assert Migrations.migrated_version_runtime() == 6
     end
 
     test "the base URL and model pair is unique; the flags take yes, no or unknown only" do
@@ -237,7 +237,7 @@ defmodule PhoenixKitAI.MigrationsTest do
       run(Migrations.up_statements("public"))
       run(Migrations.up_statements("public"))
 
-      assert marker() == "ai_schema:5"
+      assert marker() == "ai_schema:6"
       assert existing_tables() == @tables
     end
 
@@ -249,7 +249,7 @@ defmodule PhoenixKitAI.MigrationsTest do
 
       run(Migrations.up_statements("public"))
       assert existing_tables() == @tables
-      assert marker() == "ai_schema:5"
+      assert marker() == "ai_schema:6"
 
       # Built here, from the statements as they are now — not the schema a
       # persistent test database kept from an earlier V1.
@@ -268,8 +268,8 @@ defmodule PhoenixKitAI.MigrationsTest do
     end
 
     test "a version the chain does not have is refused in both directions" do
-      assert_raise ArgumentError, fn -> Migrations.up_statements("public", 6) end
-      assert_raise ArgumentError, fn -> Migrations.down_statements("public", 6) end
+      assert_raise ArgumentError, fn -> Migrations.up_statements("public", 7) end
+      assert_raise ArgumentError, fn -> Migrations.down_statements("public", 7) end
     end
 
     test "an invalid prefix is refused" do
@@ -278,6 +278,36 @@ defmodule PhoenixKitAI.MigrationsTest do
 
     test "up to 0 applies nothing" do
       assert Migrations.up_statements("public", 0) == []
+    end
+  end
+
+  describe "V6: audio in" do
+    defp audio_column do
+      query(
+        "SELECT column_default, is_nullable FROM information_schema.columns WHERE table_name = 'phoenix_kit_ai_model_capabilities' AND column_name = 'audio_input'"
+      )
+    end
+
+    test "the capability snapshot gets audio_input, unknown by default and checked" do
+      assert [["'unknown'::character varying", "NO"]] = audio_column()
+
+      assert {:error, %Postgrex.Error{postgres: %{code: :check_violation}}} =
+               Repo.query(
+                 "INSERT INTO phoenix_kit_ai_model_capabilities (base_url, model, fetched_at, audio_input) VALUES ('https://a.test/v1', 'm', now(), 'maybe')",
+                 []
+               )
+    end
+
+    test "down to 5 drops the column and keeps the rest; up adds it again" do
+      run(Migrations.down_statements("public", 5))
+      assert audio_column() == []
+      assert marker() == "ai_schema:5"
+      assert existing_tables() == @tables
+      assert_v2_flags()
+
+      run(Migrations.up_statements("public"))
+      assert [["'unknown'::character varying", "NO"]] = audio_column()
+      assert marker() == "ai_schema:6"
     end
   end
 
@@ -347,7 +377,7 @@ defmodule PhoenixKitAI.MigrationsTest do
 
       run(Migrations.up_statements("public"))
       assert existing_tables() == @tables
-      assert marker() == "ai_schema:5"
+      assert marker() == "ai_schema:6"
       assert_v2_structure()
     end
   end
@@ -404,7 +434,7 @@ defmodule PhoenixKitAI.MigrationsTest do
 
       run(Migrations.up_statements("public"))
       assert existing_tables() == @tables
-      assert marker() == "ai_schema:5"
+      assert marker() == "ai_schema:6"
       assert_v3_structure()
     end
   end
@@ -519,7 +549,7 @@ defmodule PhoenixKitAI.MigrationsTest do
 
       run(Migrations.up_statements("public"))
       assert_converted(seeded)
-      assert marker() == "ai_schema:5"
+      assert marker() == "ai_schema:6"
 
       run(Migrations.up_statements("public"))
       assert_converted(seeded)
@@ -574,7 +604,7 @@ defmodule PhoenixKitAI.MigrationsTest do
       assert %{"input" => 600_000, "output" => 2_200_000} = pricing(seeded.endpoint)
 
       run(Migrations.up_statements("public"))
-      assert marker() == "ai_schema:5"
+      assert marker() == "ai_schema:6"
       assert setting("ai_daily_cap") == "5.00"
 
       assert %{"task" => %{"money" => %{"day" => "1.50"}}} =
@@ -600,7 +630,7 @@ defmodule PhoenixKitAI.MigrationsTest do
 
       assert :ok = Ecto.Migrator.up(Repo, version, SchemaMigration, @migrator_opts)
       assert existing_tables() == @tables
-      assert Migrations.migrated_version_runtime() == 5
+      assert Migrations.migrated_version_runtime() == 6
       assert_structure()
       assert_v2_structure()
       assert_v3_structure()

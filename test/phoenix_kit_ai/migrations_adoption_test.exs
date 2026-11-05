@@ -13,8 +13,26 @@ defmodule PhoenixKitAI.MigrationsAdoptionTest do
 
   defp index_of(statements, fun), do: Enum.find_index(statements, fun)
 
-  test "the chain is V5" do
-    assert Migrations.current_version() == 5
+  test "the chain is past V5 (V6 adds the audio flag)" do
+    assert Migrations.current_version() == 6
+  end
+
+  test "V6 only adds the audio flag column, after the adoption" do
+    statements = Migrations.up_statements("public")
+
+    v6 =
+      Enum.find_index(statements, &String.contains?(&1, "ADD COLUMN IF NOT EXISTS audio_input"))
+
+    assert v6
+
+    assert v6 >
+             Enum.find_index(
+               statements,
+               &String.contains?(
+                 &1,
+                 "CREATE TABLE IF NOT EXISTS public.phoenix_kit_ai_requests ("
+               )
+             )
   end
 
   test "each adopted table is created IF NOT EXISTS" do
@@ -95,10 +113,12 @@ defmodule PhoenixKitAI.MigrationsAdoptionTest do
   end
 
   test "down from V5 only rewrites the marker, and nothing drops an adopted table" do
-    assert [marker] = Migrations.down_statements("public", 4)
+    # V6's own step (its column) comes first; V5 adds nothing but the marker.
+    assert [drop_audio, marker] = Migrations.down_statements("public", 4)
+    assert drop_audio =~ "DROP COLUMN IF EXISTS audio_input"
     assert marker =~ "ai_schema:4"
 
-    for target <- 0..4, statement <- Migrations.down_statements("public", target) do
+    for target <- 0..5, statement <- Migrations.down_statements("public", target) do
       refute Enum.any?(@adopted, &(statement =~ ~r/DROP TABLE[^;]*#{&1}/))
     end
   end

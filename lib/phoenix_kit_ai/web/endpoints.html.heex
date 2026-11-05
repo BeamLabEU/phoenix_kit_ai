@@ -927,9 +927,19 @@
                   <div class="text-xs font-semibold text-base-content/70 mb-1 uppercase">
                     {msg["role"]}
                   </div>
-                  <div class="text-sm whitespace-pre-wrap">{msg["content"]}</div>
+                  <MessageContent.content content={msg["content"]} />
                 </div>
               <% end %>
+            </div>
+          </div>
+        <% end %>
+
+        <%!-- Input (rows without messages: speech, a transcription's prompt) --%>
+        <%= if is_binary(@selected_request.metadata["input"]) and is_nil(@selected_request.metadata["messages"]) do %>
+          <div class="mb-4">
+            <div class="text-xs text-base-content/70 mb-1">{gettext("Input")}</div>
+            <div class="bg-base-300 border-l-2 border-base-content/30 p-3 rounded">
+              <div class="text-sm whitespace-pre-wrap">{@selected_request.metadata["input"]}</div>
             </div>
           </div>
         <% end %>
@@ -1050,7 +1060,7 @@
               {gettext("Request Payload (sent to API)")}</:title>
             <:content>
               <div class="bg-base-300 p-3 rounded overflow-x-auto">
-                <pre class="text-xs font-mono whitespace-pre-wrap"><code>{Jason.encode!(@selected_request.metadata["request_payload"], pretty: true)}</code></pre>
+                <pre class="text-xs font-mono whitespace-pre-wrap"><code>{Jason.encode!(MessageContent.payload(@selected_request.metadata["request_payload"]), pretty: true)}</code></pre>
               </div>
             </:content>
           </.accordion>

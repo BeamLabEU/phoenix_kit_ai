@@ -135,6 +135,7 @@ defmodule PhoenixKitAI do
   alias PhoenixKitAI.TaskLimits
   alias PhoenixKitAI.Tasks
   alias PhoenixKitAI.TaskSpec
+  alias PhoenixKitAI.Transcription
   alias PhoenixKitAI.TtsPricing
 
   # ===========================================
@@ -3001,6 +3002,147 @@ defmodule PhoenixKitAI do
     end
   end
 
+  # The chat path: the audio as an `input_audio` part, the answer a JSON
+  # object `{text, language}`. A model that refuses `response_format` is
+  # asked once more without it (the schema rides in the prompt too). An
+  # answer that is not that JSON, or stopped at the output limit, still
+  # cost a call: its row is written here, marked `unparsed`.
+  defp run_transcribe(endpoint, audio, opts, :chat, trace) do
+    {suffix, format} =
+      StructuredOutput.request(schema: Transcription.schema(), schema_name: "transcription")
+
+    messages = endpoint |> Transcription.messages(audio, opts) |> StructuredOutput.attach(suffix)
+    chat_opts = transcription_chat_opts(opts)
+
+    with {:ok, response} <-
+           StructuredOutput.with_fallback(format, fn retry_format ->
+             PhoenixKitAI.Completion.chat_completion(
+               endpoint,
+               messages,
+               put_response_format(chat_opts, format, retry_format)
+             )
+           end) do
+      text =
+        case PhoenixKitAI.Completion.extract_content(response) do
+          {:ok, text} when is_binary(text) -> text
+          _ -> nil
+        end
+
+      answer = %{
+        usage: PhoenixKitAI.Completion.extract_usage(response),
+        latency_ms: response["latency_ms"],
+        response_model: response["model"],
+        cost_response: response,
+        duration: nil,
+        asked: %{messages: messages}
+      }
+
+      case read_transcript(response, text) do
+        {:ok, words} ->
+          logged = log_transcription(endpoint, audio, :chat, Map.merge(answer, words), %{}, trace)
+          {:ok, transcription_result(words, endpoint, :chat, audio, answer, logged)}
+
+        {:error, {tag, _}} = error ->
+          log_transcription(
+            endpoint,
+            audio,
+            :chat,
+            Map.merge(answer, %{text: text, language: nil}),
+            unparsed_marks(tag),
+            trace
+          )
+
+          error
+      end
+    end
+  end
+
+  defp run_transcribe(endpoint, audio, opts, :transcriptions, trace) do
+    prompt = opts[:instructions]
+
+    with {:ok, result} <-
+           PhoenixKitAI.Completion.transcription(endpoint, audio,
+             model: endpoint.model,
+             prompt: prompt,
+             language: opts[:language],
+             temperature: opts[:temperature],
+             timeout: opts[:timeout],
+             retry: opts[:retry],
+             concurrency: opts[:concurrency]
+           ) do
+      words = %{
+        text: String.trim(result.text),
+        language: Transcription.language_tag(result.language)
+      }
+
+      answer = %{
+        usage: result.usage,
+        latency_ms: result.latency_ms,
+        response_model: result.model,
+        duration: result.duration,
+        asked: %{input: prompt}
+      }
+
+      logged =
+        log_transcription(endpoint, audio, :transcriptions, Map.merge(answer, words), %{}, trace)
+
+      {:ok, transcription_result(words, endpoint, :transcriptions, audio, answer, logged)}
+    end
+  end
+
+  # The chat path's request options: the call's own sampling and delivery
+  # options only. The endpoint's stored ones are for the endpoint's own work
+  # (its model may not even be the one that hears), so they are not merged.
+  @transcription_chat_opts [
+    :model,
+    :temperature,
+    :max_tokens,
+    :top_p,
+    :seed,
+    :reasoning_enabled,
+    :reasoning_effort,
+    :reasoning_max_tokens,
+    :reasoning_exclude,
+    :require_parameters,
+    :timeout,
+    :retry,
+    :concurrency
+  ]
+
+  defp transcription_chat_opts(opts),
+    do: opts |> Keyword.take(@transcription_chat_opts) |> Keyword.put(:safety_errors, true)
+
+  defp read_transcript(response, text) do
+    if PhoenixKitAI.Completion.truncated?(response),
+      do: {:error, {:output_truncated, text}},
+      else: parse_transcript(text)
+  end
+
+  defp parse_transcript(text) do
+    with {:ok, json} <- StructuredOutput.parse(text, true),
+         {:ok, words} <- Transcription.from_json(json) do
+      {:ok, words}
+    else
+      :error -> {:error, {:no_json_in_response, text}}
+      {:error, _} = error -> error
+    end
+  end
+
+  defp unparsed_marks(:output_truncated), do: %{unparsed: true, truncated: true}
+  defp unparsed_marks(_tag), do: %{unparsed: true}
+
+  defp transcription_result(words, endpoint, transport, audio, answer, logged) do
+    %{
+      text: words.text,
+      language: words.language,
+      model: answer.response_model || endpoint.model,
+      transport: transport,
+      duration: answer.duration || audio.seconds
+    }
+    |> put_request_uuid(:request_uuid, logged)
+    |> put_cost(logged)
+  end
+
   defp run_compare_images(endpoint, before, after_image, opts, prompt, trace) do
     opts = log_unparsed_answer(opts, endpoint, prompt, [before, after_image], trace)
 
@@ -3420,7 +3562,8 @@ defmodule PhoenixKitAI do
     process_image: "image_edit",
     describe_image: "vision",
     extract_text: "vision",
-    compare_images: "vision"
+    compare_images: "vision",
+    transcribe: "transcription"
   }
 
   # The cache wrapper every verb shares: the key over `material` (built
@@ -4332,6 +4475,131 @@ defmodule PhoenixKitAI do
 
         {:error, reason} ->
           log_failed_tts_request(endpoint, text, reason, trace)
+          {:error, reason}
+      end
+    end
+  end
+
+  @doc """
+  Writes down what is said in a recording — speech to text, the reverse of
+  `speak/3` — through a configured AI endpoint.
+
+  `audio` is the recording: its bytes (WAV, MP3, FLAC, OGG, WebM, M4A — the
+  format is read from the bytes), `%{data: bytes, format: "wav"}`,
+  `%{data: bytes, content_type: "audio/wav"}` or a `data:audio/…;base64,`
+  URL (`PhoenixKitAI.Transcription`).
+
+  It takes one of two paths, chosen per provider and model
+  (`PhoenixKitAI.Transcription.transport/2`): a chat request with the audio
+  as an `input_audio` part, answered as JSON (OpenRouter always — Gemini,
+  GPT-4o audio and the other models that hear), or `POST
+  /audio/transcriptions` for a speech-to-text model (`whisper-1`,
+  `gpt-4o-transcribe`, Groq's Whisper, Mistral's Voxtral transcribe).
+  `transport: :chat | :transcriptions` picks one by hand. On the chat path
+  the guard checks that the model takes audio (`:audio_input`): an
+  endpoint whose model does not hear refuses with `{:error, {:model_unfit,
+  [:audio_input]}}`, so pass `model:` with one that does.
+
+  ## Options
+
+  - `:model` — the model for this call instead of the endpoint's
+  - `:instructions` — what else the model should know or do: the subject,
+    how to write numbers and units, words to expect, leaving out filler
+    words. On the chat path part of the prompt; on the transcriptions path
+    sent as `prompt`, which a speech-to-text model reads as a hint of style
+    and vocabulary rather than as orders (Mistral is not sent it)
+  - `:language` — the expected language (`"et"`, `"en"`): a hint in the
+    prompt on the chat path, the `language` field on the other
+  - `:format` — the audio format, where the bytes do not say it
+  - `:temperature` — default `0`; on the chat path also `:max_tokens`,
+    `:top_p`, `:seed` and the `:reasoning_*` options
+  - `:max_audio_bytes` — default the app env `:max_audio_bytes`, 25 MB
+  - `:transport` — `:chat` or `:transcriptions`, see above
+  - as on every verb: `:task`, `:user_uuid`, `:source`, `:attribution`,
+    `:run`, `:step`, `:cache`, `:capture_request_content` (`false` keeps
+    this call's instructions and words out of its row), `:timeout`,
+    `:retry`, `:concurrency`
+
+  ## Returns
+
+  - `{:ok, %{text:, language:, model:, transport:, duration:, request_uuid:,
+    cost:}}` — `text` is `""` when the recording has no speech (an answer,
+    not an error); `language` a tag such as `"et"` when the model says it;
+    `duration` the recording's length in seconds when its WAV header or the
+    provider says it.
+  - `{:error, reason}` — before any call `:empty_input`,
+    `{:audio_too_large, bytes, max}`, `:unknown_audio_format` or
+    `:invalid_audio_input`; a refusal of the gate (`{:model_unfit,
+    [:audio_input]}`, caps, limits); `{:no_json_in_response, text}` or
+    `{:output_truncated, text}` when a chat answer is not the JSON asked for
+    (billed, its row written); or the provider's error.
+
+  Logged as a `"transcription"` request: tokens and cost where the
+  provider reports them or a price is known (`PhoenixKitAI.CallCost`), the
+  audio's format, size and length — never the audio — and, under the
+  content gate, what was asked and the words.
+
+      {:ok, %{text: text, language: language}} =
+        PhoenixKitAI.transcribe(endpoint_uuid, wav_bytes,
+          model: "google/gemini-2.5-flash",
+          instructions: "A customer ordering plywood. Write sizes as 2500×1250 and thicknesses as 18 mm.",
+          source: "InquiryVoice"
+        )
+  """
+  @spec transcribe(String.t() | Endpoint.t(), binary() | map(), keyword()) ::
+          {:ok,
+           %{
+             text: String.t(),
+             language: String.t() | nil,
+             model: String.t() | nil,
+             transport: :chat | :transcriptions,
+             duration: float() | nil,
+             request_uuid: String.t() | nil,
+             cost: Decimal.t() | nil
+           }}
+          | {:error, term()}
+  def transcribe(endpoint_uuid, audio, opts \\ []) do
+    opts =
+      opts |> call_model_opts() |> Keyword.delete(:models) |> Keyword.put_new(:temperature, 0)
+
+    with {:ok, audio} <- Transcription.normalize(audio, opts),
+         {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
+         opts = Keyword.put(opts, :transport, Transcription.transport(endpoint, opts)),
+         {:ok, admission} <-
+           authorize(endpoint, opts, :transcribe, Guard.implied_needs(:transcribe, opts)) do
+      transport = opts[:transport]
+      endpoint = with_call_model(endpoint, opts)
+      {auto_source, stacktrace, caller_context} = capture_caller_info()
+      source = Keyword.get(opts, :source) || auto_source
+      caller_context = Map.put(caller_context, :user_uuid, opts[:user_uuid])
+
+      {opts, stripped} =
+        if transport == :chat, do: Guard.require_parameters(opts, admission), else: {opts, []}
+
+      trace =
+        trace(source, stacktrace, caller_context, opts, Guard.row_metadata(admission, stripped))
+
+      result =
+        with_cache(
+          :transcribe,
+          endpoint,
+          opts,
+          fn -> {audio.data, audio.format, cacheable(opts)} end,
+          image_row(trace),
+          fn -> run_transcribe(endpoint, audio, opts, transport, trace) end
+        )
+
+      case result do
+        {:ok, result} ->
+          {:ok, result}
+
+        # The provider answered and the row is written; the answer was not
+        # the JSON asked for, or stopped at the output limit.
+        {:error, {tag, _}} = error when tag in [:no_json_in_response, :output_truncated] ->
+          error
+
+        {:error, reason} ->
+          log_failed_transcription(endpoint, audio, transport, reason, trace)
           {:error, reason}
       end
     end
@@ -5432,7 +5700,8 @@ defmodule PhoenixKitAI do
     :compare_images,
     :generate_image,
     :edit_image,
-    :process_image
+    :process_image,
+    :transcribe
   ]
 
   # A `model:` that names no model (empty, not a string) is no override, and
@@ -6015,8 +6284,10 @@ defmodule PhoenixKitAI do
   defp capture_request_content?(false), do: false
   defp capture_request_content?(_override), do: capture_request_content?()
 
-  # Messages as stored with the usage row: what was sent, tool fields included.
-  defp normalize_messages(messages), do: Enum.map(messages, &Completion.normalize_message/1)
+  # Messages as stored with the usage row: what was sent, tool fields
+  # included, the bytes of audio, image and file parts replaced by their
+  # size (`PhoenixKitAI.MessageParts`).
+  defp normalize_messages(messages), do: PhoenixKitAI.MessageParts.stored(messages)
 
   defp log_embedding_request(
          endpoint,
@@ -6199,6 +6470,109 @@ defmodule PhoenixKitAI do
         base_metadata
         |> Map.merge(guard)
         |> maybe_add_content(:input, capture_content, fn -> text end)
+    }
+    |> with_provider_error()
+    |> log_usage()
+  end
+
+  # One row per transcription: tokens and cost (`CallCost` — the provider's,
+  # else a catalogue, manual or built-in price per token; a provider that
+  # counts seconds and reports no cost leaves it nil), the path, the audio's
+  # format, size and length — never its bytes — and under the content gate
+  # what was asked (the chat path's messages, the audio a placeholder; the
+  # transcriptions path's prompt as `input`) and the words (`response`).
+  defp log_transcription(endpoint, audio, transport, answer, extra, trace) do
+    capture = capture_request_content?(trace[:capture])
+    usage = answer.usage
+
+    {cost, cost_metadata} =
+      CallCost.for_call(
+        endpoint,
+        answer.response_model,
+        usage[:cost],
+        usage[:prompt_tokens],
+        usage[:completion_tokens]
+      )
+
+    metadata =
+      %{
+        transport: Atom.to_string(transport),
+        audio_format: audio.format,
+        audio_bytes: audio.bytes,
+        provider: endpoint.provider
+      }
+      |> put_meta(:audio_seconds, answer.duration || audio.seconds)
+      |> put_meta(:billed_audio_seconds, usage[:seconds])
+      |> put_meta(:language, answer[:language])
+      |> Map.merge(extra)
+      |> Map.merge(trace_metadata(trace))
+      |> maybe_put_answered_model(endpoint.model, answer.response_model)
+      |> transcription_content(capture, answer)
+      |> Map.merge(cost_metadata)
+
+    log_usage(%{
+      endpoint_uuid: endpoint.uuid,
+      endpoint_name: endpoint.name,
+      model: endpoint.model,
+      request_type: "transcription",
+      input_tokens: usage[:prompt_tokens] || 0,
+      output_tokens: usage[:completion_tokens] || 0,
+      total_tokens: usage[:total_tokens] || 0,
+      cost: cost,
+      latency_ms: answer.latency_ms,
+      status: "success",
+      user_uuid: trace[:user_uuid],
+      metadata: metadata
+    })
+  end
+
+  defp transcription_content(metadata, false, _answer),
+    do: Map.put(metadata, :content_redacted, true)
+
+  defp transcription_content(metadata, true, %{asked: asked} = answer) do
+    asked =
+      case asked do
+        %{messages: messages} -> %{messages: normalize_messages(messages)}
+        %{input: input} when is_binary(input) and input != "" -> %{input: input}
+        _ -> %{}
+      end
+
+    metadata |> Map.merge(asked) |> Map.put(:response, answer[:text])
+  end
+
+  defp put_meta(map, _key, nil), do: map
+  defp put_meta(map, key, value), do: Map.put(map, key, value)
+
+  defp log_failed_transcription(endpoint, audio, transport, reason, trace) do
+    capture = capture_request_content?(trace[:capture])
+
+    # The reason's shape always; its payload (a refusal's prose about what
+    # was said, say) only under the content gate.
+    metadata =
+      %{
+        error_reason: if(capture, do: inspect(reason), else: inspect(error_tag(reason))),
+        transport: Atom.to_string(transport),
+        audio_format: audio.format,
+        audio_bytes: audio.bytes,
+        provider: endpoint.provider
+      }
+      |> put_meta(:audio_seconds, audio.seconds)
+      |> Map.merge(trace_metadata(trace))
+      |> then(&if(capture, do: &1, else: Map.put(&1, :content_redacted, true)))
+
+    %{
+      endpoint_uuid: endpoint.uuid,
+      endpoint_name: endpoint.name,
+      model: endpoint.model,
+      request_type: "transcription",
+      latency_ms: System.monotonic_time(:millisecond) - trace.started,
+      input_tokens: 0,
+      output_tokens: 0,
+      total_tokens: 0,
+      status: "error",
+      user_uuid: trace[:user_uuid],
+      error_message: error_reason_to_string(reason),
+      metadata: metadata
     }
     |> with_provider_error()
     |> log_usage()

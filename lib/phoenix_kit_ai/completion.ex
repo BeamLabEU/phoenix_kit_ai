@@ -10,6 +10,7 @@ defmodule PhoenixKitAI.Completion do
   - `/chat/completions` - Text and vision completions
   - `/embeddings` - Text embeddings
   - `/audio/speech` / xAI's `/tts` - Text-to-speech synthesis
+  - `/audio/transcriptions` - Speech to text
   - `/images/generations` - Image generation
 
   ## Logging conventions
@@ -609,6 +610,134 @@ defmodule PhoenixKitAI.Completion do
   end
 
   @doc """
+  Speech to text through `<base_url>/audio/transcriptions`, OpenAI's shape
+  (also Groq's, Mistral's and other OpenAI-compatible APIs'): a multipart
+  form with the audio as `file`, the `model`, and `prompt`, `language` and
+  `temperature` when given. Mistral is never sent `prompt` (it refuses
+  fields it does not know). Same timeout, retries and concurrency slot as
+  chat.
+
+  `audio` is a `PhoenixKitAI.Transcription.audio()`. Returns `{:ok, %{text,
+  language, duration, usage, latency_ms, model}}`; `usage` has
+  `prompt_tokens` / `completion_tokens` / `total_tokens` where the provider
+  counts tokens (`gpt-4o-transcribe`, Mistral) and `seconds` where it
+  counts time (`whisper-1`).
+  """
+  @spec transcription(Endpoint.t(), map(), keyword()) :: {:ok, map()} | {:error, term()}
+  def transcription(endpoint, audio, opts \\ []) do
+    url = build_url(endpoint, "/audio/transcriptions")
+    model = Keyword.get(opts, :model) || endpoint.model
+
+    # Req sets the multipart content type; the JSON one would win over it.
+    headers =
+      endpoint
+      |> OpenRouterClient.build_headers_from_endpoint()
+      |> Enum.reject(fn {name, _} -> String.downcase(name) == "content-type" end)
+
+    prompt =
+      if Endpoint.base_provider(endpoint.provider || "") == "mistral",
+        do: nil,
+        else: opts[:prompt]
+
+    form =
+      [
+        {"model", model},
+        {"file",
+         {audio.data, filename: "audio." <> audio.format, content_type: audio.content_type}}
+      ]
+      |> add_field("prompt", prompt)
+      |> add_field("language", opts[:language])
+      |> add_field("temperature", opts[:temperature])
+
+    start_time = System.monotonic_time(:millisecond)
+
+    case Limiter.run(endpoint, opts, fn -> http_post(url, headers, {:multipart, form}, opts) end) do
+      {:ok, %{status_code: 200, body: response_body}} ->
+        parse_transcription(response_body, start_time, model)
+
+      {:ok, %{status_code: status, body: response_body}} ->
+        handle_error_status(status, response_body)
+
+      {:error, reason} when reason in [:concurrency_limit_timeout, :concurrency_queue_full] ->
+        {:error, reason}
+
+      {:error, :timeout} ->
+        {:error, :request_timeout}
+
+      {:error, reason} ->
+        Logger.warning("Transcription transport error: #{inspect(reason)}")
+        {:error, {:connection_error, reason}}
+    end
+  end
+
+  defp add_field(form, _name, nil), do: form
+  defp add_field(form, _name, ""), do: form
+  defp add_field(form, name, value), do: form ++ [{name, to_string(value)}]
+
+  defp parse_transcription(response_body, start_time, model) do
+    latency_ms = System.monotonic_time(:millisecond) - start_time
+
+    case Jason.decode(response_body) do
+      {:ok, %{"text" => text} = json} when is_binary(text) ->
+        {:ok,
+         %{
+           text: text,
+           language: json["language"],
+           duration: if(is_number(json["duration"]), do: json["duration"] * 1.0),
+           usage: transcription_usage(json["usage"]),
+           latency_ms: latency_ms,
+           model: json["model"] || model
+         }}
+
+      # A plain-text body (`response_format: "text"` from a host's
+      # provider default) is the words themselves.
+      {:error, _} when is_binary(response_body) and response_body != "" ->
+        {:ok,
+         %{
+           text: response_body,
+           language: nil,
+           duration: nil,
+           usage: %{},
+           latency_ms: latency_ms,
+           model: model
+         }}
+
+      _ ->
+        {:error, :invalid_response_format}
+    end
+  end
+
+  # OpenAI: `{"type": "tokens", "input_tokens", "output_tokens",
+  # "total_tokens"}` or `{"type": "duration", "seconds"}`; Mistral:
+  # `prompt_tokens` / `completion_tokens` / `total_tokens` /
+  # `prompt_audio_seconds`.
+  defp transcription_usage(usage) when is_map(usage) do
+    input = usage["input_tokens"] || usage["prompt_tokens"]
+    output = usage["output_tokens"] || usage["completion_tokens"]
+
+    %{}
+    |> maybe_add(:prompt_tokens, integer(input))
+    |> maybe_add(:completion_tokens, integer(output))
+    |> maybe_add(
+      :total_tokens,
+      integer(usage["total_tokens"]) || sum(integer(input), integer(output))
+    )
+    |> maybe_add(:seconds, seconds(usage["seconds"] || usage["prompt_audio_seconds"]))
+    |> maybe_add(:cost, parse_cost(usage["cost"]))
+  end
+
+  defp transcription_usage(_usage), do: %{}
+
+  defp seconds(value) when is_number(value), do: value * 1.0
+  defp seconds(_value), do: nil
+
+  defp integer(value) when is_integer(value), do: value
+  defp integer(_value), do: nil
+
+  defp sum(a, b) when is_integer(a) and is_integer(b), do: a + b
+  defp sum(_a, _b), do: nil
+
+  @doc """
   Generates image(s) from a text prompt via the provider's
   `POST /images/generations` endpoint.
 
@@ -1177,13 +1306,14 @@ defmodule PhoenixKitAI.Completion do
     # guard when it was saved, and a 30x would let that public host send
     # the request to an internal one. No supported provider answers its
     # API with a redirect.
-    base_opts = [
-      json: body,
-      headers: headers_map,
-      redirect: false,
-      receive_timeout: timeout,
-      connect_options: [timeout: timeout]
-    ]
+    base_opts =
+      body_option(body) ++
+        [
+          headers: headers_map,
+          redirect: false,
+          receive_timeout: timeout,
+          connect_options: [timeout: timeout]
+        ]
 
     # `:req_options` is empty in production. Tests opt in via
     # `Application.put_env(:phoenix_kit_ai, :req_options, plug: {Req.Test, Stub})`.
@@ -1217,6 +1347,11 @@ defmodule PhoenixKitAI.Completion do
         {:error, reason}
     end
   end
+
+  # A `{:multipart, form}` body is sent as multipart form data (speech to
+  # text); anything else as JSON.
+  defp body_option({:multipart, form}), do: [form_multipart: form]
+  defp body_option(body), do: [json: body]
 
   # `Retry-After` in whole seconds, rounded up (`Req.Response.get_retry_after/1`
   # reads both the seconds and the HTTP-date form), or nil — also for a value

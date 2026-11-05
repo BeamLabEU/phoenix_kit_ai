@@ -5,7 +5,7 @@ Guidance for AI agents working on `phoenix_kit_ai`.
 ## Overview
 
 AI endpoint management, prompt templates, chat completions, embeddings
-(text and images), text-to-speech, image generation and editing, reading and
+(text and images), text-to-speech, speech-to-text, image generation and editing, reading and
 locating things in images (boxes, regions, checking statements against
 images, batches), realtime voice, and per-request usage tracking. Providers are OpenAI-compatible and are discovered at runtime
 from core's `PhoenixKit.Integrations` registry
@@ -61,14 +61,15 @@ host supplies endpoint and router (`config/` exists only for tests).
   context module.
 - **No file storage.** Image verbs take bytes or URLs in and hand bytes back;
   the caller stores results (core's Storage, usually). Only the request row
-  is kept, and never the image bytes.
+  is kept, and never the image or audio bytes — a chat message's media
+  parts are stored as placeholders with their size (`PhoenixKitAI.MessageParts`).
 - **No `gun` dependency, on purpose** (see Depends-on: cowlib's CVE
   surface). The `:gun.*` compile warnings a host may see come from the
   optional WebSocket adapter inside the `xai` package; they are harmless
   unless the host runs realtime voice, and that host owns the decision to
   add `gun` itself.
-- **No Oban for completions.** Chat, TTS, embeddings and image calls run
-  synchronously. Oban is used only by the AI-translation pipeline
+- **No Oban for completions.** Chat, TTS, transcription, embeddings and
+  image calls run synchronously. Oban is used only by the AI-translation pipeline
   (`PhoenixKitAI.TranslateWorker`, and the sweep chains consuming modules
   run through `PhoenixKitAI.TranslationSweep`) and by the journal cleanup
   (`PhoenixKitAI.JournalPruneWorker`).
@@ -174,7 +175,7 @@ Repo-local aliases:
   model and cost. Any new field carrying user text must sit behind the same
   gate. A call's `capture_request_content: false` may switch it off for that
   call; `true` on a call never overrides a global `false`. `speak/3` and
-  `embed/3` ignore the per-call option.
+  `embed/3` ignore the per-call option (`transcribe/3` honours it).
 - **No credential or user content in a process message, a broadcast or a
   log line.** A LiveView message names a connection or endpoint by uuid and
   the handler resolves the key; the change topics broadcast `{event, uuid}`;
@@ -335,7 +336,9 @@ Mistral, DeepSeek, OpenAI and xAI also work but are not required.
 lib/phoenix_kit_ai.ex            PhoenixKitAI — Module behaviour + the whole public context
 lib/phoenix_kit_ai/
   endpoint.ex prompt.ex request.ex   Ecto schemas
-  completion.ex                  provider-agnostic HTTP client (chat, embeddings, TTS) — per-call timeout, retries with backoff; image verbs delegate to adapters
+  completion.ex                  provider-agnostic HTTP client (chat, embeddings, TTS, /audio/transcriptions) — per-call timeout, retries with backoff; image verbs delegate to adapters
+  transcription.ex               PhoenixKitAI.Transcription — speech to text: audio read and named, the path (chat `input_audio` or /audio/transcriptions), prompt, schema
+  message_parts.ex               PhoenixKitAI.MessageParts — chat messages as a usage row stores them: media bytes replaced by their size
   limiter.ex                     PhoenixKitAI.Limiter — per-key concurrency slots + FIFO waiting line around provider calls
   cache.ex                       PhoenixKitAI.Cache — short-lived endpoint + credential lookup cache, dropped on change broadcasts
   request_log.ex                 PhoenixKitAI.RequestLog — writes usage rows off the caller (request_log_mode: :async)
@@ -367,7 +370,8 @@ lib/phoenix_kit_ai/
   translat*.ex translate_worker.ex   generic AI-translation pipeline
   components/ai_translate*       reusable translate button/glue components
   web/                           admin LiveViews: Endpoints, EndpointForm, Prompts, PromptForm, Playground, Tasks;
-                                 journal_retention.ex + components/journal_retention_card.ex (the Usage tab's retention card); access.ex (rights now, per event)
+                                 journal_retention.ex + components/journal_retention_card.ex (the Usage tab's retention card); access.ex (rights now, per event);
+                                 components/message_content.ex (a stored message's content parts on the request details)
 ```
 
 Notes on the less obvious modules:
@@ -547,6 +551,7 @@ so the context function gets that same, current scope.
 | `:provider_adapters` | `%{}` | Provider key → `PhoenixKitAI.Provider` module, merged over the built-in adapters (add a provider without touching this module) |
 | `:image_operations` | `%{}` | Extra or replacement image operations for `PhoenixKitAI.Images.Operations` (string or atom keys) |
 | `:max_image_bytes` | `25_000_000` | Largest image accepted as input or fetched as output by the image verbs |
+| `:max_audio_bytes` | `25_000_000` | Largest recording `transcribe/3` accepts (OpenAI's limit); a call's `max_audio_bytes:` wins |
 | `:translatables` | `[]` | `[{resource_type, adapter_module}]` a host app registers for the AI-translation pipeline without being a kit module; configured entries win over module-declared ones |
 | `:request_cache` | `[]` | `ttl:` (seconds, default 86 400), `sweep:` (300), `max_entries:` (10 000), `max_value_bytes:` (8 000 000), `default:` (`true` caches every verb unless a call says `cache: false`); read per call by `PhoenixKitAI.RequestCache` |
 | `:task_registry_retry_ms` | `60_000` | How long a task registry built while a module's `ai_tasks/0` failed is kept before the next access builds it again |
@@ -606,6 +611,9 @@ provided the API exposes `<base_url>/chat/completions` and `/models`.
   OpenRouter, xAI and OpenAI have their own; everything else gets the
   OpenAI-compatible default. A new image provider is an adapter module plus
   a `:provider_adapters` entry — no edits to `Completion` or `Images`.
+  Speech to text asks the adapter's optional `transcription_transport/2`
+  which path to take (OpenRouter: always `:chat`); without it the model's
+  name decides (`Transcription.by_model/1`).
 - Endpoint-form model fetching drives `models_loading` /
   `models_loading_slow` (10s hint) / `models_error` with Retry, all consolidated
   in `start/stop_model_fetch_indicators/1`. Neither round-trip runs in the
@@ -615,7 +623,7 @@ provided the API exposes `<base_url>/chat/completions` and `/models`.
 - The chat model list keeps every model whose only output is text
   (`output_modalities == ["text"]`, or the right side of `modality`), so
   models that also take images are in it. Each card carries the model's
-  `PhoenixKitAI.Capabilities` as badges (images, documents, image
+  `PhoenixKitAI.Capabilities` as badges (images, documents, audio, image
   generation, tools, JSON schema; a grey "?" with a hint where nobody
   verified it; an Anthropic model's lifecycle) and no price badge where the
   listing names no price; where the catalogue says nothing, the
@@ -633,7 +641,10 @@ provided the API exposes `<base_url>/chat/completions` and `/models`.
   on, an `:unknown` need refuses the call — image generation included
   (`generate_image` / `edit_image` / `process_image` need `:image_output`),
   so on OpenAI / xAI / Z.ai endpoints mark "Image generation" (and the
-  other capabilities their tasks need) on the endpoint first.
+  other capabilities their tasks need) on the endpoint first. Audio in
+  (`:audio_input`) comes from OpenRouter's and DeepSeek's `audio` input
+  modality; Anthropic's is `:no`, Mistral's `:unknown`. A chat call with an
+  `input_audio` part needs it, and so does `transcribe/3` on its chat path.
 - The `base_url` guard resolves a name only when the URL is being changed,
   for two seconds at most, never for the provider's registry default and
   never from `change_endpoint/2` (a form's per-keystroke changeset); a name
@@ -722,6 +733,32 @@ provided the API exposes `<base_url>/chat/completions` and `/models`.
   `input_chars` / `audio_format` / `audio_bytes`, same PII gate. No provider
   reports a TTS cost, so `TtsPricing` estimates it from a hand-maintained rate
   table.
+- **Speech to text**: `transcribe/3` (`PhoenixKitAI.Transcription`) takes
+  bytes, `%{data:, format: | content_type:}` or a `data:audio/…` URL (format
+  sniffed from the bytes; empty, over `:max_audio_bytes` or unreadable is
+  refused before the gate, with no row). Two paths, chosen by
+  `Transcription.transport/2` — the call's `transport:`, else the
+  adapter's `transcription_transport/2`, else the model's name (`whisper`,
+  `transcribe`, `stt`, `asr` → `:transcriptions`): `:chat` sends one user
+  message with the prompt and an `input_audio` part (Mistral: a bare base64
+  string) and asks for `{text, language}` by `schema:` (the same 400/422
+  retry without `response_format`); `:transcriptions` posts multipart to
+  `<base_url>/audio/transcriptions` (`file`, `model`, `prompt` from
+  `instructions:` — never to Mistral, which refuses unknown fields —,
+  `language`, `temperature`) through `Completion.transcription/3`, with
+  chat's timeout, retries and limiter. `temperature` defaults to 0; the
+  endpoint's stored sampling options are not merged (the endpoint may be
+  configured for another model's work). No speech is `{:ok, %{text: ""}}`.
+  The result carries `text`, `language` (a tag or nil), `model`,
+  `transport`, `duration` (WAV header or provider), `request_uuid`, `cost`.
+  Row: `request_type: "transcription"`, tokens, cost through `CallCost`
+  (a provider that bills by the second and reports no cost leaves it nil;
+  `billed_audio_seconds` records its count), `transport`, `audio_format`,
+  `audio_bytes`, `audio_seconds`, `language`; under the gate the chat
+  path's `messages` (the audio a placeholder) or the transcriptions path's
+  `input`, and the words as `response`. An unparsed or cut-off chat answer
+  writes its row (`unparsed`, `truncated`) and returns
+  `{:no_json_in_response, _}` / `{:output_truncated, _}`.
 
 ## Database & migrations
 
@@ -750,7 +787,9 @@ schema repair reports extra columns of its tables, not extra indexes), and
 later version fills them). V3 creates `phoenix_kit_ai_guard_blocks`
 (user `CASCADE`; origin event, blocker and lifter `SET NULL`; reason and
 lift note ≤ 500; one active block per group and person — unique
-`(block_group, user_uuid) WHERE lifted_at IS NULL`). V4 converts money to dollar strings (needs core's V223 `cost`). V5 adopts
+`(block_group, user_uuid) WHERE lifted_at IS NULL`). V4 converts money to dollar strings (needs core's V223 `cost`). V6 adds the
+`audio_input` flag to the snapshot (`unknown` by default, the same CHECK as
+the others); down to 5 drops it. V5 adopts
 the three core-created tables: `CREATE TABLE IF NOT EXISTS`, guarded
 constraints and indexes, exactly as a fresh core builds them, a no-op on
 every existing install. **It is emitted ahead of V2's statements, not last**
@@ -1267,6 +1306,10 @@ folder with no `FOLLOW_UP.md` means "not triaged yet"; a stub file is what
 
 ## TODOs
 
+- `transcribe/3` follow-ups: `fallback_models:` as on the vision verbs; a
+  per-second price for speech-to-text models that report no cost (whisper
+  rows have a nil cost, like TTS before `TtsPricing`); timestamps and
+  segments (`verbose_json`). Trigger: the first consumer that needs one.
 - Not built, each a self-contained PR when a host needs it: a pluggable
   persistent cache backend behind `RequestCache` (ETS stays L1) with
   single-flight on a miss; atomic budget reservation before dispatch

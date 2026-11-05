@@ -13,6 +13,9 @@ defmodule PhoenixKitAI.Providers.OpenRouter do
   `transport: :chat` keeps the older chat-completions path (image parts,
   `modalities: ["image","text"]`) for models that only answer there.
 
+  Speech to text is always `:chat` (`transcription_transport/2`): OpenRouter
+  serves audio only as an `input_audio` part of a chat request.
+
   `provider_options` becomes OpenRouter's `provider.options` object;
   `provider_routing` (`order`, `only`, `ignore`, `sort`,
   `allow_fallbacks`) is merged into the same `provider` object.
@@ -72,6 +75,9 @@ defmodule PhoenixKitAI.Providers.OpenRouter do
     do: OpenAICompatible.image_edit_options(endpoint, options)
 
   def image_edit_options(_endpoint, _options), do: @typed_options
+
+  @impl true
+  def transcription_transport(_endpoint, _model), do: :chat
 
   defp body(endpoint, prompt, options) do
     %{"model" => OpenAICompatible.model(endpoint, options), "prompt" => prompt}

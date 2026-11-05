@@ -7,7 +7,8 @@ defmodule PhoenixKitAI.ModelCapability do
   Written and read only by `PhoenixKitAI.Capabilities`, which loads the rows
   into its cache at start so a restart without network does not turn every
   model into `:unknown`. The flags are `"yes"`, `"no"` or `"unknown"`
-  (`file_input` and `image_output` came with schema V2).
+  (`file_input` and `image_output` came with schema V2, `audio_input` with
+  V6).
   """
 
   use Ecto.Schema
@@ -26,6 +27,7 @@ defmodule PhoenixKitAI.ModelCapability do
     field(:json, :string, default: "unknown")
     field(:file_input, :string, default: "unknown")
     field(:image_output, :string, default: "unknown")
+    field(:audio_input, :string, default: "unknown")
     field(:context_length, :integer)
     field(:lifecycle, :string)
     field(:fetched_at, :utc_datetime)
