@@ -139,12 +139,18 @@ Repo-local aliases:
   `@current_locale`, `@url_path`.
 - **Gettext backend** is this module's own `PhoenixKitAI.Gettext`
   (`otp_app: :phoenix_kit_ai`), catalogues in this repo's `priv/gettext/`
-  (`en`, `et`, `ru`) — not core's. After adding a string run
-  `mix gettext.extract && mix gettext.merge priv/gettext`, then fill the `et`
-  and `ru` `msgstr`s by hand, in the terms of
-  `dev_docs/guides/translation-glossary.md` (et: the singular imperative,
-  "sina"; ru: «вы», the infinitive on buttons; busy labels are nouns), and
-  leave no `fuzzy` entry behind — gettext ignores it. `mix gettext.merge` deletes any `.po` entry
+  (`en`, `de`, `es`, `et`, `fr`, `it`, `ru`, `zh` — the languages core ships,
+  less `pl` and `uk`) — not core's. After adding a string run
+  `mix gettext.extract && mix gettext.merge priv/gettext`, then fill every
+  non-English `msgstr` by hand, in the terms of
+  `dev_docs/guides/translation-glossary.md` and the register core's own
+  catalogue uses for the language (et: singular imperative, "sina"; ru: «вы»,
+  the infinitive on buttons; de: "Sie"; es: "usted"; fr: "vous"; it: "tu";
+  zh: 您; busy labels are nouns), and leave no `fuzzy` entry behind — gettext
+  ignores it. `test/phoenix_kit_ai/gettext_catalogues_test.exs` fails on an
+  untranslated, fuzzy or placeholder-losing entry in any language; a new
+  language is `mix gettext.merge priv/gettext --locale xx`, all of it
+  translated, and its code in that test's `@shipped`. `mix gettext.merge` deletes any `.po` entry
   missing from a freshly extracted `.pot`, so a string can never be hand-typed
   into a `.po` alone. Labels declared as plain string literals in
   `admin_tabs/0` and `permission_metadata/0` are invisible to the extractor and
