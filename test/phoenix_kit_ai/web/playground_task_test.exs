@@ -53,7 +53,7 @@ defmodule PhoenixKitAI.Web.PlaygroundTaskTest do
     render_change(view, "change", %{"message" => "Hello"})
     render_change(view, "change", %{"endpoint_uuid" => ep.uuid})
     render_hook(view, "send", %{})
-    assert render(view) =~ "Hi back!"
+    assert render_async(view, 2_000) =~ "Hi back!"
 
     assert [%Request{user_uuid: ^user_uuid, metadata: %{"task" => "ai.playground"}}] = rows(ep)
   end
@@ -67,7 +67,7 @@ defmodule PhoenixKitAI.Web.PlaygroundTaskTest do
     render_change(view, "change", %{"prompt_uuid" => prompt.uuid})
     render_change(view, "change", %{"variables" => %{"Name" => "Ann"}})
     render_hook(view, "send", %{})
-    assert render(view) =~ "Hi back!"
+    assert render_async(view, 2_000) =~ "Hi back!"
 
     assert [%Request{user_uuid: ^user_uuid, metadata: %{"task" => "ai.playground"}}] = rows(ep)
   end

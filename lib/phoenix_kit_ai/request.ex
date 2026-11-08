@@ -172,6 +172,7 @@ defmodule PhoenixKitAI.Request do
     |> validate_number(:latency_ms, greater_than_or_equal_to: 0)
     |> validate_cost(attrs)
     |> calculate_total_tokens()
+    |> fit_for_the_database()
     # Core names these constraints `fk_ai_requests_*` (v135), not the
     # `phoenix_kit_ai_requests_<field>_fkey` that `foreign_key_constraint/2`
     # derives by default — without an explicit `:name` the names never match,
@@ -259,7 +260,7 @@ defmodule PhoenixKitAI.Request do
   @spec format_latency(integer() | nil) :: String.t()
   def format_latency(nil), do: "-"
   def format_latency(ms) when ms < 1000, do: "#{ms}ms"
-  def format_latency(ms), do: "#{Float.round(ms / 1000, 1)}s"
+  def format_latency(ms), do: "#{PhoenixKitAI.Numbers.decimal(ms / 1000, 1)}s"
 
   @doc """
   Formats the token count for display.
@@ -268,8 +269,11 @@ defmodule PhoenixKitAI.Request do
   def format_tokens(nil), do: "-"
   def format_tokens(0), do: "0"
   def format_tokens(tokens) when tokens < 1000, do: "#{tokens}"
-  def format_tokens(tokens) when tokens < 1_000_000, do: "#{Float.round(tokens / 1000, 1)}K"
-  def format_tokens(tokens), do: "#{Float.round(tokens / 1_000_000, 2)}M"
+
+  def format_tokens(tokens) when tokens < 1_000_000,
+    do: "#{PhoenixKitAI.Numbers.decimal(tokens / 1000, 1)}K"
+
+  def format_tokens(tokens), do: "#{PhoenixKitAI.Numbers.decimal(tokens / 1_000_000, 2)}M"
 
   @doc """
   Formats a cost in dollars for display, with the precision the amount needs:
@@ -380,6 +384,45 @@ defmodule PhoenixKitAI.Request do
   # an integer (other than 0) or a float it is refused like any amount
   # (`PhoenixKitAI.Money.amount/1`): the released API took integer millionths,
   # and `cost: 5_000_000` must not be stored as $5,000,000.
+  # The row of a call that happened is written whatever the call carried:
+  # a label longer than its column (a caller's `model:` of 200 characters)
+  # is cut to fit, and a NUL character — which PostgreSQL refuses in text
+  # and in jsonb, and which a model's answer or a person's message can
+  # hold — is dropped from every string. Either used to raise after the
+  # provider was paid, with no row.
+  @column_sizes [model: 150, endpoint_name: 100, prompt_name: 255]
+
+  defp fit_for_the_database(changeset) do
+    changeset =
+      Enum.reduce(@column_sizes, changeset, fn {field, size}, acc ->
+        update_change(acc, field, &cut(without_nul(&1), size))
+      end)
+
+    changeset
+    |> update_change(:error_message, &without_nul/1)
+    |> update_change(:metadata, &without_nul/1)
+  end
+
+  defp cut(value, size) when is_binary(value), do: String.slice(value, 0, size)
+  defp cut(value, _size), do: value
+
+  @doc false
+  # Every string in `value` without NUL characters, maps and lists walked.
+  @spec without_nul(term()) :: term()
+  def without_nul(value) when is_binary(value) do
+    if :binary.match(value, <<0>>) == :nomatch,
+      do: value,
+      else: :binary.replace(value, <<0>>, <<>>, [:global])
+  end
+
+  def without_nul(%_{} = struct), do: struct
+
+  def without_nul(value) when is_map(value),
+    do: Map.new(value, fn {key, item} -> {without_nul(key), without_nul(item)} end)
+
+  def without_nul(value) when is_list(value), do: Enum.map(value, &without_nul/1)
+  def without_nul(value), do: value
+
   defp validate_cost(changeset, attrs) do
     given = if is_map(attrs), do: Map.get(attrs, :cost, Map.get(attrs, "cost"))
 

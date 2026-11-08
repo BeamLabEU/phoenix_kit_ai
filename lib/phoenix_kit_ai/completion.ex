@@ -156,20 +156,35 @@ defmodule PhoenixKitAI.Completion do
       # answer. Classified like the status it names, so it is logged as a
       # failed request and never stored by the request cache, where a retry
       # would replay it.
-      {:ok, %{"error" => %{"code" => code}} = response}
-      when not is_map_key(response, "choices") ->
-        error_in_body(code, response_body, opts)
+      #
+      # An `error` with no answer beside it is an error whatever its shape
+      # (no code, a string code, a bare message): stored as a success, the
+      # request cache would replay it for its whole lifetime.
+      {:ok, %{"error" => error} = response}
+      when not is_map_key(response, "choices") and not is_map_key(response, "data") and
+             not is_nil(error) ->
+        error_in_body(error_code(error), response_body, opts)
 
-      {:ok, response} ->
+      {:ok, response} when is_map(response) ->
         {:ok, Map.put(response, "latency_ms", latency_ms)}
+
+      # JSON, but not an object (`[]`, `42`): no answer to read.
+      {:ok, _other} ->
+        {:error, :invalid_response_format}
 
       {:error, _} ->
         {:error, :invalid_json_response}
     end
   end
 
+  defp error_code(%{"code" => code}) when is_integer(code), do: code
+  defp error_code(_error), do: nil
+
+  # A code the body names is classified like that status; an error without
+  # one like a bad gateway (the provider passing on an upstream failure), so
+  # the provider's words reach the row (`PhoenixKitAI.ProviderError`).
   defp error_in_body(code, body, opts) when is_integer(code), do: error_status(code, body, opts)
-  defp error_in_body(_code, _body, _opts), do: {:error, :invalid_response_format}
+  defp error_in_body(nil, body, opts), do: error_status(502, body, opts)
 
   @doc """
   Whether a chat-shaped answer stopped at the output limit: the first
@@ -597,8 +612,12 @@ defmodule PhoenixKitAI.Completion do
   defp decode_audio(response_body, format, start_time) do
     case Jason.decode(response_body) do
       # A provider error delivered with a 200, as on chat: it is not audio.
-      {:ok, %{"error" => %{"code" => code}}} -> error_in_body(code, response_body, [])
-      decoded -> audio_answer(decoded, response_body, format, start_time)
+      {:ok, %{"error" => error} = body}
+      when not is_nil(error) and not is_map_key(body, "audio_data") ->
+        error_in_body(error_code(error), response_body, [])
+
+      decoded ->
+        audio_answer(decoded, response_body, format, start_time)
     end
   end
 
@@ -1271,9 +1290,33 @@ defmodule PhoenixKitAI.Completion do
 
     case retry do
       true -> @retry_defaults
-      policy when is_list(policy) -> Keyword.merge(@retry_defaults, policy)
+      policy when is_list(policy) -> valid_policy(policy)
       _ -> nil
     end
+  end
+
+  # Each setting a positive integer (`retry_timeouts` a boolean), else its
+  # default: `max_attempts: nil` retried for ever, `max_delay: nil` slept
+  # for whatever a Retry-After said, `base_delay: nil` raised mid-call.
+  defp valid_policy(policy) do
+    Enum.reduce(@retry_defaults, [], fn {key, default}, acc ->
+      Keyword.put(acc, key, valid_setting(key, Keyword.get(policy, key, default), default))
+    end)
+  end
+
+  defp valid_setting(:retry_timeouts, value, _default) when is_boolean(value), do: value
+  defp valid_setting(:max_attempts, n, _default) when is_integer(n) and n > 0, do: n
+
+  defp valid_setting(key, ms, _default)
+       when key in [:base_delay, :max_delay] and is_integer(ms) and ms >= 0,
+       do: ms
+
+  defp valid_setting(key, value, default) do
+    Logger.warning(
+      "[PhoenixKitAI] retry option #{key}: #{inspect(value)} is not valid; using #{inspect(default)}"
+    )
+
+    default
   end
 
   defp post_with_retry(url, headers, body, opts, policy, attempt) do
@@ -1312,6 +1355,9 @@ defmodule PhoenixKitAI.Completion do
   end
 
   defp retryable?({:error, :timeout}, policy), do: policy[:retry_timeouts] == true
+  # A request the client could not make (an invalid header) fails again.
+  defp retryable?({:error, {:http_error, _module}}, _policy), do: false
+  defp retryable?({:error, {:http_error, _module, _tag}}, _policy), do: false
   defp retryable?({:error, _transport}, _policy), do: true
 
   defp retry_status({:ok, %{status_code: status}}), do: "HTTP #{status}"
@@ -1341,11 +1387,16 @@ defmodule PhoenixKitAI.Completion do
     # guard when it was saved, and a 30x would let that public host send
     # the request to an internal one. No supported provider answers its
     # API with a redirect.
+    #
+    # The body is not decoded here (`decode_body: false`): every caller
+    # decodes it itself, and a body Req failed to decode came back as an
+    # error carrying the whole answer.
     base_opts =
       body_option(body) ++
         [
           headers: headers_map,
           redirect: false,
+          decode_body: false,
           receive_timeout: timeout,
           connect_options: [timeout: timeout]
         ]
@@ -1360,7 +1411,8 @@ defmodule PhoenixKitAI.Completion do
       {:ok, %Req.Response{status: status, body: response_body} = response} ->
         if status not in 200..299, do: ProviderError.put_retry_after(response)
 
-        # Req automatically decodes JSON, so encode it back to string for consistency
+        # Raw bytes (`decode_body: false`); a test plug may still hand back a
+        # decoded term.
         body_string =
           if is_map(response_body) or is_list(response_body) do
             Jason.encode!(response_body)
@@ -1377,9 +1429,13 @@ defmodule PhoenixKitAI.Completion do
         Logger.warning("HTTP POST transport error: #{inspect(reason)}")
         {:error, reason}
 
+      # Any other error (`Req.HTTPError`, a Mint error, a step's exception)
+      # can carry the request's headers or the answer: an invalid header
+      # value holds the bearer token. Only its kind leaves this function.
       {:error, reason} ->
-        Logger.error("HTTP POST failed with unexpected error: #{inspect(reason)}")
-        {:error, reason}
+        tag = HTTP.error_tag(reason)
+        Logger.error("HTTP POST failed with unexpected error: #{inspect(tag)}")
+        {:error, tag}
     end
   end
 

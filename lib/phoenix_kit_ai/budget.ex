@@ -142,16 +142,25 @@ defmodule PhoenixKitAI.Budget do
   scope}}` for the first scope that is reached, `{:error, {:budget_unmigrated,
   scope}}` for a cap still in the released versions' settings only. Emits the
   warning for scopes past the warn percent; `status/2` does not.
+
+  `now` is the moment the windows are taken at. A caller that records the
+  refusal (`GuardEvents.budget_refused/4`) passes the same one, so a check
+  just before midnight and its event just after fall in one month.
   """
-  @spec check(Endpoint.t(), keyword()) ::
+  @spec check(Endpoint.t(), keyword(), DateTime.t()) ::
           :ok | {:error, {:budget_exceeded | :budget_unmigrated, scope()}}
-  def check(%Endpoint{} = endpoint, opts) do
+  def check(%Endpoint{} = endpoint, opts, now \\ DateTime.utc_now()) do
     limits = limits()
 
     case Enum.find(@money_scopes, &(limits[&1] == :unmigrated)) do
       nil ->
-        entries = status(endpoint, opts, limits)
-        Enum.each(entries, &maybe_warn(&1, endpoint, opts[:user_uuid]))
+        entries = status(endpoint, opts, limits, now)
+        unread = take_unread()
+        user_uuid = user_uuid(opts[:user_uuid])
+
+        for %{scope: scope} = entry <- entries,
+            scope not in unread,
+            do: maybe_warn(entry, endpoint, user_uuid, now)
 
         case Enum.find(entries, &reached?/1) do
           %{scope: scope} -> {:error, {:budget_exceeded, scope}}
@@ -181,19 +190,35 @@ defmodule PhoenixKitAI.Budget do
     end
   end
 
-  def status(%Endpoint{} = endpoint, opts), do: status(endpoint, opts, limits())
+  def status(%Endpoint{} = endpoint, opts) do
+    entries = status(endpoint, opts, limits(), DateTime.utc_now())
+    take_unread()
+    entries
+  end
 
-  defp status(endpoint, opts, limits) do
-    user_uuid = opts[:user_uuid]
+  # A `user_uuid:` that is not a uuid (a visitor's own id) has no user scope:
+  # the usage table's column is a uuid, so its sum could only fail — and was
+  # logged as the database failing.
+  defp status(endpoint, opts, limits, now) do
+    user_uuid = user_uuid(opts[:user_uuid])
 
     for scope <- @scopes,
         limit = limits[scope],
         positive?(limit),
         scope not in @user_scopes or is_binary(user_uuid) do
-      spent = spent(scope, endpoint, user_uuid, limit)
+      spent = spent(scope, endpoint, user_uuid, limit, now)
       %{scope: scope, spent: spent, limit: limit, remaining: subtract(limit, spent)}
     end
   end
+
+  defp user_uuid(value) when is_binary(value) and byte_size(value) == 36 do
+    case Ecto.UUID.cast(value) do
+      {:ok, uuid} -> uuid
+      :error -> nil
+    end
+  end
+
+  defp user_uuid(_value), do: nil
 
   @doc """
   The cap for a scope: dollars (`Decimal`) for a money scope, a call count for
@@ -366,8 +391,8 @@ defmodule PhoenixKitAI.Budget do
   # computed outside, and a failing read is logged (once per outage per scope
   # per node) and reads as nothing spent. The month's sum handles its own
   # failures (`month_sum/3`): it falls back to the last good sum.
-  defp spent(scope, endpoint, user_uuid, limit),
-    do: read_spent(scope, window_start(scope), endpoint, user_uuid, limit)
+  defp spent(scope, endpoint, user_uuid, limit, now),
+    do: read_spent(scope, window_start(scope, now), endpoint, user_uuid, limit)
 
   defp read_spent(:global_month, since, endpoint, user_uuid, limit) do
     guarded(:global_month, fn ->
@@ -397,10 +422,21 @@ defmodule PhoenixKitAI.Budget do
     :exit, _ -> read_failed(scope, "exit")
   end
 
+  # Reads as nothing spent, so a call goes on (fail open), and marks the
+  # scope unread for the check under way (`take_unread/0`): the warn step
+  # neither sets nor clears its flag on a sum it never read, or every outage
+  # warned again for a crossing it had already warned about.
   defp read_failed(scope, class) do
     log_read_failed(scope, class)
+    mark_unread(scope)
     if scope == :user_calls, do: 0, else: Decimal.new(0)
   end
+
+  defp mark_unread(scope),
+    do: Process.put({__MODULE__, :unread}, [scope | Process.get({__MODULE__, :unread}, [])])
+
+  # The scopes the last `status/4` could not read, the mark cleared.
+  defp take_unread, do: Process.delete({__MODULE__, :unread}) || []
 
   # Once per outage per scope on this node, not on every call while the
   # database is down: the scope's flag clears on its next successful read, so a
@@ -489,12 +525,10 @@ defmodule PhoenixKitAI.Budget do
         log_stale(entry, now)
         stale_sum(entry)
 
-      entry != nil and until?(table, :month_scanning, since, now) ->
+      entry != nil and not take_lease(table, since, now) ->
         stale_sum(entry)
 
       true ->
-        if entry, do: put_until(table, :month_scanning, since, now)
-
         case run_scan(fun) do
           {:ok, sum} ->
             read_ok(sum, :global_month)
@@ -510,6 +544,32 @@ defmodule PhoenixKitAI.Budget do
     end
   end
 
+  # The scan lease, taken atomically: callers arriving together used to each
+  # see no lease and each scan. True when this caller holds it — a new one,
+  # or one that had lapsed (taken over by a compare-and-swap, so of two
+  # callers finding it lapsed only one scans). A held lease costs one lookup.
+  defp take_lease(table, since, now) do
+    key = {__MODULE__, :month_scanning, since}
+    until = now + @month_scan_lease_ms
+
+    cond do
+      :ets.insert_new(table, {key, until}) ->
+        true
+
+      until?(table, :month_scanning, since, now) ->
+        false
+
+      true ->
+        spec = [
+          {{:"$1", :"$2"}, [{:==, :"$1", {:const, key}}, {:"=<", :"$2", now}], [{{:"$1", until}}]}
+        ]
+
+        :ets.select_replace(table, spec) == 1
+    end
+  rescue
+    ArgumentError -> true
+  end
+
   defp run_scan(fun) do
     {:ok, fun.()}
   rescue
@@ -519,7 +579,12 @@ defmodule PhoenixKitAI.Budget do
   end
 
   defp stale_sum({sum, _scanned_at}), do: sum
-  defp stale_sum(nil), do: Decimal.new(0)
+
+  # No good sum to fall back on: zero, like any failed read, and not a read.
+  defp stale_sum(nil) do
+    mark_unread(:global_month)
+    Decimal.new(0)
+  end
 
   # The first failure is logged by `log_read_failed/2`; this is the reminder
   # that the sum in use keeps getting older, since spend after it is not
@@ -577,12 +642,6 @@ defmodule PhoenixKitAI.Budget do
     ArgumentError -> true
   end
 
-  defp put_until(table, :month_scanning, since, from) do
-    :ets.insert(table, {{__MODULE__, :month_scanning, since}, from + @month_scan_lease_ms})
-  rescue
-    ArgumentError -> true
-  end
-
   # Entries for other month starts are dead weight: drop them. A good scan
   # also ends a backoff and its own lease. `scanned_at` is the instant the scan
   # began, so the age of the sum is never understated.
@@ -595,19 +654,24 @@ defmodule PhoenixKitAI.Budget do
 
     :ets.delete(table, {__MODULE__, :month_failed, since})
     :ets.delete(table, {__MODULE__, :month_scanning, since})
-    :ets.insert(table, {{__MODULE__, :month_spent, since}, {sum, scanned_at}})
+
+    # A slow scan that ends last must not replace a newer sum with its older one.
+    case cache_read(table, since) do
+      {_sum, newer} when newer > scanned_at -> true
+      _ -> :ets.insert(table, {{__MODULE__, :month_spent, since}, {sum, scanned_at}})
+    end
   rescue
     ArgumentError -> true
   end
 
   # The monthly cap counts from the start of the site's calendar month, the
   # window `TaskLimits` uses; the others look at the trailing 24 hours.
-  defp window_start(:global_month) do
+  defp window_start(:global_month, now) do
     zone = settings()[@zone_setting] || "0"
-    PhoenixKitAI.TaskLimits.windows(DateTime.utc_now(), zone).month |> elem(0)
+    PhoenixKitAI.TaskLimits.windows(now, zone).month |> elem(0)
   end
 
-  defp window_start(_scope), do: DateTime.add(DateTime.utc_now(), -@window_seconds, :second)
+  defp window_start(_scope, now), do: DateTime.add(now, -@window_seconds, :second)
 
   # Successful calls only, like the money sum: a failed call costs nothing
   # and is not the user's doing. Same literal status, same partial index.
@@ -644,9 +708,9 @@ defmodule PhoenixKitAI.Budget do
 
   # Warn once per crossing: the flag is an ETS row per scope key and clears
   # when spend drops back under the line (a new day, or month).
-  defp maybe_warn(%{spent: spent, limit: limit, scope: scope}, endpoint, user_uuid) do
+  defp maybe_warn(%{spent: spent, limit: limit, scope: scope}, endpoint, user_uuid, now) do
     table = PhoenixKitAI.RequestCache.flags_table()
-    key = {__MODULE__, scope, scope_id(scope, endpoint, user_uuid)}
+    key = {__MODULE__, scope, scope_id(scope, endpoint, user_uuid, now)}
     percent = percent_of(spent, limit)
     over? = percent >= warn_percent()
     warned? = :ets.member(table, key)
@@ -696,9 +760,14 @@ defmodule PhoenixKitAI.Budget do
   defp measure(%Decimal{} = dollars), do: Decimal.to_float(dollars)
   defp measure(calls), do: calls
 
-  defp scope_id(:global, _endpoint, _user), do: :all
-  defp scope_id(:global_month, _endpoint, _user), do: :all
-  defp scope_id(:endpoint, endpoint, _user), do: endpoint.uuid
-  defp scope_id(:user, _endpoint, user), do: user
-  defp scope_id(:user_calls, _endpoint, user), do: user
+  defp scope_id(:global, _endpoint, _user, _now), do: :all
+
+  # The month's own flag: a node that warned last month and made no check
+  # under the line since still warns for this month's crossing.
+  defp scope_id(:global_month, _endpoint, _user, now),
+    do: {:month, window_start(:global_month, now)}
+
+  defp scope_id(:endpoint, endpoint, _user, _now), do: endpoint.uuid
+  defp scope_id(:user, _endpoint, user, _now), do: user
+  defp scope_id(:user_calls, _endpoint, user, _now), do: user
 end

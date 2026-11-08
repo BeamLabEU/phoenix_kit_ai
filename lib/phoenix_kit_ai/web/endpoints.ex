@@ -60,6 +60,15 @@ defmodule PhoenixKitAI.Web.Endpoints do
 
   @valid_sort_fields Enum.map(@sort_field_keys, &Atom.to_string/1)
 
+  @doc false
+  # The count a noun after an abbreviated total agrees with: "1.5K tokens" is
+  # many in every language, whatever the exact total's last digits would pick
+  # (1 501 is Russian's singular).
+  @spec plural_count(integer() | nil) :: non_neg_integer()
+  def plural_count(n) when is_integer(n) and n >= 1000, do: 5
+  def plural_count(n) when is_integer(n), do: n
+  def plural_count(_n), do: 0
+
   defp sort_options do
     [
       {:sort_order, gettext("Manual")},
@@ -70,7 +79,7 @@ defmodule PhoenixKitAI.Web.Endpoints do
       {:usage, gettext("Requests")},
       {:tokens, gettext("Tokens")},
       {:cost, gettext("Cost")},
-      {:last_used, gettext("Last Used")}
+      {:last_used, gettext("Last used")}
     ]
   end
 

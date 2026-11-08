@@ -68,7 +68,10 @@ defmodule PhoenixKitAI.Errors do
 
   def message(:invalid_batch_items), do: gettext("Batch items must be a list")
   def message(:invalid_labels), do: gettext("Labels must be a list of words")
-  def message(:invalid_run), do: gettext("A run must be named with a text")
+
+  def message(:invalid_run),
+    do: gettext("A run needs a name: a non-empty string, atom or integer")
+
   def message(:item_timeout), do: gettext("The item took too long and was stopped")
 
   def message(:labels_look_like_options),
@@ -121,7 +124,7 @@ defmodule PhoenixKitAI.Errors do
   end
 
   def message({:connection_error, reason}) do
-    gettext("Connection error: %{reason}", reason: inspect(reason))
+    gettext("Connection error: %{reason}", reason: connection_reason(reason))
   end
 
   def message({:prompt_error, :not_found}), do: gettext("Prompt not found")
@@ -266,7 +269,7 @@ defmodule PhoenixKitAI.Errors do
   end
 
   def message(:unknown_audio_format),
-    do: gettext("The recording's format could not be told; pass it as format:")
+    do: gettext("The recording's format could not be detected; pass it as format:")
 
   def message(:invalid_audio_input),
     do: gettext("The recording must be bytes, a map with data:, or a data URL")
@@ -356,4 +359,17 @@ defmodule PhoenixKitAI.Errors do
   defp retention_kind(:requests), do: gettext("journal entries")
   defp retention_kind(:guard_events), do: gettext("guard events")
   defp retention_kind(other), do: inspect(other)
+
+  # A connection error's kind, never its contents: a transport reason is an
+  # atom or a tuple of atoms (`{:tls_alert, …}`), and anything else (an
+  # exception from a caller's own adapter) is named by its module only.
+  defp connection_reason(reason) when is_atom(reason), do: inspect(reason)
+
+  defp connection_reason({:http_error, module, tag}) when is_atom(module) and is_atom(tag),
+    do: "#{inspect(module)} #{inspect(tag)}"
+
+  defp connection_reason({:http_error, module}) when is_atom(module), do: inspect(module)
+  defp connection_reason({tag, _detail}) when is_atom(tag), do: inspect(tag)
+  defp connection_reason(%{__exception__: true, __struct__: module}), do: inspect(module)
+  defp connection_reason(_reason), do: gettext("unknown")
 end

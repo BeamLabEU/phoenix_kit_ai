@@ -6,7 +6,11 @@ defmodule PhoenixKitAI.Web.Playground do
   - Select an endpoint and optionally a prompt
   - Fill in prompt variables
   - Send requests and see AI responses
-  - Type freeform messages when no prompt is selected
+  - Type freeform messages when no prompt is selected, or dictate them
+  - Write down a recording (`PhoenixKitAI.transcribe/3`): record or pick a
+    clip, run it again with another model, language, path or instructions,
+    and compare the answers
+  - Edit and describe images, and try xAI's realtime voice
   """
 
   use PhoenixKitWeb, :live_view
@@ -18,13 +22,26 @@ defmodule PhoenixKitAI.Web.Playground do
   alias PhoenixKit.Settings
   alias PhoenixKit.Utils.Routes
   alias PhoenixKitAI, as: AI
+  alias PhoenixKitAI.Capabilities
   alias PhoenixKitAI.Completion
   alias PhoenixKitAI.Endpoint
+  alias PhoenixKitAI.Guard
   alias PhoenixKitAI.OpenRouterClient
   alias PhoenixKitAI.Prompt
   alias PhoenixKitAI.Realtime.Session
   alias PhoenixKitAI.RequestLog
+  alias PhoenixKitAI.Transcription
+  alias PhoenixKitAI.Web.Components.Dictate
   alias PhoenixKitAI.Web.MessageShape
+
+  # Speech to text: the recorder's id (its messages name it), how many
+  # answers are kept to compare, and the largest clip played back on the
+  # page (it goes to the browser as a data URL: about two minutes of the
+  # recorder's 16 kHz WAV).
+  @stt_recorder "playground-stt-recorder"
+  @stt_kept_results 5
+  @stt_playable_bytes 4_000_000
+  @stt_accept ~w(audio/* .wav .mp3 .oga .opus .aac .webm .mp4)
 
   # Fallback shown until the live `GET /v1/tts/voices` fetch resolves (or
   # if it fails) — xAI's 5 built-in voices. Any custom/cloned voices on
@@ -99,6 +116,26 @@ defmodule PhoenixKitAI.Web.Playground do
         max_file_size: 8_000_000,
         auto_upload: true
       )
+      |> assign(:stt_audio, nil)
+      |> assign(:stt_audio_src, nil)
+      |> assign(:stt_model, "")
+      |> assign(:stt_language, "")
+      |> assign(:stt_instructions, "")
+      |> assign(:stt_transport, "")
+      |> assign(:stt_models, [])
+      |> assign(:stt_hint, nil)
+      |> assign(:stt_running, false)
+      |> assign(:stt_error, nil)
+      |> assign(:stt_results, [])
+      |> assign(:recorder_available, Dictate.recorder_available?())
+      |> assign_stt_hint()
+      |> allow_upload(:stt_file,
+        accept: @stt_accept,
+        max_entries: 1,
+        max_file_size: Transcription.max_bytes(),
+        auto_upload: true,
+        progress: &stt_upload_progress/3
+      )
 
     {:ok, socket}
   end
@@ -143,22 +180,29 @@ defmodule PhoenixKitAI.Web.Playground do
     {:noreply, socket}
   end
 
+  # The call runs in a task (`start_async`), like every other provider call
+  # here, so the page keeps answering while the model thinks. A second send
+  # while one is running is ignored: `start_async` under the same name would
+  # drop the first, paid answer.
   @impl true
   def handle_event("send", _params, socket) do
-    endpoint_uuid = socket.assigns.selected_endpoint_uuid
+    cond do
+      is_nil(socket.assigns.selected_endpoint_uuid) ->
+        {:noreply, put_flash(socket, :error, gettext("Please select an endpoint"))}
 
-    if is_nil(endpoint_uuid) do
-      {:noreply, put_flash(socket, :error, gettext("Please select an endpoint"))}
-    else
-      socket =
-        socket
-        |> assign(:sending, true)
-        |> assign(:response_text, nil)
-        |> assign(:response_usage, nil)
-        |> assign(:response_error, nil)
+      socket.assigns.sending ->
+        {:noreply, socket}
 
-      send(self(), :do_send)
-      {:noreply, socket}
+      true ->
+        request = chat_request(socket.assigns)
+
+        {:noreply,
+         socket
+         |> assign(:sending, true)
+         |> assign(:response_text, nil)
+         |> assign(:response_usage, nil)
+         |> assign(:response_error, nil)
+         |> start_async(:chat, fn -> execute_request(request) end)}
     end
   end
 
@@ -312,6 +356,68 @@ defmodule PhoenixKitAI.Web.Playground do
     {:noreply, socket}
   end
 
+  # ── Speech to text (PhoenixKitAI.transcribe/3) ──────────────────────────
+  #
+  # One clip at a time, recorded here (core's recorder) or picked as a file.
+  # It stays until it is removed or replaced, so the same words can be run
+  # through other models, languages, paths and instructions; the last answers
+  # are listed to compare. The settings are the Dictate button's too.
+
+  @impl true
+  def handle_event("stt_change", params, socket) do
+    {:noreply, apply_stt_params(socket, params)}
+  end
+
+  @impl true
+  def handle_event("stt_send", params, socket) do
+    socket = apply_stt_params(socket, params)
+
+    cond do
+      is_nil(socket.assigns.selected_endpoint) ->
+        {:noreply, assign(socket, :stt_error, gettext("Please select an endpoint"))}
+
+      is_nil(socket.assigns.stt_audio) ->
+        {:noreply, assign(socket, :stt_error, gettext("Record something or pick a file first"))}
+
+      true ->
+        {:noreply, run_transcription(socket)}
+    end
+  end
+
+  @impl true
+  def handle_event("stt_remove_upload", %{"ref" => ref}, socket) do
+    {:noreply, cancel_upload(socket, :stt_file, ref)}
+  end
+
+  @impl true
+  def handle_event("stt_clear_audio", _params, socket) do
+    {:noreply, socket |> assign(:stt_audio, nil) |> assign(:stt_audio_src, nil)}
+  end
+
+  @impl true
+  def handle_event("stt_clear_results", _params, socket) do
+    {:noreply, assign(socket, :stt_results, [])}
+  end
+
+  # The words of one answer as the chat message, to send them on. A chosen
+  # prompt template is left for the freeform message, which is where they go.
+  @impl true
+  def handle_event("stt_use_text", %{"id" => id}, socket) do
+    case Enum.find(socket.assigns.stt_results, &(Integer.to_string(&1.id) == id)) do
+      %{text: text} when text != "" ->
+        socket =
+          if socket.assigns.selected_prompt, do: apply_prompt_selection(socket, nil), else: socket
+
+        {:noreply,
+         socket
+         |> assign(:freeform_message, text)
+         |> put_flash(:info, gettext("The words are in the chat message above."))}
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
   defp start_voice(socket) do
     case socket.assigns.selected_endpoint do
       nil ->
@@ -439,6 +545,12 @@ defmodule PhoenixKitAI.Web.Playground do
       |> assign(:edit_options, %{})
       |> assign(:edit_result, nil)
       |> assign(:describe_result, nil)
+      # A's model override would name a model B may not have; the clip, the
+      # other settings and the answers (each names its endpoint) stay, so
+      # two endpoints can be compared on one recording.
+      |> assign(:stt_model, "")
+      |> assign(:stt_models, hearing_models(endpoint))
+      |> assign_stt_hint()
       |> maybe_fetch_xai_voices(endpoint)
     end
   end
@@ -546,25 +658,29 @@ defmodule PhoenixKitAI.Web.Playground do
     end)
   end
 
+  # A clip from the recorder: kept as the card's clip and written down at
+  # once (the recorder's own Send is the person's go). Errors are the
+  # recorder's to show (`errors: :inline`), so there is no error message.
   @impl true
-  def handle_info(:do_send, socket) do
-    result = execute_request(socket.assigns)
+  def handle_info({:audio_recorded, @stt_recorder, clip}, socket) do
+    case clip |> Map.take([:data, :format]) |> Transcription.normalize() do
+      {:ok, _audio} = read ->
+        socket = put_clip(read, socket, gettext("Recording"))
 
-    socket =
-      case result do
-        {:ok, text, usage} ->
-          socket
-          |> assign(:response_text, text)
-          |> assign(:response_usage, usage)
-          |> assign(:response_error, nil)
+        if socket.assigns.selected_endpoint,
+          do: {:noreply, run_transcription(socket)},
+          else: {:noreply, socket}
 
-        {:error, reason} ->
-          socket
-          |> assign(:response_error, PhoenixKitAI.Errors.message(reason))
-      end
-
-    {:noreply, assign(socket, :sending, false)}
+      # Not the earlier clip in its place: that one was not what was just said.
+      {:error, _reason} = error ->
+        {:noreply, put_clip(error, socket, nil)}
+    end
   end
+
+  # The Dictate button under the chat message: its `into` already put the
+  # words in the field, and the field's `input` event brings them here.
+  @impl true
+  def handle_info({:dictated, "playground-dictate", _text}, socket), do: {:noreply, socket}
 
   @impl true
   def handle_info({:xai_audio_chunk, chunk}, socket) do
@@ -583,9 +699,13 @@ defmodule PhoenixKitAI.Web.Playground do
   # Every other realtime event (acks, "text.done" echoes, unrecognized
   # shapes) — logged rather than silently dropped, since this is the only
   # visibility into whether xAI's realtime endpoint is responding at all.
+  # By its type only: a "text.done" echo carries the words typed to speak.
   @impl true
   def handle_info({:xai_realtime_event, event}, socket) do
-    Logger.debug(fn -> "[PhoenixKitAI.Web.Playground] xai realtime event: #{inspect(event)}" end)
+    Logger.debug(fn ->
+      "[PhoenixKitAI.Web.Playground] xai realtime event: #{realtime_event_type(event)}"
+    end)
+
     {:noreply, socket}
   end
 
@@ -644,31 +764,42 @@ defmodule PhoenixKitAI.Web.Playground do
   # PRIVATE HELPERS
   # ===========================================
 
-  defp execute_request(assigns) do
-    endpoint_uuid = assigns.selected_endpoint_uuid
+  defp realtime_event_type(%{"type" => type}) when is_binary(type), do: inspect(type)
+  defp realtime_event_type(event), do: MessageShape.describe(event)
+
+  # What the chat call needs, taken from the assigns before the task starts,
+  # so the task does not copy the whole socket state (a kept clip included).
+  defp chat_request(assigns) do
     prompt = assigns.selected_prompt
-    variable_values = assigns.variable_values
-    edited_content = assigns.edited_content
 
-    if prompt do
+    %{
+      endpoint_uuid: assigns.selected_endpoint_uuid,
       # Use edited content (user may have modified the template)
-      prompt_with_edits = %{prompt | content: edited_content || prompt.content}
-
-      execute_prompt_request(
-        endpoint_uuid,
-        prompt_with_edits,
-        variable_values,
-        call_opts(assigns)
-      )
-    else
-      execute_freeform_request(
-        endpoint_uuid,
-        assigns.freeform_message,
-        assigns.freeform_system,
-        call_opts(assigns)
-      )
-    end
+      prompt: prompt && %{prompt | content: assigns.edited_content || prompt.content},
+      variable_values: assigns.variable_values,
+      message: assigns.freeform_message,
+      system: assigns.freeform_system,
+      call_opts: call_opts(assigns)
+    }
   end
+
+  defp execute_request(%{prompt: %Prompt{} = prompt} = request),
+    do:
+      execute_prompt_request(
+        request.endpoint_uuid,
+        prompt,
+        request.variable_values,
+        request.call_opts
+      )
+
+  defp execute_request(request),
+    do:
+      execute_freeform_request(
+        request.endpoint_uuid,
+        request.message,
+        request.system,
+        request.call_opts
+      )
 
   defp execute_prompt_request(endpoint_uuid, prompt, variable_values, call_opts) do
     with {:ok, rendered_content} <- Prompt.render(prompt, variable_values),
@@ -693,22 +824,15 @@ defmodule PhoenixKitAI.Web.Playground do
     end
   end
 
-  defp execute_freeform_request(_endpoint_uuid, "", _system, _call_opts) do
-    {:error, :empty_input}
-  end
-
   defp execute_freeform_request(endpoint_uuid, message, system, call_opts) do
     opts =
       [source: "Playground"]
       |> Keyword.merge(call_opts)
-      |> maybe_add_system(if(system == "", do: nil, else: system))
+      |> maybe_add_system(if(String.trim(system) == "", do: nil, else: system))
 
-    case AI.ask(endpoint_uuid, message, opts) do
-      {:ok, response} ->
-        {:ok, extract_text(response), response_usage(response, endpoint_uuid)}
-
-      {:error, reason} ->
-        {:error, reason}
+    with :ok <- if(String.trim(message) == "", do: {:error, :empty_input}, else: :ok),
+         {:ok, response} <- AI.ask(endpoint_uuid, message, opts) do
+      {:ok, extract_text(response), response_usage(response, endpoint_uuid)}
     end
   end
 
@@ -794,6 +918,24 @@ defmodule PhoenixKitAI.Web.Playground do
   def handle_async(:describe, {:ok, result}, socket),
     do: describe_finished(result, assign(socket, :describing, false))
 
+  def handle_async(:chat, {:ok, result}, socket),
+    do: {:noreply, socket |> assign(:sending, false) |> chat_finished(result)}
+
+  def handle_async(:transcribe, {:ok, {run, result}}, socket),
+    do: {:noreply, socket |> assign(:stt_running, false) |> transcription_finished(run, result)}
+
+  def handle_async(:chat, {:exit, reason}, socket) do
+    log_task_exit(:chat, reason)
+
+    {:noreply,
+     socket |> assign(:sending, false) |> assign(:response_error, task_failed_message())}
+  end
+
+  def handle_async(:transcribe, {:exit, reason}, socket) do
+    log_task_exit(:transcribe, reason)
+    {:noreply, socket |> assign(:stt_running, false) |> assign(:stt_error, task_failed_message())}
+  end
+
   # One clause per task: each resets only its own busy flag, so a crashed
   # model listing does not re-enable the buttons of an edit still running.
   def handle_async(:image_models, {:exit, reason}, socket) do
@@ -856,8 +998,23 @@ defmodule PhoenixKitAI.Web.Playground do
   defp describe_finished({:error, reason}, socket),
     do: {:noreply, assign(socket, :edit_error, PhoenixKitAI.Errors.message(reason))}
 
-  defp log_task_exit(task, reason),
-    do: Logger.warning("[PhoenixKitAI.Web.Playground] #{task} task exited: #{inspect(reason)}")
+  defp chat_finished(socket, {:ok, text, usage}) do
+    socket
+    |> assign(:response_text, text)
+    |> assign(:response_usage, usage)
+    |> assign(:response_error, nil)
+  end
+
+  defp chat_finished(socket, {:error, reason}),
+    do: assign(socket, :response_error, PhoenixKitAI.Errors.message(reason))
+
+  # The shape of the exit only: an exception's message, or a raw exit
+  # reason's arguments, can carry the prompt, the image or the recording.
+  defp log_task_exit(task, reason) do
+    Logger.warning(
+      "[PhoenixKitAI.Web.Playground] #{task} task exited: #{MessageShape.describe_exit(reason)}"
+    )
+  end
 
   defp task_failed_message, do: gettext("Something went wrong on our side. Please try again.")
 
@@ -967,6 +1124,267 @@ defmodule PhoenixKitAI.Web.Playground do
     Enum.find(models, &(&1.id == id))
   end
 
+  # ── Speech to text state ───────────────────────────────────────────────
+
+  defp apply_stt_params(socket, params) do
+    socket
+    |> assign(:stt_model, Map.get(params, "stt_model", socket.assigns.stt_model))
+    |> assign(:stt_language, Map.get(params, "stt_language", socket.assigns.stt_language))
+    |> assign(
+      :stt_instructions,
+      Map.get(params, "stt_instructions", socket.assigns.stt_instructions)
+    )
+    |> assign(:stt_transport, stt_transport_param(params, socket.assigns.stt_transport))
+    |> assign_stt_hint()
+  end
+
+  defp stt_transport_param(%{"stt_transport" => value}, _current)
+       when value in ["", "chat", "transcriptions"],
+       do: value
+
+  defp stt_transport_param(_params, current), do: current
+
+  # A second clip while one is being written down waits for the button: a
+  # `start_async` under the running name would drop the first, paid answer.
+  defp run_transcription(%{assigns: %{stt_running: true}} = socket), do: socket
+
+  defp run_transcription(socket) do
+    %{selected_endpoint: endpoint, stt_audio: audio} = socket.assigns
+    opts = stt_opts(socket.assigns)
+
+    run = %{
+      endpoint_name: endpoint.name,
+      clip: audio.name,
+      language_hint: opts[:language],
+      instructions?: opts[:instructions] != nil
+    }
+
+    input = %{data: audio.data, format: audio.format}
+
+    socket
+    |> assign(:stt_running, true)
+    |> assign(:stt_error, nil)
+    |> start_async(:transcribe, fn ->
+      started = System.monotonic_time(:millisecond)
+      result = AI.transcribe(endpoint, input, opts)
+      {Map.put(run, :elapsed_ms, System.monotonic_time(:millisecond) - started), result}
+    end)
+  end
+
+  # The card's settings as `transcribe/3` options, every Playground call's
+  # task and user included. The Dictate button takes the same ones.
+  defp stt_opts(assigns) do
+    [source: "PhoenixKitAI.Web.Playground"]
+    |> Keyword.merge(call_opts(assigns))
+    |> maybe_opt(:model, assigns.stt_model)
+    |> maybe_opt(:language, assigns.stt_language)
+    |> maybe_opt(:instructions, assigns.stt_instructions)
+    |> put_transport(assigns.stt_transport)
+  end
+
+  defp put_transport(opts, "chat"), do: Keyword.put(opts, :transport, :chat)
+  defp put_transport(opts, "transcriptions"), do: Keyword.put(opts, :transport, :transcriptions)
+  defp put_transport(opts, _auto), do: opts
+
+  # The Dictate button's attributes (they are `transcribe/3` options): the
+  # card's model, language, instructions and path. Kept as an assign, so the
+  # template hands the component a map rather than the whole assigns.
+  defp dictate_opts(assigns) do
+    assigns
+    |> stt_opts()
+    |> Keyword.drop([:source])
+    |> Map.new()
+    |> Map.put(:source, "PhoenixKitAI.Web.Playground.Dictate")
+  end
+
+  defp transcription_finished(socket, run, {:ok, result}) do
+    entry =
+      result
+      |> Map.take([:text, :language, :model, :transport, :duration, :cost, :request_uuid])
+      |> Map.merge(run)
+      |> Map.put(:id, System.unique_integer([:positive]))
+
+    socket
+    |> assign(:stt_error, nil)
+    |> assign(:stt_results, Enum.take([entry | socket.assigns.stt_results], @stt_kept_results))
+  end
+
+  defp transcription_finished(socket, _run, {:error, reason}),
+    do: assign(socket, :stt_error, PhoenixKitAI.Errors.message(reason))
+
+  # A picked file is read as soon as it is up, so a recording and a file
+  # are one clip to the rest of the card. The format comes from the bytes;
+  # the file's extension only where they do not say it.
+  defp stt_upload_progress(:stt_file, %{done?: true} = entry, socket) do
+    read = consume_uploaded_entry(socket, entry, fn %{path: path} -> {:ok, File.read(path)} end)
+
+    result =
+      with {:ok, bytes} <- read do
+        case Transcription.normalize(bytes) do
+          {:error, :unknown_audio_format} ->
+            Transcription.normalize(bytes,
+              format: entry.client_name |> Path.extname() |> String.trim_leading(".")
+            )
+
+          normalized ->
+            normalized
+        end
+      end
+
+    {:noreply, put_clip(result, socket, entry.client_name)}
+  end
+
+  defp stt_upload_progress(:stt_file, _entry, socket), do: {:noreply, socket}
+
+  defp put_clip({:ok, audio}, socket, name) do
+    socket
+    |> assign(:stt_audio, Map.put(audio, :name, name))
+    |> assign(:stt_audio_src, playable_src(audio))
+    |> assign(:stt_error, nil)
+  end
+
+  defp put_clip({:error, reason}, socket, _name),
+    do: assign(socket, :stt_error, PhoenixKitAI.Errors.message(reason))
+
+  defp playable_src(%{bytes: bytes, data: data, content_type: type})
+       when bytes <= @stt_playable_bytes,
+       do: "data:#{type};base64,#{Base.encode64(data)}"
+
+  defp playable_src(_audio), do: nil
+
+  # The models the capability cache says hear, at the endpoint's provider,
+  # for the model field's suggestions. A speech-to-text model (whisper and
+  # the like) is in no chat catalogue, so it is typed in.
+  defp hearing_models(nil), do: []
+
+  defp hearing_models(%Endpoint{} = endpoint) do
+    endpoint
+    |> Capabilities.resolved_base_url()
+    |> Capabilities.catalogue()
+    |> Enum.filter(fn {_id, caps} -> caps.audio_input == :yes and caps.text_output != false end)
+    |> Enum.map(fn {id, caps} -> {id, caps.name} end)
+    |> Enum.sort()
+  end
+
+  defp assign_stt_hint(socket) do
+    socket
+    |> assign(:stt_hint, stt_hint(socket.assigns))
+    |> assign(:dictate_opts, dictate_opts(socket.assigns))
+  end
+
+  # Which path the card's settings take, and on the chat path whether the
+  # model is known to hear — what the guard will decide before any call.
+  defp stt_hint(%{selected_endpoint: nil}), do: nil
+
+  defp stt_hint(%{selected_endpoint: endpoint} = assigns) do
+    opts = assigns |> stt_opts() |> Keyword.take([:model, :transport])
+    model = opts[:model] || endpoint.model
+
+    case Transcription.transport(endpoint, opts) do
+      :transcriptions ->
+        %{transport: :transcriptions, model: model, auto: is_nil(opts[:transport])}
+
+      :chat ->
+        %{
+          transport: :chat,
+          model: model,
+          auto: is_nil(opts[:transport]),
+          hears: hears(%{endpoint | model: model}),
+          verified_only: Guard.verified_only?()
+        }
+    end
+  end
+
+  defp hears(endpoint) do
+    case Capabilities.for_endpoint(endpoint) do
+      %Capabilities{audio_input: flag} -> flag
+      :unknown -> :unknown
+    end
+  end
+
+  @doc false
+  @spec stt_hint_text(map()) :: String.t()
+  def stt_hint_text(%{transport: :transcriptions, model: model}) do
+    gettext(
+      "%{model} gets the recording through the speech-to-text API (/audio/transcriptions). Nothing checks beforehand that it is a speech-to-text model.",
+      model: model
+    )
+  end
+
+  def stt_hint_text(%{transport: :chat, model: model, hears: :yes}) do
+    gettext("%{model} takes audio: the recording goes to it in a chat message.", model: model)
+  end
+
+  def stt_hint_text(%{transport: :chat, model: model, hears: :no}) do
+    gettext(
+      "%{model} does not take audio, so the call will be refused. Pick a model that does, or the speech-to-text API for a speech-to-text model.",
+      model: model
+    )
+  end
+
+  def stt_hint_text(%{transport: :chat, model: model, verified_only: true}) do
+    gettext(
+      "Nobody has verified that %{model} takes audio, so the call will be refused while only verified models are allowed.",
+      model: model
+    )
+  end
+
+  def stt_hint_text(%{transport: :chat, model: model}) do
+    gettext(
+      "Nobody has verified that %{model} takes audio. The call is made; a model that does not hear answers with an error.",
+      model: model
+    )
+  end
+
+  @doc false
+  @spec stt_hint_class(map()) :: String.t()
+  def stt_hint_class(%{hears: :no}), do: "text-error"
+  def stt_hint_class(%{hears: :unknown, verified_only: true}), do: "text-warning"
+  def stt_hint_class(_hint), do: "text-base-content/60"
+
+  @doc false
+  @spec transport_label(atom() | nil) :: String.t()
+  def transport_label(:chat), do: gettext("Chat with the audio attached")
+  def transport_label(:transcriptions), do: gettext("Speech-to-text API")
+  def transport_label(_transport), do: gettext("Automatic")
+
+  @doc false
+  @spec auto_transport_label(map() | nil) :: String.t()
+  def auto_transport_label(%{auto: true, transport: transport}),
+    do: gettext("Automatic (%{path})", path: transport_label(transport))
+
+  def auto_transport_label(_hint), do: transport_label(nil)
+
+  @doc false
+  @spec stt_accept() :: [String.t()]
+  def stt_accept, do: @stt_accept
+
+  @doc false
+  @spec format_seconds(number() | nil) :: String.t() | nil
+  def format_seconds(seconds) when is_number(seconds),
+    do: gettext("%{seconds} s", seconds: :erlang.float_to_binary(seconds * 1.0, decimals: 1))
+
+  def format_seconds(_seconds), do: nil
+
+  @doc false
+  @spec format_bytes(non_neg_integer()) :: String.t()
+  def format_bytes(bytes) when bytes >= 1_000_000,
+    do: gettext("%{size} MB", size: :erlang.float_to_binary(bytes / 1_000_000, decimals: 1))
+
+  def format_bytes(bytes), do: gettext("%{size} kB", size: max(1, div(bytes + 500, 1000)))
+
+  @doc false
+  @spec upload_error_label(atom()) :: String.t()
+  def upload_error_label(:too_large) do
+    gettext("That file is too large (%{size} at most)",
+      size: format_bytes(Transcription.max_bytes())
+    )
+  end
+
+  def upload_error_label(:not_accepted), do: gettext("That file is not a recording")
+  def upload_error_label(:too_many_files), do: gettext("One file at a time")
+  def upload_error_label(other), do: upload_error_message(other)
+
   @doc false
   @spec option_label(atom()) :: String.t()
   def option_label(:aspect_ratio), do: gettext("Aspect ratio")
@@ -1007,7 +1425,9 @@ defmodule PhoenixKitAI.Web.Playground do
 
   def warning_message(other), do: inspect(PhoenixKitAI.Images.redact_warning(other))
 
-  defp shown({:bytes, n}), do: gettext("%{count} bytes of image data", count: n)
+  defp shown({:bytes, n}),
+    do: ngettext("%{count} byte of image data", "%{count} bytes of image data", n)
+
   defp shown(value) when is_binary(value), do: value
   defp shown(value), do: inspect(value)
 

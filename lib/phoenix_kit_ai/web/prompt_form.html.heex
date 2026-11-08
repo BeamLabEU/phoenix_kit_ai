@@ -97,7 +97,7 @@
               field={@form[:enabled]}
               label={gettext("Enabled")}
             >
-              <:description>{gettext("Disabled prompts cannot be used via the API")}</:description>
+              <:description>{gettext("Disabled prompts cannot be used for AI calls")}</:description>
             </.checkbox>
 
             <.form_actions
@@ -121,7 +121,7 @@
           <div>
             <p class="mb-2">{gettext("Use double curly braces for variables:")}</p>
             <div class="bg-base-300 p-3 rounded font-mono text-xs">
-              Translate to {"{{Language}}"}:<br />
+              {gettext("Translate to %{variable}:", variable: "{{Language}}")}<br />
               {"{{Text}}"}
             </div>
           </div>

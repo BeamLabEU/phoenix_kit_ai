@@ -88,7 +88,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
             name={"endpoint[#{@field_str}]"}
             class={@textarea_class}
             rows="2"
-            placeholder={@definition[:placeholder] || "One per line"}
+            placeholder={@definition[:placeholder] || gettext("One per line")}
           >{@current_value}</textarea>
         <% _ -> %>
           <input
@@ -176,19 +176,19 @@ defmodule PhoenixKitAI.Web.EndpointForm do
               class="badge badge-outline badge-xs h-auto"
               title={CapabilityBadges.explain_text(:context)}
             >
-              {format_number(@model.context_length)} ctx
+              {gettext("%{tokens} ctx", tokens: format_number(@model.context_length))}
             </span>
 
             <span :if={@model.max_completion_tokens} class="badge badge-outline badge-xs h-auto">
-              {format_number(@model.max_completion_tokens)} out
+              {gettext("%{tokens} out", tokens: format_number(@model.max_completion_tokens))}
             </span>
 
             <span :if={@prompt_price} class="badge badge-success badge-outline badge-xs h-auto">
-              {@prompt_price}/M in
+              {gettext("%{price}/M in", price: @prompt_price)}
             </span>
 
             <span :if={@completion_price} class="badge badge-warning badge-outline badge-xs h-auto">
-              {@completion_price}/M out
+              {gettext("%{price}/M out", price: @completion_price)}
             </span>
 
             <CapabilityBadges.badges capabilities={Map.get(@model, :capabilities)} />
@@ -573,9 +573,9 @@ defmodule PhoenixKitAI.Web.EndpointForm do
 
   defp get_placeholder_for_field("max_tokens", _definition, selected_model) do
     if selected_model && selected_model.max_completion_tokens do
-      "Max: #{selected_model.max_completion_tokens}"
+      gettext("Max: %{tokens}", tokens: format_number(selected_model.max_completion_tokens))
     else
-      "Model default"
+      gettext("Model default")
     end
   end
 
@@ -1908,7 +1908,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
   # leaving the picker loading forever.
   def handle_async(:model_fetch, {:exit, reason}, socket) do
     Logger.warning(fn ->
-      "[PhoenixKitAI.Web.EndpointForm] model fetch crashed: #{MessageShape.describe(reason)}"
+      "[PhoenixKitAI.Web.EndpointForm] model fetch crashed: #{MessageShape.describe_exit(reason)}"
     end)
 
     socket =
@@ -2144,14 +2144,14 @@ defmodule PhoenixKitAI.Web.EndpointForm do
 
   defp language_names do
     %{
-      "en_us" => "English (US)",
-      "en_gb" => "English (UK)",
-      "fr_fr" => "French",
-      "es_es" => "Spanish",
-      "de_de" => "German",
-      "it_it" => "Italian",
-      "pt_pt" => "Portuguese",
-      "nl_nl" => "Dutch"
+      "en_us" => gettext("English (US)"),
+      "en_gb" => gettext("English (UK)"),
+      "fr_fr" => gettext("French"),
+      "es_es" => gettext("Spanish"),
+      "de_de" => gettext("German"),
+      "it_it" => gettext("Italian"),
+      "pt_pt" => gettext("Portuguese"),
+      "nl_nl" => gettext("Dutch")
     }
   end
 
@@ -2254,7 +2254,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
       # Basic parameters
       "temperature" => %{
         type: :float,
-        label: "Temperature",
+        label: gettext("Temperature"),
         min: 0,
         max: 2,
         step: 0.1,
@@ -2265,7 +2265,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
       },
       "max_tokens" => %{
         type: :integer,
-        label: "Max Tokens",
+        label: gettext("Max Tokens"),
         min: 1,
         field: :max_tokens,
         group: :basic,
@@ -2273,7 +2273,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
       },
       "top_p" => %{
         type: :float,
-        label: "Top P",
+        label: gettext("Top P"),
         min: 0,
         max: 1,
         step: 0.1,
@@ -2283,7 +2283,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
       },
       "top_k" => %{
         type: :integer,
-        label: "Top K",
+        label: gettext("Top K"),
         min: 1,
         field: :top_k,
         group: :basic,
@@ -2292,7 +2292,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
       # Advanced parameters
       "frequency_penalty" => %{
         type: :float,
-        label: "Frequency Penalty",
+        label: gettext("Frequency Penalty"),
         min: -2,
         max: 2,
         step: 0.1,
@@ -2302,7 +2302,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
       },
       "presence_penalty" => %{
         type: :float,
-        label: "Presence Penalty",
+        label: gettext("Presence Penalty"),
         min: -2,
         max: 2,
         step: 0.1,
@@ -2312,7 +2312,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
       },
       "repetition_penalty" => %{
         type: :float,
-        label: "Repetition Penalty",
+        label: gettext("Repetition Penalty"),
         min: 0,
         max: 2,
         step: 0.1,
@@ -2322,18 +2322,18 @@ defmodule PhoenixKitAI.Web.EndpointForm do
       },
       "seed" => %{
         type: :integer,
-        label: "Seed",
+        label: gettext("Seed"),
         field: :seed,
         group: :advanced,
-        placeholder: "Random",
+        placeholder: gettext("Random"),
         description: "For reproducible outputs"
       },
       "stop" => %{
         type: :string_list,
-        label: "Stop Sequences",
+        label: gettext("Stop Sequences"),
         field: :stop,
         group: :advanced,
-        placeholder: "One per line",
+        placeholder: gettext("One per line"),
         description: "Sequences that stop generation"
       }
     }
@@ -2397,21 +2397,13 @@ defmodule PhoenixKitAI.Web.EndpointForm do
   end
 
   @doc """
-  Formats a number with thousands separators.
+  Formats a number with thousands separators, as the page's language groups
+  them (`PhoenixKitAI.Numbers`).
   """
   def format_number(nil), do: "0"
-  def format_number(num) when is_integer(num), do: Integer.to_string(num) |> add_commas()
-  def format_number(num) when is_float(num), do: round(num) |> Integer.to_string() |> add_commas()
+  def format_number(num) when is_integer(num), do: PhoenixKitAI.Numbers.integer(num)
+  def format_number(num) when is_float(num), do: num |> round() |> PhoenixKitAI.Numbers.integer()
   def format_number(num) when is_binary(num), do: num
-
-  defp add_commas(str) do
-    str
-    |> String.reverse()
-    |> String.graphemes()
-    |> Enum.chunk_every(3)
-    |> Enum.join(",")
-    |> String.reverse()
-  end
 
   @doc """
   Formats a per-token model price as a per-million-tokens display.

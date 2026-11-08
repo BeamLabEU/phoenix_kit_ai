@@ -43,4 +43,43 @@ defmodule PhoenixKitAI.Web.MessageShape do
   def describe(msg) when is_map(msg), do: "map"
   def describe(msg) when is_list(msg), do: "list"
   def describe(_msg), do: "term"
+
+  @doc """
+  Describes the reason a task exited with (`{:exit, reason}` in
+  `handle_async/3`) without its payload: for a crash the exception's module
+  and the function and line it was raised in — never the exception's
+  message or the function's arguments, which can carry what the task was
+  given — else `describe/1` of the reason.
+
+  ## Examples
+
+      iex> PhoenixKitAI.Web.MessageShape.describe_exit(
+      ...>   {%RuntimeError{message: "secret"}, [{MyApp.Voice, :run, ["secret"], [file: ~c"lib/voice.ex", line: 7]}]}
+      ...> )
+      "RuntimeError in MyApp.Voice.run/1 (lib/voice.ex:7)"
+
+      iex> PhoenixKitAI.Web.MessageShape.describe_exit({:timeout, {GenServer, :call, ["secret"]}})
+      "{:timeout, …}/2"
+  """
+  @spec describe_exit(term()) :: String.t()
+  def describe_exit({%{__exception__: true, __struct__: module}, stacktrace})
+      when is_list(stacktrace),
+      do: inspect(module) <> where(stacktrace)
+
+  def describe_exit({reason, [{module, function, _, _} | _]})
+      when is_atom(module) and is_atom(function),
+      do: describe(reason)
+
+  def describe_exit(reason), do: describe(reason)
+
+  defp where([{module, function, arity_or_args, location} | _])
+       when is_atom(module) and is_atom(function) and is_list(location) do
+    arity = if is_list(arity_or_args), do: length(arity_or_args), else: arity_or_args
+    " in #{inspect(module)}.#{function}/#{arity}" <> line(location[:file], location[:line])
+  end
+
+  defp where(_stacktrace), do: ""
+
+  defp line(file, line) when is_list(file) and is_integer(line), do: " (#{file}:#{line})"
+  defp line(_file, _line), do: ""
 end

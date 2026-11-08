@@ -21,7 +21,7 @@ defmodule PhoenixKitAI.TranslationDefectsTest do
         deleted = Gettext.dgettext(AIGettext, "default", "Integration missing")
         never_selected = Gettext.dgettext(AIGettext, "default", "No integration")
 
-        assert deleted == "Интеграция удалена"
+        assert deleted == "Интеграция не найдена"
         assert never_selected == "Интеграция не выбрана"
         refute deleted == never_selected
       end)

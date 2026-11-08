@@ -149,8 +149,11 @@ defmodule PhoenixKitAI.Limiter do
 
   defp with_slot(key, limit, settings, fun) do
     if Process.whereis(__MODULE__) do
-      wait = Keyword.get(settings, :wait, @default_wait)
-      max_waiting = Keyword.get(settings, :max_waiting, @default_max_waiting)
+      # Checked before the call takes a place in line: a `wait:` that is no
+      # number raised after it was queued, leaving the place to become a
+      # slot nobody gave back.
+      wait = valid_wait(Keyword.get(settings, :wait, @default_wait))
+      max_waiting = valid_count(Keyword.get(settings, :max_waiting), @default_max_waiting)
       notify = Keyword.get(settings, :notify)
 
       case acquire(key, limit, max_waiting, is_pid(notify)) do
@@ -162,8 +165,7 @@ defmodule PhoenixKitAI.Limiter do
 
         {:queued, ref, position} ->
           notify(notify, key, position)
-          deadline = System.monotonic_time(:millisecond) + wait
-          await(ref, key, notify, deadline, fun)
+          await(ref, key, notify, deadline(wait), fun)
 
         :full ->
           :telemetry.execute([:phoenix_kit_ai, :limiter, :rejected], %{count: 1}, %{
@@ -178,8 +180,20 @@ defmodule PhoenixKitAI.Limiter do
     end
   end
 
+  defp deadline(:infinity), do: :infinity
+  defp deadline(wait), do: now() + wait
+
+  defp valid_wait(:infinity), do: :infinity
+  defp valid_wait(ms) when is_integer(ms) and ms >= 0, do: ms
+  defp valid_wait(_ms), do: @default_wait
+
+  defp valid_count(n, _default) when is_integer(n) and n >= 0, do: n
+  defp valid_count(_n, default), do: default
+
+  defp now, do: System.monotonic_time(:millisecond)
+
   defp await(ref, key, notify, deadline, fun) do
-    remaining = max(deadline - System.monotonic_time(:millisecond), 0)
+    remaining = if deadline == :infinity, do: :infinity, else: max(deadline - now(), 0)
 
     receive do
       {:phoenix_kit_ai_limiter_go, ^ref} ->

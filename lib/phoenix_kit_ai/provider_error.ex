@@ -89,7 +89,8 @@ defmodule PhoenixKitAI.ProviderError do
 
   @doc false
   # The class a parsed error body names, or nil to go by the status.
-  @spec class(integer(), map() | nil) :: :insufficient_credits | :rate_limited | nil
+  @spec class(integer(), map() | nil) ::
+          :insufficient_credits | :rate_limited | :model_not_found | nil
   def class(_status, nil), do: nil
 
   def class(status, error) do

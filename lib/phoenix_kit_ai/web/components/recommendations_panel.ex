@@ -381,11 +381,5 @@ defmodule PhoenixKitAI.Web.Components.RecommendationsPanel do
   defp note_label(:json_schema_openrouter_only),
     do: gettext("JSON schema only through OpenRouter")
 
-  defp format_number(number) when is_integer(number) do
-    number
-    |> Integer.to_string()
-    |> String.reverse()
-    |> String.replace(~r/(\d{3})(?=\d)/, "\\1,")
-    |> String.reverse()
-  end
+  defp format_number(number) when is_integer(number), do: PhoenixKitAI.Numbers.integer(number)
 end

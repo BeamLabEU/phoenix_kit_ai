@@ -178,9 +178,12 @@ defmodule PhoenixKitAI.LimiterTest do
       Application.put_env(:phoenix_kit_ai, :concurrency, %{"provider:openrouter" => 3})
       t = System.monotonic_time(:millisecond)
       assert Limiter.run(@ep, [], fn -> :newcomer end) == :newcomer
-      # neither waits for the holder's 400 ms: the waiting call is let in first
+      # neither waits for the holder's 400 ms: the waiting call is let in
+      # first. Its own start message may still be on its way (it runs in its
+      # own process), so it is awaited, and timed from `t`.
       assert System.monotonic_time(:millisecond) - t < 150
-      assert_received {:started, :queued, _}
+      assert_receive {:started, :queued, started}, 150
+      assert started - t < 150
       collect(2)
     end
 

@@ -549,10 +549,18 @@ defmodule PhoenixKitAI.Components.AITranslate do
   defp action_label(cfg) do
     case current_scope(cfg) do
       :missing ->
-        gettext("Translate %{n} missing", n: length(actionable_missing(cfg)))
+        ngettext(
+          "Translate %{count} missing language",
+          "Translate %{count} missing languages",
+          length(actionable_missing(cfg))
+        )
 
       :all ->
-        gettext("Translate all %{n} languages", n: length(all_target_langs(cfg)))
+        ngettext(
+          "Translate %{count} language",
+          "Translate all %{count} languages",
+          length(all_target_langs(cfg))
+        )
 
       :current ->
         gettext("Translate to %{lang}", lang: String.upcase(get(cfg, :current_lang) || ""))

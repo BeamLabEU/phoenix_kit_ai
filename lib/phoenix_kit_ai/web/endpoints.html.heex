@@ -156,7 +156,7 @@
                       {PhoenixKitAI.Request.format_tokens(stats.total_tokens)} {ngettext(
                         "token",
                         "tokens",
-                        stats.total_tokens
+                        PhoenixKitAI.Web.Endpoints.plural_count(stats.total_tokens)
                       )}
                     </span>
                   </div>
@@ -241,7 +241,7 @@
                     {gettext("Cost")}
                   </.sort_header_cell>
                   <.sort_header_cell field={:last_used} sort={%{by: @sort_by, dir: @sort_dir}} event="sort">
-                    {gettext("Last Used")}
+                    {gettext("Last used")}
                   </.sort_header_cell>
                   <.table_default_header_cell class="w-px whitespace-nowrap text-right">
                     {gettext("Actions")}
@@ -610,9 +610,11 @@
 
             <%!-- Results count --%>
             <div class="text-sm text-base-content/70 mb-2">
-              {gettext("Showing %{shown} of %{total} requests",
-                shown: length(@usage_requests),
-                total: @usage_total_requests
+              {ngettext(
+                "Showing %{shown} of %{count} request",
+                "Showing %{shown} of %{count} requests",
+                @usage_total_requests,
+                shown: length(@usage_requests)
               )}
             </div>
 

@@ -118,7 +118,7 @@ defmodule PhoenixKitAI.Web.Components.Dictate do
     do: {:noreply, socket |> assign(:writing?, false) |> fail(reason)}
 
   def handle_async(:transcribe, {:exit, reason}, socket) do
-    Logger.warning("[#{@source}] transcribe task exited: #{MessageShape.describe(reason)}")
+    Logger.warning("[#{@source}] transcribe task exited: #{MessageShape.describe_exit(reason)}")
     {:noreply, socket |> assign(:writing?, false) |> fail(:task_failed)}
   end
 
@@ -273,15 +273,20 @@ defmodule PhoenixKitAI.Web.Components.Dictate do
 
   defp dom_id(id), do: "#{id}-dictate"
 
-  defp recorder(assigns) do
-    module = recorder_module()
-
-    if Code.ensure_loaded?(module) do
-      module.audio_recorder(assigns)
+  @doc false
+  # Core's `<.audio_recorder>` where the running core has it (3.4 on), else
+  # nothing. Public for the Playground, which records with it too.
+  def recorder(assigns) do
+    if recorder_available?() do
+      recorder_module().audio_recorder(assigns)
     else
       ~H""
     end
   end
+
+  @doc false
+  @spec recorder_available?() :: boolean()
+  def recorder_available?, do: Code.ensure_loaded?(recorder_module())
 
   defp recorder_module, do: Application.get_env(:phoenix_kit_ai, :audio_recorder, @recorder)
 end

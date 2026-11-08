@@ -797,14 +797,22 @@
                   <.icon name="hero-information-circle" class="w-4 h-4" />
                   <span class="text-sm">
                     <%= if @selected_model.context_length do %>
-                      {gettext("Context: %{tokens} tokens",
-                        tokens: PhoenixKitAI.Web.EndpointForm.format_number(@selected_model.context_length))}
+                      {ngettext(
+                        "Context: %{tokens} token",
+                        "Context: %{tokens} tokens",
+                        @selected_model.context_length,
+                        tokens: PhoenixKitAI.Web.EndpointForm.format_number(@selected_model.context_length)
+                      )}
                     <% else %>
                       {gettext("Context: unknown")}
                     <% end %>
                     <%= if @selected_model.max_completion_tokens do %>
-                      • {gettext("Max output: %{tokens} tokens",
-                        tokens: PhoenixKitAI.Web.EndpointForm.format_number(@selected_model.max_completion_tokens))}
+                      • {ngettext(
+                        "Max output: %{tokens} token",
+                        "Max output: %{tokens} tokens",
+                        @selected_model.max_completion_tokens,
+                        tokens: PhoenixKitAI.Web.EndpointForm.format_number(@selected_model.max_completion_tokens)
+                      )}
                     <% end %>
                   </span>
                 </div>
@@ -1003,7 +1011,7 @@
                     get_in(@form.params, ["provider_settings", "x_title"]) ||
                       (@endpoint && get_in(@endpoint.provider_settings || %{}, ["x_title"])) || ""
                   }
-                  placeholder={@project_title || "My Application"}
+                  placeholder={@project_title || gettext("My Application")}
                 />
                 <p class="fieldset-label text-base-content/50 mt-1">
                   {gettext("Defaults to project_title (%{title}) from", title: @project_title)}

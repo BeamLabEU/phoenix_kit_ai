@@ -1223,6 +1223,7 @@ defmodule PhoenixKitAI do
       dgettext_noop("default", "Playground"),
       dgettext_noop("default", "Usage"),
       dgettext_noop("default", "Tasks"),
+      dgettext_noop("default", "AI endpoints, prompts, and usage tracking"),
       dgettext_noop("default", "Manage the AI task guard"),
       dgettext_noop(
         "default",
@@ -2804,9 +2805,29 @@ defmodule PhoenixKitAI do
       # known, so a verb can still hand both back.
       {:ok, %Request{uuid: uuid, cost: Map.get(attrs, :cost)}}
     else
-      create_request(attrs)
+      write_now(attrs)
     end
   end
+
+  # A database that is down or refuses the row must not turn a paid answer
+  # into a raise in the caller: the error is logged (by its kind — the
+  # database's message can quote the row) and the answer names no row.
+  defp write_now(attrs) do
+    create_request(attrs)
+  rescue
+    error in [DBConnection.ConnectionError, Postgrex.Error, Ecto.QueryError] ->
+      Logger.error(
+        "[PhoenixKitAI] usage row not written: #{inspect(error.__struct__)}" <>
+          postgres_code(error) <> " (type=#{inspect(attr(attrs, :request_type))})"
+      )
+
+      {:error, :not_written}
+  end
+
+  defp postgres_code(%Postgrex.Error{postgres: %{code: code}}) when not is_nil(code),
+    do: " #{code}"
+
+  defp postgres_code(_error), do: ""
 
   @doc false
   # Used by `PhoenixKitAI.RequestLog` to write a queued row under the uuid
@@ -3389,6 +3410,10 @@ defmodule PhoenixKitAI do
   # balance, or a caller's input error: another model would get the same.
   # The answer lists the models that failed before it in `:fallbacks`.
   defp with_fallback_models(endpoint_uuid, opts, call) do
+    # `model: ""` (an empty form field) is no model, as on chat: the row,
+    # the cache key and the provider would otherwise get `""`.
+    opts = call_model_opts(opts)
+
     case Keyword.get(opts, :fallback_models) do
       [_ | _] = models ->
         # Every entry a model id: an empty or non-string one would send one
@@ -4675,6 +4700,8 @@ defmodule PhoenixKitAI do
   @spec generate_image(String.t() | Endpoint.t(), String.t(), keyword()) ::
           {:ok, %{images: [%{url: String.t() | nil, data: binary() | nil}]}} | {:error, term()}
   def generate_image(endpoint_uuid, prompt, opts \\ []) when is_binary(prompt) do
+    opts = call_model_opts(opts)
+
     with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
          {:ok, admission} <-
            authorize(endpoint, opts, :generate_image, Guard.implied_needs(:generate_image, opts)) do
@@ -4730,6 +4757,8 @@ defmodule PhoenixKitAI do
           | {:error, term()}
   def edit_image(endpoint_uuid, prompt, images, opts \\ [])
       when is_binary(prompt) and is_list(images) do
+    opts = call_model_opts(opts)
+
     with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
          {:ok, admission} <-
            authorize(endpoint, opts, :edit_image, Guard.implied_needs(:edit_image, opts)) do
@@ -4787,6 +4816,8 @@ defmodule PhoenixKitAI do
         ) ::
           {:ok, map()} | {:error, term()}
   def process_image(endpoint_uuid, images, operations, opts \\ []) when is_list(images) do
+    opts = call_model_opts(opts)
+
     with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
          {:ok, admission} <-
            authorize(
@@ -5631,7 +5662,7 @@ defmodule PhoenixKitAI do
     # prose about the user's image, say) only under the PII gate.
     base_metadata =
       %{
-        error_reason: if(capture_content, do: inspect(reason), else: inspect(error_tag(reason))),
+        error_reason: error_reason(reason, capture_content),
         input_chars: String.length(prompt),
         input_image_count: length(images),
         input_bytes: image_input_bytes(images),
@@ -5687,6 +5718,20 @@ defmodule PhoenixKitAI do
   end
 
   # The shape of an error without its payload (a refusal's prose, a URL).
+  # A failure row's `metadata.error_reason`: the whole reason under the
+  # content gate; with it shut, the whole reason only when it holds no text
+  # (`{:connection_error, :nxdomain}`, `{:api_error, 503}`), else its tag — a
+  # refusal's text is the provider's words about the request.
+  defp error_reason(reason, true), do: inspect(reason)
+
+  defp error_reason(reason, false),
+    do: if(textless?(reason), do: inspect(reason), else: inspect(error_tag(reason)))
+
+  defp textless?(value) when is_atom(value) or is_number(value), do: true
+  defp textless?(value) when is_tuple(value), do: value |> Tuple.to_list() |> textless?()
+  defp textless?(value) when is_list(value), do: Enum.all?(value, &textless?/1)
+  defp textless?(_value), do: false
+
   defp error_tag(reason) when is_atom(reason), do: reason
   defp error_tag(reason) when is_tuple(reason) and tuple_size(reason) > 0, do: elem(reason, 0)
   defp error_tag(_reason), do: :unknown
@@ -5877,9 +5922,14 @@ defmodule PhoenixKitAI do
       else: TaskLimits.check(task, opts)
   end
 
+  # One clock for the check and its event: a refusal checked just before
+  # midnight and recorded just after would otherwise take next month's (or
+  # day's) one notice.
   defp budget(endpoint, opts) do
-    with {:error, {:budget_exceeded, scope}} = refusal <- Budget.check(endpoint, opts) do
-      GuardEvents.budget_refused(scope, endpoint, opts)
+    now = DateTime.utc_now()
+
+    with {:error, {:budget_exceeded, scope}} = refusal <- Budget.check(endpoint, opts, now) do
+      GuardEvents.budget_refused(scope, endpoint, opts, now)
       refusal
     end
   end
@@ -6234,8 +6284,9 @@ defmodule PhoenixKitAI do
       %{
         # Original reason atom/tuple — preserved alongside the
         # human-readable error_message so callers can still filter on
-        # the machine-readable shape.
-        error_reason: inspect(reason),
+        # the machine-readable shape. Only its tag with the content gate
+        # shut: a refusal's text is the provider's words about the request.
+        error_reason: error_reason(reason, capture_content),
         # Debug context (source tracking)
         source: source,
         stacktrace: stacktrace,
@@ -6418,7 +6469,7 @@ defmodule PhoenixKitAI do
       metadata:
         Map.merge(
           %{
-            error_reason: inspect(reason),
+            error_reason: error_reason(reason, capture_request_content?()),
             # Debug context (source tracking)
             source: source,
             stacktrace: stacktrace,
@@ -6513,7 +6564,7 @@ defmodule PhoenixKitAI do
     capture_content = capture_request_content?()
 
     base_metadata = %{
-      error_reason: inspect(reason),
+      error_reason: error_reason(reason, capture_content),
       input_chars: String.length(text),
       # Debug context (source tracking)
       source: source,
@@ -6613,7 +6664,7 @@ defmodule PhoenixKitAI do
     # was said, say) only under the content gate.
     metadata =
       %{
-        error_reason: if(capture, do: inspect(reason), else: inspect(error_tag(reason))),
+        error_reason: error_reason(reason, capture),
         transport: Atom.to_string(transport),
         audio_format: audio.format,
         audio_bytes: audio.bytes,

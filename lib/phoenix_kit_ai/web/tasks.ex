@@ -785,7 +785,7 @@ defmodule PhoenixKitAI.Web.Tasks do
         </label>
 
         <div id="ai-guard-watchers" class="flex flex-col gap-2">
-          <span class="text-sm font-medium">{gettext("Who is told")}</span>
+          <span class="text-sm font-medium">{gettext("Who is notified")}</span>
           <span class="text-xs text-base-content/70">
             {gettext(
               "Limits near or reached, spending caps, models that stop fitting, off-purpose flags, unusual use and blocks are sent to these people (and to the people a task names), never with a reason. Nobody chosen: every Owner."

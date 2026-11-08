@@ -613,7 +613,7 @@ defmodule PhoenixKitAI.ChatToolsTest do
 
       failed = row(ep)
       assert failed.status == "error"
-      assert failed.metadata["error_reason"] == ":api_error"
+      assert failed.metadata["error_reason"] == "{:api_error, 500}"
       refute Map.has_key?(failed.metadata, "input")
 
       stub(text_answer("prose, not json"))

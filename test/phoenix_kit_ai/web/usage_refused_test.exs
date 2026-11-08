@@ -44,7 +44,7 @@ defmodule PhoenixKitAI.Web.UsageRefusedTest do
     {:ok, view, html} = live(conn, "/en/admin/ai/usage?status=refused")
 
     assert has_element?(view, "#ai-usage-filters option[value=refused]")
-    assert html =~ "Showing 1 of 1 requests"
+    assert html =~ "Showing 1 of 1 request"
     assert has_element?(view, "[data-refused='#{refused.uuid}']")
 
     {:ok, _view, html} = live(conn, "/en/admin/ai/usage?status=error")

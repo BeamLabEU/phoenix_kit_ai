@@ -141,7 +141,10 @@ Repo-local aliases:
   (`otp_app: :phoenix_kit_ai`), catalogues in this repo's `priv/gettext/`
   (`en`, `et`, `ru`) — not core's. After adding a string run
   `mix gettext.extract && mix gettext.merge priv/gettext`, then fill the `et`
-  and `ru` `msgstr`s by hand. `mix gettext.merge` deletes any `.po` entry
+  and `ru` `msgstr`s by hand, in the terms of
+  `dev_docs/guides/translation-glossary.md` (et: the singular imperative,
+  "sina"; ru: «вы», the infinitive on buttons; busy labels are nouns), and
+  leave no `fuzzy` entry behind — gettext ignores it. `mix gettext.merge` deletes any `.po` entry
   missing from a freshly extracted `.pot`, so a string can never be hand-typed
   into a `.po` alone. Labels declared as plain string literals in
   `admin_tabs/0` and `permission_metadata/0` are invisible to the extractor and
@@ -176,16 +179,32 @@ Repo-local aliases:
   model and cost. Any new field carrying user text must sit behind the same
   gate. A call's `capture_request_content: false` may switch it off for that
   call; `true` on a call never overrides a global `false`. `speak/3` and
-  `embed/3` ignore the per-call option (`transcribe/3` honours it).
+  `embed/3` ignore the per-call option (`transcribe/3` honours it). A failure
+  row's `metadata.error_reason` is the whole reason only under the gate or
+  when it holds no text (`{:connection_error, :nxdomain}`, `{:api_error,
+  503}`); otherwise its tag (`:content_policy`) — every failure writer goes
+  through the one `error_reason/2`.
 - **No credential or user content in a process message, a broadcast or a
   log line.** A LiveView message names a connection or endpoint by uuid and
   the handler resolves the key; the change topics broadcast `{event, uuid}`;
   a catch-all `handle_info/2` logs `PhoenixKitAI.Web.MessageShape.describe/1`,
-  never `inspect(msg)`; a translation failure is logged and broadcast as
-  `TranslateWorker.classify_reason/1`'s pair, never the raw reason. The one
+  never `inspect(msg)`; a task's exit in `handle_async/3` is logged through
+  `MessageShape.describe_exit/1` (exception module and place, never its
+  message or arguments); a translation failure is logged and broadcast as
+  `TranslateWorker.classify_reason/1`'s pair, never the raw reason. An HTTP
+  client error that is not a transport error (`Req.HTTPError`, a Mint error)
+  leaves `Completion` and `Providers.HTTP` as its kind only,
+  `{:http_error, module, tag}` (`HTTP.error_tag/1`): an invalid header value
+  carries the bearer token, a decode error the whole answer. The one
   exception is `Dictate`'s `{:dictated, id, text}`: the words are what the page
   asked for, and the message never leaves the LiveView's own process.
 - **Money** is US dollars as a `Decimal` everywhere (`PhoenixKitAI.Money`).
+- **Numbers on a page** go through `PhoenixKitAI.Numbers` (`integer/1`,
+  `decimal/2`): `128,000` / `2.5` in English, `128 000` (no-break space) /
+  `2,5` in Estonian and Russian, where `128,000` reads as 128. A count that
+  picks a word's form is `ngettext`, never `gettext` with `%{n}`; after an
+  abbreviated total ("1.5K tokens") the form is the plural of many
+  (`Web.Endpoints.plural_count/1`). Dollar amounts keep their point.
 - **Error returns** are atoms or `{atom, detail}` tuples, rendered through
   `PhoenixKitAI.Errors.message/1`.
 - No soft-delete sentinel: endpoints and prompts are hard-deleted.
@@ -254,9 +273,17 @@ Repo-local aliases:
   the row is written without it (`user_uuid` nil, the submitted id kept in
   `metadata["unresolved_refs"]`, a warning logged) and counts toward the
   endpoint and global caps but never the per-user one. The same applies to
-  an `endpoint_uuid` or `prompt_uuid` that names no row. Task limits read a
-  `user_uuid:` that is not a uuid as no user: the task's own limits apply,
-  the per-user ones do not. Cap the endpoint or the site for visitors.
+  an `endpoint_uuid` or `prompt_uuid` that names no row. Task limits and the
+  spend caps read a `user_uuid:` that is not a uuid as no user: the task's
+  own limits and the endpoint and site caps apply, the per-user ones do not
+  (the caps used to sum it, fail on the uuid column and log a database
+  outage). Cap the endpoint or the site for visitors.
+- A usage row is written whatever the call carried: a label longer than its
+  column (`model` 150, `endpoint_name` 100, `prompt_name` 255) is cut, and NUL
+  characters are dropped from every string (`Request.changeset/2`; PostgreSQL
+  refuses them in text and jsonb). A database error while writing a row
+  synchronously is logged by its class and code (`log_usage/1`), never
+  raised into the caller of a paid call; the answer then names no row.
 - Spend caps (`ai_daily_cap*` over the trailing 24 hours, `ai_monthly_cap` over
   the site time zone's calendar month, scope `:global_month`) read the usage
   table; concurrent callers overshoot by their
@@ -264,7 +291,13 @@ Repo-local aliases:
   for 2 s only from 90% of the cap up),
   and a database error fails open (logged once per outage per scope per node;
   the monthly cap then uses the last good sum, and says so again every 10
-  minutes once that sum is that old). Treat a cap as a brake on a
+  minutes once that sum is that old). A read that failed neither sets nor
+  clears a scope's warn flag, so an outage does not warn again for a crossing
+  already warned about; the monthly flag is the month's own. The check and its
+  refusal event take one clock (`Budget.check/3`'s `now`), so a refusal just
+  before midnight cannot use up next month's one notice. Of the callers that
+  find the month's sum expired one scans (an atomic lease), and a slow scan
+  never replaces a newer sum. Treat a cap as a brake on a
   runaway day, not as a hard invoice ceiling.
 - The journal is no longer forever for its readers once a period is set.
   A total "for all time" (`get_usage_stats/1`, the Endpoints and Usage
@@ -370,6 +403,7 @@ lib/phoenix_kit_ai/
   migrations.ex model_capability.ex   the module's own migration chain; capability snapshot schema
   task_setting.ex task_user_limit.ex guard_event.ex   schemas of the chain's V2 tables
   errors.ex                      error atom -> gettext string
+  numbers.ex                     PhoenixKitAI.Numbers — integers and decimals as the page's language writes them
   ai_model.ex routes.ex          model struct; admin sub-routes
   gettext.ex                     PhoenixKitAI.Gettext backend
   tts_pricing.ex                 hand-maintained TTS rate table
@@ -556,7 +590,7 @@ so the context function gets that same, current scope.
 | `:embedding_models` | `[]` | Extra embedding models appended to `OpenRouterClient.fetch_embedding_models/2`; non-list values are warned about and ignored |
 | `:req_options` | `[]` | Extra `Req` opts appended to every HTTP call — tests use it for `Req.Test` plug stubs |
 | `:realtime_module` | `Xai.Realtime` | Swappable realtime client; tests point it at a Mox mock of `Xai.RealtimeBehaviour` |
-| `:audio_recorder` | `PhoenixKitWeb.Components.Core.AudioRecorder` | The recorder `Dictate` renders; tests point it at a stand-in, because the locked core has none |
+| `:audio_recorder` | `PhoenixKitWeb.Components.Core.AudioRecorder` | The recorder `Dictate` and the Playground render (core 3.4 on); tests point it at a stand-in that delivers a clip on a click, since no browser records in them |
 | `:provider_adapters` | `%{}` | Provider key → `PhoenixKitAI.Provider` module, merged over the built-in adapters (add a provider without touching this module) |
 | `:image_operations` | `%{}` | Extra or replacement image operations for `PhoenixKitAI.Images.Operations` (string or atom keys) |
 | `:max_image_bytes` | `25_000_000` | Largest image accepted as input or fetched as output by the image verbs |
@@ -567,10 +601,10 @@ so the context function gets that same, current scope.
 | `:task_providers` | `[]` | A host app's own modules whose `ai_tasks/0` declares AI tasks (see Feature notes) |
 | `:task_registry_callback_timeout_ms` | `5_000` | How long the registry builder waits for one module's `ai_tasks/0`; a timeout counts as a failure |
 | `:task_registry_build_timeout_ms` | `30_000` | How long a caller waits for the builder before answering from the last cached registry |
-| `:retry` | `false` | Retries for chat / embeddings / TTS calls: `true` (defaults) or `[max_attempts: 3, base_delay: 1_000, max_delay: 30_000, retry_timeouts: false]`; a call's `retry:` wins. Retried: HTTP 408/429/500/502/503/504 (never a 429 about money — an exhausted balance or quota), OpenRouter's transient 402 (`:rate_limited`) and transport errors other than a timeout; `Retry-After` honoured up to `max_delay`. Off by default so callers with their own retry/snooze logic (`TranslateWorker`) are unaffected |
+| `:retry` | `false` | Retries for chat / embeddings / TTS calls: `true` (defaults) or `[max_attempts: 3, base_delay: 1_000, max_delay: 30_000, retry_timeouts: false]`; a call's `retry:` wins. Retried: HTTP 408/429/500/502/503/504 (never a 429 about money — an exhausted balance or quota), OpenRouter's transient 402 (`:rate_limited`) and transport errors other than a timeout; `Retry-After` honoured up to `max_delay`. A setting that is not a positive integer (`nil`, `:infinity`) is its default, with a warning — `max_attempts: nil` used to retry for ever. A client error such as an invalid header is never retried. Off by default so callers with their own retry/snooze logic (`TranslateWorker`) are unaffected |
 | `:timeout` | `120_000` | Receive/connect timeout (ms) for chat / embeddings / TTS calls; a call's `timeout:` wins |
 | `:concurrency` | `%{}` | Concurrency limits per key, `%{"provider:openrouter" => 8, "endpoint:<name or uuid>" => 2}` — the most specific key wins; a call's `concurrency: [limit:, key:, wait:, notify:]` or `concurrency: false` overrides. See `PhoenixKitAI.Limiter` |
-| `:concurrency_defaults` | `[]` | `wait:` (ms a call waits for a slot, default 30_000) and `max_waiting:` (line length before `:concurrency_queue_full`, default 1_000) |
+| `:concurrency_defaults` | `[]` | `wait:` (ms a call waits for a slot, default 30_000, or `:infinity`) and `max_waiting:` (line length before `:concurrency_queue_full`, default 1_000); any other value is the default, checked before the call takes its place in line |
 | `:endpoint_cache_ttl` / `:credential_cache_ttl` | `300` | Seconds `PhoenixKitAI.Cache` keeps a resolved endpoint / integration credentials; `0` turns that cache off (config/test.exs does). Entries are also dropped on the endpoints broadcast / core's system integrations topic |
 | `:request_log_mode` | `:sync` | `:async` writes usage rows from `PhoenixKitAI.RequestLog` instead of the calling process (same insert, broadcast, telemetry and sinks); `create_request/1` stays synchronous |
 | `:request_log_max_queue` | `10_000` | Async backlog above which callers write synchronously again (no row is dropped) |
@@ -670,6 +704,13 @@ provided the API exposes `<base_url>/chat/completions` and `/models`.
   providers, and is part of the cache key. A fallback that answered is the row's
   `metadata.answered_model` (`Request.other_model/2`: a provider prefix on one side,
   letter case or a dated snapshot of the asked model is the same model).
+- **Answers that are not answers**: Req never decodes a response body
+  (`decode_body: false` in `Completion.post_once/4`); every caller decodes
+  it. A 200 with an `error` and no `choices` / `data` (chat, embeddings,
+  TTS) is an error of the status its integer `code` names, or of a 502 when
+  it names none — never a success the request cache would replay. A 200 whose
+  JSON is not an object (`[]`, `42`) is `:invalid_response_format`; one that
+  does not parse is `:invalid_json_response`, not a retried transport error.
 - **Usage accounting**: OpenRouter chat calls send `usage: {include: true}` so the
   response carries `usage.cost` (stored in dollars as it came, so even a
   $0.00000004 call keeps its cost); other providers don't get it.
@@ -1272,6 +1313,22 @@ Test database `phoenix_kit_ai_test`.
   still compiles and runs on a core without it (nothing to record with is shown); a
   raise in the task reaches `Task`'s crash report, as in any `start_async`, whatever
   our own log line leaves out. `into` is the `PhoenixKitAIDictate` hook.
+- Playground speech to text (the "Speech to text" card, `Web.Playground`): one
+  clip, recorded with core's recorder (`Dictate.recorder/1`, so a core without it
+  shows a note and keeps the file picker) or picked as a file (`:stt_file`,
+  `audio/*`, up to `Transcription.max_bytes/0`, read as soon as it is up), kept
+  until removed so it runs again with another model (suggestions: the capability
+  cache's models with `audio_input: :yes` at the endpoint's base URL), language,
+  path (automatic / chat / `/audio/transcriptions`) or instructions. A recording
+  is written down at once (the recorder's Send is the go), a file on the button;
+  one run at a time (`start_async(:transcribe)`), the last five answers listed
+  with endpoint, model, path, language, length, time and cost. A hint says before
+  any call which path the settings take and whether the guard knows the model
+  hears. A clip up to 4 MB plays back from a data URL. The chat message has a
+  `Dictate` (`id="playground-dictate"`, `into="playground-message"`,
+  `:at_cursor`) with the card's settings, and an answer can become the chat
+  message. Every call is the `ai.playground` task of the signed-in user. Chat
+  sends run in `start_async(:chat)` too; a second send while one runs is ignored.
 - Located answers: `detect_regions/4`, `check_statements/4`,
   `describe_image/3` with `regions:` and `extract_text/3` with
   `boxes: true` return `PhoenixKitAI.Box` structs. Boxes are asked for as

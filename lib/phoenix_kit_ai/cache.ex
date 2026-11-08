@@ -86,24 +86,36 @@ defmodule PhoenixKitAI.Cache do
     if ttl == 0 or not table?(), do: fun.(), else: lookup(key, ttl, fun)
   end
 
+  # The table can go between `table?/0` and a read (the cache restarting):
+  # each ETS step then counts as a miss, never a raise into the caller, and
+  # `fun` runs once either way.
   defp lookup(key, ttl, fun) do
     now = System.monotonic_time(:second)
 
-    case :ets.lookup(@table, key) do
-      [{^key, value, expires}] when expires > now ->
+    case cached(key, now) do
+      {:hit, value} ->
         value
 
-      _ ->
+      :miss ->
         generation = generation(key)
         store(key, fun.(), now + ttl, generation)
     end
+  end
+
+  defp cached(key, now) do
+    case :ets.lookup(@table, key) do
+      [{^key, value, expires}] when expires > now -> {:hit, value}
+      _ -> :miss
+    end
+  rescue
+    ArgumentError -> :miss
   end
 
   # Only successes are kept: an error is looked up again next time. Nor is a
   # value kept when an invalidation came while it was being looked up: it may
   # be the row from before the change, and would stay for the whole TTL.
   defp store(key, {:ok, _} = ok, expires, generation) do
-    if generation(key) == generation, do: :ets.insert(@table, {key, ok, expires})
+    if generation(key) == generation, do: insert(key, ok, expires)
     ok
   end
 
@@ -114,11 +126,19 @@ defmodule PhoenixKitAI.Cache do
   defp generation({:endpoint, _uuid} = key), do: {counter(key), counter(:all)}
   defp generation({:credentials, _key}), do: {counter(:credentials), counter(:all)}
 
+  defp insert(key, value, expires) do
+    :ets.insert(@table, {key, value, expires})
+  rescue
+    ArgumentError -> false
+  end
+
   defp counter(name) do
     case :ets.lookup(@table, {:generation, name}) do
       [{_key, n}] -> n
       [] -> 0
     end
+  rescue
+    ArgumentError -> :gone
   end
 
   defp bump(name),

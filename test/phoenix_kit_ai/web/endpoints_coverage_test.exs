@@ -184,7 +184,7 @@ defmodule PhoenixKitAI.Web.EndpointsCoverageTest do
       assert path =~ "status=success"
       assert path =~ "date=30d"
 
-      assert render(view) =~ "Showing 1 of 1 requests"
+      assert render(view) =~ "Showing 1 of 1 request"
     end
 
     test "clear_usage_filters drops every filter", %{conn: conn} do

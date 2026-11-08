@@ -74,7 +74,8 @@ defmodule PhoenixKitAI.Web.Components.CapabilityBadgesTest do
     for {locale, expected} <- [
           {"ru",
            ["Документы", "Генерация изображений", "Не проверено — отметьте на конечной точке"]},
-          {"et", ["Dokumendid", "Pildigeneratsioon", "Kontrollimata — märkige see lõpp-punktis"]}
+          {"et",
+           ["Dokumendid", "Piltide genereerimine", "Kontrollimata — märgi see lõpp-punktil"]}
         ] do
       Gettext.put_locale(PhoenixKitAI.Gettext, locale)
       html = badges(%Capabilities{file_input: :yes, image_output: :yes, vision: :unknown})

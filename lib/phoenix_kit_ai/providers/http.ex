@@ -61,11 +61,37 @@ defmodule PhoenixKitAI.Providers.HTTP do
         Logger.warning("[PhoenixKitAI] #{method} #{url} transport error: #{inspect(reason)}")
         {:error, {:connection_error, reason}}
 
+      # A body Req could not decode is the answer itself; any other error
+      # can carry the request's headers (an invalid header value holds the
+      # bearer token). Only their kind leaves this function.
+      {:error, %Jason.DecodeError{}} ->
+        Logger.error("[PhoenixKitAI] #{method} #{url} answered with JSON that does not parse")
+        {:error, :invalid_json_response}
+
       {:error, reason} ->
-        Logger.error("[PhoenixKitAI] #{method} #{url} failed: #{inspect(reason)}")
-        {:error, {:connection_error, reason}}
+        tag = error_tag(reason)
+        Logger.error("[PhoenixKitAI] #{method} #{url} failed: #{inspect(tag)}")
+        {:error, {:connection_error, tag}}
     end
   end
+
+  @doc false
+  # What a client-side HTTP failure (`Req.HTTPError`, a Mint error, a step's
+  # exception) was, without anything from inside it: `{:http_error, module}`,
+  # with the reason's own tag where it has one (`{:http_error,
+  # Req.HTTPError, :invalid_header_value}`).
+  @spec error_tag(term()) :: {:http_error, atom()} | {:http_error, atom(), atom()}
+  def error_tag(%{__exception__: true, __struct__: module} = error) do
+    case Map.get(error, :reason) do
+      tag when is_atom(tag) and not is_nil(tag) -> {:http_error, module, tag}
+      {tag, _} when is_atom(tag) -> {:http_error, module, tag}
+      {tag, _, _} when is_atom(tag) -> {:http_error, module, tag}
+      _ -> {:http_error, module}
+    end
+  end
+
+  def error_tag(reason) when is_atom(reason), do: {:http_error, reason}
+  def error_tag(_reason), do: {:http_error, :unknown}
 
   @doc "The response body as JSON text (Req decodes JSON bodies for us)."
   @spec body_string(term()) :: String.t()

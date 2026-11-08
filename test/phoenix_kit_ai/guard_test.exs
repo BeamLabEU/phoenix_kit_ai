@@ -654,23 +654,25 @@ defmodule PhoenixKitAI.GuardTest do
       refute failed.metadata["refused"]
     end
 
-    test "a hit whose row cannot be written names no row, never the first call's" do
+    test "a hit names its own row, never the first call's, also with a label too long for its column" do
       stub()
       ep = endpoint()
       # Prompt attribution does not change the cached answer. A name longer
-      # than the journal's column takes makes only this hit's insert fail.
+      # than the journal's column is cut to fit (it used to fail the insert).
       long = String.duplicate("p", 2_000)
 
       assert {:ok, %{"request_uuid" => first}} =
                PhoenixKitAI.ask(ep.uuid, "q", cache: true)
 
       assert is_binary(first)
+      assert {:ok, hit} = PhoenixKitAI.ask(ep.uuid, "q", cache: true, prompt_name: long)
+      assert is_binary(hit["request_uuid"])
+      refute hit["request_uuid"] == first
 
-      capture_log(fn ->
-        assert {:ok, hit} = PhoenixKitAI.ask(ep.uuid, "q", cache: true, prompt_name: long)
-        assert Map.has_key?(hit, "request_uuid")
-        assert hit["request_uuid"] == nil
-      end)
+      assert %{prompt_name: name, metadata: %{"cached" => true}} =
+               PhoenixKitAI.get_request(hit["request_uuid"])
+
+      assert String.length(name) == 255
     end
 
     test "image verbs record attribution and task; a hit answers with its own row" do

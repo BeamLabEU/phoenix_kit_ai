@@ -517,6 +517,10 @@ defmodule PhoenixKitAI.OpenRouterClient do
   end
 
   def build_headers(api_key, opts) do
+    # A key pasted with a trailing newline or space is not a header value
+    # (the client refuses it); the key itself never has either.
+    api_key = if is_binary(api_key), do: String.trim(api_key), else: api_key
+
     base_headers = [
       {"Authorization", "Bearer #{api_key}"},
       {"Content-Type", "application/json"}

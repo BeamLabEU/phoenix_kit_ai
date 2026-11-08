@@ -605,6 +605,9 @@ defmodule PhoenixKitAI.VisionBatch do
   defp account_wide?({:budget_exceeded, scope}) when scope in [:global, :global_month, :endpoint],
     do: true
 
+  # A cap not migrated yet refuses every call, whoever makes it.
+  defp account_wide?({:budget_unmigrated, _scope}), do: true
+
   defp account_wide?(_reason), do: false
 
   defp scoped?(item) do

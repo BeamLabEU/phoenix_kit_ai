@@ -2,7 +2,7 @@ defmodule PhoenixKitAI.Web.PlaygroundCoverageTest do
   @moduledoc """
   Coverage push for `PhoenixKitAI.Web.Playground` LiveView.
 
-  Drives `change`, `send`, `clear`, and the `:do_send` `handle_info`
+  Drives `change`, `send` (its `:chat` task), `clear`
   with stubbed Req responses so the AI completion path executes
   without external HTTP traffic.
   """
@@ -69,11 +69,11 @@ defmodule PhoenixKitAI.Web.PlaygroundCoverageTest do
     end)
   end
 
-  # The `send` event queues the request for the view itself; the render
-  # that follows returns once it has been handled.
+  # The `send` event runs the request in a task (`start_async`); the render
+  # that follows waits for it.
   defp send_and_render(view) do
     render_hook(view, "send", %{})
-    render(view)
+    render_async(view, 2_000)
   end
 
   defp textarea(view, name), do: view |> element("textarea[name='#{name}']") |> render()

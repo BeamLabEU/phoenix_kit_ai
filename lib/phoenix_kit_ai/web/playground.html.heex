@@ -117,6 +117,7 @@
             />
 
             <.textarea
+              id="playground-message"
               name="message"
               label={gettext("Message") <> " *"}
               value={@freeform_message}
@@ -124,6 +125,21 @@
               rows="4"
               placeholder={gettext("Type your message to the AI...")}
               phx-debounce="300"
+            />
+
+            <%!-- The component a host page embeds: the words go into the
+                 message where the cursor was, as if typed. It writes down
+                 with the Speech to text card's settings. --%>
+            <.live_component
+              :if={@selected_endpoint && @recorder_available}
+              module={PhoenixKitAI.Web.Components.Dictate}
+              id="playground-dictate"
+              endpoint={@selected_endpoint}
+              into="playground-message"
+              mode={:at_cursor}
+              label={gettext("Dictate")}
+              busy={@sending}
+              {@dictate_opts}
             />
           <% end %>
 
@@ -399,7 +415,7 @@
             </a>
             <div :if={@edit_result.verification} class="text-sm">
               <span class={["badge badge-sm", if(@edit_result.verification[:passed], do: "badge-success", else: "badge-warning")]}>
-                {if @edit_result.verification[:passed], do: gettext("Check passed"), else: gettext("Check flagged changes")}
+                {if @edit_result.verification[:passed], do: gettext("Check passed"), else: gettext("The check found changes")}
               </span>
               <span class="ml-2">{@edit_result.verification[:summary]}</span>
               <ul :if={@edit_result.verification[:unwanted_changes] not in [nil, []]} class="list-disc ml-6 text-base-content/70">
@@ -416,6 +432,188 @@
               <summary class="cursor-pointer text-base-content/60">{gettext("Prompt sent")}</summary>
               <pre class="whitespace-pre-wrap font-[inherit] mt-1 bg-base-300 rounded p-2">{@edit_result.prompt}</pre>
             </details>
+          </div>
+        </.form_section>
+      <% end %>
+
+      <%!-- Speech to text: PhoenixKitAI.transcribe/3. One clip, recorded
+           here or picked as a file, kept so it can be run again with other
+           settings; the last answers are listed to compare. Its own form:
+           the file input needs phx-change on the form that holds it. --%>
+      <%= if @selected_endpoint do %>
+        <.form_section
+          title={gettext("Speech to text")}
+          icon="hero-microphone"
+          class="bg-base-200"
+          id="playground-transcribe"
+        >
+          <p class="text-sm text-base-content/70">
+            {gettext(
+              "Record or pick a recording and see what the endpoint writes down. The clip is kept: run it again with another model, language, path or instructions and compare the answers. The Dictate button under the chat message uses these settings too."
+            )}
+          </p>
+          <form id="playground-transcribe-form" phx-change="stt_change" phx-submit="stt_send" class="space-y-3">
+            <div class="flex flex-wrap items-center gap-3">
+              <PhoenixKitAI.Web.Components.Dictate.recorder
+                id="playground-stt-recorder"
+                format={:wav_16k}
+                max_seconds={300}
+                label={gettext("Record")}
+                busy={@stt_running}
+                errors={:inline}
+                target={nil}
+              />
+              <label class="btn btn-outline btn-sm focus-within:ring-2 focus-within:ring-primary">
+                <.icon name="hero-arrow-up-tray" class="w-4 h-4" />
+                {gettext("Pick a file")}
+                <.live_file_input upload={@uploads.stt_file} class="sr-only" />
+              </label>
+            </div>
+            <p :if={!@recorder_available} class="text-xs text-base-content/60">
+              {gettext("Recording here needs PhoenixKit 3.4 or later. Pick a file instead.")}
+            </p>
+            <p :for={err <- upload_errors(@uploads.stt_file)} class="text-xs text-error" role="alert">
+              {PhoenixKitAI.Web.Playground.upload_error_label(err)}
+            </p>
+            <div :for={entry <- @uploads.stt_file.entries} class="flex items-center gap-2 text-xs">
+              <span class="truncate max-w-xs">{entry.client_name}</span>
+              <progress class="progress progress-primary w-32" value={entry.progress} max="100" />
+              <button type="button" class="link" phx-click="stt_remove_upload" phx-value-ref={entry.ref}>
+                {gettext("Cancel")}
+              </button>
+              <span :for={err <- upload_errors(@uploads.stt_file, entry)} class="text-error">
+                {PhoenixKitAI.Web.Playground.upload_error_label(err)}
+              </span>
+            </div>
+
+            <div :if={@stt_audio} id="playground-stt-clip" class="rounded-lg bg-base-100 p-3 space-y-2">
+              <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-base-content/70">
+                <.icon name="hero-musical-note" class="w-4 h-4" />
+                <span class="font-medium text-base-content">{@stt_audio.name}</span>
+                <span class="uppercase">{@stt_audio.format}</span>
+                <span>{PhoenixKitAI.Web.Playground.format_bytes(@stt_audio.bytes)}</span>
+                <span :if={@stt_audio.seconds}>{PhoenixKitAI.Web.Playground.format_seconds(@stt_audio.seconds)}</span>
+                <button type="button" class="link ml-auto" phx-click="stt_clear_audio">{gettext("Remove")}</button>
+              </div>
+              <audio :if={@stt_audio_src} controls preload="metadata" src={@stt_audio_src} class="w-full max-w-md" />
+              <p :if={!@stt_audio_src} class="text-xs text-base-content/60">
+                {gettext("Too large to play back here.")}
+              </p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div>
+                <.input
+                  id="playground-stt-model"
+                  name="stt_model"
+                  label={gettext("Model (override)")}
+                  value={@stt_model}
+                  list="playground-stt-models"
+                  autocomplete="off"
+                  placeholder={@selected_endpoint.model}
+                  phx-debounce="300"
+                />
+                <datalist id="playground-stt-models">
+                  <option :for={{id, name} <- @stt_models} value={id}>{name}</option>
+                </datalist>
+              </div>
+              <.input
+                id="playground-stt-language"
+                name="stt_language"
+                label={gettext("Language (optional)")}
+                value={@stt_language}
+                placeholder={gettext("e.g. et, en, ru")}
+                phx-debounce="300"
+              />
+              <.select
+                id="playground-stt-transport"
+                name="stt_transport"
+                label={gettext("Path")}
+                value={@stt_transport}
+                options={[
+                  {PhoenixKitAI.Web.Playground.auto_transport_label(@stt_hint), ""},
+                  {PhoenixKitAI.Web.Playground.transport_label(:chat), "chat"},
+                  {PhoenixKitAI.Web.Playground.transport_label(:transcriptions), "transcriptions"}
+                ]}
+              />
+            </div>
+            <p :if={@stt_models != []} class="text-xs text-base-content/60 -mt-1">
+              {ngettext(
+                "%{count} model at this provider is known to take audio: start typing in Model to pick it.",
+                "%{count} models at this provider are known to take audio: start typing in Model to pick one.",
+                length(@stt_models),
+                count: length(@stt_models)
+              )}
+            </p>
+
+            <.textarea
+              id="playground-stt-instructions"
+              name="stt_instructions"
+              label={gettext("Instructions (optional)")}
+              value={@stt_instructions}
+              rows="2"
+              placeholder={gettext("e.g. A customer ordering plywood. Write sizes as 2500×1250 and thicknesses as 18 mm.")}
+              phx-debounce="300"
+            />
+
+            <p :if={@stt_hint} id="playground-stt-hint" class={["text-xs", PhoenixKitAI.Web.Playground.stt_hint_class(@stt_hint)]}>
+              {PhoenixKitAI.Web.Playground.stt_hint_text(@stt_hint)}
+            </p>
+            <p :if={@stt_error} class="text-sm text-error" role="alert">{@stt_error}</p>
+
+            <div class="flex flex-wrap items-center gap-3">
+              <.button type="submit" disabled={@stt_running || is_nil(@stt_audio)} phx-disable-with={gettext("Writing down…")}>
+                <.icon name="hero-document-text" class="w-4 h-4" />
+                {if @stt_results == [], do: gettext("Write it down"), else: gettext("Write it down again")}
+              </.button>
+              <span :if={@stt_running} class="loading loading-spinner loading-sm text-primary" aria-hidden="true"></span>
+              <span :if={@stt_running} class="text-sm text-base-content/60">{gettext("Writing down what was said…")}</span>
+            </div>
+          </form>
+
+          <div :if={@stt_results != []} id="playground-stt-results" class="space-y-3 pt-2">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-medium text-base-content/60">
+                {gettext("Answers, newest first")}
+              </span>
+              <button type="button" class="link text-xs" phx-click="stt_clear_results">{gettext("Clear")}</button>
+            </div>
+            <div :for={result <- @stt_results} id={"playground-stt-result-#{result.id}"} class="rounded-lg bg-base-100 p-3 space-y-2">
+              <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-base-content/60">
+                <span><.icon name="hero-cpu-chip" class="w-3 h-3 inline" /> {result.model}</span>
+                <span>{result.endpoint_name}</span>
+                <span>{PhoenixKitAI.Web.Playground.transport_label(result.transport)}</span>
+                <span :if={result.language} class="badge badge-sm badge-outline">{result.language}</span>
+                <span :if={result.duration}>
+                  <.icon name="hero-musical-note" class="w-3 h-3 inline" /> {PhoenixKitAI.Web.Playground.format_seconds(result.duration)}
+                </span>
+                <span><.icon name="hero-clock" class="w-3 h-3 inline" /> {PhoenixKitAI.Web.Playground.format_seconds(result.elapsed_ms / 1000)}</span>
+                <span :if={result.cost}>
+                  <.icon name="hero-currency-dollar" class="w-3 h-3 inline" /> {PhoenixKitAI.Request.format_cost(result.cost)}
+                </span>
+                <span :if={result.language_hint}>{gettext("Language hint: %{language}", language: result.language_hint)}</span>
+                <span :if={result.instructions?}>{gettext("With instructions")}</span>
+              </div>
+              <p :if={result.text != ""} id={"playground-stt-text-#{result.id}"} class="text-sm whitespace-pre-wrap">{result.text}</p>
+              <p :if={result.text == ""} class="text-sm text-base-content/60 italic">
+                {gettext("No speech was heard in the recording.")}
+              </p>
+              <div :if={result.text != ""} class="flex gap-3 text-xs">
+                <button
+                  type="button"
+                  id={"playground-stt-copy-#{result.id}"}
+                  class="link"
+                  phx-hook="CopyToClipboard"
+                  data-copy-target={"#playground-stt-text-#{result.id}"}
+                >
+                  <span data-copy-idle>{gettext("Copy")}</span>
+                  <span data-copy-feedback class="hidden">{gettext("Copied")}</span>
+                </button>
+                <button type="button" class="link" phx-click="stt_use_text" phx-value-id={result.id}>
+                  {gettext("Use as chat message")}
+                </button>
+              </div>
+            </div>
           </div>
         </.form_section>
       <% end %>
