@@ -1,3 +1,9 @@
+## 0.29.1 - 2026-11-08
+
+### Added
+
+- **German, Spanish, French, Italian and Chinese.** The module translated only into Estonian and Russian, so its pages, Dictate and its error messages showed English to a host in any other of core's languages; Dictate's "Writing down what you said…" was the first a consuming app noticed. Every entry is now translated into `de`, `es`, `fr`, `it` and `zh`, in the register core's own catalogue uses for each language. A test keeps every shipped language complete.
+
 ## 0.29.0 - 2026-11-08
 
 No migration. See "Changed" for error returns that are new for existing callers.
