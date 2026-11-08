@@ -1,3 +1,31 @@
+## 0.29.0 - 2026-11-08
+
+No migration. See "Changed" for error returns that are new for existing callers.
+
+### Added
+
+- **Speech to text in the Playground.** A "Speech to text" card records a clip with core's audio recorder (PhoenixKit 3.4 and later) or takes a picked file, plays it back, and writes it down with `transcribe/3`. The clip stays, so it can be run again with another model (suggested from the models known to take audio), language hint, path (automatic, chat or `/audio/transcriptions`) or instructions. The last five answers are listed with endpoint, model, path, language, length, time and cost, and each can be copied or used as the chat message. Before any call a hint says which path the settings take and whether the model is known to hear. The chat message has a `Dictate` button with the same settings, so the component a host embeds can be tried as it is.
+- **`PhoenixKitAI.Numbers`:** integers and decimals as the page's language writes them. The admin pages use it: `128,000` and `2.5` in English, `128 000` and `2,5` in Estonian and Russian, where `128,000` read as 128.
+- `Budget.check/3` takes the moment the windows are taken at; `PhoenixKitAI.Web.MessageShape.describe_exit/1` describes a task's exit without its payload.
+- Core 3.4.0 ships the audio recorder, so `Dictate` records on a host that has updated core; before, it showed nothing to record with.
+
+### Changed
+
+- **An HTTP client error that is not a transport error** (an invalid header value, a body that does not decode) is `{:error, {:connection_error, {:http_error, module, tag}}}` (`{:error, :invalid_json_response}` for an image adapter's undecodable body) instead of carrying the exception, and is not retried. Its text in a flash or a usage row names only its kind.
+- **A 200 whose JSON is not an object** (`[]`, `42`) is `{:error, :invalid_response_format}`, and a 200 with an `error` and no answer is an error whatever its shape, classified by its code (a 502 when it has none). Before, the first raised and the second was a success the request cache kept. Text to speech no longer returns such a body as audio.
+- **A failure row's `metadata.error_reason`** with content capture off is the whole reason when it holds no text (`{:api_error, 500}`), else its tag, for every verb.
+- **Retry and limiter options are checked:** a `retry:` setting that is not a positive integer is its default (with a warning), and `concurrency: [wait: :infinity]` waits for a slot.
+- **A `user_uuid:` that is not a uuid has no per-user spend cap,** as it already had no per-user task limit. The endpoint and site caps apply.
+- Translations: 191 Estonian and Russian corrections against one glossary (`dev_docs/guides/translation-glossary.md`). The endpoint form's parameter labels, placeholders and badges, the voice languages and the permission description are now translated, counts take their plural forms, and a few English texts are clearer ("The check found changes", "Who is notified").
+
+### Fixed
+
+- **A stored API key with a stray character no longer reaches the log, a flash or a usage row.** The client's error held the whole `Authorization` header and was logged and stored as it was; a key pasted with a trailing newline or space is also trimmed now. Likewise a truncated answer no longer reaches the log or the row with content capture off, and is not retried and paid again.
+- **A usage row is written whatever the call carried.** A NUL character in a message or an answer, or a `model:` longer than the column, made PostgreSQL refuse the row: the caller got a raise after the provider was paid (or, with `request_log_mode: :async`, the row was lost and the caps never counted the call). Labels are cut to fit, NUL characters dropped, and a database error while writing a row is logged instead of raised.
+- **Spend caps:** a refusal just before midnight no longer takes the next month's (or day's) one notice; a visitor id no longer reads as a database outage after every call; a failed read no longer makes a warning fire again for a crossing already warned about; a node warns for each month's crossing; of the callers finding the month's sum expired only one scans, and a slow scan no longer replaces a newer sum; a cap not migrated yet stops a vision batch whose items carry their own options.
+- `retry: [max_attempts: nil]` no longer retries for ever, `concurrency: [wait: :infinity]` no longer leaves a slot taken, and `model: ""` is no model on the vision and image verbs, as on chat. The endpoint cache no longer raises when it restarts during a lookup.
+- The Playground's chat no longer holds the page while the model answers, and its log lines no longer carry what was typed (a realtime event) or a task's arguments (an exit). Dictate's and the endpoint form's exit lines now say which exception it was.
+
 ## 0.28.0 - 2026-11-05
 
 Run `mix phoenix_kit.update` after upgrading: migration V6 adds the `audio_input`
