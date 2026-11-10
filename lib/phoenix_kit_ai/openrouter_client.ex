@@ -42,14 +42,21 @@ defmodule PhoenixKitAI.OpenRouterClient do
   # this constant only governs validate + model-list traffic.
   @timeout 15_000
 
-  # OpenRouter's /models endpoint does not return embedding models, so we ship
-  # a curated list. This table is manually maintained — bump the date when
-  # refreshing, and users can append more via config:
+  # OpenRouter's /models endpoint does not return embedding models; they are
+  # listed by `GET /embeddings/models`, which `fetch_embedding_models/2`
+  # reads (cached). This curated table is the fallback when that fetch
+  # fails, and supplies the `dimensions` the live list does not carry. It is
+  # manually maintained — bump the date when refreshing, and users can
+  # append more via config:
   #
   #     config :phoenix_kit_ai, embedding_models: [
   #       %{"id" => "custom/model", "name" => "Custom", ...}
   #     ]
-  @embedding_models_last_updated "2026-10-27"
+  @embedding_models_last_updated "2026-11-10"
+  @embedding_models_ttl 3_600
+  # After a failed fetch the fallback is kept this long, so a dead
+  # listing is not asked again on every call.
+  @embedding_models_retry 60
 
   @doc """
   Validates an OpenRouter API key by making a request to the /models endpoint.
@@ -338,21 +345,156 @@ defmodule PhoenixKitAI.OpenRouterClient do
   @doc """
   Fetches embedding models from OpenRouter.
 
-  Note: Embedding models are not returned by `/models`, so this function
-  returns a curated list maintained in source (last refreshed
-  `#{@embedding_models_last_updated}`) merged with any user-contributed
-  entries from `config :phoenix_kit_ai, :embedding_models`.
+  Reads OpenRouter's `GET /embeddings/models` (every embedding model with
+  its `pricing` as OpenRouter writes it, `context_length` and
+  `input_modalities`; `dimensions` filled from the curated table where it
+  knows the model) and keeps the list for an hour
+  (`config :phoenix_kit_ai, embedding_models_ttl:` seconds). When the fetch
+  fails the last list fetched is used, else the curated list maintained in
+  source (last refreshed `#{@embedding_models_last_updated}`), and the
+  listing is not asked again for a minute. Entries from
+  `config :phoenix_kit_ai, :embedding_models` are appended either way.
 
-  Returns `{:ok, models}` with a list of known embedding models.
+  `config :phoenix_kit_ai, embedding_models_live: false` (or the option
+  `live: false`) skips the fetch and returns the curated list.
+
+  ## Options
+
+  - `:live` - `false` returns the curated list without a request
+  - `:refresh` - `true` fetches even when a cached list is fresh
+  - `:base_url` - another OpenRouter-compatible API root
+
+  Returns `{:ok, models}` with a list of known embedding models; never an
+  error.
   """
-  def fetch_embedding_models(_api_key, _opts \\ []) do
-    {:ok, builtin_embedding_models() ++ user_embedding_models()}
+  def fetch_embedding_models(api_key, opts \\ []) do
+    models =
+      if live_embedding_models?(opts),
+        do: live_embedding_models(api_key, opts),
+        else: builtin_embedding_models()
+
+    {:ok, models ++ user_embedding_models()}
   end
 
   @doc """
   Returns the date the built-in embedding model list was last refreshed.
   """
   def embedding_models_last_updated, do: @embedding_models_last_updated
+
+  @doc false
+  # Drops the cached live lists (tests, or after a known catalogue change).
+  def clear_embedding_models_cache do
+    for {{__MODULE__, :embedding_models, _base} = key, _value} <- :persistent_term.get() do
+      :persistent_term.erase(key)
+    end
+
+    :ok
+  end
+
+  defp live_embedding_models?(opts) do
+    case Keyword.get(opts, :live) do
+      nil -> Application.get_env(:phoenix_kit_ai, :embedding_models_live, true) != false
+      live -> live != false
+    end
+  end
+
+  defp live_embedding_models(api_key, opts) do
+    base = Keyword.get(opts, :base_url) || @base_url
+    key = {__MODULE__, :embedding_models, base}
+    now = System.monotonic_time(:second)
+    cached = :persistent_term.get(key, nil)
+
+    case cached do
+      {expires, models} when expires > now ->
+        if Keyword.get(opts, :refresh) == true,
+          do: refresh_embedding_models(key, api_key, base, now, models),
+          else: models
+
+      {_expired, models} ->
+        refresh_embedding_models(key, api_key, base, now, models)
+
+      nil ->
+        refresh_embedding_models(key, api_key, base, now, nil)
+    end
+  end
+
+  defp refresh_embedding_models(key, api_key, base, now, stale) do
+    case request_embedding_models(api_key, base) do
+      {:ok, models} ->
+        :persistent_term.put(key, {now + embedding_models_ttl(), models})
+        models
+
+      {:error, reason} ->
+        Logger.warning(
+          "[PhoenixKitAI] embedding model list not fetched (#{MessageShape.describe(reason)}); " <>
+            "using the #{if stale, do: "last fetched", else: "built-in"} list"
+        )
+
+        models = stale || builtin_embedding_models()
+        :persistent_term.put(key, {now + @embedding_models_retry, models})
+        models
+    end
+  rescue
+    error ->
+      Logger.warning(
+        "[PhoenixKitAI] embedding model list not fetched (#{inspect(error.__struct__)})"
+      )
+
+      stale || builtin_embedding_models()
+  end
+
+  defp embedding_models_ttl do
+    case Application.get_env(:phoenix_kit_ai, :embedding_models_ttl, @embedding_models_ttl) do
+      ttl when is_integer(ttl) and ttl > 0 -> ttl
+      _ -> @embedding_models_ttl
+    end
+  end
+
+  defp request_embedding_models(api_key, base) do
+    headers =
+      if is_binary(api_key) and api_key != "",
+        do: build_headers(api_key),
+        else: [{"Content-Type", "application/json"}]
+
+    case http_get("#{String.trim_trailing(base, "/")}/embeddings/models", headers) do
+      {:ok, %{status_code: 200, body: body}} -> parse_embedding_models(body)
+      {:ok, %{status_code: status}} -> {:error, {:api_error, status}}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp parse_embedding_models(body) do
+    with {:ok, %{"data" => [_ | _] = data}} <- Jason.decode(body),
+         [_ | _] = models <- data |> Enum.map(&live_embedding_model/1) |> Enum.reject(&is_nil/1) do
+      {:ok, models}
+    else
+      {:error, %Jason.DecodeError{}} -> {:error, :invalid_json_response}
+      _other -> {:error, :invalid_response_format}
+    end
+  end
+
+  defp live_embedding_model(%{"id" => id} = model) when is_binary(id) and id != "" do
+    known = Enum.find(builtin_embedding_models(), %{}, &(&1["id"] == id))
+
+    %{
+      "id" => id,
+      "name" => model["name"] || known["name"] || id,
+      "description" => model["description"] || known["description"],
+      "context_length" => model["context_length"] || known["context_length"],
+      "dimensions" => known["dimensions"],
+      "input_modalities" => input_modalities(model, known),
+      "pricing" => model["pricing"] || known["pricing"]
+    }
+  end
+
+  defp live_embedding_model(_model), do: nil
+
+  defp input_modalities(model, known) do
+    case get_in(model, ["architecture", "input_modalities"]) do
+      [_ | _] = list -> list
+      _ -> known["input_modalities"] || ["text"]
+    end
+  end
 
   defp user_embedding_models do
     case Application.get_env(:phoenix_kit_ai, :embedding_models, []) do
@@ -369,8 +511,8 @@ defmodule PhoenixKitAI.OpenRouterClient do
   end
 
   defp builtin_embedding_models do
-    # OpenRouter embedding models - these are not returned by /models endpoint
-    # They must be used via POST /api/v1/embeddings
+    # OpenRouter embedding models (ids as `GET /embeddings/models` listed
+    # them on #{@embedding_models_last_updated}); used via POST /embeddings.
     [
       %{
         "id" => "openai/text-embedding-3-large",
@@ -397,52 +539,78 @@ defmodule PhoenixKitAI.OpenRouterClient do
         "pricing" => %{"prompt" => 0.0000001, "completion" => 0}
       },
       %{
-        "id" => "cohere/embed-english-v3.0",
-        "name" => "Embed English v3.0",
-        "description" => "Cohere's English embedding model",
-        "context_length" => 512,
-        "dimensions" => 1024,
-        "pricing" => %{"prompt" => 0.0000001, "completion" => 0}
+        "id" => "google/gemini-embedding-001",
+        "name" => "Gemini Embedding 001",
+        "description" => "Google's multilingual text embedding model",
+        "context_length" => 20_000,
+        "dimensions" => 3072,
+        "pricing" => %{"prompt" => 0.00000015, "completion" => 0}
       },
       %{
-        "id" => "cohere/embed-multilingual-v3.0",
-        "name" => "Embed Multilingual v3.0",
-        "description" => "Cohere's multilingual embedding model",
-        "context_length" => 512,
-        "dimensions" => 1024,
-        "pricing" => %{"prompt" => 0.0000001, "completion" => 0}
+        "id" => "cohere/embed-5-pro",
+        "name" => "Embed 5 Pro",
+        "description" => "Cohere's multilingual, multimodal embedding model",
+        "context_length" => 128_000,
+        "dimensions" => 2048,
+        "input_modalities" => ["text", "image"],
+        "pricing" => %{"prompt" => 0.00000012, "completion" => 0}
       },
       %{
-        "id" => "voyage/voyage-3",
-        "name" => "Voyage 3",
+        "id" => "cohere/embed-5-fast",
+        "name" => "Embed 5 Fast",
+        "description" => "Cohere's lower-latency Embed 5 tier (same space as Pro)",
+        "context_length" => 128_000,
+        "dimensions" => 2048,
+        "input_modalities" => ["text", "image"],
+        "pricing" => %{"prompt" => 0.00000008, "completion" => 0}
+      },
+      %{
+        "id" => "mongodb/voyage-4",
+        "name" => "Voyage 4",
         "description" => "Voyage AI's general-purpose embedding model",
         "context_length" => 32_000,
         "dimensions" => 1024,
         "pricing" => %{"prompt" => 0.00000006, "completion" => 0}
       },
       %{
-        "id" => "voyage/voyage-3-lite",
-        "name" => "Voyage 3 Lite",
+        "id" => "mongodb/voyage-4-lite",
+        "name" => "Voyage 4 Lite",
         "description" => "Voyage AI's lightweight embedding model",
         "context_length" => 32_000,
-        "dimensions" => 512,
+        "dimensions" => 1024,
         "pricing" => %{"prompt" => 0.00000002, "completion" => 0}
       },
       %{
-        "id" => "voyage/voyage-code-3",
-        "name" => "Voyage Code 3",
+        "id" => "mongodb/voyage-code-4",
+        "name" => "Voyage Code 4",
         "description" => "Voyage AI's code-optimized embedding model",
         "context_length" => 32_000,
         "dimensions" => 1024,
-        "pricing" => %{"prompt" => 0.00000006, "completion" => 0}
+        "pricing" => %{"prompt" => 0.00000012, "completion" => 0}
       },
       %{
         "id" => "qwen/qwen3-embedding-8b",
         "name" => "Qwen3 Embedding 8B",
         "description" => "Qwen's 8B parameter embedding model",
-        "context_length" => 8192,
+        "context_length" => 40_960,
         "dimensions" => 4096,
-        "pricing" => %{"prompt" => 0.00000002, "completion" => 0}
+        "pricing" => %{"prompt" => 0.00000001, "completion" => 0}
+      },
+      %{
+        "id" => "mistralai/mistral-embed-2312",
+        "name" => "Mistral Embed",
+        "description" => "Mistral's embedding model (no dimensions parameter)",
+        "context_length" => 8192,
+        "dimensions" => 1024,
+        "pricing" => %{"prompt" => 0.0000001, "completion" => 0}
+      },
+      %{
+        "id" => "baai/bge-m3",
+        "name" => "BGE-M3",
+        "description" => "BAAI's multilingual embedding model (dense vectors)",
+        "context_length" => 8194,
+        "dimensions" => 1024,
+        "pricing" => %{"prompt" => 0.00000001, "completion" => 0}
       },
       # Multimodal: these also embed images (`PhoenixKitAI.embed/3` with
       # `{:image, input}`), into the same space as their text.
@@ -456,7 +624,7 @@ defmodule PhoenixKitAI.OpenRouterClient do
         "pricing" => %{"prompt" => 0.0000002, "completion" => 0}
       },
       %{
-        "id" => "voyageai/voyage-multimodal-3.5",
+        "id" => "mongodb/voyage-multimodal-3.5",
         "name" => "Voyage Multimodal 3.5",
         "description" => "Voyage AI's multimodal embedding model (text and images)",
         "context_length" => 32_000,
