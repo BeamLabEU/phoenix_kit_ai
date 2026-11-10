@@ -311,6 +311,14 @@ defmodule PhoenixKitAI.Completion do
   ## Options
 
   - `:dimensions` - Output dimensions (model-specific)
+  - `:input_type` - Sent as `input_type` when a string (Gemini, Cohere,
+    Voyage and Nvidia read it; see `PhoenixKitAI.EmbeddingConventions`)
+  - `:encoding_format` - Sent as `encoding_format` when a string. With
+    `"base64"` the vectors travel as base64 float32 and are decoded back to
+    lists of floats here, so the caller sees the same shape either way
+  - `:user` - Sent as `user` (the provider's end-user id) when a string
+  - `:provider` - OpenRouter provider preferences (see
+    `provider_preferences/2`); ignored on other providers
 
   ## Returns
 
@@ -328,12 +336,16 @@ defmodule PhoenixKitAI.Completion do
         "input" => input
       }
       |> maybe_add("dimensions", Keyword.get(opts, :dimensions))
+      |> maybe_add("input_type", string_opt(opts, :input_type))
+      |> maybe_add("encoding_format", string_opt(opts, :encoding_format))
+      |> maybe_add("user", string_opt(opts, :user))
+      |> put_provider_preferences(endpoint, opts)
 
     start_time = System.monotonic_time(:millisecond)
 
     case Limiter.run(endpoint, opts, fn -> http_post(url, headers, body, opts) end) do
       {:ok, %{status_code: 200, body: response_body}} ->
-        parse_success_response(response_body, start_time)
+        response_body |> parse_success_response(start_time) |> decode_base64_embeddings()
 
       {:ok, %{status_code: status, body: response_body}} ->
         handle_error_status(status, response_body)
@@ -1073,17 +1085,151 @@ defmodule PhoenixKitAI.Completion do
     |> maybe_add("tool_choice", Keyword.get(opts, :tool_choice))
     |> maybe_add("parallel_tool_calls", Keyword.get(opts, :parallel_tool_calls))
     |> maybe_add_reasoning(opts)
-    |> maybe_require_parameters(opts)
+    |> put_provider_preferences(endpoint, opts)
     |> provider_rules(endpoint)
   end
 
-  # Set by the call-time guard for a call with a hard requirement on
-  # OpenRouter: route only to upstream providers that take every parameter.
-  defp maybe_require_parameters(body, opts) do
+  @doc """
+  The OpenRouter `provider` object a chat or embeddings call sends: the
+  endpoint's `provider_settings["provider_preferences"]`, then the call's
+  `provider:` over it (a map or keyword list, e.g. `%{order: ["deepinfra"],
+  allow_fallbacks: false}`, `%{only: [...]}`, `%{sort: "price"}`,
+  `%{quantizations: ["fp8"]}`, `%{ignore: [...]}`), both only on an
+  OpenRouter endpoint; and `require_parameters: true` when the call-time
+  guard set `:require_parameters`, which wins over either.
+
+  Keys may be atoms or strings. A value that cannot be sent as JSON (a
+  tuple, a pid) is left out with a warning, and anything that is not a map
+  or keyword list is ignored with a warning — a preference never fails the
+  call. Returns `%{}` when there is nothing to send.
+  """
+  @spec provider_preferences(map(), keyword()) :: map()
+  def provider_preferences(endpoint, opts) do
+    prefs =
+      if Endpoint.openrouter?(endpoint) do
+        endpoint
+        |> endpoint_provider_preferences()
+        |> Map.merge(json_preferences(Keyword.get(opts, :provider), "provider"))
+      else
+        %{}
+      end
+
+    # Set by the call-time guard for a call with a hard requirement on
+    # OpenRouter: route only to upstream providers that take every parameter.
     if Keyword.get(opts, :require_parameters) == true,
-      do: Map.put(body, "provider", %{"require_parameters" => true}),
-      else: body
+      do: Map.put(prefs, "require_parameters", true),
+      else: prefs
   end
+
+  defp put_provider_preferences(body, endpoint, opts) do
+    case provider_preferences(endpoint, opts) do
+      prefs when map_size(prefs) == 0 -> body
+      prefs -> Map.put(body, "provider", prefs)
+    end
+  end
+
+  defp endpoint_provider_preferences(endpoint) do
+    case Map.get(endpoint, :provider_settings) do
+      %{"provider_preferences" => prefs} ->
+        json_preferences(prefs, ~s(provider_settings["provider_preferences"]))
+
+      _ ->
+        %{}
+    end
+  end
+
+  defp json_preferences(nil, _where), do: %{}
+
+  defp json_preferences(prefs, where) when is_map(prefs) or is_list(prefs) do
+    if is_list(prefs) and not Keyword.keyword?(prefs) do
+      Logger.warning("[PhoenixKitAI] #{where} must be a map or keyword list; ignored")
+      %{}
+    else
+      Enum.reduce(prefs, %{}, &put_json_preference(&1, &2, where))
+    end
+  end
+
+  defp json_preferences(_prefs, where) do
+    Logger.warning("[PhoenixKitAI] #{where} must be a map or keyword list; ignored")
+    %{}
+  end
+
+  defp put_json_preference({key, value}, acc, where) do
+    case {json_key(key), json_value(value)} do
+      {{:ok, key}, {:ok, value}} ->
+        Map.put(acc, key, value)
+
+      {{:ok, key}, :error} ->
+        Logger.warning("[PhoenixKitAI] #{where} key #{key} is not JSON; left out")
+        acc
+
+      _ ->
+        Logger.warning("[PhoenixKitAI] #{where} has a key that is not a string; left out")
+        acc
+    end
+  end
+
+  defp json_key(key) when is_binary(key), do: {:ok, key}
+  defp json_key(key) when is_atom(key) and not is_nil(key), do: {:ok, Atom.to_string(key)}
+  defp json_key(_key), do: :error
+
+  defp json_value(value) when is_binary(value) or is_number(value) or is_boolean(value),
+    do: {:ok, value}
+
+  defp json_value(nil), do: {:ok, nil}
+  defp json_value(value) when is_atom(value), do: {:ok, Atom.to_string(value)}
+
+  defp json_value(list) when is_list(list) do
+    Enum.reduce_while(list, {:ok, []}, fn item, {:ok, acc} ->
+      case json_value(item) do
+        {:ok, item} -> {:cont, {:ok, [item | acc]}}
+        :error -> {:halt, :error}
+      end
+    end)
+    |> case do
+      {:ok, items} -> {:ok, Enum.reverse(items)}
+      :error -> :error
+    end
+  end
+
+  defp json_value(map) when is_map(map) and not is_struct(map) do
+    Enum.reduce_while(map, {:ok, %{}}, fn {key, value}, {:ok, acc} ->
+      with {:ok, key} <- json_key(key), {:ok, value} <- json_value(value) do
+        {:cont, {:ok, Map.put(acc, key, value)}}
+      else
+        _ -> {:halt, :error}
+      end
+    end)
+  end
+
+  defp json_value(_value), do: :error
+
+  defp string_opt(opts, key) do
+    case Keyword.get(opts, key) do
+      value when is_binary(value) and value != "" -> value
+      _ -> nil
+    end
+  end
+
+  # `encoding_format: "base64"` answers each vector as base64 float32
+  # (little-endian); decoded here so every caller reads lists of floats.
+  # Anything else is left as it came.
+  defp decode_base64_embeddings({:ok, %{"data" => data} = response}) when is_list(data),
+    do: {:ok, %{response | "data" => Enum.map(data, &decode_base64_item/1)}}
+
+  defp decode_base64_embeddings(result), do: result
+
+  defp decode_base64_item(%{"embedding" => encoded} = item) when is_binary(encoded) do
+    case Base.decode64(encoded) do
+      {:ok, bytes} when rem(byte_size(bytes), 4) == 0 ->
+        %{item | "embedding" => for(<<x::float-32-little <- bytes>>, do: x)}
+
+      _ ->
+        item
+    end
+  end
+
+  defp decode_base64_item(item), do: item
 
   # Anthropic's OpenAI-compatible layer: never `temperature` and `top_p`
   # together (a 400 on its own; `temperature` is kept), and none of

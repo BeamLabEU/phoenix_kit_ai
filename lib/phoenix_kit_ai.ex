@@ -4075,6 +4075,13 @@ defmodule PhoenixKitAI do
     first is down, rate-limited or refuses (OpenRouter's model routing); the
     model that answered is recorded as the row's `answered_model`. Each is
     checked by the guard like `:model`; one that does not fit refuses the call.
+  - `:provider` - OpenRouter only: provider preferences sent as the request's
+    `provider` object, e.g. `%{sort: "price", quantizations: ["fp8"],
+    ignore: ["SomeHost"]}` or `%{order: ["deepinfra"], allow_fallbacks:
+    false}`, merged over the endpoint's `provider_settings["provider_preferences"]`;
+    the guard's `require_parameters` is added on top. A value that is not
+    JSON is left out with a warning, never raised. See
+    `PhoenixKitAI.Completion.provider_preferences/2`.
 
   ## Delivery options
 
@@ -4250,6 +4257,8 @@ defmodule PhoenixKitAI do
       :attribution,
       :idempotency_key,
       :user_uuid,
+      # the provider's end-user id on an embedding: who asked, not what
+      :user,
       :cache,
       :prompt_uuid,
       :prompt_name,
