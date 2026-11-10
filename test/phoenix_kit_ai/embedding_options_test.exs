@@ -342,4 +342,62 @@ defmodule PhoenixKitAI.EmbeddingOptionsTest do
              }
     end
   end
+
+  describe "embed_many/3" do
+    test "splits by batch_size and merges in order with summed usage and cost" do
+      ep = endpoint(model: "openai/text-embedding-3-small")
+      stub_embeddings()
+      inputs = for i <- 1..5, do: "text #{i}"
+
+      assert {:ok, response} = PhoenixKitAI.embed_many(ep.uuid, inputs, batch_size: 2)
+
+      assert [["text 1", "text 2"], ["text 3", "text 4"], ["text 5"]] =
+               bodies() |> Enum.map(& &1["input"])
+
+      assert Enum.map(response["data"], & &1["index"]) == [0, 1, 2, 3, 4]
+      # each part numbers its own vectors 0.., so the merged order is visible
+      assert Enum.map(response["data"], &hd(&1["embedding"])) == [0.0, 1.0, 0.0, 1.0, 0.0]
+      assert response["usage"] == %{"prompt_tokens" => 50, "total_tokens" => 50}
+      assert response["batches"] == 3
+      assert length(response["request_uuids"]) == 3
+      assert Decimal.equal?(response["cost"], Decimal.new("0.0003"))
+      assert response["space"] == "openai/text-embedding-3-small:2"
+    end
+
+    test "uses the model's limit (Cohere: 96 per request) and passes the role on" do
+      ep = endpoint(model: "cohere/embed-5-pro")
+      stub_embeddings()
+
+      assert {:ok, %{"data" => data, "convention" => %{"role" => "document"}}} =
+               PhoenixKitAI.embed_many(ep.uuid, Enum.map(1..100, &"t#{&1}"),
+                 role: :document,
+                 max_concurrency: 2
+               )
+
+      sent = bodies()
+      assert Enum.map(sent, &length(&1["input"])) |> Enum.sort() == [4, 96]
+      assert Enum.all?(sent, &(&1["input_type"] == "search_document"))
+      assert length(data) == 100
+      assert Enum.map(data, & &1["index"]) == Enum.to_list(0..99)
+    end
+
+    test "a token budget splits long texts" do
+      ep = endpoint(model: "openai/text-embedding-3-small")
+      stub_embeddings()
+      long = String.duplicate("a", 300)
+
+      assert {:ok, %{"batches" => 3}} =
+               PhoenixKitAI.embed_many(ep.uuid, [long, long, long], max_batch_tokens: 150)
+    end
+
+    test "returns the first failing part's error" do
+      ep = endpoint(model: "openai/text-embedding-3-small")
+      Req.Test.stub(__MODULE__, &Req.Test.json(Plug.Conn.put_status(&1, 503), %{}))
+
+      assert {:error, {:api_error, 503}} =
+               PhoenixKitAI.embed_many(ep.uuid, ["a", "b", "c"], batch_size: 1)
+
+      assert {:error, :empty_input} = PhoenixKitAI.embed_many(ep.uuid, [])
+    end
+  end
 end

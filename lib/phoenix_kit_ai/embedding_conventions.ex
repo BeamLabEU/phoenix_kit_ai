@@ -57,7 +57,8 @@ defmodule PhoenixKitAI.EmbeddingConventions do
 
   ## Other model facts
 
-  `max_inputs/1` is the most inputs one request takes: Cohere 96, OpenAI 2 048, Voyage 1 000, Gemini 100, else 100.
+  `max_inputs/1` is the most inputs one request takes (`PhoenixKitAI.embed_many/3`
+  splits by it): Cohere 96, OpenAI 2 048, Voyage 1 000, Gemini 100, else 100.
   `max_batch_tokens/1` is a request's token budget where the provider has
   one (OpenAI 300 000; Voyage 120 000, the strictest of its models), else nil.
   `dimensions?/1` is false for `mistral-embed`, which answers 422 to a

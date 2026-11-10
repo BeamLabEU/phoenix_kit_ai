@@ -4571,6 +4571,166 @@ defmodule PhoenixKitAI do
   end
 
   @doc """
+  Embeds a long list of inputs in as many requests as the model needs, and
+  returns one response with every vector in the order given.
+
+  The list is split by the model's limits (`PhoenixKitAI.EmbeddingConventions`:
+  inputs per request — Cohere 96, OpenAI 2 048, Voyage 1 000, others 100 —
+  and, for OpenAI and Voyage, an estimated token budget per request), and
+  each part goes through `embed/3` with the same options: one usage row,
+  one cache entry and one `PhoenixKitAI.Limiter` slot per request.
+
+  ## Options
+
+  Every `embed/3` option, plus:
+
+  - `:batch_size` - inputs per request instead of the model's limit
+  - `:max_batch_tokens` - estimated tokens per request (a text's bytes / 3)
+    instead of the model's budget
+  - `:max_concurrency` - requests in flight at once (default 1)
+
+  ## Returns
+
+  - `{:ok, response}` - `"data"` holds every vector, `"index"` counting
+    across the whole list; `"usage"` and `"cost"` are the sums,
+    `"request_uuids"` the parts' rows and `"batches"` their number;
+    `"model"`, `"space"` and `"convention"` are the first part's.
+  - `{:error, reason}` - the first part that failed; nothing is returned
+    for the parts that succeeded (with `cache:` on they are cached, so a
+    retry pays only for the rest).
+  """
+  @spec embed_many(String.t() | Endpoint.t(), embed_input() | [embed_input()], keyword()) ::
+          {:ok, map()} | {:error, term()}
+  def embed_many(endpoint_uuid, inputs, opts \\ [])
+
+  def embed_many(_endpoint_uuid, [], _opts), do: {:error, :empty_input}
+
+  def embed_many(endpoint_uuid, inputs, opts) when is_list(inputs) do
+    with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid) do
+      model = with_call_model(endpoint, call_model_opts(opts)).model
+      {auto_source, _stacktrace, _context} = capture_caller_info()
+
+      embed_opts =
+        opts
+        |> Keyword.drop([:batch_size, :max_batch_tokens, :max_concurrency])
+        |> Keyword.put_new(:source, auto_source)
+
+      inputs
+      |> embedding_batches(
+        positive_opt(opts[:batch_size]) || EmbeddingConventions.max_inputs(model),
+        positive_opt(opts[:max_batch_tokens]) || EmbeddingConventions.max_batch_tokens(model)
+      )
+      |> run_embedding_batches(endpoint, embed_opts, positive_opt(opts[:max_concurrency]) || 1)
+    end
+  end
+
+  def embed_many(endpoint_uuid, input, opts), do: embed(endpoint_uuid, input, opts)
+
+  defp positive_opt(value) when is_integer(value) and value > 0, do: value
+  defp positive_opt(_value), do: nil
+
+  # Consecutive parts of at most `size` inputs and, when there is a token
+  # budget, at most `budget` estimated tokens (one input over the budget
+  # still goes, alone: the provider decides).
+  defp embedding_batches(inputs, size, budget) do
+    inputs
+    |> Enum.chunk_while(
+      {[], 0, 0},
+      fn input, {acc, count, tokens} ->
+        cost = estimated_tokens(input)
+
+        if count > 0 and (count >= size or (budget && tokens + cost > budget)),
+          do: {:cont, Enum.reverse(acc), {[input], 1, cost}},
+          else: {:cont, {[input | acc], count + 1, tokens + cost}}
+      end,
+      fn
+        {[], _, _} -> {:cont, {[], 0, 0}}
+        {acc, _, _} -> {:cont, Enum.reverse(acc), {[], 0, 0}}
+      end
+    )
+  end
+
+  defp estimated_tokens(text) when is_binary(text), do: div(byte_size(text), 3) + 1
+  defp estimated_tokens(_image), do: 1
+
+  defp run_embedding_batches(batches, endpoint, opts, 1) do
+    batches
+    |> Enum.reduce_while({:ok, []}, fn batch, {:ok, acc} ->
+      case embed(endpoint, batch, opts) do
+        {:ok, response} -> {:cont, {:ok, [{batch, response} | acc]}}
+        {:error, _} = error -> {:halt, error}
+      end
+    end)
+    |> case do
+      {:ok, parts} -> {:ok, merge_embedding_parts(Enum.reverse(parts))}
+      error -> error
+    end
+  end
+
+  defp run_embedding_batches(batches, endpoint, opts, concurrency) do
+    batches
+    |> Task.async_stream(&{&1, embed(endpoint, &1, opts)},
+      max_concurrency: concurrency,
+      ordered: true,
+      timeout: :infinity
+    )
+    |> Enum.reduce_while({:ok, []}, fn
+      {:ok, {batch, {:ok, response}}}, {:ok, acc} -> {:cont, {:ok, [{batch, response} | acc]}}
+      {:ok, {_batch, {:error, _} = error}}, _acc -> {:halt, error}
+      {:exit, reason}, _acc -> {:halt, {:error, {:embedding_batch_exit, reason}}}
+    end)
+    |> case do
+      {:ok, parts} -> {:ok, merge_embedding_parts(Enum.reverse(parts))}
+      error -> error
+    end
+  end
+
+  defp merge_embedding_parts([{_batch, first} | _] = parts) do
+    {data, _offset} =
+      Enum.flat_map_reduce(parts, 0, fn {batch, response}, offset ->
+        items =
+          (response["data"] || [])
+          |> Enum.with_index()
+          |> Enum.sort_by(fn {item, position} -> {item_index(item, position), position} end)
+          |> Enum.with_index(offset)
+          |> Enum.map(fn {{item, _position}, index} -> Map.put(item, "index", index) end)
+
+        {items, offset + length(batch)}
+      end)
+
+    responses = Enum.map(parts, &elem(&1, 1))
+
+    first
+    |> Map.take(["object", "model", "space", "convention"])
+    |> Map.merge(%{
+      "data" => data,
+      "usage" => sum_embedding_usage(responses),
+      "cost" => sum_costs(Enum.map(responses, & &1["cost"])),
+      "request_uuids" => Enum.map(responses, & &1["request_uuid"]),
+      "batches" => length(parts)
+    })
+  end
+
+  defp item_index(%{"index" => index}, _position) when is_integer(index), do: index
+  defp item_index(_item, position), do: position
+
+  defp sum_embedding_usage(responses) do
+    usages = Enum.map(responses, &Completion.extract_usage/1)
+
+    %{
+      "prompt_tokens" => usages |> Enum.map(& &1.prompt_tokens) |> Enum.sum(),
+      "total_tokens" => usages |> Enum.map(& &1.total_tokens) |> Enum.sum()
+    }
+  end
+
+  defp sum_costs(costs) do
+    case Enum.filter(costs, &match?(%Decimal{}, &1)) do
+      [] -> nil
+      known -> Enum.reduce(known, &Decimal.add/2)
+    end
+  end
+
+  @doc """
   Synthesizes speech from text through a configured AI endpoint.
 
   Returns the raw audio bytes alongside the format so the caller knows
