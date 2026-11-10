@@ -72,7 +72,110 @@ defmodule PhoenixKitAI.EmbeddingOptionsTest do
     end
   end
 
-  describe "pass-through" do
+  describe "role:" do
+    test "sends the model's input_type per role and records it" do
+      ep = endpoint(model: "mongodb/voyage-4")
+      stub_embeddings()
+
+      assert {:ok, query} = PhoenixKitAI.embed(ep.uuid, "red sofa", role: :query)
+      assert_received {:request_body, %{"input" => "red sofa", "input_type" => "query"}}
+
+      assert query["convention"] == %{
+               "role" => "query",
+               "input_type" => "query",
+               "template" => nil
+             }
+
+      row = TestRepo.get!(Request, query["request_uuid"])
+      assert row.metadata["role"] == "query"
+      assert row.metadata["input_type"] == "query"
+
+      assert {:ok, _} = PhoenixKitAI.embed(ep.uuid, ["a", "b"], role: :document)
+      assert_received {:request_body, %{"input" => ["a", "b"], "input_type" => "document"}}
+    end
+
+    test "puts the instruction before a Qwen query, never before a document" do
+      ep = endpoint(model: "qwen/qwen3-embedding-8b")
+      stub_embeddings()
+
+      assert {:ok, _} =
+               PhoenixKitAI.embed(ep.uuid, ["horses on a beach"],
+                 role: :query,
+                 instruction: "Given an image search query, retrieve descriptions of images"
+               )
+
+      assert_received {:request_body,
+                       %{
+                         "input" => [
+                           "Instruct: Given an image search query, retrieve descriptions of images\nQuery: horses on a beach"
+                         ]
+                       } = body}
+
+      refute Map.has_key?(body, "input_type")
+
+      assert {:ok, _} = PhoenixKitAI.embed(ep.uuid, "a description", role: :document)
+      assert_received {:request_body, %{"input" => "a description"}}
+    end
+
+    test "prefixes only the texts of a list with images" do
+      ep = endpoint(model: "google/gemini-embedding-2")
+      stub_embeddings()
+      jpeg = <<0xFF, 0xD8, 0xFF, 0xE0, 0, 16, "JFIF", 0, 1, 2, 3>>
+
+      assert {:ok, _} = PhoenixKitAI.embed(ep.uuid, [{:image, jpeg}, "a cat"], role: :document)
+
+      assert_received {:request_body, %{"input" => [image, text]} = body}
+      refute Map.has_key?(body, "input_type")
+      assert %{"content" => [%{"type" => "image_url"}]} = image
+      assert %{"content" => [%{"type" => "text", "text" => "title: none | text: a cat"}]} = text
+    end
+
+    test "without a role nothing changes" do
+      ep = endpoint(model: "mongodb/voyage-4")
+      stub_embeddings()
+
+      assert {:ok, response} = PhoenixKitAI.embed(ep.uuid, "plain")
+      assert_received {:request_body, body}
+      assert body == %{"model" => "mongodb/voyage-4", "input" => "plain"}
+      refute Map.has_key?(response, "convention")
+    end
+
+    test "an invalid role is refused before any request" do
+      ep = endpoint(model: "mongodb/voyage-4")
+      stub_embeddings()
+
+      assert {:error, :invalid_embedding_role} = PhoenixKitAI.embed(ep.uuid, "x", role: :search)
+      refute_received {:request_body, _}
+      assert PhoenixKitAI.Errors.message(:invalid_embedding_role) =~ "query or document"
+    end
+
+    test "query and document embeddings of one text never share a cache entry" do
+      for model <- [
+            "mongodb/voyage-4",
+            "qwen/qwen3-embedding-8b",
+            "openai/text-embedding-3-small"
+          ] do
+        ep = endpoint(model: model)
+        stub_embeddings()
+
+        assert {:ok, _} = PhoenixKitAI.embed(ep.uuid, "same text", role: :query, cache: true)
+        assert {:ok, _} = PhoenixKitAI.embed(ep.uuid, "same text", role: :document, cache: true)
+        assert {:ok, _} = PhoenixKitAI.embed(ep.uuid, "same text", cache: true)
+        # a second query is the cached one
+        assert {:ok, _} = PhoenixKitAI.embed(ep.uuid, "same text", role: :query, cache: true)
+
+        assert length(bodies()) == 3, model
+
+        # with a caller's own key too
+        key = [key: "doc-#{model}"]
+        assert {:ok, _} = PhoenixKitAI.embed(ep.uuid, "k", role: :query, cache: key)
+        assert {:ok, _} = PhoenixKitAI.embed(ep.uuid, "k", role: :document, cache: key)
+        assert length(bodies()) == 2, model
+      end
+    end
+  end
+
+  describe "pass-through and normalisation" do
     test "input_type, encoding_format and user are sent; base64 vectors come back as floats" do
       ep = endpoint(model: "openai/text-embedding-3-small")
       test = self()
@@ -99,6 +202,21 @@ defmodule PhoenixKitAI.EmbeddingOptionsTest do
                          "encoding_format" => "base64",
                          "user" => "visitor-7"
                        }}
+
+      assert {:ok, %{"data" => [%{"embedding" => [0.6, 0.8]}]}} =
+               PhoenixKitAI.embed(ep.uuid, "x", encoding_format: "base64", normalize: true)
+    end
+
+    test "normalize: true returns unit vectors; off by default" do
+      ep = endpoint(model: "perplexity/pplx-embed-v1-4b")
+      stub_embeddings(vector: [6.0, 8.0])
+
+      assert {:ok, %{"data" => [%{"embedding" => [6.0, 8.0]}]}} = PhoenixKitAI.embed(ep.uuid, "x")
+
+      assert {:ok, %{"data" => [%{"embedding" => [0.6, 0.8]}], "request_uuid" => uuid}} =
+               PhoenixKitAI.embed(ep.uuid, "x", normalize: true)
+
+      assert TestRepo.get!(Request, uuid).metadata["normalized"] == true
     end
   end
 
@@ -114,6 +232,16 @@ defmodule PhoenixKitAI.EmbeddingOptionsTest do
       assert {:ok, %{"request_uuid" => uuid}} = PhoenixKitAI.embed(ep.uuid, "y")
       assert_received {:request_body, %{"dimensions" => 1536}}
       assert TestRepo.get!(Request, uuid).metadata["dimensions"] == 1536
+    end
+
+    test "mistral-embed never gets dimensions (it answers 422)" do
+      ep = endpoint(model: "mistralai/mistral-embed-2312", dimensions: 512)
+      stub_embeddings()
+
+      assert {:ok, %{"request_uuid" => uuid}} = PhoenixKitAI.embed(ep.uuid, "x")
+      assert_received {:request_body, body}
+      refute Map.has_key?(body, "dimensions")
+      assert TestRepo.get!(Request, uuid).metadata["dimensions"] == nil
     end
   end
 

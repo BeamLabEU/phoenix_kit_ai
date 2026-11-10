@@ -125,6 +125,7 @@ defmodule PhoenixKitAI do
   alias PhoenixKitAI.{Budget, Endpoint, Prompt, Provider, RequestCache, StructuredOutput}
   alias PhoenixKitAI.CallCost
   alias PhoenixKitAI.Capabilities
+  alias PhoenixKitAI.EmbeddingConventions
   alias PhoenixKitAI.Guard
   alias PhoenixKitAI.GuardBlocks
   alias PhoenixKitAI.GuardEvents
@@ -3213,16 +3214,62 @@ defmodule PhoenixKitAI do
     end
   end
 
-  defp run_embed(endpoint, input, merged_opts, trace) do
+  defp run_embed(endpoint, input, merged_opts, convention, trace) do
     with {:ok, response} <- PhoenixKitAI.Completion.embeddings(endpoint, input, merged_opts) do
-      logged = log_embedding_request(endpoint, input, response, merged_opts, trace)
+      response = maybe_normalize_embeddings(response, merged_opts[:normalize] == true)
+      logged = log_embedding_request(endpoint, input, response, merged_opts, convention, trace)
 
       {:ok,
        response
        |> Map.put("space", embedding_space(response, endpoint))
+       |> put_convention(convention)
        |> Map.put("cost", logged_cost(logged))
        |> put_request_uuid("request_uuid", logged)}
     end
+  end
+
+  # `role:` on an embedding: each text input through the model's template
+  # (a prefix or an instruction); images are left as they are.
+  defp apply_embedding_role(input, %{template: nil}), do: input
+
+  defp apply_embedding_role(input, %{template: template, instruction: instruction}) do
+    apply = &embed_text_with_template(&1, template, instruction)
+    if is_list(input), do: Enum.map(input, apply), else: apply.(input)
+  end
+
+  defp embed_text_with_template(text, template, instruction) when is_binary(text),
+    do: EmbeddingConventions.apply_template(text, template, instruction)
+
+  defp embed_text_with_template(item, _template, _instruction), do: item
+
+  # `normalize: true`: every vector L2-normalised (pplx answers with norms
+  # near 18; a vector cut by the API's `dimensions` is not always rescaled).
+  defp maybe_normalize_embeddings(%{"data" => data} = response, true) when is_list(data) do
+    data =
+      Enum.map(data, fn
+        %{"embedding" => vector} = item when is_list(vector) ->
+          %{item | "embedding" => EmbeddingConventions.normalize(vector)}
+
+        item ->
+          item
+      end)
+
+    %{response | "data" => data}
+  end
+
+  defp maybe_normalize_embeddings(response, _normalize), do: response
+
+  # What a stored vector needs next to it besides its space: the role it
+  # was embedded for and how (a query and a document vector of one text
+  # differ by design).
+  defp put_convention(response, %{role: nil}), do: response
+
+  defp put_convention(response, convention) do
+    Map.put(response, "convention", %{
+      "role" => Atom.to_string(convention.role),
+      "input_type" => convention.input_type,
+      "template" => convention.template
+    })
   end
 
   defp embed_image_item?(%{"content" => parts}) when is_list(parts),
@@ -3865,7 +3912,18 @@ defmodule PhoenixKitAI do
     # so existing caller keys keep their entries. `:statement_texts` too: the
     # verdicts are matched to the statements by number, so an answer about
     # other statements would be pinned on these ones.
-    case Keyword.take(opts, [:regions, :boxes, :box_format, :statement_texts])
+    # An embedding's role (and what decides its convention) and
+    # normalisation too: a query vector must never answer for a document.
+    case Keyword.take(opts, [
+           :regions,
+           :boxes,
+           :box_format,
+           :statement_texts,
+           :role,
+           :input_type,
+           :instruction,
+           :normalize
+         ])
          |> Enum.reject(fn {_, v} -> v in [nil, false] end) do
       [] -> base
       shape -> {base, Enum.sort(shape)}
@@ -4387,14 +4445,42 @@ defmodule PhoenixKitAI do
   - `input` - Text, or a list of texts and images (see `t:embed_input/0`).
     Images need a multimodal embedding model on the endpoint (on
     OpenRouter e.g. `google/gemini-embedding-2`,
-    `voyageai/voyage-multimodal-3.5`); they are checked like the image
+    `mongodb/voyage-multimodal-3.5`); they are checked like the image
     verbs' inputs (bytes are sent as a data URL, an http(s) URL is passed
     through after the host check), and a text model answers them with an error
   - `opts` - Optional parameter overrides
 
   ## Options
 
-  - `:dimensions` - Override embedding dimensions
+  - `:dimensions` - Override embedding dimensions (what is sent is what the
+    usage row records; never sent to `mistral-embed`, which refuses it)
+  - `:role` - `:query` (a search query) or `:document` (text to be found).
+    Applies the model's convention for that side — an `input_type` value
+    (Gemini 001, Cohere, Voyage, Nvidia; on OpenRouter endpoints), a text
+    prefix (gemini-embedding-2, e5) or a query instruction (Qwen3-Embedding,
+    e5-instruct) — from `PhoenixKitAI.EmbeddingConventions`, overridable per
+    endpoint in `provider_settings["embedding"]`. A model the table does not
+    know gets nothing. Without `:role` nothing changes. Query and document
+    vectors of one text are cached apart. Anything else is
+    `{:error, :invalid_embedding_role}`.
+  - `:instruction` - The task text for instruction-style query templates
+    (default `"Given a web search query, retrieve relevant passages that
+    answer the query"`), e.g. `"Given an image search query, retrieve
+    descriptions of images that match the query"`
+  - `:input_type` - Send this `input_type` as given, whatever the role
+    resolves to (a model may answer 400 to a value it does not know)
+  - `:normalize` - `true` L2-normalises every returned vector (off by
+    default; most models already answer unit vectors, `perplexity/pplx-*`
+    does not)
+  - `:encoding_format` - Passed through; `"base64"` roughly halves the
+    answer's size and the vectors are decoded back to floats
+  - `:user` - The provider's end-user id, passed through (not part of the
+    cache key)
+  - `:provider` - OpenRouter provider preferences, merged over the
+    endpoint's `provider_settings["provider_preferences"]` — e.g.
+    `%{order: ["deepinfra"], allow_fallbacks: false}` so one index is not
+    filled by vectors from several serving stacks (see
+    `PhoenixKitAI.Completion.provider_preferences/2`)
   - `:source` - Override auto-detected source for request tracking
 
   ## Examples
@@ -4421,7 +4507,9 @@ defmodule PhoenixKitAI do
 
   - `{:ok, response}` - Response with embeddings, in the order given, plus
     `"space"` — `"<model>:<dimensions>"`: vectors are comparable only
-    within one space, so store it next to them — and `"cost"`, the
+    within one space, so store it next to them —, with `role:`
+    `"convention"` (`%{"role", "input_type", "template"}`, worth storing
+    with the vectors too), and `"cost"`, the
     logged cost in dollars (a `Decimal`; nil when no price is known).
     It is available with asynchronous request logging too; a cache hit costs zero.
   - `{:error, reason}` - Error atom or tagged tuple.
@@ -4433,8 +4521,10 @@ defmodule PhoenixKitAI do
     opts = opts |> call_model_opts() |> Keyword.delete(:models)
 
     with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
+         # The role's convention is the model's: the call's `model:` decides.
+         {:ok, convention} <- EmbeddingConventions.resolve(with_call_model(endpoint, opts), opts),
          {:ok, admission} <- authorize(endpoint, opts, :embed, []),
-         {:ok, input} <- prepare_embed_input(input, opts) do
+         {:ok, input} <- input |> apply_embedding_role(convention) |> prepare_embed_input(opts) do
       # A call's `model:` is the model sent, checked, cached and logged.
       endpoint = with_call_model(endpoint, opts)
       # Capture caller info (source + stacktrace + context)
@@ -4443,7 +4533,7 @@ defmodule PhoenixKitAI do
       source = Keyword.get(opts, :source) || auto_source
       caller_context = Map.put(caller_context, :user_uuid, opts[:user_uuid])
 
-      merged_opts = merge_embedding_opts(endpoint, opts)
+      merged_opts = merge_embedding_opts(endpoint, opts, convention)
       guard = Guard.row_metadata(admission)
 
       result =
@@ -4454,7 +4544,13 @@ defmodule PhoenixKitAI do
           fn -> {input, cacheable(merged_opts)} end,
           %{source: source, caller_context: caller_context, guard: guard},
           fn ->
-            run_embed(endpoint, input, merged_opts, {source, stacktrace, caller_context, guard})
+            run_embed(
+              endpoint,
+              input,
+              merged_opts,
+              convention,
+              {source, stacktrace, caller_context, guard}
+            )
           end
         )
 
@@ -6098,12 +6194,29 @@ defmodule PhoenixKitAI do
       else: []
   end
 
-  defp merge_embedding_opts(endpoint, opts) do
-    base_opts = [dimensions: endpoint.dimensions]
+  # The options an embedding call sends and keys its cache entry by: the
+  # endpoint's dimensions under the call's, and the `input_type` the role
+  # resolved to (never one the model's table does not name). A model that
+  # refuses `dimensions` (mistral-embed answers 422) does not get it.
+  defp merge_embedding_opts(endpoint, opts, convention) do
+    merged =
+      [dimensions: endpoint.dimensions]
+      |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+      |> Keyword.merge(opts)
+      |> Keyword.delete(:input_type)
 
-    base_opts
-    |> Enum.reject(fn {_k, v} -> is_nil(v) end)
-    |> Keyword.merge(opts)
+    merged =
+      if convention.input_type,
+        do: Keyword.put(merged, :input_type, convention.input_type),
+        else: merged
+
+    if merged[:dimensions] && not EmbeddingConventions.dimensions?(endpoint.model) do
+      Logger.warning("[PhoenixKitAI] #{endpoint.model} takes no dimensions parameter; not sent")
+
+      Keyword.delete(merged, :dimensions)
+    else
+      merged
+    end
   end
 
   # ===========================================
@@ -6417,6 +6530,7 @@ defmodule PhoenixKitAI do
          input,
          response,
          merged_opts,
+         convention,
          {source, stacktrace, caller_context, guard}
        ) do
     usage = Completion.extract_usage(response)
@@ -6448,10 +6562,23 @@ defmodule PhoenixKitAI do
             stacktrace: stacktrace,
             caller_context: caller_context
           }
-          |> maybe_put_answered_model(endpoint.model, response["model"]),
+          |> maybe_put_answered_model(endpoint.model, response["model"])
+          |> maybe_put_embedding_convention(convention, merged_opts),
           Map.merge(guard, cost_metadata)
         )
     })
+  end
+
+  defp maybe_put_embedding_convention(metadata, convention, merged_opts) do
+    metadata
+    |> then(fn m -> if convention.role, do: Map.put(m, :role, convention.role), else: m end)
+    |> then(fn m ->
+      if convention.input_type, do: Map.put(m, :input_type, convention.input_type), else: m
+    end)
+    |> then(fn m -> if convention.template, do: Map.put(m, :templated, true), else: m end)
+    |> then(fn m ->
+      if merged_opts[:normalize] == true, do: Map.put(m, :normalized, true), else: m
+    end)
   end
 
   # A call's cost from `CallCost`. An answer without `usage` says nothing

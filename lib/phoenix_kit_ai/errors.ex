@@ -63,6 +63,9 @@ defmodule PhoenixKitAI.Errors do
   def message(:invalid_embedding_input),
     do: gettext("Embedding input must be text or an image")
 
+  def message(:invalid_embedding_role),
+    do: gettext("An embedding role must be query or document")
+
   def message(:invalid_statements),
     do: gettext("Statements must be a list of texts")
 
