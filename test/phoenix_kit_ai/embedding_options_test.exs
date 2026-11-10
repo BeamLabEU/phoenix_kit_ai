@@ -400,4 +400,63 @@ defmodule PhoenixKitAI.EmbeddingOptionsTest do
       assert {:error, :empty_input} = PhoenixKitAI.embed_many(ep.uuid, [])
     end
   end
+
+  describe "translate_query/3" do
+    defp stub_chat(answer) do
+      test = self()
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        {:ok, raw, conn} = Plug.Conn.read_body(conn)
+        send(test, {:request_body, Jason.decode!(raw)})
+
+        Req.Test.json(conn, %{
+          "choices" => [%{"message" => %{"role" => "assistant", "content" => answer}}],
+          "usage" => %{"prompt_tokens" => 5, "completion_tokens" => 2, "total_tokens" => 7}
+        })
+      end)
+    end
+
+    test "translates a non-ASCII query, caches it, and skips plain ASCII" do
+      ep = endpoint(model: "google/gemini-3.8-flash")
+      stub_chat("\"sleeping cat\"\n")
+
+      assert PhoenixKitAI.translate_query(ep.uuid, " спящая кошка ") == "sleeping cat"
+      assert_received {:request_body, %{"messages" => [system, %{"content" => "спящая кошка"}]}}
+      assert system["content"] =~ "into English"
+
+      assert PhoenixKitAI.translate_query(ep.uuid, " спящая кошка ") == "sleeping cat"
+      refute_received {:request_body, _}
+
+      assert PhoenixKitAI.translate_query(ep.uuid, "sleeping cat") == "sleeping cat"
+      refute_received {:request_body, _}
+
+      assert PhoenixKitAI.translate_query(ep.uuid, "magav kass", skip_ascii: false) ==
+               "sleeping cat"
+
+      assert_received {:request_body, _}
+
+      assert PhoenixKitAI.translate_query(ep.uuid, "sleeping cat", to: "Estonian") ==
+               "sleeping cat"
+
+      assert_received {:request_body, %{"messages" => [%{"content" => estonian} | _]}}
+      assert estonian =~ "into Estonian"
+    end
+
+    test "returns the query unchanged on any failure" do
+      ep = endpoint(model: "google/gemini-3.8-flash")
+      Req.Test.stub(__MODULE__, &Req.Test.json(Plug.Conn.put_status(&1, 500), %{}))
+
+      assert PhoenixKitAI.translate_query(ep.uuid, "кошка") == "кошка"
+      assert PhoenixKitAI.translate_query(Ecto.UUID.generate(), "кошка") == "кошка"
+      assert PhoenixKitAI.translate_query(nil, "кошка") == "кошка"
+      assert PhoenixKitAI.translate_query(ep.uuid, nil) == nil
+      assert PhoenixKitAI.translate_query(ep.uuid, "   ") == "   "
+
+      stub_chat("")
+      assert PhoenixKitAI.translate_query(ep.uuid, "собака", cache: false) == "собака"
+
+      stub_chat(String.duplicate("word ", 200))
+      assert PhoenixKitAI.translate_query(ep.uuid, "собака", cache: false) == "собака"
+    end
+  end
 end

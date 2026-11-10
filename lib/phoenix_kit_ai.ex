@@ -4731,6 +4731,115 @@ defmodule PhoenixKitAI do
   end
 
   @doc """
+  Translates a search query into `to:` (default `"English"`) with a chat
+  endpoint, for searching an index embedded in that language with a model
+  that matches across languages poorly. Small and opt-in: one chat call
+  with a fixed prompt ("reply with the translation only; unchanged if it
+  is already in that language"), cached (`cache: true` unless the call says
+  otherwise), with a 10 s timeout by default.
+
+  **Never fails and never raises**: any error, an empty answer or an
+  answer much longer than the query returns `query` unchanged. Blank input
+  is returned as it is, without a call.
+
+  ## Options
+
+  - `:to` - the target language name (default `"English"`)
+  - `:skip_ascii` - skip the call when the query is printable ASCII.
+    Default `true` when the target is English: free, and it catches the
+    common case, but it also skips Latin-script queries without accents
+    ("magav kass" is Estonian) — pass `false` to translate every query
+  - any `complete/3` option (`:timeout`, `:cache`, `:source`, `:user_uuid`,
+    `:task`, `:model`, `:provider`, …)
+
+  ## Example
+
+      english = PhoenixKitAI.translate_query(chat_endpoint, "спящая кошка")
+      #=> "sleeping cat"
+  """
+  @spec translate_query(String.t() | Endpoint.t(), String.t(), keyword()) :: String.t()
+  def translate_query(endpoint_uuid, query, opts \\ [])
+
+  def translate_query(endpoint_uuid, query, opts) when is_binary(query) do
+    to = translate_target(opts[:to])
+    text = String.trim(query)
+
+    if text == "" or skip_translation?(text, to, opts) do
+      query
+    else
+      messages = [
+        %{
+          role: "system",
+          content:
+            "You translate search queries into #{to}. Reply with the translation only: " <>
+              "no quotes, notes or explanations. Keep names, numbers and codes as they are. " <>
+              "If the query is already in #{to}, reply with it unchanged."
+        },
+        %{role: "user", content: text}
+      ]
+
+      call_opts =
+        opts
+        |> Keyword.drop([:to, :skip_ascii])
+        |> Keyword.put_new(:cache, true)
+        |> Keyword.put_new(:timeout, 10_000)
+        |> Keyword.put_new(:temperature, 0)
+        |> Keyword.put_new(:max_tokens, min(2_048, 64 + byte_size(text) * 2))
+        |> Keyword.put_new(:source, "PhoenixKitAI.translate_query")
+
+      endpoint_uuid |> complete(messages, call_opts) |> translation_answer(query)
+    end
+  rescue
+    error ->
+      Logger.warning("[PhoenixKitAI] translate_query fell back: #{inspect(error.__struct__)}")
+      query
+  catch
+    :exit, _reason -> query
+  end
+
+  def translate_query(_endpoint_uuid, query, _opts), do: query
+
+  defp translation_answer({:ok, response}, query) do
+    case Completion.extract_content(response) do
+      {:ok, content} -> translated_query(content, query)
+      _no_content -> query
+    end
+  end
+
+  defp translation_answer(_error, query), do: query
+
+  defp translate_target(to) when is_binary(to) and to != "", do: to
+  defp translate_target(_to), do: "English"
+
+  defp skip_translation?(text, to, opts) do
+    skip_ascii =
+      Keyword.get_lazy(opts, :skip_ascii, fn -> String.downcase(to) in ["english", "en"] end)
+
+    skip_ascii == true and String.match?(text, ~r/\A[\x20-\x7E]*\z/)
+  end
+
+  # The first non-empty line of the answer, quotes stripped; the query
+  # itself when there is none or it is far longer than the query.
+  defp translated_query(content, query) when is_binary(content) do
+    line =
+      content
+      |> String.split("\n", trim: true)
+      |> Enum.map(&String.trim/1)
+      |> Enum.find("", &(&1 != ""))
+      |> String.trim(~s("))
+      |> String.trim("'")
+      |> String.trim("«")
+      |> String.trim("»")
+      |> String.trim()
+
+    if line == "" or String.length(line) > 4 * String.length(query) + 100,
+      do: query,
+      else: line
+  end
+
+  defp translated_query(_content, query), do: query
+
+  @doc """
   Synthesizes speech from text through a configured AI endpoint.
 
   Returns the raw audio bytes alongside the format so the caller knows
