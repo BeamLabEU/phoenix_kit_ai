@@ -3215,7 +3215,7 @@ defmodule PhoenixKitAI do
 
   defp run_embed(endpoint, input, merged_opts, trace) do
     with {:ok, response} <- PhoenixKitAI.Completion.embeddings(endpoint, input, merged_opts) do
-      logged = log_embedding_request(endpoint, input, response, trace)
+      logged = log_embedding_request(endpoint, input, response, merged_opts, trace)
 
       {:ok,
        response
@@ -6407,6 +6407,7 @@ defmodule PhoenixKitAI do
          endpoint,
          input,
          response,
+         merged_opts,
          {source, stacktrace, caller_context, guard}
        ) do
     usage = Completion.extract_usage(response)
@@ -6430,7 +6431,8 @@ defmodule PhoenixKitAI do
         Map.merge(
           %{
             input_count: input_count,
-            dimensions: endpoint.dimensions,
+            # what was sent: the call's `dimensions:` wins over the endpoint's
+            dimensions: merged_opts[:dimensions],
             image_count: image_count,
             # Debug context (source tracking)
             source: source,
