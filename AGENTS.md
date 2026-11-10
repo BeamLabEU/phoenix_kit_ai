@@ -395,6 +395,7 @@ lib/phoenix_kit_ai/
   vision_batch.ex                PhoenixKitAI.VisionBatch — one vision verb over many items, per-item status, budget and fatal stop
   runs.ex                        PhoenixKitAI.Runs — a run's totals from the journal (`run:` / `step:` tags)
   openrouter_client.ex           generic across providers despite the name
+  embedding_conventions.ex       PhoenixKitAI.EmbeddingConventions — per-model-family query/document conventions (`input_type`, prefixes, instructions), batch limits
   capabilities.ex                what a model can do (catalogue + declared), ETS cache process
   task_spec.ex tasks.ex          AI task declarations (`ai_tasks/0`), the registry, fitness for a task
   recommendations.ex             models for a task grouped by capability (verified / possible / experimental) + models that worked (journal, 30 days)
@@ -594,6 +595,8 @@ so the context function gets that same, current scope.
 | `:capture_request_memory` | `false` | Opt-in per-request `:memory` snapshot in metadata — debug only |
 | `:allow_internal_endpoint_urls` | `false` | Bypass the SSRF guard on `Endpoint.base_url` (an internal address, a name resolving to one, `*.local` / `*.internal` are rejected; non-http(s) always is) — for self-hosted Ollama etc. |
 | `:embedding_models` | `[]` | Extra embedding models appended to `OpenRouterClient.fetch_embedding_models/2`; non-list values are warned about and ignored |
+| `:embedding_models_live` | `true` | `false` makes `OpenRouterClient.fetch_embedding_models/2` return the curated list without reading OpenRouter's `GET /embeddings/models` (config/test.exs does) |
+| `:embedding_models_ttl` | `3_600` | Seconds the live embedding model list is kept |
 | `:req_options` | `[]` | Extra `Req` opts appended to every HTTP call — tests use it for `Req.Test` plug stubs |
 | `:realtime_module` | `Xai.Realtime` | Swappable realtime client; tests point it at a Mox mock of `Xai.RealtimeBehaviour` |
 | `:audio_recorder` | `PhoenixKitWeb.Components.Core.AudioRecorder` | The recorder `Dictate` and the Playground render (core 3.4 on); tests point it at a stand-in that delivers a clip on a click, since no browser records in them |
@@ -647,8 +650,10 @@ provided the API exposes `<base_url>/chat/completions` and `/models`.
   the provider stays. An orphaned `integration_uuid` renders a
   "deleted/missing" warning card; there is no silent rebinding on PubSub
   changes.
-- OpenRouter's `/models` excludes embeddings, so a curated list in
-  `OpenRouterClient` supplies them. Mistral's `/v1/models` returns chat and
+- OpenRouter's `/models` excludes embeddings; `OpenRouterClient.fetch_embedding_models/2`
+  reads `GET /embeddings/models` (cached in `:persistent_term`, an hour; a
+  failed fetch keeps the last list, else the curated one in source, for a
+  minute). `config/test.exs` turns the request off (`embedding_models_live: false`). Mistral's `/v1/models` returns chat and
   embeddings together, and its `/audio/voices` feeds the TTS voice picker.
 - Endpoint cards show an enabled badge, an integration-health badge
   (missing/error/not-connected), and a masked key via
@@ -747,6 +752,31 @@ provided the API exposes `<base_url>/chat/completions` and `/models`.
   (`"<model>:<dimensions>"`); vectors from two spaces are not comparable.
   No guard need is implied — a text-only model answers images with a
   provider error.
+- **Embedding roles**: `embed/3`'s `role: :query | :document` applies the
+  model's convention from `PhoenixKitAI.EmbeddingConventions` (an
+  `input_type` value for Gemini 001, Cohere, Voyage and Nvidia — sent only
+  to OpenRouter endpoints, where the values were checked; a prefix for
+  gemini-embedding-2 and e5; a query instruction for Qwen3-Embedding and
+  e5-instruct, `instruction:`), overridable per endpoint in
+  `provider_settings["embedding"]` (sent on any provider). An unknown family
+  gets nothing: Voyage and Nvidia answer 400 to an `input_type` they do not
+  know. Never named `:task` — `cacheable/1` drops that; `:role`, the
+  resolved `:input_type`, `:instruction` and `:normalize` are in the key
+  (and in a caller key's material), so a query vector never answers for a
+  document. The row records `role`, `input_type`, `templated`, `normalized`
+  and the `dimensions` actually sent; `mistral-embed` never gets
+  `dimensions` (422). `embed/3` also passes `encoding_format` (base64 is
+  decoded back to floats), `user` (not in the key) and OpenRouter
+  `provider:` preferences; `normalize: true` L2-normalises.
+  `embed_many/3` splits a list by the table's limits and merges in order.
+- **Provider preferences**: `Completion.provider_preferences/2` builds
+  OpenRouter's `provider` object for chat and embeddings: the endpoint's
+  `provider_settings["provider_preferences"]`, the call's `provider:` over
+  it (OpenRouter endpoints only; non-JSON values dropped with a warning),
+  and the guard's `require_parameters: true` over both.
+- **`translate_query/3`**: one cached chat call translating a search query
+  (default into English, skipping printable ASCII for English); returns
+  the query unchanged on any failure and never raises.
 - **Several images in `extract_text/3`**: `images_as:` says how they relate —
   `:pages` (one document, the default), `:separate`, or a caller's own
   sentence — and is part of a caller-supplied cache key.
