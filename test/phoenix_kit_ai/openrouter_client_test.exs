@@ -102,7 +102,7 @@ defmodule PhoenixKitAI.OpenRouterClientTest do
     test "a percent sign in a non-ASCII title survives the round trip" do
       headers = OpenRouterClient.build_headers("sk-test-key", x_title: "50% скидка")
       {"X-Title", title} = List.keyfind(headers, "X-Title", 0)
-      assert title =~ "%25"
+      assert title == "50%25%20%D1%81%D0%BA%D0%B8%D0%B4%D0%BA%D0%B0"
       assert URI.decode(title) == "50% скидка"
     end
 

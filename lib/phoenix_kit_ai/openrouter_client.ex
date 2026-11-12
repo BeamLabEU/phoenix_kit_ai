@@ -1412,8 +1412,9 @@ defmodule PhoenixKitAI.OpenRouterClient do
   # anything else and the whole call fails. `HTTP-Referer` and `X-Title`
   # come from the site settings, where a project title in Cyrillic or with
   # accents is ordinary, so such a value goes percent-encoded (UTF-8) rather
-  # than failing the call or being dropped. The whole value is encoded (its
-  # spaces too) and `%` itself as `%25`, so `URI.decode/1` gives it back.
+  # than failing the call or being dropped. Visible ASCII stays as it is;
+  # every other byte is encoded — spaces too — and `%` itself as `%25`, so
+  # `URI.decode/1` gives the value back.
   # Surrounding whitespace is trimmed; a value of only whitespace is no header.
   defp header_value(value) do
     value = value |> to_string() |> String.trim()
