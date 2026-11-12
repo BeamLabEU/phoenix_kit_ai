@@ -935,10 +935,11 @@ defmodule PhoenixKitAI.OpenRouterClient do
   # when the registry has none (a core that does not know Anthropic yet).
   # Pages of up to 1000 are
   # followed by `last_id` while `has_more`. Without a `lifecycle` filter the
-  # list leaves retired models out, so all three stages are asked for; a
-  # server that refuses the filter is asked again without it.
+  # list leaves retired models out, so all three stages are asked for, one
+  # `lifecycle[]` each (the API refuses a bare `lifecycle` and a joined list
+  # with a 400); a server that refuses the filter is asked again without it.
   @anthropic_version "2023-06-01"
-  @anthropic_lifecycles "active,deprecated,retired"
+  @anthropic_lifecycles Enum.map(~w(active deprecated retired), &{"lifecycle[]", &1})
   @anthropic_page_size 1000
   @anthropic_max_pages 20
 
@@ -950,7 +951,7 @@ defmodule PhoenixKitAI.OpenRouterClient do
     url = "#{String.trim_trailing(base_url, "/")}/models"
 
     result =
-      case anthropic_pages(url, headers, [lifecycle: @anthropic_lifecycles], nil, [], 1) do
+      case anthropic_pages(url, headers, @anthropic_lifecycles, nil, [], 1) do
         {:error, {:api_error, 400}} -> anthropic_pages(url, headers, [], nil, [], 1)
         other -> other
       end
@@ -980,7 +981,8 @@ defmodule PhoenixKitAI.OpenRouterClient do
 
   defp anthropic_pages(url, headers, filter, after_id, acc, page) do
     query =
-      [limit: @anthropic_page_size] ++ filter ++ if(after_id, do: [after_id: after_id], else: [])
+      [{"limit", @anthropic_page_size}] ++
+        filter ++ if(after_id, do: [{"after_id", after_id}], else: [])
 
     case http_get("#{url}?#{URI.encode_query(query)}", headers) do
       {:ok, %{status_code: 200, body: body}} ->
@@ -1398,7 +1400,26 @@ defmodule PhoenixKitAI.OpenRouterClient do
 
   defp maybe_add_header(headers, _name, nil), do: headers
   defp maybe_add_header(headers, _name, ""), do: headers
-  defp maybe_add_header(headers, name, value), do: [{name, value} | headers]
+
+  defp maybe_add_header(headers, name, value) do
+    case header_value(value) do
+      "" -> headers
+      value -> [{name, value} | headers]
+    end
+  end
+
+  # A header value is visible ASCII and spaces; the HTTP client refuses
+  # anything else and the whole call fails. `HTTP-Referer` and `X-Title`
+  # come from the site settings, where a project title in Cyrillic or with
+  # accents is ordinary, so such a value goes percent-encoded (UTF-8) rather
+  # than failing the call or being dropped.
+  defp header_value(value) do
+    value = value |> to_string() |> String.trim()
+
+    if value =~ ~r/\A[\x20-\x7E]*\z/,
+      do: value,
+      else: URI.encode(value, &(&1 in 0x21..0x7E and &1 != ?%))
+  end
 
   defp maybe_add_opt(opts, _key, nil), do: opts
   defp maybe_add_opt(opts, _key, ""), do: opts

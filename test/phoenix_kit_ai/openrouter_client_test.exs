@@ -84,6 +84,26 @@ defmodule PhoenixKitAI.OpenRouterClientTest do
       assert {"X-Title", "Example"} in headers
     end
 
+    test "percent-encodes a title or referer that is not plain ASCII" do
+      headers =
+        OpenRouterClient.build_headers("sk-test-key",
+          http_referer: "https://пример.рф/атлас",
+          x_title: "Атлас речевого мозга"
+        )
+
+      {"X-Title", title} = List.keyfind(headers, "X-Title", 0)
+      {"HTTP-Referer", referer} = List.keyfind(headers, "HTTP-Referer", 0)
+
+      for value <- [title, referer], do: assert(value =~ ~r/\A[\x21-\x7E]+\z/)
+      assert URI.decode(title) == "Атлас речевого мозга"
+      assert URI.decode(referer) == "https://пример.рф/атлас"
+    end
+
+    test "keeps a plain ASCII title with spaces as it is" do
+      headers = OpenRouterClient.build_headers("sk-test-key", x_title: "Logoped Atlas")
+      assert {"X-Title", "Logoped Atlas"} in headers
+    end
+
     test "omits optional headers when nil" do
       headers = OpenRouterClient.build_headers("sk-test-key", http_referer: nil, x_title: nil)
       refute Enum.any?(headers, fn {k, _} -> k == "HTTP-Referer" end)
