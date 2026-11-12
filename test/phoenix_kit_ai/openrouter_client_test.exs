@@ -99,6 +99,13 @@ defmodule PhoenixKitAI.OpenRouterClientTest do
       assert URI.decode(referer) == "https://пример.рф/атлас"
     end
 
+    test "a percent sign in a non-ASCII title survives the round trip" do
+      headers = OpenRouterClient.build_headers("sk-test-key", x_title: "50% скидка")
+      {"X-Title", title} = List.keyfind(headers, "X-Title", 0)
+      assert title =~ "%25"
+      assert URI.decode(title) == "50% скидка"
+    end
+
     test "keeps a plain ASCII title with spaces as it is" do
       headers = OpenRouterClient.build_headers("sk-test-key", x_title: "Logoped Atlas")
       assert {"X-Title", "Logoped Atlas"} in headers
