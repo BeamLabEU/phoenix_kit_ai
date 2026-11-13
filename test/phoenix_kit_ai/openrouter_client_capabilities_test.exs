@@ -147,7 +147,8 @@ defmodule PhoenixKitAI.OpenRouterClientCapabilitiesTest do
 
       assert_received {:page, "/v1/models", first, headers}
       assert first["limit"] == "1000"
-      assert first["lifecycle"] == "active,deprecated,retired"
+      # One `lifecycle[]` per stage: the API answers 400 to a bare or joined `lifecycle`.
+      assert first["lifecycle"] == ["active", "deprecated", "retired"]
       refute Map.has_key?(first, "after_id")
       assert {"authorization", "Bearer sk-ant-test"} in headers
       assert {"anthropic-version", "2023-06-01"} in headers

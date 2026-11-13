@@ -687,6 +687,8 @@ defmodule PhoenixKitAI.CapabilitiesServerTest do
       assert :ok = Capabilities.refresh()
       assert_received {:anthropic_page, "api.anthropic.com", %{"limit" => "1000"} = first}
       refute Map.has_key?(first, "after_id")
+      # One `lifecycle[]` per stage: the API answers 400 to a bare or joined `lifecycle`.
+      assert first["lifecycle"] == ["active", "deprecated", "retired"]
       assert_received {:anthropic_page, "api.anthropic.com", %{"after_id" => "claude-mystery"}}
 
       assert %Capabilities{vision: :yes, tools: :yes, json_schema: :no, json: :yes} =
