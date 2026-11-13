@@ -67,7 +67,7 @@ defmodule PhoenixKitAI.VisionRobustnessTest do
   defp rows(ep),
     do:
       TestRepo.all(
-        from(r in Request, where: r.endpoint_uuid == ^ep.uuid, order_by: r.inserted_at)
+        from(r in Request, where: r.endpoint_uuid == ^ep.uuid, order_by: [r.inserted_at, r.uuid])
       )
 
   describe "cut-off answers" do
