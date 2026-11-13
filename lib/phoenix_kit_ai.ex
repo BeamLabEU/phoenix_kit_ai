@@ -4473,7 +4473,9 @@ defmodule PhoenixKitAI do
     default; most models already answer unit vectors, `perplexity/pplx-*`
     does not)
   - `:encoding_format` - Passed through; `"base64"` roughly halves the
-    answer's size and the vectors are decoded back to floats
+    answer's size and the vectors are decoded back to floats (a vector that
+    does not decode whole, a NaN or infinity included, makes the answer
+    `{:error, :invalid_response_format}`)
   - `:user` - The provider's end-user id, passed through (not part of the
     cache key)
   - `:provider` - OpenRouter provider preferences, merged over the
@@ -4692,8 +4694,12 @@ defmodule PhoenixKitAI do
           (response["data"] || [])
           |> Enum.with_index()
           |> Enum.sort_by(fn {item, position} -> {item_index(item, position), position} end)
-          |> Enum.with_index(offset)
-          |> Enum.map(fn {{item, _position}, index} -> Map.put(item, "index", index) end)
+          |> Enum.map(fn {item, position} ->
+            # the part's own number for the vector, moved by the part's start,
+            # so a vector stays paired with its input even if a part answers
+            # fewer vectors than it was sent
+            Map.put(item, "index", offset + item_index(item, position))
+          end)
 
         {items, offset + length(batch)}
       end)
@@ -4826,18 +4832,43 @@ defmodule PhoenixKitAI do
       |> String.split("\n", trim: true)
       |> Enum.map(&String.trim/1)
       |> Enum.find("", &(&1 != ""))
-      |> String.trim(~s("))
-      |> String.trim("'")
-      |> String.trim("«")
-      |> String.trim("»")
-      |> String.trim()
+      |> strip_quotes()
 
-    if line == "" or String.length(line) > 4 * String.length(query) + 100,
+    if line == "" or String.length(line) > 4 * String.length(String.trim(query)) + 100,
       do: query,
       else: line
   end
 
   defp translated_query(_content, query), do: query
+
+  # Quotes a model wraps a whole answer in, as opening and closing pairs:
+  # only a matched pair around the whole line is taken off, so "'tis" or
+  # "dogs’" keep their apostrophes.
+  @quote_pairs [
+    {~s("), ~s(")},
+    {"'", "'"},
+    {"«", "»"},
+    {"»", "«"},
+    {"“", "”"},
+    {"”", "”"},
+    {"„", "“"},
+    {"„", "”"},
+    {"‘", "’"},
+    {"「", "」"}
+  ]
+
+  defp strip_quotes(text) do
+    text = String.trim(text)
+
+    Enum.find_value(@quote_pairs, text, fn {open, close} ->
+      if String.length(text) >= 2 and String.starts_with?(text, open) and
+           String.ends_with?(text, close) do
+        text
+        |> String.slice(String.length(open)..-(String.length(close) + 1)//1)
+        |> strip_quotes()
+      end
+    end)
+  end
 
   @doc """
   Synthesizes speech from text through a configured AI endpoint.

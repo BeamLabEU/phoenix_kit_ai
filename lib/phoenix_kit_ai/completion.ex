@@ -1213,23 +1213,40 @@ defmodule PhoenixKitAI.Completion do
 
   # `encoding_format: "base64"` answers each vector as base64 float32
   # (little-endian); decoded here so every caller reads lists of floats.
-  # Anything else is left as it came.
-  defp decode_base64_embeddings({:ok, %{"data" => data} = response}) when is_list(data),
-    do: {:ok, %{response | "data" => Enum.map(data, &decode_base64_item/1)}}
+  # A vector that does not decode whole — not base64, a size that is not a
+  # multiple of 4, or a NaN or infinity (the BEAM has no such float, and a
+  # binary generator skips what does not match, so the vector would come
+  # back silently shorter) — makes the answer `:invalid_response_format`:
+  # a string or a short vector in place of a list of floats would be stored
+  # as if it were one.
+  defp decode_base64_embeddings({:ok, %{"data" => data} = response}) when is_list(data) do
+    data
+    |> Enum.reduce_while({:ok, []}, fn item, {:ok, acc} ->
+      case decode_base64_item(item) do
+        {:ok, item} -> {:cont, {:ok, [item | acc]}}
+        :error -> {:halt, {:error, :invalid_response_format}}
+      end
+    end)
+    |> case do
+      {:ok, items} -> {:ok, %{response | "data" => Enum.reverse(items)}}
+      error -> error
+    end
+  end
 
   defp decode_base64_embeddings(result), do: result
 
   defp decode_base64_item(%{"embedding" => encoded} = item) when is_binary(encoded) do
-    case Base.decode64(encoded) do
-      {:ok, bytes} when rem(byte_size(bytes), 4) == 0 ->
-        %{item | "embedding" => for(<<x::float-32-little <- bytes>>, do: x)}
-
-      _ ->
-        item
+    with {:ok, bytes} <- Base.decode64(encoded),
+         0 <- rem(byte_size(bytes), 4),
+         floats = for(<<x::float-32-little <- bytes>>, do: x),
+         true <- length(floats) * 4 == byte_size(bytes) do
+      {:ok, %{item | "embedding" => floats}}
+    else
+      _ -> :error
     end
   end
 
-  defp decode_base64_item(item), do: item
+  defp decode_base64_item(item), do: {:ok, item}
 
   # Anthropic's OpenAI-compatible layer: never `temperature` and `top_p`
   # together (a 400 on its own; `temperature` is kept), and none of

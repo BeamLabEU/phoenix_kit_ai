@@ -207,6 +207,31 @@ defmodule PhoenixKitAI.EmbeddingOptionsTest do
                PhoenixKitAI.embed(ep.uuid, "x", encoding_format: "base64", normalize: true)
     end
 
+    test "a base64 vector that does not decode whole is an error, never a short vector or a string" do
+      ep = endpoint(model: "openai/text-embedding-3-small")
+      nan = <<0, 0, 192, 127>>
+      inf = <<0, 0, 128, 127>>
+
+      for encoded <- [
+            Base.encode64(<<1.0::float-32-little>> <> nan <> <<2.0::float-32-little>>),
+            Base.encode64(<<1.0::float-32-little>> <> inf),
+            Base.encode64(<<1, 2, 3>>),
+            "not base64!"
+          ] do
+        Req.Test.stub(__MODULE__, fn conn ->
+          Req.Test.json(conn, %{
+            "data" => [
+              %{"index" => 0, "embedding" => Base.encode64(<<5.0::float-32-little>>)},
+              %{"index" => 1, "embedding" => encoded}
+            ]
+          })
+        end)
+
+        assert {:error, :invalid_response_format} =
+                 PhoenixKitAI.embed(ep.uuid, ["a", "b"], encoding_format: "base64", cache: false)
+      end
+    end
+
     test "normalize: true returns unit vectors; off by default" do
       ep = endpoint(model: "perplexity/pplx-embed-v1-4b")
       stub_embeddings(vector: [6.0, 8.0])
@@ -381,6 +406,31 @@ defmodule PhoenixKitAI.EmbeddingOptionsTest do
       assert Enum.map(data, & &1["index"]) == Enum.to_list(0..99)
     end
 
+    test "a part that answers fewer vectors keeps each vector paired with its input" do
+      ep = endpoint(model: "openai/text-embedding-3-small")
+      test = self()
+
+      # the first part answers only its second input's vector (index 1)
+      Req.Test.stub(__MODULE__, fn conn ->
+        {:ok, raw, conn} = Plug.Conn.read_body(conn)
+        input = Jason.decode!(raw)["input"]
+        send(test, {:request_body, input})
+
+        data =
+          case input do
+            ["a", "b"] -> [%{"index" => 1, "embedding" => [2.0]}]
+            ["c"] -> [%{"index" => 0, "embedding" => [3.0]}]
+          end
+
+        Req.Test.json(conn, %{"data" => data})
+      end)
+
+      assert {:ok, %{"data" => data}} =
+               PhoenixKitAI.embed_many(ep.uuid, ["a", "b", "c"], batch_size: 2)
+
+      assert Enum.map(data, &{&1["index"], &1["embedding"]}) == [{1, [2.0]}, {2, [3.0]}]
+    end
+
     test "a token budget splits long texts" do
       ep = endpoint(model: "openai/text-embedding-3-small")
       stub_embeddings()
@@ -457,6 +507,25 @@ defmodule PhoenixKitAI.EmbeddingOptionsTest do
 
       stub_chat(String.duplicate("word ", 200))
       assert PhoenixKitAI.translate_query(ep.uuid, "собака", cache: false) == "собака"
+
+      # the length guard measures the query that was sent, not its padding
+      padded = String.duplicate(" ", 1_000) <> "собака"
+      assert PhoenixKitAI.translate_query(ep.uuid, padded, cache: false) == padded
+    end
+
+    test "strips the quotes a model wraps a translation in" do
+      ep = endpoint(model: "google/gemini-3.8-flash")
+
+      for answer <- [~s("dog"), "«dog»", "“dog”", "„dog“", "'dog'", ~s( "“dog”" )] do
+        stub_chat(answer)
+        assert PhoenixKitAI.translate_query(ep.uuid, "собака", cache: false) == "dog"
+      end
+
+      # an apostrophe at one end is part of the words
+      for answer <- ["'tis cats", "dogs’ toys", "\"quoted\" word"] do
+        stub_chat(answer)
+        assert PhoenixKitAI.translate_query(ep.uuid, "собаки", cache: false) == answer
+      end
     end
   end
 end

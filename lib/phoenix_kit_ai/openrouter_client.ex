@@ -425,22 +425,26 @@ defmodule PhoenixKitAI.OpenRouterClient do
         models
 
       {:error, reason} ->
-        Logger.warning(
-          "[PhoenixKitAI] embedding model list not fetched (#{MessageShape.describe(reason)}); " <>
-            "using the #{if stale, do: "last fetched", else: "built-in"} list"
-        )
-
-        models = stale || builtin_embedding_models()
-        :persistent_term.put(key, {now + @embedding_models_retry, models})
-        models
+        embedding_models_fallback(key, now, stale, MessageShape.describe(reason))
     end
   rescue
-    error ->
-      Logger.warning(
-        "[PhoenixKitAI] embedding model list not fetched (#{inspect(error.__struct__)})"
-      )
+    error -> embedding_models_fallback(key, now, stale, inspect(error.__struct__))
+  catch
+    :exit, reason ->
+      embedding_models_fallback(key, now, stale, "exit: " <> MessageShape.describe_exit(reason))
+  end
 
-      stale || builtin_embedding_models()
+  # The last list fetched, else the curated one, kept for a minute so a dead
+  # listing is not asked again on every call.
+  defp embedding_models_fallback(key, now, stale, why) do
+    Logger.warning(
+      "[PhoenixKitAI] embedding model list not fetched (#{why}); " <>
+        "using the #{if stale, do: "last fetched", else: "built-in"} list"
+    )
+
+    models = stale || builtin_embedding_models()
+    :persistent_term.put(key, {now + @embedding_models_retry, models})
+    models
   end
 
   defp embedding_models_ttl do
@@ -476,23 +480,31 @@ defmodule PhoenixKitAI.OpenRouterClient do
   defp live_embedding_model(%{"id" => id} = model) when is_binary(id) and id != "" do
     known = Enum.find(builtin_embedding_models(), %{}, &(&1["id"] == id))
 
+    # A field of an unexpected type is taken from the curated entry instead,
+    # so every list has the curated list's shape.
     %{
       "id" => id,
-      "name" => model["name"] || known["name"] || id,
-      "description" => model["description"] || known["description"],
-      "context_length" => model["context_length"] || known["context_length"],
+      "name" => of_type(model["name"], &is_binary/1) || known["name"] || id,
+      "description" => of_type(model["description"], &is_binary/1) || known["description"],
+      "context_length" =>
+        of_type(model["context_length"], &is_integer/1) || known["context_length"],
       "dimensions" => known["dimensions"],
       "input_modalities" => input_modalities(model, known),
-      "pricing" => model["pricing"] || known["pricing"]
+      "pricing" => of_type(model["pricing"], &is_map/1) || known["pricing"]
     }
   end
 
   defp live_embedding_model(_model), do: nil
 
+  defp of_type(value, type?), do: if(type?.(value), do: value)
+
   defp input_modalities(model, known) do
-    case get_in(model, ["architecture", "input_modalities"]) do
-      [_ | _] = list -> list
-      _ -> known["input_modalities"] || ["text"]
+    case model["architecture"] do
+      %{"input_modalities" => [_ | _] = list} ->
+        if Enum.all?(list, &is_binary/1), do: list, else: known["input_modalities"] || ["text"]
+
+      _ ->
+        known["input_modalities"] || ["text"]
     end
   end
 

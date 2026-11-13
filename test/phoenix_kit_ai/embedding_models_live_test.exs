@@ -88,6 +88,59 @@ defmodule PhoenixKitAI.EmbeddingModelsLiveTest do
     assert length(models) > 10
   end
 
+  test "a field of the wrong type is taken from the curated entry" do
+    stub_listing(200, %{
+      "data" => [
+        %{
+          "id" => "cohere/embed-5-fast",
+          "name" => 42,
+          "description" => ["x"],
+          "context_length" => "8191",
+          "pricing" => "free",
+          "architecture" => "text"
+        },
+        %{"id" => "someone/new", "architecture" => %{"input_modalities" => [1, 2]}}
+      ]
+    })
+
+    assert {:ok, [fast, new]} = OpenRouterClient.fetch_embedding_models("sk-x")
+    assert fast["name"] == "Embed 5 Fast"
+    assert fast["context_length"] == 128_000
+    assert fast["pricing"] == %{"prompt" => 0.00000008, "completion" => 0}
+    assert fast["input_modalities"] == ["text", "image"]
+    assert is_binary(fast["description"])
+    assert new["name"] == "someone/new"
+    assert new["input_modalities"] == ["text"]
+  end
+
+  test "a listing that raises or exits is not asked again for a minute" do
+    test = self()
+
+    Req.Test.stub(__MODULE__, fn _conn ->
+      send(test, :asked)
+      raise "boom"
+    end)
+
+    assert {:ok, models} = OpenRouterClient.fetch_embedding_models("sk-x")
+    assert "mongodb/voyage-4" in Enum.map(models, & &1["id"])
+    assert_received :asked
+
+    assert {:ok, _} = OpenRouterClient.fetch_embedding_models("sk-x")
+    refute_received :asked
+
+    OpenRouterClient.clear_embedding_models_cache()
+
+    Req.Test.stub(__MODULE__, fn _conn ->
+      send(test, :asked)
+      exit(:pool_down)
+    end)
+
+    assert {:ok, _} = OpenRouterClient.fetch_embedding_models("sk-x")
+    assert_received :asked
+    assert {:ok, _} = OpenRouterClient.fetch_embedding_models("sk-x")
+    refute_received :asked
+  end
+
   test "live: false and the app env skip the request" do
     stub_listing(200, @listing)
 

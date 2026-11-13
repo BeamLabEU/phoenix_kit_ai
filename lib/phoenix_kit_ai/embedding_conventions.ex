@@ -280,11 +280,18 @@ defmodule PhoenixKitAI.EmbeddingConventions do
   def apply_template(text, nil, _instruction), do: text
 
   def apply_template(text, template, instruction) do
-    template = String.replace(template, "{instruction}", instruction || @default_instruction)
+    instruction = instruction || @default_instruction
+
+    # One pass over the template, so a `{text}` inside the instruction or an
+    # `{instruction}` inside the text stays as written.
+    fill = fn
+      _match, "text" -> text
+      _match, "instruction" -> instruction
+    end
 
     if String.contains?(template, "{text}"),
-      do: String.replace(template, "{text}", text),
-      else: template <> text
+      do: Regex.replace(~r/\{(text|instruction)\}/, template, fill),
+      else: Regex.replace(~r/\{(instruction)\}/, template, fill) <> text
   end
 
   @doc """
@@ -324,18 +331,27 @@ defmodule PhoenixKitAI.EmbeddingConventions do
   def dimensions?(model), do: family(model) != :mistral
 
   @doc """
-  L2-normalises a vector (a list of numbers); a zero vector or anything that
-  is not a list of numbers is returned as it is.
+  L2-normalises a vector (a list of numbers); a zero vector, anything that
+  is not a list of numbers, or numbers too large for a float are returned as
+  they are. Never raises: it runs on an answer already paid for.
   """
-  @spec normalize([number()]) :: [float()]
-  def normalize(vector) when is_list(vector) do
-    if Enum.all?(vector, &is_number/1) do
-      norm = vector |> Enum.reduce(0.0, fn x, acc -> acc + x * x end) |> :math.sqrt()
-      if norm > 0.0, do: Enum.map(vector, &(&1 / norm)), else: vector
-    else
-      vector
-    end
+  @spec normalize([number()]) :: [number()]
+  def normalize([_ | _] = vector) do
+    if Enum.all?(vector, &is_number/1),
+      do: scale_to_unit(vector, vector |> Enum.map(&abs/1) |> Enum.max()),
+      else: vector
   end
 
   def normalize(other), do: other
+
+  # Scaled by the largest magnitude first, so squaring cannot overflow.
+  defp scale_to_unit(vector, scale) when scale > 0 do
+    scaled = Enum.map(vector, &(&1 / scale))
+    norm = scaled |> Enum.reduce(0.0, fn x, acc -> acc + x * x end) |> :math.sqrt()
+    Enum.map(scaled, &(&1 / norm))
+  rescue
+    ArithmeticError -> vector
+  end
+
+  defp scale_to_unit(vector, _zero), do: vector
 end

@@ -155,6 +155,28 @@ defmodule PhoenixKitAI.EmbeddingConventionsTest do
       assert Conventions.normalize([3.0, 4.0]) == [0.6, 0.8]
       assert Conventions.normalize([0.0, 0.0]) == [0.0, 0.0]
       assert Conventions.normalize(["a"]) == ["a"]
+      assert Conventions.normalize([3, 4]) == [0.6, 0.8]
+      assert Conventions.normalize([]) == []
+
+      # never raises on an answer already paid for
+      [x, y] = Conventions.normalize([1.0e308, 1.0e308])
+      assert_in_delta x, :math.sqrt(0.5), 1.0e-12
+      assert_in_delta y, :math.sqrt(0.5), 1.0e-12
+      huge = Integer.pow(10, 400)
+      assert Conventions.normalize([huge, 1]) == [huge, 1]
+    end
+
+    test "apply_template/3 fills the template in one pass" do
+      template = "Instruct: {instruction}\nQuery: {text}"
+
+      assert Conventions.apply_template("cats", template, "Find {text} here") ==
+               "Instruct: Find {text} here\nQuery: cats"
+
+      assert Conventions.apply_template("about {instruction}", template, "Find") ==
+               "Instruct: Find\nQuery: about {instruction}"
+
+      assert Conventions.apply_template("cats", "{instruction}: ", "Find {text}") ==
+               "Find {text}: cats"
     end
   end
 end
