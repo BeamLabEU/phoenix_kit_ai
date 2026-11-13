@@ -106,6 +106,24 @@ defmodule PhoenixKitAI.OpenRouterClientTest do
       assert URI.decode(title) == "50% скидка"
     end
 
+    # A title is site-admin input. CR/LF inside it must never reach the wire
+    # raw (a second header line); encoded, it is one inert value.
+    test "a title with a line break inside goes as one encoded value" do
+      headers =
+        OpenRouterClient.build_headers("sk-test-key", x_title: "Atlas\r\nX-Injected: yes\tok")
+
+      {"X-Title", title} = List.keyfind(headers, "X-Title", 0)
+      assert title =~ ~r/\A[\x21-\x7E]+\z/
+      assert URI.decode(title) == "Atlas\r\nX-Injected: yes\tok"
+      refute List.keymember?(headers, "X-Injected", 0)
+    end
+
+    test "a title or referer of only whitespace sends no header" do
+      headers = OpenRouterClient.build_headers("sk-test-key", x_title: "  \t ", http_referer: " ")
+      refute List.keymember?(headers, "X-Title", 0)
+      refute List.keymember?(headers, "HTTP-Referer", 0)
+    end
+
     test "keeps a plain ASCII title with spaces as it is" do
       headers = OpenRouterClient.build_headers("sk-test-key", x_title: "Logoped Atlas")
       assert {"X-Title", "Logoped Atlas"} in headers
