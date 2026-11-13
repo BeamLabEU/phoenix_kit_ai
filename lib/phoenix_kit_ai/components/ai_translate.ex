@@ -371,9 +371,11 @@ defmodule PhoenixKitAI.Components.AITranslate do
     <%= if enabled?(@ai_translate) and @multilang_enabled and match?([_, _ | _], @language_tabs) do %>
       <div class={@class}>
         <%!-- One row: the tabs take the width, the button sits at the end.
-             Core's tabs keep their own mb-4 on the switcher; it moves to
-             this row so the button lines up with the tabs, not below. --%>
-        <div class="flex items-end gap-2 mb-4">
+             Core's tabs keep their own margin on the switcher; it moves to
+             this row so the button lines up with the tabs, not below. A
+             small one, so no gap opens under the languages —
+             the form around it spaces its fields itself. --%>
+        <div class="flex items-end gap-2 mb-2">
           <MultilangForm.multilang_tabs
             multilang_enabled={@multilang_enabled}
             language_tabs={@language_tabs}
