@@ -48,7 +48,7 @@ defmodule PhoenixKitAI.Components.AiMultilangTabsTest do
     }
   end
 
-  test "renders the tabs with the AI row underneath when enabled" do
+  test "puts the AI button at the end of the tab row, with no row of its own" do
     assigns = %{tabs: tabs(), config: config()}
 
     html =
@@ -63,10 +63,11 @@ defmodule PhoenixKitAI.Components.AiMultilangTabsTest do
 
     assert html =~ "AI Translate"
     assert html =~ "German"
-    # The row sits under the tabs — canonical placement classes — and the
-    # BUTTON lives inside that row, not elsewhere in the tree.
-    assert html =~ ~r/-mt-3[^"]*px-6/
-    assert html =~ ~r/-mt-3.*AI Translate/s
+    # One row: the tabs, then the button, in the same flex container.
+    assert html =~ ~r/class="flex items-end gap-2 mb-4".*German.*AI Translate/s
+    # Nothing running: no progress/hint row under the tabs.
+    refute html =~ "-mt-3"
+    refute html =~ "<progress"
   end
 
   test "an in-flight session renders the progress bar inside the row" do
@@ -104,9 +105,33 @@ defmodule PhoenixKitAI.Components.AiMultilangTabsTest do
       """)
 
     assert html =~ "my-tabs-class"
-    assert html =~ "my-row-class"
     refute html =~ "card-body"
-    refute html =~ "-mt-3"
+    # The row class is for the progress/hint row, drawn only while a
+    # translation runs.
+    refute html =~ "my-row-class"
+
+    running = %{
+      config()
+      | in_flight: ["de-DE"],
+        translation_status: :in_progress,
+        translation_total: 1
+    }
+
+    assigns = %{tabs: tabs(), config: running}
+
+    html =
+      rendered_to_string(~H"""
+      <.ai_multilang_tabs
+        multilang_enabled={true}
+        language_tabs={@tabs}
+        current_lang="en-US"
+        ai_row_class="my-row-class"
+        ai_translate={@config}
+      />
+      """)
+
+    assert html =~ "my-row-class"
+    assert html =~ "<progress"
   end
 
   test "nil config renders the tabs alone — no AI row" do
