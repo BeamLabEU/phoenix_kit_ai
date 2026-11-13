@@ -64,7 +64,7 @@ defmodule PhoenixKitAI.Components.AiMultilangTabsTest do
     assert html =~ "AI Translate"
     assert html =~ "German"
     # One row: the tabs, then the button, in the same flex container.
-    assert html =~ ~r/class="flex items-end gap-2 mb-2".*German.*AI Translate/s
+    assert html =~ ~r/class="flex items-center gap-2 mb-2".*German.*AI Translate/s
     # Nothing running: no progress/hint row under the tabs.
     refute html =~ "-mt-3"
     refute html =~ "<progress"

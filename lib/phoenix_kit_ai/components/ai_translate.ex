@@ -374,8 +374,9 @@ defmodule PhoenixKitAI.Components.AITranslate do
              Core's tabs keep their own margin on the switcher; it moves to
              this row so the button lines up with the tabs, not below. A
              small one, so no gap opens under the languages —
-             the form around it spaces its fields itself. --%>
-        <div class="flex items-end gap-2 mb-2">
+             the form around it spaces its fields itself. The button sits
+             on the tabs' middle, not their baseline. --%>
+        <div class="flex items-center gap-2 mb-2">
           <MultilangForm.multilang_tabs
             multilang_enabled={@multilang_enabled}
             language_tabs={@language_tabs}
