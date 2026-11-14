@@ -33,7 +33,7 @@ defmodule PhoenixKitAI.Completion do
     ProviderError
   }
 
-  alias PhoenixKitAI.Providers.HTTP
+  alias PhoenixKitAI.Providers.{BedrockConverse, HTTP}
 
   @timeout 120_000
   @retry_statuses [408, 429, 500, 502, 503, 504]
@@ -73,6 +73,14 @@ defmodule PhoenixKitAI.Completion do
   `tool_call_id` and `name` on `tool` messages. Read the model's calls from
   the response with `extract_tool_calls/1`.
 
+  ## Amazon Bedrock
+
+  An endpoint on the `amazon_bedrock` integration whose model is not an
+  `openai.*` one (Claude, by its `eu.*` / `global.*` inference profile, say)
+  is sent to Bedrock's Converse API instead, and its answer comes back in
+  the shape below — see `PhoenixKitAI.Providers.BedrockConverse` for what
+  is translated and what Converse does not take.
+
   ## Returns
 
   - `{:ok, response}` - Successful response with completion
@@ -103,11 +111,18 @@ defmodule PhoenixKitAI.Completion do
   ```
   """
   def chat_completion(endpoint, messages, opts \\ []) do
-    url = build_url(endpoint, "/chat/completions")
-    headers = OpenRouterClient.build_headers_from_endpoint(endpoint)
     # A per-call `model:` stands in for the endpoint's everywhere the body
     # depends on the model (the Anthropic sampling and thinking rules too).
     model = Keyword.get(opts, :model) || endpoint.model
+
+    if BedrockConverse.converse?(endpoint, model),
+      do: converse(endpoint, model, messages, opts),
+      else: openai_chat_completion(endpoint, model, messages, opts)
+  end
+
+  defp openai_chat_completion(endpoint, model, messages, opts) do
+    url = build_url(endpoint, "/chat/completions")
+    headers = OpenRouterClient.build_headers_from_endpoint(endpoint)
 
     body =
       %{endpoint | model: model}
@@ -133,6 +148,54 @@ defmodule PhoenixKitAI.Completion do
       {:error, reason} ->
         Logger.warning("OpenRouter completion transport error: #{inspect(reason)}")
         {:error, {:connection_error, reason}}
+    end
+  end
+
+  # Amazon Bedrock's Converse API (`PhoenixKitAI.Providers.BedrockConverse`):
+  # the same limiter, retries and error vocabulary, the request and the
+  # answer translated from and into the chat-completions shape.
+  defp converse(endpoint, model, messages, opts) do
+    with {:ok, body} <- BedrockConverse.request(model, messages, opts),
+         do: post_converse(endpoint, model, body, opts)
+  end
+
+  defp post_converse(endpoint, model, body, opts) do
+    url = BedrockConverse.url(endpoint, model)
+    headers = BedrockConverse.headers(endpoint)
+    start_time = System.monotonic_time(:millisecond)
+
+    case Limiter.run(endpoint, opts, fn -> http_post(url, headers, body, opts) end) do
+      {:ok, %{status_code: 200, body: response_body}} ->
+        parse_converse_response(response_body, model, start_time)
+
+      {:ok, %{status_code: status, body: response_body}} ->
+        {status, error_body} = BedrockConverse.error(status, response_body)
+        error_status(status, error_body, opts)
+
+      {:error, reason} when reason in [:concurrency_limit_timeout, :concurrency_queue_full] ->
+        {:error, reason}
+
+      {:error, :timeout} ->
+        {:error, :request_timeout}
+
+      {:error, reason} ->
+        Logger.warning("Bedrock Converse transport error: #{inspect(reason)}")
+        {:error, {:connection_error, reason}}
+    end
+  end
+
+  defp parse_converse_response(response_body, model, start_time) do
+    latency_ms = System.monotonic_time(:millisecond) - start_time
+
+    case Jason.decode(response_body) do
+      {:ok, %{"output" => %{}} = answer} ->
+        {:ok, answer |> BedrockConverse.response(model) |> Map.put("latency_ms", latency_ms)}
+
+      {:ok, _other} ->
+        {:error, :invalid_response_format}
+
+      {:error, _} ->
+        {:error, :invalid_json_response}
     end
   end
 

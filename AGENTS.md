@@ -7,7 +7,9 @@ Guidance for AI agents working on `phoenix_kit_ai`.
 AI endpoint management, prompt templates, chat completions, embeddings
 (text and images), text-to-speech, speech-to-text, image generation and editing, reading and
 locating things in images (boxes, regions, checking statements against
-images, batches), realtime voice, and per-request usage tracking. Providers are OpenAI-compatible and are discovered at runtime
+images, batches), realtime voice, and per-request usage tracking. Providers are OpenAI-compatible (chat on Amazon
+Bedrock's other models goes through its Converse API, translated both ways —
+`PhoenixKitAI.Providers.BedrockConverse`) and are discovered at runtime
 from core's `PhoenixKit.Integrations` registry
 (`PhoenixKit.Integrations.Providers.with_capability(:ai_completions)`), so there
 is no hardcoded provider whitelist. Implements the `PhoenixKit.Module`
@@ -388,7 +390,8 @@ lib/phoenix_kit_ai/
   cache.ex                       PhoenixKitAI.Cache — short-lived endpoint + credential lookup cache, dropped on change broadcasts
   request_log.ex                 PhoenixKitAI.RequestLog — writes usage rows off the caller (request_log_mode: :async)
   provider.ex                    PhoenixKitAI.Provider behaviour + adapter resolution by provider key
-  providers/                     adapters: openrouter (unified /images), xai, openai (multipart), openai_compatible (chat parts), http (shared Req door)
+  providers/                     adapters: openrouter (unified /images), xai, openai (multipart), openai_compatible (chat parts), http (shared Req door);
+                                 bedrock_converse.ex — chat on Amazon Bedrock's Converse API (Claude), request and answer translated from and into the chat shape
   images.ex images/              generic image layer: operations → prompt, option fitting, describe/compare, model-capability cache;
                                  images/regions.ex — schemas, prompts and parsing of located answers (regions, text boxes, statements)
   box.ex                         PhoenixKitAI.Box — the one box type ([x0, y0, x1, y1] fractions, top-left) and each model's box format
@@ -1251,6 +1254,15 @@ Test database `phoenix_kit_ai_test`.
   default. `adaptive` is never sent: the compatibility layer answers it
   with a 400 and ignores `reasoning_effort` (ported from
   BeamLabEU/phoenix_kit_ai#47, 8e8c65e).
+- Amazon Bedrock (`amazon_bedrock`): chat with a model other than
+  `openai.*` (the gpt-oss models of its OpenAI-compatible URL) goes to
+  `POST <base URL host>/model/<model id>/converse` with the integration's
+  Bedrock API key as a Bearer token (`Providers.BedrockConverse`). A Claude
+  model (read from the id: `eu.anthropic.claude-opus-4-6-v1` →
+  `claude-opus-4-6`) takes sampling by the Anthropic rules above, `top_k`
+  in `additionalModelRequestFields`; `response_format`, `seed`, the
+  penalties and the reasoning options are not sent. Images only as `data:`
+  URLs; no cost reported — the endpoint's manual price prices the calls.
 - On OpenRouter a call with a hard `:tools`/`:json_schema` need sends
   `provider.require_parameters` — only when the model's parameter list is
   in the capability cache (not before the first catalogue read after a
