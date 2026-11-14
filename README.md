@@ -115,7 +115,32 @@ Run `mix deps.get` and start the server. The module appears in:
 
 # With dimension override
 {:ok, response} = PhoenixKitAI.embed(endpoint.uuid, "Hello", dimensions: 512)
+
+# Search: embed the query and the documents each the way the model expects
+# (an `input_type`, a prefix or an instruction — `PhoenixKitAI.EmbeddingConventions`)
+{:ok, q} = PhoenixKitAI.embed(endpoint.uuid, "horses on a beach", role: :query)
+{:ok, d} = PhoenixKitAI.embed(endpoint.uuid, descriptions, role: :document)
+
+# A long list, split by the model's per-request limits, merged in order
+{:ok, all} = PhoenixKitAI.embed_many(endpoint.uuid, many_texts, role: :document)
+
+# Pin OpenRouter's upstream provider so one index is not mixed
+{:ok, d} =
+  PhoenixKitAI.embed(endpoint.uuid, texts,
+    role: :document,
+    provider: %{order: ["deepinfra"], allow_fallbacks: false},
+    normalize: true
+  )
+
+# A non-English query against an English index (returns the query unchanged on any failure)
+english = PhoenixKitAI.translate_query(chat_endpoint.uuid, "спящая кошка")
 ```
+
+Per endpoint, `provider_settings["embedding"]` overrides the role
+conventions (`"query_template"`, `"document_template"`, `"input_type"`,
+`"instruction"`) and `provider_settings["provider_preferences"]` holds
+OpenRouter provider preferences for every chat and embedding call (a
+call's `provider:` is merged over it).
 
 ### Speech to text
 
@@ -985,12 +1010,13 @@ loading" hint next to the spinner; failed fetches show a Retry button
 on the error pane so operators can recover from transient upstream
 issues without re-picking the integration.
 
-**Embedding models for OpenRouter** are NOT returned by `/models` —
-OpenRouter proxies embeddings via `POST /api/v1/embeddings` but
-doesn't list them anywhere queryable. The embedding-model dropdown
-for OpenRouter endpoints is backed by a curated list in
-`OpenRouterClient.builtin_embedding_models/0` (last refreshed in
-source); extensible via:
+**Embedding models for OpenRouter** are NOT returned by `/models`;
+OpenRouter lists them at `GET /api/v1/embeddings/models`, which
+`OpenRouterClient.fetch_embedding_models/2` reads and caches for an hour
+(`config :phoenix_kit_ai, embedding_models_ttl:` seconds;
+`embedding_models_live: false` turns the request off). When that fetch
+fails, a curated list maintained in source is used instead; either list
+is extensible via:
 
 ```elixir
 config :phoenix_kit_ai,

@@ -38,7 +38,7 @@ msgstr "AI 模块未启用"
 msgid "API Response (raw)"
 msgstr "API 响应（原始）"
 
-#: lib/phoenix_kit_ai/errors.ex:120
+#: lib/phoenix_kit_ai/errors.ex:126
 #, elixir-autogen, elixir-format
 msgid "API error: %{status}"
 msgstr "API 错误：%{status}"
@@ -203,7 +203,7 @@ msgstr "已连接"
 msgid "Connecting…"
 msgstr "正在连接…"
 
-#: lib/phoenix_kit_ai/errors.ex:124
+#: lib/phoenix_kit_ai/errors.ex:130
 #, elixir-autogen, elixir-format
 msgid "Connection error: %{reason}"
 msgstr "连接错误：%{reason}"
@@ -213,7 +213,7 @@ msgstr "连接错误：%{reason}"
 msgid "Content"
 msgstr "内容"
 
-#: lib/phoenix_kit_ai/errors.ex:131
+#: lib/phoenix_kit_ai/errors.ex:137
 #, elixir-autogen, elixir-format
 msgid "Content must be a string"
 msgstr "内容必须是字符串"
@@ -493,7 +493,7 @@ msgstr "端点已停用"
 msgid "Endpoint enabled"
 msgstr "端点已启用"
 
-#: lib/phoenix_kit_ai/errors.ex:105
+#: lib/phoenix_kit_ai/errors.ex:111
 #, elixir-autogen, elixir-format
 msgid "Endpoint has no model configured"
 msgstr "端点未配置模型"
@@ -623,7 +623,7 @@ msgstr "如果使用提示词时未提供某个变量，它会原样保留在输
 msgid "Image Generation"
 msgstr "图像生成"
 
-#: lib/phoenix_kit_ai/errors.ex:104
+#: lib/phoenix_kit_ai/errors.ex:110
 #, elixir-autogen, elixir-format
 msgid "Input cannot be empty"
 msgstr "输入不能为空"
@@ -665,7 +665,7 @@ msgstr "JSON 响应无效"
 msgid "Invalid endpoint identifier"
 msgstr "端点标识符无效"
 
-#: lib/phoenix_kit_ai/errors.ex:130
+#: lib/phoenix_kit_ai/errors.ex:136
 #, elixir-autogen, elixir-format
 msgid "Invalid prompt identifier"
 msgstr "提示词标识符无效"
@@ -739,7 +739,7 @@ msgstr "手动"
 msgid "Message"
 msgstr "消息"
 
-#: lib/phoenix_kit_ai/errors.ex:134
+#: lib/phoenix_kit_ai/errors.ex:140
 #, elixir-autogen, elixir-format
 msgid "Missing prompt variables: %{vars}"
 msgstr "缺少提示词变量：%{vars}"
@@ -847,7 +847,7 @@ msgstr "没有已启用的端点。"
 msgid "No integration"
 msgstr "无集成"
 
-#: lib/phoenix_kit_ai/errors.ex:114
+#: lib/phoenix_kit_ai/errors.ex:120
 #: lib/phoenix_kit_ai/web/endpoint_form.ex:1721
 #, elixir-autogen, elixir-format
 msgid "No integration configured for this endpoint. Set up the API key in Settings → Integrations."
@@ -998,22 +998,22 @@ msgstr "提示词已停用"
 msgid "Prompt enabled"
 msgstr "提示词已启用"
 
-#: lib/phoenix_kit_ai/errors.ex:138
+#: lib/phoenix_kit_ai/errors.ex:144
 #, elixir-autogen, elixir-format
 msgid "Prompt error: %{reason}"
 msgstr "提示词错误：%{reason}"
 
-#: lib/phoenix_kit_ai/errors.ex:129
+#: lib/phoenix_kit_ai/errors.ex:135
 #, elixir-autogen, elixir-format
 msgid "Prompt has no content"
 msgstr "提示词没有内容"
 
-#: lib/phoenix_kit_ai/errors.ex:128
+#: lib/phoenix_kit_ai/errors.ex:134
 #, elixir-autogen, elixir-format
 msgid "Prompt is disabled"
 msgstr "提示词已停用"
 
-#: lib/phoenix_kit_ai/errors.ex:127
+#: lib/phoenix_kit_ai/errors.ex:133
 #: lib/phoenix_kit_ai/web/prompt_form.ex:63
 #: lib/phoenix_kit_ai/web/prompts.ex:128
 #: lib/phoenix_kit_ai/web/prompts.ex:148
@@ -1295,7 +1295,7 @@ msgstr "语音合成模型"
 msgid "The %{provider} integration is not connected — requests will fail until you connect it in Settings → Integrations."
 msgstr "%{provider} 集成未连接——在您于“设置 → 集成”中连接它之前，请求都会失败。"
 
-#: lib/phoenix_kit_ai/errors.ex:101
+#: lib/phoenix_kit_ai/errors.ex:107
 #, elixir-autogen, elixir-format
 msgid "The TTS provider returned an unreadable audio response."
 msgstr "TTS 提供商返回了无法读取的音频响应。"
@@ -1305,7 +1305,7 @@ msgstr "TTS 提供商返回了无法读取的音频响应。"
 msgid "The integration is not currently connected. Open it in Settings → Integrations to test."
 msgstr "集成当前未连接。请在“设置 → 集成”中打开它进行测试。"
 
-#: lib/phoenix_kit_ai/errors.ex:108
+#: lib/phoenix_kit_ai/errors.ex:114
 #, elixir-autogen, elixir-format
 msgid "The integration used by this endpoint has been deleted. Please select a new one in the endpoint settings."
 msgstr "此端点使用的集成已被删除。请在端点设置中选择新的集成。"
@@ -1436,7 +1436,7 @@ msgstr "输入要朗读的文本…"
 msgid "Type your message to the AI..."
 msgstr "输入要发送给 AI 的消息…"
 
-#: lib/phoenix_kit_ai/errors.ex:352
+#: lib/phoenix_kit_ai/errors.ex:358
 #, elixir-autogen, elixir-format
 msgid "Unexpected error: %{reason}"
 msgstr "意外错误：%{reason}"
@@ -1469,7 +1469,7 @@ msgstr "更新您的 AI 端点配置"
 msgid "Updating…"
 msgstr "正在更新…"
 
-#: lib/phoenix_kit_ai.ex:1224
+#: lib/phoenix_kit_ai.ex:1225
 #: lib/phoenix_kit_ai/web/endpoints.ex:93
 #: lib/phoenix_kit_ai/web/prompts.ex:41
 #, elixir-autogen, elixir-format
@@ -1735,7 +1735,7 @@ msgid "token"
 msgid_plural "tokens"
 msgstr[0] "token"
 
-#: lib/phoenix_kit_ai.ex:1220
+#: lib/phoenix_kit_ai.ex:1221
 #: lib/phoenix_kit_ai/web/endpoint_form.ex:656
 #: lib/phoenix_kit_ai/web/endpoints.ex:130
 #: lib/phoenix_kit_ai/web/playground.ex:70
@@ -1746,21 +1746,21 @@ msgstr[0] "token"
 msgid "AI"
 msgstr "AI"
 
-#: lib/phoenix_kit_ai.ex:1221
+#: lib/phoenix_kit_ai.ex:1222
 #: lib/phoenix_kit_ai/web/endpoint_form.ex:792
 #: lib/phoenix_kit_ai/web/endpoints.ex:97
 #, elixir-autogen, elixir-format
 msgid "Endpoints"
 msgstr "端点"
 
-#: lib/phoenix_kit_ai.ex:1223
-#: lib/phoenix_kit_ai.ex:1269
+#: lib/phoenix_kit_ai.ex:1224
+#: lib/phoenix_kit_ai.ex:1270
 #: lib/phoenix_kit_ai/web/playground.ex:73
 #, elixir-autogen, elixir-format
 msgid "Playground"
 msgstr "测试场"
 
-#: lib/phoenix_kit_ai.ex:1222
+#: lib/phoenix_kit_ai.ex:1223
 #: lib/phoenix_kit_ai/web/prompt_form.ex:81
 #: lib/phoenix_kit_ai/web/prompts.ex:65
 #, elixir-autogen, elixir-format
@@ -1811,8 +1811,8 @@ msgstr "请至少添加一张图像"
 msgid "Remove"
 msgstr "移除"
 
-#: lib/phoenix_kit_ai/errors.ex:98
-#: lib/phoenix_kit_ai/web/playground.ex:987
+#: lib/phoenix_kit_ai/errors.ex:104
+#: lib/phoenix_kit_ai/web/playground.ex:990
 #, elixir-autogen, elixir-format
 msgid "The model returned no image"
 msgstr "模型未返回图像"
@@ -1853,7 +1853,7 @@ msgstr "描述"
 msgid "Endpoint's model"
 msgstr "端点的模型"
 
-#: lib/phoenix_kit_ai/errors.ex:165
+#: lib/phoenix_kit_ai/errors.ex:171
 #, elixir-autogen, elixir-format
 msgid "Image operation %{operation} needs %{key}"
 msgstr "图像操作 %{operation} 需要 %{key}"
@@ -1874,7 +1874,7 @@ msgstr "加载模型列表"
 msgid "Model (override)"
 msgstr "模型（覆盖）"
 
-#: lib/phoenix_kit_ai/errors.ex:141
+#: lib/phoenix_kit_ai/errors.ex:147
 #, elixir-autogen, elixir-format
 msgid "Not supported by this provider"
 msgstr "此提供商不支持"
@@ -1900,58 +1900,58 @@ msgstr "已发送的提示词"
 msgid "Send one or more images to an image-capable endpoint. The first image is the one being edited; the rest are references. Pick operations, add an instruction, or both — they become one prompt, and options are fitted to what the model accepts."
 msgstr "将一张或多张图像发送到支持图像的端点。第一张是要编辑的图像，其余为参考图。选择操作、填写指令，或两者兼用——它们会合并为一个提示词，选项会按模型可接受的范围进行调整。"
 
-#: lib/phoenix_kit_ai/errors.ex:168
+#: lib/phoenix_kit_ai/errors.ex:174
 #, elixir-autogen, elixir-format
 msgid "The model did not answer with JSON"
 msgstr "模型未以 JSON 格式回答"
 
-#: lib/phoenix_kit_ai/errors.ex:150
+#: lib/phoenix_kit_ai/errors.ex:156
 #, elixir-autogen, elixir-format
 msgid "The model does not accept %{option} = %{value}"
 msgstr "模型不接受 %{option} = %{value}"
 
-#: lib/phoenix_kit_ai/errors.ex:142
+#: lib/phoenix_kit_ai/errors.ex:148
 #, elixir-autogen, elixir-format
 msgid "This operation needs a reference image"
 msgstr "此操作需要一张参考图"
 
-#: lib/phoenix_kit_ai/web/playground.ex:967
+#: lib/phoenix_kit_ai/web/playground.ex:970
 #, elixir-autogen, elixir-format
 msgid "This provider publishes no image model list"
 msgstr "此提供商未公布图像模型列表"
 
-#: lib/phoenix_kit_ai/errors.ex:154
+#: lib/phoenix_kit_ai/errors.ex:160
 #, elixir-autogen, elixir-format
 msgid "Too many images: %{count} given, the model takes at most %{max}"
 msgstr "图像过多：提供了 %{count} 张，模型最多接受 %{max} 张"
 
-#: lib/phoenix_kit_ai/errors.ex:161
+#: lib/phoenix_kit_ai/errors.ex:167
 #, elixir-autogen, elixir-format
 msgid "Unknown image operation: %{operation}"
 msgstr "未知的图像操作：%{operation}"
 
-#: lib/phoenix_kit_ai/errors.ex:252
+#: lib/phoenix_kit_ai/errors.ex:258
 #, elixir-autogen, elixir-format
 msgid "Image operations %{first} and %{second} cannot be combined"
 msgstr "图像操作 %{first} 和 %{second} 不能组合使用"
 
-#: lib/phoenix_kit_ai/errors.ex:275
+#: lib/phoenix_kit_ai/errors.ex:281
 #, elixir-autogen, elixir-format
 msgid "Image too large: %{bytes} bytes, the limit is %{max}"
 msgstr "图像过大：%{bytes} 字节，上限为 %{max}"
 
-#: lib/phoenix_kit_ai/errors.ex:278
+#: lib/phoenix_kit_ai/errors.ex:284
 #, elixir-autogen, elixir-format
 msgid "That image URL cannot be fetched from here"
 msgstr "无法从此处获取该图像 URL"
 
-#: lib/phoenix_kit_ai/errors.ex:280
-#: lib/phoenix_kit_ai/errors.ex:281
+#: lib/phoenix_kit_ai/errors.ex:286
+#: lib/phoenix_kit_ai/errors.ex:287
 #, elixir-autogen, elixir-format
 msgid "The image could not be downloaded"
 msgstr "无法下载该图像"
 
-#: lib/phoenix_kit_ai/errors.ex:261
+#: lib/phoenix_kit_ai/errors.ex:267
 #, elixir-autogen, elixir-format
 msgid "The provider refused this content: %{reason}"
 msgstr "提供商拒绝了此内容：%{reason}"
@@ -1962,27 +1962,27 @@ msgid "%{count} image kept from the last run"
 msgid_plural "%{count} images kept from the last run"
 msgstr[0] "保留了上次运行的 %{count} 张图像"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1405
+#: lib/phoenix_kit_ai/web/playground.ex:1408
 #, elixir-autogen, elixir-format
 msgid "%{option} was changed from %{from} to %{to}"
 msgstr "%{option} 已从 %{from} 改为 %{to}"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1398
+#: lib/phoenix_kit_ai/web/playground.ex:1401
 #, elixir-autogen, elixir-format
 msgid "%{option} was dropped: the model does not accept %{value}"
 msgstr "已舍弃 %{option}：模型不接受 %{value}"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1421
+#: lib/phoenix_kit_ai/web/playground.ex:1424
 #, elixir-autogen, elixir-format
 msgid "An output image could not be downloaded and is shown from the provider's link"
 msgstr "有一张输出图像无法下载，现显示的是提供商的链接"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1387
+#: lib/phoenix_kit_ai/web/playground.ex:1390
 #, elixir-autogen, elixir-format
 msgid "Aspect ratio"
 msgstr "宽高比"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1390
+#: lib/phoenix_kit_ai/web/playground.ex:1393
 #, elixir-autogen, elixir-format
 msgid "Background"
 msgstr "背景"
@@ -2023,12 +2023,12 @@ msgstr "自由指令"
 msgid "Loading…"
 msgstr "正在加载…"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1435
+#: lib/phoenix_kit_ai/web/playground.ex:1439
 #, elixir-autogen, elixir-format
 msgid "Only JPEG, PNG and WebP images are accepted"
 msgstr "仅接受 JPEG、PNG 和 WebP 图像"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1391
+#: lib/phoenix_kit_ai/web/playground.ex:1394
 #, elixir-autogen, elixir-format
 msgid "Output format"
 msgstr "输出格式"
@@ -2038,7 +2038,7 @@ msgstr "输出格式"
 msgid "Plain studio background"
 msgstr "纯色影棚背景"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1389
+#: lib/phoenix_kit_ai/web/playground.ex:1392
 #, elixir-autogen, elixir-format
 msgid "Quality"
 msgstr "质量"
@@ -2063,7 +2063,7 @@ msgstr "移除某个对象"
 msgid "Replace the background"
 msgstr "替换背景"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1388
+#: lib/phoenix_kit_ai/web/playground.ex:1391
 #, elixir-autogen, elixir-format
 msgid "Resolution"
 msgstr "分辨率"
@@ -2073,7 +2073,7 @@ msgstr "分辨率"
 msgid "Restyle after reference images"
 msgstr "按参考图更换风格"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1016
+#: lib/phoenix_kit_ai/web/playground.ex:1019
 #, elixir-autogen, elixir-format
 msgid "Something went wrong on our side. Please try again."
 msgstr "我们这边出了问题，请重试。"
@@ -2083,32 +2083,32 @@ msgstr "我们这边出了问题，请重试。"
 msgid "Straighten"
 msgstr "拉直"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1432
+#: lib/phoenix_kit_ai/web/playground.ex:1436
 #, elixir-autogen, elixir-format
 msgid "That file is too large (8 MB at most)"
 msgstr "文件过大（最大 8 MB）"
 
-#: lib/phoenix_kit_ai/errors.ex:249
+#: lib/phoenix_kit_ai/errors.ex:255
 #, elixir-autogen, elixir-format
 msgid "The provider's model list could not be fetched"
 msgstr "无法获取提供商的模型列表"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1418
+#: lib/phoenix_kit_ai/web/playground.ex:1421
 #, elixir-autogen, elixir-format
 msgid "The provider's model list could not be fetched; options were not checked"
 msgstr "无法获取提供商的模型列表；未检查选项"
 
-#: lib/phoenix_kit_ai/errors.ex:175
+#: lib/phoenix_kit_ai/errors.ex:181
 #, elixir-autogen, elixir-format
 msgid "The provider's model list does not include %{model}"
 msgstr "提供商的模型列表中没有 %{model}"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1413
+#: lib/phoenix_kit_ai/web/playground.ex:1416
 #, elixir-autogen, elixir-format
 msgid "The provider's model list does not include %{model}; options were not checked"
 msgstr "提供商的模型列表中没有 %{model}；未检查选项"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1437
+#: lib/phoenix_kit_ai/web/playground.ex:1441
 #, elixir-autogen, elixir-format
 msgid "Two images at most"
 msgstr "最多两张图像"
@@ -2123,17 +2123,17 @@ msgstr "已上传的图像"
 msgid "Upscale"
 msgstr "提升分辨率"
 
-#: lib/phoenix_kit_ai/errors.ex:179
+#: lib/phoenix_kit_ai/errors.ex:185
 #, elixir-autogen, elixir-format
 msgid "The AI budget for the last 24 hours has been used up"
 msgstr "过去 24 小时的 AI 预算已用完"
 
-#: lib/phoenix_kit_ai/errors.ex:185
+#: lib/phoenix_kit_ai/errors.ex:191
 #, elixir-autogen, elixir-format
 msgid "This endpoint's budget for the last 24 hours has been used up"
 msgstr "此端点过去 24 小时的预算已用完"
 
-#: lib/phoenix_kit_ai/errors.ex:188
+#: lib/phoenix_kit_ai/errors.ex:194
 #, elixir-autogen, elixir-format
 msgid "You have used your AI allowance for the last 24 hours"
 msgstr "您已用完过去 24 小时的 AI 额度"
@@ -2225,7 +2225,7 @@ msgstr "总 token 数"
 msgid "Variables:"
 msgstr "变量："
 
-#: lib/phoenix_kit_ai/errors.ex:191
+#: lib/phoenix_kit_ai/errors.ex:197
 #, elixir-autogen, elixir-format
 msgid "You have made as many AI requests as allowed for the last 24 hours"
 msgstr "您在过去 24 小时内的 AI 请求次数已达上限"
@@ -2259,7 +2259,7 @@ msgid "— Select provider (%{count} available) —"
 msgid_plural "— Select provider (%{count} available) —"
 msgstr[0] "— 选择提供商（%{count} 个可用）—"
 
-#: lib/phoenix_kit_ai/web/playground.ex:894
+#: lib/phoenix_kit_ai/web/playground.ex:897
 #, elixir-autogen, elixir-format
 msgid "(No content in response)"
 msgstr "（响应中没有内容）"
@@ -2415,7 +2415,7 @@ msgstr "使用中的端点："
 msgid "Fits"
 msgstr "适用"
 
-#: lib/phoenix_kit_ai/errors.ex:229
+#: lib/phoenix_kit_ai/errors.ex:235
 #, elixir-autogen, elixir-format
 msgid "It is not known whether the endpoint's model can do what this task needs (%{needs}). Mark the model's capabilities on the endpoint first."
 msgstr "尚不清楚端点的模型是否具备此任务所需的能力（%{needs}）。请先在端点上标明模型的能力。"
@@ -2452,7 +2452,7 @@ msgstr "需要："
 msgid "No module declares an AI task."
 msgstr "没有模块声明 AI 任务。"
 
-#: lib/phoenix_kit_ai/errors.ex:242
+#: lib/phoenix_kit_ai/errors.ex:248
 #, elixir-autogen, elixir-format
 msgid "No provider of this model accepts all the request's parameters (%{params}). Remove the ones it does not support from the endpoint."
 msgstr "此模型没有任何提供商能接受请求的全部参数（%{params}）。请从端点中移除不受支持的参数。"
@@ -2479,18 +2479,18 @@ msgstr "刷新目录"
 msgid "Some model catalogues could not be read"
 msgstr "部分模型目录无法读取"
 
-#: lib/phoenix_kit_ai.ex:1225
+#: lib/phoenix_kit_ai.ex:1226
 #: lib/phoenix_kit_ai/web/tasks.ex:66
 #, elixir-autogen, elixir-format
 msgid "Tasks"
 msgstr "任务"
 
-#: lib/phoenix_kit_ai/errors.ex:223
+#: lib/phoenix_kit_ai/errors.ex:229
 #, elixir-autogen, elixir-format
 msgid "The endpoint's model cannot do what this task needs: %{needs}"
 msgstr "端点的模型不具备此任务所需的能力：%{needs}"
 
-#: lib/phoenix_kit_ai.ex:1257
+#: lib/phoenix_kit_ai.ex:1258
 #, elixir-autogen, elixir-format
 msgid "Translation"
 msgstr "翻译"
@@ -2515,7 +2515,7 @@ msgstr "仅文本"
 msgid "tools"
 msgstr "工具"
 
-#: lib/phoenix_kit_ai/errors.ex:236
+#: lib/phoenix_kit_ai/errors.ex:242
 #, elixir-autogen, elixir-format
 msgid "No provider of this model accepts all the request's parameters. Remove the ones it does not support from the endpoint."
 msgstr "此模型没有任何提供商能接受请求的全部参数。请从端点中移除不受支持的参数。"
@@ -2532,12 +2532,12 @@ msgstr "已拒绝"
 msgid "Refused before reaching the provider"
 msgstr "在到达提供商之前已被拒绝"
 
-#: lib/phoenix_kit_ai.ex:1272
+#: lib/phoenix_kit_ai.ex:1273
 #, elixir-autogen, elixir-format
 msgid "Let an administrator try endpoints and prompts by hand."
 msgstr "供管理员手动试用端点和提示词。"
 
-#: lib/phoenix_kit_ai.ex:1260
+#: lib/phoenix_kit_ai.ex:1261
 #, elixir-autogen, elixir-format
 msgid "Translate the text fields of a record from one language into another, keeping the field structure."
 msgstr "将记录的文本字段从一种语言翻译成另一种语言，并保留字段结构。"
@@ -2668,7 +2668,7 @@ msgstr "限额必须是整数；金额限额则为美元数"
 msgid "A user"
 msgstr "某用户"
 
-#: lib/phoenix_kit_ai.ex:1091
+#: lib/phoenix_kit_ai.ex:1092
 #, elixir-autogen, elixir-format
 msgid "AI task guard"
 msgstr "AI 任务守卫"
@@ -2732,7 +2732,7 @@ msgstr "限额与用量："
 msgid "Limits saved"
 msgstr "限额已保存"
 
-#: lib/phoenix_kit_ai.ex:1227
+#: lib/phoenix_kit_ai.ex:1228
 #, elixir-autogen, elixir-format
 msgid "Manage the AI task guard"
 msgstr "管理 AI 任务守卫"
@@ -2846,7 +2846,7 @@ msgstr "AI 任务 %{task} 使用端点 %{endpoint}，而该端点的模型现在
 msgid "The change was not saved"
 msgstr "更改未保存"
 
-#: lib/phoenix_kit_ai/errors.ex:203
+#: lib/phoenix_kit_ai/errors.ex:209
 #, elixir-autogen, elixir-format
 msgid "This AI task has reached its %{name}"
 msgstr "此 AI 任务已达到其%{name}"
@@ -2886,7 +2886,7 @@ msgstr "关注人已保存"
 msgid "You have reached your %{name} (%{limit}) in the AI task %{task}."
 msgstr "您已达到 AI 任务 %{task} 中您的%{name}（%{limit}）。"
 
-#: lib/phoenix_kit_ai/errors.ex:209
+#: lib/phoenix_kit_ai/errors.ex:215
 #, elixir-autogen, elixir-format
 msgid "You have reached your %{name} in this AI task"
 msgstr "您已达到此 AI 任务中您的%{name}"
@@ -2947,7 +2947,7 @@ msgstr "单个用户的调用次数"
 msgid "one user's spending"
 msgstr "单个用户的支出"
 
-#: lib/phoenix_kit_ai.ex:1817
+#: lib/phoenix_kit_ai.ex:1818
 #, elixir-autogen, elixir-format
 msgid "only a holder of ai.manage may declare capabilities while only verified models are allowed"
 msgstr "仅允许已验证的模型时，只有拥有 ai.manage 权限的人才能声明能力"
@@ -3037,7 +3037,7 @@ msgstr "%{email} 已在 AI 任务 %{task} 中被封禁。"
 msgid "%{email} is no longer blocked from the AI task %{task}."
 msgstr "%{email} 对 AI 任务 %{task} 的封禁已解除。"
 
-#: lib/phoenix_kit_ai.ex:1093
+#: lib/phoenix_kit_ai.ex:1094
 #, elixir-autogen, elixir-format
 msgid "An AI task is near or at a limit, a spending cap refused a call, a task's model no longer fits it, a request was flagged as off-purpose, a task is used unusually, or a person was blocked or unblocked"
 msgstr "AI 任务接近或达到限额、支出上限拒绝了调用、AI 任务的模型不再适用、请求被标记为偏离用途、AI 任务使用异常，或有人被封禁或解除封禁"
@@ -3069,7 +3069,7 @@ msgstr "当前被封禁："
 msgid "By"
 msgstr "操作人"
 
-#: lib/phoenix_kit_ai.ex:1228
+#: lib/phoenix_kit_ai.ex:1229
 #, elixir-autogen, elixir-format
 msgid "Change the limits of AI tasks, who is told about them and which models may be used; block a person from a task; see why a private task's request was flagged"
 msgstr "更改 AI 任务的限额、通知对象以及可用的模型；在某个 AI 任务中封禁某人；查看私有 AI 任务的请求被标记的原因"
@@ -3194,7 +3194,7 @@ msgstr "原因（仅任务守卫的管理者可见）"
 msgid "You are blocked from the AI task %{task} until an administrator lifts the block."
 msgstr "您已在 AI 任务 %{task} 中被封禁，直到管理员解除封禁。"
 
-#: lib/phoenix_kit_ai/errors.ex:220
+#: lib/phoenix_kit_ai/errors.ex:226
 #, elixir-autogen, elixir-format
 msgid "You are blocked from this AI task until an administrator lifts the block"
 msgstr "您已在此 AI 任务中被封禁，直到管理员解除封禁"
@@ -3589,7 +3589,7 @@ msgstr "目录已为此模型提供价格，且优先使用：此处的价格不
 msgid "Setting a price needs the “Manage the AI task guard” permission: it decides what the money limits count."
 msgstr "设置价格需要“管理 AI 任务守卫”权限：它决定金额限额如何计算。"
 
-#: lib/phoenix_kit_ai.ex:1840
+#: lib/phoenix_kit_ai.ex:1841
 #, elixir-autogen, elixir-format
 msgid "only a holder of ai.manage may set or change a manual price"
 msgstr "只有拥有 ai.manage 权限的人才能设置或更改手动价格"
@@ -3630,17 +3630,17 @@ msgstr "运行中的 AI 请求过多；此请求排队等待的时间过长"
 msgid "Too many AI requests are waiting; try again shortly"
 msgstr "等待中的 AI 请求过多，请稍后重试"
 
-#: lib/phoenix_kit_ai/errors.ex:200
+#: lib/phoenix_kit_ai/errors.ex:206
 #, elixir-autogen, elixir-format
 msgid "AI requests are paused until the latest database update has run"
 msgstr "在最新的数据库更新运行之前，AI 请求已暂停"
 
-#: lib/phoenix_kit_ai/errors.ex:194
+#: lib/phoenix_kit_ai/errors.ex:200
 #, elixir-autogen, elixir-format
 msgid "AI spending limits need an update before AI requests can run again"
 msgstr "AI 支出上限需要更新后，AI 请求才能再次运行"
 
-#: lib/phoenix_kit_ai/errors.ex:197
+#: lib/phoenix_kit_ai/errors.ex:203
 #, elixir-autogen, elixir-format
 msgid "This task's spending limit needs an update before it can run again"
 msgstr "此 AI 任务的支出限额需要更新后才能再次运行"
@@ -3650,22 +3650,22 @@ msgstr "此 AI 任务的支出限额需要更新后才能再次运行"
 msgid "needs to be set again in dollars"
 msgstr "需要以美元重新设置"
 
-#: lib/phoenix_kit_ai.ex:1238
+#: lib/phoenix_kit_ai.ex:1239
 #, elixir-autogen, elixir-format
 msgid "Create, edit, enable, disable, reorder and delete AI endpoints"
 msgstr "创建、编辑、启用、停用、排序和删除 AI 端点"
 
-#: lib/phoenix_kit_ai.ex:1237
+#: lib/phoenix_kit_ai.ex:1238
 #, elixir-autogen, elixir-format
 msgid "Manage AI endpoints"
 msgstr "管理 AI 端点"
 
-#: lib/phoenix_kit_ai.ex:1233
+#: lib/phoenix_kit_ai.ex:1234
 #, elixir-autogen, elixir-format
 msgid "Open the Usage tab: every AI request on the site with its prompt and response"
 msgstr "打开“用量”标签页：站点上的每个 AI 请求及其提示词和响应"
 
-#: lib/phoenix_kit_ai.ex:1232
+#: lib/phoenix_kit_ai.ex:1233
 #, elixir-autogen, elixir-format
 msgid "See AI usage"
 msgstr "查看 AI 用量"
@@ -3717,7 +3717,7 @@ msgstr "由 %{module}（您的应用）声明"
 msgid "Some AI tasks were declared twice; the second declaration is not used:"
 msgstr "部分 AI 任务被声明了两次；第二次声明未被使用："
 
-#: lib/phoenix_kit_ai/errors.ex:217
+#: lib/phoenix_kit_ai/errors.ex:223
 #, elixir-autogen, elixir-format
 msgid "This AI task's module is switched off, so the task cannot run"
 msgstr "此 AI 任务的模块已关闭，因此无法运行该任务"
@@ -3727,92 +3727,92 @@ msgstr "此 AI 任务的模块已关闭，因此无法运行该任务"
 msgid "The AI module is switched off."
 msgstr "AI 模块已关闭。"
 
-#: lib/phoenix_kit_ai/errors.ex:298
+#: lib/phoenix_kit_ai/errors.ex:304
 #, elixir-autogen, elixir-format
 msgid "A journal cleanup is already running"
 msgstr "日志清理已在运行"
 
-#: lib/phoenix_kit_ai/errors.ex:311
+#: lib/phoenix_kit_ai/errors.ex:317
 #, elixir-autogen, elixir-format
 msgid "Counting what would be deleted took too long"
 msgstr "统计将被删除的内容耗时过长"
 
-#: lib/phoenix_kit_ai/errors.ex:295
+#: lib/phoenix_kit_ai/errors.ex:301
 #, elixir-autogen, elixir-format
 msgid "Invalid retention period for %{kind}"
 msgstr "%{kind}的保留期限无效"
 
-#: lib/phoenix_kit_ai/errors.ex:284
+#: lib/phoenix_kit_ai/errors.ex:290
 #, elixir-autogen, elixir-format
 msgid "The AI module is disabled"
 msgstr "AI 模块已停用"
 
-#: lib/phoenix_kit_ai/errors.ex:301
+#: lib/phoenix_kit_ai/errors.ex:307
 #, elixir-autogen, elixir-format
 msgid "The retention periods were changed by someone else; reload the page"
 msgstr "保留期限已被他人更改，请重新加载页面"
 
-#: lib/phoenix_kit_ai/errors.ex:283
+#: lib/phoenix_kit_ai/errors.ex:289
 #, elixir-autogen, elixir-format
 msgid "You are not allowed to do this"
 msgstr "您无权执行此操作"
 
-#: lib/phoenix_kit_ai/errors.ex:357
+#: lib/phoenix_kit_ai/errors.ex:363
 #, elixir-autogen, elixir-format
 msgid "guard events"
 msgstr "任务守卫事件"
 
-#: lib/phoenix_kit_ai/errors.ex:356
+#: lib/phoenix_kit_ai/errors.ex:362
 #, elixir-autogen, elixir-format
 msgid "journal entries"
 msgstr "日志条目"
 
-#: lib/phoenix_kit_ai/errors.ex:355
+#: lib/phoenix_kit_ai/errors.ex:361
 #, elixir-autogen, elixir-format
 msgid "the content of journal entries"
 msgstr "日志条目的内容"
 
-#: lib/phoenix_kit_ai/errors.ex:287
+#: lib/phoenix_kit_ai/errors.ex:293
 #, elixir-autogen, elixir-format
 msgid "The cleanup boundary for %{kind} is in the future"
 msgstr "%{kind}的清理边界位于未来"
 
-#: lib/phoenix_kit_ai/errors.ex:304
+#: lib/phoenix_kit_ai/errors.ex:310
 #, elixir-autogen, elixir-format
 msgid "The table %{table} references the AI journal or the guard events in a way that would block or spread the deletion; nothing was deleted"
 msgstr "表 %{table} 引用 AI 日志或任务守卫事件的方式会阻止删除或使删除波及其他数据；未删除任何内容"
 
-#: lib/phoenix_kit_ai/errors.ex:291
+#: lib/phoenix_kit_ai/errors.ex:297
 #, elixir-autogen, elixir-format
 msgid "The cleanup boundary for %{kind} is not a date and time"
 msgstr "%{kind}的清理边界不是日期时间"
 
-#: lib/phoenix_kit_ai/errors.ex:322
+#: lib/phoenix_kit_ai/errors.ex:328
 #, elixir-autogen, elixir-format
 msgid "Choose what to clean up"
 msgstr "请选择要清理的内容"
 
-#: lib/phoenix_kit_ai/errors.ex:321
+#: lib/phoenix_kit_ai/errors.ex:327
 #, elixir-autogen, elixir-format
 msgid "The journal cleanup could not be queued"
 msgstr "无法将日志清理加入队列"
 
-#: lib/phoenix_kit_ai/errors.ex:345
+#: lib/phoenix_kit_ai/errors.ex:351
 #, elixir-autogen, elixir-format
 msgid "The journal cleanup failed"
 msgstr "日志清理失败"
 
-#: lib/phoenix_kit_ai/errors.ex:319
+#: lib/phoenix_kit_ai/errors.ex:325
 #, elixir-autogen, elixir-format
 msgid "The retention periods are being saved by someone else; try again"
 msgstr "保留期限正由他人保存，请重试"
 
-#: lib/phoenix_kit_ai/errors.ex:316
+#: lib/phoenix_kit_ai/errors.ex:322
 #, elixir-autogen, elixir-format
 msgid "The retention periods could not be saved"
 msgstr "无法保存保留期限"
 
-#: lib/phoenix_kit_ai/errors.ex:313
+#: lib/phoenix_kit_ai/errors.ex:319
 #, elixir-autogen, elixir-format
 msgid "Unknown kind of journal retention"
 msgstr "未知的日志保留类别"
@@ -4178,22 +4178,22 @@ msgid "year"
 msgid_plural "years"
 msgstr[0] "年"
 
-#: lib/phoenix_kit_ai/errors.ex:334
+#: lib/phoenix_kit_ai/errors.ex:340
 #, elixir-autogen, elixir-format
 msgid "A cleanup boundary was in the future; nothing was deleted"
 msgstr "清理边界位于未来；未删除任何内容"
 
-#: lib/phoenix_kit_ai/errors.ex:337
+#: lib/phoenix_kit_ai/errors.ex:343
 #, elixir-autogen, elixir-format
 msgid "A cleanup boundary was not a date and time; nothing was deleted"
 msgstr "清理边界不是日期时间；未删除任何内容"
 
-#: lib/phoenix_kit_ai/errors.ex:329
+#: lib/phoenix_kit_ai/errors.ex:335
 #, elixir-autogen, elixir-format
 msgid "A table references the AI journal or the guard events in a way that would block or spread the deletion; nothing was deleted"
 msgstr "某个表引用 AI 日志或任务守卫事件的方式会阻止删除或使删除波及其他数据；未删除任何内容"
 
-#: lib/phoenix_kit_ai/errors.ex:325
+#: lib/phoenix_kit_ai/errors.ex:331
 #, elixir-autogen, elixir-format
 msgid "Counting what would be deleted failed"
 msgstr "统计将被删除的内容失败"
@@ -4203,7 +4203,7 @@ msgstr "统计将被删除的内容失败"
 msgid "Someone else changed the retention periods; the card shows them now"
 msgstr "他人更改了保留期限；卡片现在显示的是新的期限"
 
-#: lib/phoenix_kit_ai/errors.ex:340
+#: lib/phoenix_kit_ai/errors.ex:346
 #, elixir-autogen, elixir-format
 msgid "The cleanup job's arguments could not be read; nothing was deleted"
 msgstr "无法读取清理作业的参数；未删除任何内容"
@@ -4321,12 +4321,12 @@ msgid "%{count} off-purpose flag reason older than %{date} will be cleared."
 msgid_plural "%{count} off-purpose flag reasons older than %{date} will be cleared."
 msgstr[0] "将清除 %{count} 条早于 %{date} 的偏离用途标记原因。"
 
-#: lib/phoenix_kit_ai/errors.ex:93
+#: lib/phoenix_kit_ai/errors.ex:99
 #, elixir-autogen, elixir-format
 msgid "A batch cannot run %{verb}"
 msgstr "批处理无法运行 %{verb}"
 
-#: lib/phoenix_kit_ai/errors.ex:69
+#: lib/phoenix_kit_ai/errors.ex:72
 #, elixir-autogen, elixir-format
 msgid "Batch items must be a list"
 msgstr "批处理项必须是列表"
@@ -4336,58 +4336,58 @@ msgstr "批处理项必须是列表"
 msgid "Embedding input must be text or an image"
 msgstr "嵌入的输入必须是文本或图像"
 
-#: lib/phoenix_kit_ai/errors.ex:70
+#: lib/phoenix_kit_ai/errors.ex:73
 #, elixir-autogen, elixir-format
 msgid "Labels must be a list of words"
 msgstr "标签必须是词语列表"
 
-#: lib/phoenix_kit_ai/errors.ex:67
+#: lib/phoenix_kit_ai/errors.ex:70
 #, elixir-autogen, elixir-format
 msgid "Statements must be a list of texts"
 msgstr "陈述必须是文本列表"
 
-#: lib/phoenix_kit_ai/errors.ex:89
+#: lib/phoenix_kit_ai/errors.ex:95
 #, elixir-autogen, elixir-format
 msgid "The budget must be an amount in dollars"
 msgstr "预算必须是美元金额"
 
-#: lib/phoenix_kit_ai/errors.ex:88
-#: lib/phoenix_kit_ai/errors.ex:90
+#: lib/phoenix_kit_ai/errors.ex:94
+#: lib/phoenix_kit_ai/errors.ex:96
 #, elixir-autogen, elixir-format
 msgid "The item failed with an internal error"
 msgstr "该项因内部错误而失败"
 
-#: lib/phoenix_kit_ai/errors.ex:72
+#: lib/phoenix_kit_ai/errors.ex:78
 #, elixir-autogen, elixir-format
 msgid "The item took too long and was stopped"
 msgstr "该项耗时过长，已被停止"
 
-#: lib/phoenix_kit_ai/errors.ex:86
+#: lib/phoenix_kit_ai/errors.ex:92
 #, elixir-autogen, elixir-format
 msgid "The answer for this item was missing from its group's answer"
 msgstr "该项的回答在其分组的回答中缺失"
 
-#: lib/phoenix_kit_ai/errors.ex:172
+#: lib/phoenix_kit_ai/errors.ex:178
 #, elixir-autogen, elixir-format
 msgid "The answer was cut off at the output limit; allow more output tokens (max_tokens)"
 msgstr "回答在输出上限处被截断；请允许更多输出 token（max_tokens）"
 
-#: lib/phoenix_kit_ai/errors.ex:83
+#: lib/phoenix_kit_ai/errors.ex:89
 #, elixir-autogen, elixir-format
 msgid "A batch cannot group items here (%{reason})"
 msgstr "批处理无法在此对项目分组（%{reason}）"
 
-#: lib/phoenix_kit_ai/errors.ex:78
+#: lib/phoenix_kit_ai/errors.ex:84
 #, elixir-autogen, elixir-format
 msgid "Fallback models must be a list of model ids"
 msgstr "备用模型必须是模型 ID 列表"
 
-#: lib/phoenix_kit_ai/errors.ex:75
+#: lib/phoenix_kit_ai/errors.ex:81
 #, elixir-autogen, elixir-format
 msgid "Labels must be a list of words; pass options as the fourth argument"
 msgstr "标签必须是词语列表；请将选项作为第四个参数传入"
 
-#: lib/phoenix_kit_ai/errors.ex:80
+#: lib/phoenix_kit_ai/errors.ex:86
 #, elixir-autogen, elixir-format
 msgid "confirm: must be true or a list of images"
 msgstr "confirm: 必须为 true 或图像列表"
@@ -4397,7 +4397,7 @@ msgstr "confirm: 必须为 true 或图像列表"
 msgid "An AI spending cap (%{cap}) refused a call. Calls are refused until the month turns or the cap is raised."
 msgstr "一项 AI 支出上限（%{cap}）拒绝了一次调用。在进入下个月或提高上限之前，调用都会被拒绝。"
 
-#: lib/phoenix_kit_ai/errors.ex:182
+#: lib/phoenix_kit_ai/errors.ex:188
 #, elixir-autogen, elixir-format
 msgid "The AI budget for this month has been used up"
 msgstr "本月的 AI 预算已用完"
@@ -4454,12 +4454,12 @@ msgstr "输入"
 msgid "Needed by tasks that write down or understand what was said."
 msgstr "转写或理解语音内容的 AI 任务需要此能力。"
 
-#: lib/phoenix_kit_ai/errors.ex:265
+#: lib/phoenix_kit_ai/errors.ex:271
 #, elixir-autogen, elixir-format
 msgid "Recording too large: %{bytes} bytes, the limit is %{max}"
 msgstr "录音过大：%{bytes} 字节，上限为 %{max}"
 
-#: lib/phoenix_kit_ai/errors.ex:272
+#: lib/phoenix_kit_ai/errors.ex:278
 #, elixir-autogen, elixir-format
 msgid "The recording must be bytes, a map with data:, or a data URL"
 msgstr "录音必须是字节、带 data: 的 map 或 data URL"
@@ -4479,12 +4479,12 @@ msgstr "金额以美元表示并使用小数点，例如 20.00"
 msgid "The model's answer was empty"
 msgstr "模型的回答为空"
 
-#: lib/phoenix_kit_ai/errors.ex:343
+#: lib/phoenix_kit_ai/errors.ex:349
 #, elixir-autogen, elixir-format
 msgid "The periods changed after this cleanup was queued; nothing was deleted"
 msgstr "此清理加入队列后期限已更改；未删除任何内容"
 
-#: lib/phoenix_kit_ai/errors.ex:258
+#: lib/phoenix_kit_ai/errors.ex:264
 #, elixir-autogen, elixir-format
 msgid "The provider refused this content"
 msgstr "提供商拒绝了此内容"
@@ -4495,7 +4495,7 @@ msgstr "提供商拒绝了此内容"
 msgid "Dictate"
 msgstr "听写"
 
-#: lib/phoenix_kit_ai.ex:1278
+#: lib/phoenix_kit_ai.ex:1279
 #, elixir-autogen, elixir-format
 msgid "Dictation"
 msgstr "听写"
@@ -4545,7 +4545,7 @@ msgstr "我们什么也没听到。请靠近麦克风一点再试一次。"
 msgid "We couldn't write that down. Please try again."
 msgstr "无法转写这段内容，请重试。"
 
-#: lib/phoenix_kit_ai.ex:1281
+#: lib/phoenix_kit_ai.ex:1282
 #, elixir-autogen, elixir-format
 msgid "Write down what a person says on a page, word for word."
 msgstr "逐字转写用户在页面上所说的话。"
@@ -4555,7 +4555,7 @@ msgstr "逐字转写用户在页面上所说的话。"
 msgid "Writing down what you said…"
 msgstr "正在转写您说的话…"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1426
+#: lib/phoenix_kit_ai/web/playground.ex:1429
 #, elixir-autogen, elixir-format
 msgid "%{count} byte of image data"
 msgid_plural "%{count} bytes of image data"
@@ -4567,17 +4567,17 @@ msgid "%{count} model at this provider is known to take audio: start typing in M
 msgid_plural "%{count} models at this provider are known to take audio: start typing in Model to pick one."
 msgstr[0] "已知此提供商有 %{count} 个模型可接收音频：在“模型”中开始输入即可选择。"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1316
+#: lib/phoenix_kit_ai/web/playground.ex:1319
 #, elixir-autogen, elixir-format
 msgid "%{model} does not take audio, so the call will be refused. Pick a model that does, or the speech-to-text API for a speech-to-text model."
 msgstr "%{model} 不接收音频，因此调用将被拒绝。请选择可接收音频的模型；若使用语音识别模型，请选择语音识别 API。"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1305
+#: lib/phoenix_kit_ai/web/playground.ex:1308
 #, elixir-autogen, elixir-format
 msgid "%{model} gets the recording through the speech-to-text API (/audio/transcriptions). Nothing checks beforehand that it is a speech-to-text model."
 msgstr "%{model} 将通过语音识别 API（/audio/transcriptions）接收录音。系统不会事先检查它是否为语音识别模型。"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1312
+#: lib/phoenix_kit_ai/web/playground.ex:1315
 #, elixir-autogen, elixir-format
 msgid "%{model} takes audio: the recording goes to it in a chat message."
 msgstr "%{model} 可接收音频：录音将以聊天消息的形式发送给它。"
@@ -4592,17 +4592,17 @@ msgstr "输入 %{price}/百万"
 msgid "%{price}/M out"
 msgstr "输出 %{price}/百万"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1362
+#: lib/phoenix_kit_ai/web/playground.ex:1365
 #, elixir-autogen, elixir-format
 msgid "%{seconds} s"
 msgstr "%{seconds} 秒"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1369
+#: lib/phoenix_kit_ai/web/playground.ex:1372
 #, elixir-autogen, elixir-format
 msgid "%{size} MB"
 msgstr "%{size} MB"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1371
+#: lib/phoenix_kit_ai/web/playground.ex:1374
 #, elixir-autogen, elixir-format
 msgid "%{size} kB"
 msgstr "%{size} KB"
@@ -4617,12 +4617,12 @@ msgstr "上下文 %{tokens}"
 msgid "%{tokens} out"
 msgstr "输出 %{tokens}"
 
-#: lib/phoenix_kit_ai/errors.ex:71
+#: lib/phoenix_kit_ai/errors.ex:76
 #, elixir-autogen, elixir-format
 msgid "A run needs a name: a non-empty string, atom or integer"
 msgstr "运行需要一个名称：非空字符串、原子或整数"
 
-#: lib/phoenix_kit_ai.ex:1226
+#: lib/phoenix_kit_ai.ex:1227
 #, elixir-autogen, elixir-format
 msgid "AI endpoints, prompts, and usage tracking"
 msgstr "AI 端点、提示词和用量跟踪"
@@ -4632,17 +4632,17 @@ msgstr "AI 端点、提示词和用量跟踪"
 msgid "Answers, newest first"
 msgstr "回答，最新的在前"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1346
+#: lib/phoenix_kit_ai/web/playground.ex:1349
 #, elixir-autogen, elixir-format
 msgid "Automatic"
 msgstr "自动"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1351
+#: lib/phoenix_kit_ai/web/playground.ex:1354
 #, elixir-autogen, elixir-format
 msgid "Automatic (%{path})"
 msgstr "自动（%{path}）"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1344
+#: lib/phoenix_kit_ai/web/playground.ex:1347
 #, elixir-autogen, elixir-format
 msgid "Chat with the audio attached"
 msgstr "附带音频的聊天"
@@ -4749,17 +4749,17 @@ msgstr "我的应用"
 msgid "No speech was heard in the recording."
 msgstr "录音中未听到语音。"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1323
+#: lib/phoenix_kit_ai/web/playground.ex:1326
 #, elixir-autogen, elixir-format
 msgid "Nobody has verified that %{model} takes audio, so the call will be refused while only verified models are allowed."
 msgstr "没有人验证过 %{model} 能接收音频，因此在仅允许已验证模型时，调用将被拒绝。"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1330
+#: lib/phoenix_kit_ai/web/playground.ex:1333
 #, elixir-autogen, elixir-format
 msgid "Nobody has verified that %{model} takes audio. The call is made; a model that does not hear answers with an error."
 msgstr "没有人验证过 %{model} 能接收音频。调用仍会进行；无法处理音频的模型会返回错误。"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1382
+#: lib/phoenix_kit_ai/web/playground.ex:1385
 #, elixir-autogen, elixir-format
 msgid "One file at a time"
 msgstr "一次只能选择一个文件"
@@ -4810,7 +4810,7 @@ msgstr "录制或选择一段录音，看看端点会转写出什么。录音会
 msgid "Record something or pick a file first"
 msgstr "请先录音或选择文件"
 
-#: lib/phoenix_kit_ai/web/playground.ex:670
+#: lib/phoenix_kit_ai/web/playground.ex:668
 #, elixir-autogen, elixir-format
 msgid "Recording"
 msgstr "录音"
@@ -4846,7 +4846,7 @@ msgstr "西班牙语"
 msgid "Speech to text"
 msgstr "语音转文字"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1345
+#: lib/phoenix_kit_ai/web/playground.ex:1348
 #, elixir-autogen, elixir-format
 msgid "Speech-to-text API"
 msgstr "语音识别 API"
@@ -4861,12 +4861,12 @@ msgstr "停止序列"
 msgid "Temperature"
 msgstr "温度"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1381
+#: lib/phoenix_kit_ai/web/playground.ex:1384
 #, elixir-autogen, elixir-format
 msgid "That file is not a recording"
 msgstr "该文件不是录音"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1376
+#: lib/phoenix_kit_ai/web/playground.ex:1379
 #, elixir-autogen, elixir-format
 msgid "That file is too large (%{size} at most)"
 msgstr "文件过大（最大 %{size}）"
@@ -4876,7 +4876,7 @@ msgstr "文件过大（最大 %{size}）"
 msgid "The check found changes"
 msgstr "检查发现了变化"
 
-#: lib/phoenix_kit_ai/errors.ex:269
+#: lib/phoenix_kit_ai/errors.ex:275
 #, elixir-autogen, elixir-format
 msgid "The recording's format could not be detected; pass it as format:"
 msgstr "无法检测录音的格式；请通过 format: 传入"
@@ -4963,7 +4963,12 @@ msgstr "例如：一位客户在订购胶合板。尺寸写作 2500×1250，厚�
 msgid "e.g. et, en, ru"
 msgstr "例如 et、en、ru"
 
-#: lib/phoenix_kit_ai/errors.ex:371
+#: lib/phoenix_kit_ai/errors.ex:377
 #, elixir-autogen, elixir-format
 msgid "unknown"
 msgstr "未知"
+
+#: lib/phoenix_kit_ai/errors.ex:67
+#, elixir-autogen, elixir-format
+msgid "An embedding role must be query or document"
+msgstr "嵌入的角色必须是 query 或 document"

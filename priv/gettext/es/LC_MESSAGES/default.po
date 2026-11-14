@@ -38,7 +38,7 @@ msgstr "El módulo de IA no está habilitado"
 msgid "API Response (raw)"
 msgstr "Respuesta de la API (sin procesar)"
 
-#: lib/phoenix_kit_ai/errors.ex:120
+#: lib/phoenix_kit_ai/errors.ex:126
 #, elixir-autogen, elixir-format
 msgid "API error: %{status}"
 msgstr "Error de la API: %{status}"
@@ -203,7 +203,7 @@ msgstr "Conectado"
 msgid "Connecting…"
 msgstr "Conectando…"
 
-#: lib/phoenix_kit_ai/errors.ex:124
+#: lib/phoenix_kit_ai/errors.ex:130
 #, elixir-autogen, elixir-format
 msgid "Connection error: %{reason}"
 msgstr "Error de conexión: %{reason}"
@@ -213,7 +213,7 @@ msgstr "Error de conexión: %{reason}"
 msgid "Content"
 msgstr "Contenido"
 
-#: lib/phoenix_kit_ai/errors.ex:131
+#: lib/phoenix_kit_ai/errors.ex:137
 #, elixir-autogen, elixir-format
 msgid "Content must be a string"
 msgstr "El contenido debe ser una cadena de texto"
@@ -493,7 +493,7 @@ msgstr "Endpoint deshabilitado"
 msgid "Endpoint enabled"
 msgstr "Endpoint habilitado"
 
-#: lib/phoenix_kit_ai/errors.ex:105
+#: lib/phoenix_kit_ai/errors.ex:111
 #, elixir-autogen, elixir-format
 msgid "Endpoint has no model configured"
 msgstr "El endpoint no tiene ningún modelo configurado"
@@ -623,7 +623,7 @@ msgstr "Si no se proporciona una variable al usar el prompt, queda tal cual en e
 msgid "Image Generation"
 msgstr "Generación de imágenes"
 
-#: lib/phoenix_kit_ai/errors.ex:104
+#: lib/phoenix_kit_ai/errors.ex:110
 #, elixir-autogen, elixir-format
 msgid "Input cannot be empty"
 msgstr "La entrada no puede estar vacía"
@@ -665,7 +665,7 @@ msgstr "Respuesta JSON no válida"
 msgid "Invalid endpoint identifier"
 msgstr "Identificador de endpoint no válido"
 
-#: lib/phoenix_kit_ai/errors.ex:130
+#: lib/phoenix_kit_ai/errors.ex:136
 #, elixir-autogen, elixir-format
 msgid "Invalid prompt identifier"
 msgstr "Identificador de prompt no válido"
@@ -739,7 +739,7 @@ msgstr "Manual"
 msgid "Message"
 msgstr "Mensaje"
 
-#: lib/phoenix_kit_ai/errors.ex:134
+#: lib/phoenix_kit_ai/errors.ex:140
 #, elixir-autogen, elixir-format
 msgid "Missing prompt variables: %{vars}"
 msgstr "Faltan variables del prompt: %{vars}"
@@ -847,7 +847,7 @@ msgstr "No hay endpoints habilitados."
 msgid "No integration"
 msgstr "Sin integración"
 
-#: lib/phoenix_kit_ai/errors.ex:114
+#: lib/phoenix_kit_ai/errors.ex:120
 #: lib/phoenix_kit_ai/web/endpoint_form.ex:1721
 #, elixir-autogen, elixir-format
 msgid "No integration configured for this endpoint. Set up the API key in Settings → Integrations."
@@ -998,22 +998,22 @@ msgstr "Prompt deshabilitado"
 msgid "Prompt enabled"
 msgstr "Prompt habilitado"
 
-#: lib/phoenix_kit_ai/errors.ex:138
+#: lib/phoenix_kit_ai/errors.ex:144
 #, elixir-autogen, elixir-format
 msgid "Prompt error: %{reason}"
 msgstr "Error del prompt: %{reason}"
 
-#: lib/phoenix_kit_ai/errors.ex:129
+#: lib/phoenix_kit_ai/errors.ex:135
 #, elixir-autogen, elixir-format
 msgid "Prompt has no content"
 msgstr "El prompt no tiene contenido"
 
-#: lib/phoenix_kit_ai/errors.ex:128
+#: lib/phoenix_kit_ai/errors.ex:134
 #, elixir-autogen, elixir-format
 msgid "Prompt is disabled"
 msgstr "El prompt está deshabilitado"
 
-#: lib/phoenix_kit_ai/errors.ex:127
+#: lib/phoenix_kit_ai/errors.ex:133
 #: lib/phoenix_kit_ai/web/prompt_form.ex:63
 #: lib/phoenix_kit_ai/web/prompts.ex:128
 #: lib/phoenix_kit_ai/web/prompts.ex:148
@@ -1295,7 +1295,7 @@ msgstr "Modelo de síntesis de voz"
 msgid "The %{provider} integration is not connected — requests will fail until you connect it in Settings → Integrations."
 msgstr "La integración de %{provider} no está conectada: las solicitudes fallarán hasta que la conecte en «Configuración → Integraciones»."
 
-#: lib/phoenix_kit_ai/errors.ex:101
+#: lib/phoenix_kit_ai/errors.ex:107
 #, elixir-autogen, elixir-format
 msgid "The TTS provider returned an unreadable audio response."
 msgstr "El proveedor de síntesis de voz devolvió una respuesta de audio ilegible."
@@ -1305,7 +1305,7 @@ msgstr "El proveedor de síntesis de voz devolvió una respuesta de audio ilegib
 msgid "The integration is not currently connected. Open it in Settings → Integrations to test."
 msgstr "La integración no está conectada en este momento. Ábrala en «Configuración → Integraciones» para probarla."
 
-#: lib/phoenix_kit_ai/errors.ex:108
+#: lib/phoenix_kit_ai/errors.ex:114
 #, elixir-autogen, elixir-format
 msgid "The integration used by this endpoint has been deleted. Please select a new one in the endpoint settings."
 msgstr "Se ha eliminado la integración que usa este endpoint. Seleccione otra en los ajustes del endpoint."
@@ -1438,7 +1438,7 @@ msgstr "Escriba el texto que se leerá en voz alta…"
 msgid "Type your message to the AI..."
 msgstr "Escriba su mensaje para la IA…"
 
-#: lib/phoenix_kit_ai/errors.ex:352
+#: lib/phoenix_kit_ai/errors.ex:358
 #, elixir-autogen, elixir-format
 msgid "Unexpected error: %{reason}"
 msgstr "Error inesperado: %{reason}"
@@ -1471,7 +1471,7 @@ msgstr "Actualice la configuración de su endpoint de IA"
 msgid "Updating…"
 msgstr "Actualizando…"
 
-#: lib/phoenix_kit_ai.ex:1224
+#: lib/phoenix_kit_ai.ex:1225
 #: lib/phoenix_kit_ai/web/endpoints.ex:93
 #: lib/phoenix_kit_ai/web/prompts.ex:41
 #, elixir-autogen, elixir-format
@@ -1741,7 +1741,7 @@ msgid_plural "tokens"
 msgstr[0] "token"
 msgstr[1] "tokens"
 
-#: lib/phoenix_kit_ai.ex:1220
+#: lib/phoenix_kit_ai.ex:1221
 #: lib/phoenix_kit_ai/web/endpoint_form.ex:656
 #: lib/phoenix_kit_ai/web/endpoints.ex:130
 #: lib/phoenix_kit_ai/web/playground.ex:70
@@ -1752,21 +1752,21 @@ msgstr[1] "tokens"
 msgid "AI"
 msgstr "IA"
 
-#: lib/phoenix_kit_ai.ex:1221
+#: lib/phoenix_kit_ai.ex:1222
 #: lib/phoenix_kit_ai/web/endpoint_form.ex:792
 #: lib/phoenix_kit_ai/web/endpoints.ex:97
 #, elixir-autogen, elixir-format
 msgid "Endpoints"
 msgstr "Endpoints"
 
-#: lib/phoenix_kit_ai.ex:1223
-#: lib/phoenix_kit_ai.ex:1269
+#: lib/phoenix_kit_ai.ex:1224
+#: lib/phoenix_kit_ai.ex:1270
 #: lib/phoenix_kit_ai/web/playground.ex:73
 #, elixir-autogen, elixir-format
 msgid "Playground"
 msgstr "Zona de pruebas"
 
-#: lib/phoenix_kit_ai.ex:1222
+#: lib/phoenix_kit_ai.ex:1223
 #: lib/phoenix_kit_ai/web/prompt_form.ex:81
 #: lib/phoenix_kit_ai/web/prompts.ex:65
 #, elixir-autogen, elixir-format
@@ -1817,8 +1817,8 @@ msgstr "Añada al menos una imagen"
 msgid "Remove"
 msgstr "Quitar"
 
-#: lib/phoenix_kit_ai/errors.ex:98
-#: lib/phoenix_kit_ai/web/playground.ex:987
+#: lib/phoenix_kit_ai/errors.ex:104
+#: lib/phoenix_kit_ai/web/playground.ex:990
 #, elixir-autogen, elixir-format
 msgid "The model returned no image"
 msgstr "El modelo no devolvió ninguna imagen"
@@ -1859,7 +1859,7 @@ msgstr "Describir"
 msgid "Endpoint's model"
 msgstr "Modelo del endpoint"
 
-#: lib/phoenix_kit_ai/errors.ex:165
+#: lib/phoenix_kit_ai/errors.ex:171
 #, elixir-autogen, elixir-format
 msgid "Image operation %{operation} needs %{key}"
 msgstr "La operación de imagen %{operation} necesita %{key}"
@@ -1880,7 +1880,7 @@ msgstr "Cargar la lista de modelos"
 msgid "Model (override)"
 msgstr "Modelo (sustitución)"
 
-#: lib/phoenix_kit_ai/errors.ex:141
+#: lib/phoenix_kit_ai/errors.ex:147
 #, elixir-autogen, elixir-format
 msgid "Not supported by this provider"
 msgstr "No es compatible con este proveedor"
@@ -1906,58 +1906,58 @@ msgstr "Prompt enviado"
 msgid "Send one or more images to an image-capable endpoint. The first image is the one being edited; the rest are references. Pick operations, add an instruction, or both — they become one prompt, and options are fitted to what the model accepts."
 msgstr "Envíe una o varias imágenes a un endpoint que admita imágenes. La primera imagen es la que se edita; las demás son referencias. Elija operaciones, añada una instrucción o ambas cosas: se combinan en un solo prompt, y las opciones se ajustan a lo que acepta el modelo."
 
-#: lib/phoenix_kit_ai/errors.ex:168
+#: lib/phoenix_kit_ai/errors.ex:174
 #, elixir-autogen, elixir-format
 msgid "The model did not answer with JSON"
 msgstr "El modelo no respondió con JSON"
 
-#: lib/phoenix_kit_ai/errors.ex:150
+#: lib/phoenix_kit_ai/errors.ex:156
 #, elixir-autogen, elixir-format
 msgid "The model does not accept %{option} = %{value}"
 msgstr "El modelo no acepta %{option} = %{value}"
 
-#: lib/phoenix_kit_ai/errors.ex:142
+#: lib/phoenix_kit_ai/errors.ex:148
 #, elixir-autogen, elixir-format
 msgid "This operation needs a reference image"
 msgstr "Esta operación necesita una imagen de referencia"
 
-#: lib/phoenix_kit_ai/web/playground.ex:967
+#: lib/phoenix_kit_ai/web/playground.ex:970
 #, elixir-autogen, elixir-format
 msgid "This provider publishes no image model list"
 msgstr "Este proveedor no publica una lista de modelos de imagen"
 
-#: lib/phoenix_kit_ai/errors.ex:154
+#: lib/phoenix_kit_ai/errors.ex:160
 #, elixir-autogen, elixir-format
 msgid "Too many images: %{count} given, the model takes at most %{max}"
 msgstr "Demasiadas imágenes: se han dado %{count} y el modelo admite como máximo %{max}"
 
-#: lib/phoenix_kit_ai/errors.ex:161
+#: lib/phoenix_kit_ai/errors.ex:167
 #, elixir-autogen, elixir-format
 msgid "Unknown image operation: %{operation}"
 msgstr "Operación de imagen desconocida: %{operation}"
 
-#: lib/phoenix_kit_ai/errors.ex:252
+#: lib/phoenix_kit_ai/errors.ex:258
 #, elixir-autogen, elixir-format
 msgid "Image operations %{first} and %{second} cannot be combined"
 msgstr "Las operaciones de imagen %{first} y %{second} no se pueden combinar"
 
-#: lib/phoenix_kit_ai/errors.ex:275
+#: lib/phoenix_kit_ai/errors.ex:281
 #, elixir-autogen, elixir-format
 msgid "Image too large: %{bytes} bytes, the limit is %{max}"
 msgstr "Imagen demasiado grande: %{bytes} bytes; el límite es %{max}"
 
-#: lib/phoenix_kit_ai/errors.ex:278
+#: lib/phoenix_kit_ai/errors.ex:284
 #, elixir-autogen, elixir-format
 msgid "That image URL cannot be fetched from here"
 msgstr "Esa URL de imagen no se puede descargar desde aquí"
 
-#: lib/phoenix_kit_ai/errors.ex:280
-#: lib/phoenix_kit_ai/errors.ex:281
+#: lib/phoenix_kit_ai/errors.ex:286
+#: lib/phoenix_kit_ai/errors.ex:287
 #, elixir-autogen, elixir-format
 msgid "The image could not be downloaded"
 msgstr "No se pudo descargar la imagen"
 
-#: lib/phoenix_kit_ai/errors.ex:261
+#: lib/phoenix_kit_ai/errors.ex:267
 #, elixir-autogen, elixir-format
 msgid "The provider refused this content: %{reason}"
 msgstr "El proveedor rechazó este contenido: %{reason}"
@@ -1969,27 +1969,27 @@ msgid_plural "%{count} images kept from the last run"
 msgstr[0] "%{count} imagen conservada de la última ejecución"
 msgstr[1] "%{count} imágenes conservadas de la última ejecución"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1405
+#: lib/phoenix_kit_ai/web/playground.ex:1408
 #, elixir-autogen, elixir-format
 msgid "%{option} was changed from %{from} to %{to}"
 msgstr "%{option} se cambió de %{from} a %{to}"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1398
+#: lib/phoenix_kit_ai/web/playground.ex:1401
 #, elixir-autogen, elixir-format
 msgid "%{option} was dropped: the model does not accept %{value}"
 msgstr "Se descartó %{option}: el modelo no acepta %{value}"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1421
+#: lib/phoenix_kit_ai/web/playground.ex:1424
 #, elixir-autogen, elixir-format
 msgid "An output image could not be downloaded and is shown from the provider's link"
 msgstr "No se pudo descargar una imagen de salida; se muestra desde el enlace del proveedor"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1387
+#: lib/phoenix_kit_ai/web/playground.ex:1390
 #, elixir-autogen, elixir-format
 msgid "Aspect ratio"
 msgstr "Relación de aspecto"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1390
+#: lib/phoenix_kit_ai/web/playground.ex:1393
 #, elixir-autogen, elixir-format
 msgid "Background"
 msgstr "Fondo"
@@ -2030,12 +2030,12 @@ msgstr "Instrucción libre"
 msgid "Loading…"
 msgstr "Cargando…"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1435
+#: lib/phoenix_kit_ai/web/playground.ex:1439
 #, elixir-autogen, elixir-format
 msgid "Only JPEG, PNG and WebP images are accepted"
 msgstr "Solo se aceptan imágenes JPEG, PNG y WebP"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1391
+#: lib/phoenix_kit_ai/web/playground.ex:1394
 #, elixir-autogen, elixir-format
 msgid "Output format"
 msgstr "Formato de salida"
@@ -2045,7 +2045,7 @@ msgstr "Formato de salida"
 msgid "Plain studio background"
 msgstr "Fondo de estudio liso"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1389
+#: lib/phoenix_kit_ai/web/playground.ex:1392
 #, elixir-autogen, elixir-format
 msgid "Quality"
 msgstr "Calidad"
@@ -2070,7 +2070,7 @@ msgstr "Eliminar algo"
 msgid "Replace the background"
 msgstr "Reemplazar el fondo"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1388
+#: lib/phoenix_kit_ai/web/playground.ex:1391
 #, elixir-autogen, elixir-format
 msgid "Resolution"
 msgstr "Resolución"
@@ -2080,7 +2080,7 @@ msgstr "Resolución"
 msgid "Restyle after reference images"
 msgstr "Cambiar el estilo según las imágenes de referencia"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1016
+#: lib/phoenix_kit_ai/web/playground.ex:1019
 #, elixir-autogen, elixir-format
 msgid "Something went wrong on our side. Please try again."
 msgstr "Algo salió mal por nuestra parte. Inténtelo de nuevo."
@@ -2090,32 +2090,32 @@ msgstr "Algo salió mal por nuestra parte. Inténtelo de nuevo."
 msgid "Straighten"
 msgstr "Enderezar"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1432
+#: lib/phoenix_kit_ai/web/playground.ex:1436
 #, elixir-autogen, elixir-format
 msgid "That file is too large (8 MB at most)"
 msgstr "Ese archivo es demasiado grande (8 MB como máximo)"
 
-#: lib/phoenix_kit_ai/errors.ex:249
+#: lib/phoenix_kit_ai/errors.ex:255
 #, elixir-autogen, elixir-format
 msgid "The provider's model list could not be fetched"
 msgstr "No se pudo obtener la lista de modelos del proveedor"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1418
+#: lib/phoenix_kit_ai/web/playground.ex:1421
 #, elixir-autogen, elixir-format
 msgid "The provider's model list could not be fetched; options were not checked"
 msgstr "No se pudo obtener la lista de modelos del proveedor; no se comprobaron las opciones"
 
-#: lib/phoenix_kit_ai/errors.ex:175
+#: lib/phoenix_kit_ai/errors.ex:181
 #, elixir-autogen, elixir-format
 msgid "The provider's model list does not include %{model}"
 msgstr "La lista de modelos del proveedor no incluye %{model}"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1413
+#: lib/phoenix_kit_ai/web/playground.ex:1416
 #, elixir-autogen, elixir-format
 msgid "The provider's model list does not include %{model}; options were not checked"
 msgstr "La lista de modelos del proveedor no incluye %{model}; no se comprobaron las opciones"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1437
+#: lib/phoenix_kit_ai/web/playground.ex:1441
 #, elixir-autogen, elixir-format
 msgid "Two images at most"
 msgstr "Dos imágenes como máximo"
@@ -2130,17 +2130,17 @@ msgstr "Imagen subida"
 msgid "Upscale"
 msgstr "Aumentar la resolución"
 
-#: lib/phoenix_kit_ai/errors.ex:179
+#: lib/phoenix_kit_ai/errors.ex:185
 #, elixir-autogen, elixir-format
 msgid "The AI budget for the last 24 hours has been used up"
 msgstr "Se ha agotado el presupuesto de IA de las últimas 24 horas"
 
-#: lib/phoenix_kit_ai/errors.ex:185
+#: lib/phoenix_kit_ai/errors.ex:191
 #, elixir-autogen, elixir-format
 msgid "This endpoint's budget for the last 24 hours has been used up"
 msgstr "Se ha agotado el presupuesto de este endpoint de las últimas 24 horas"
 
-#: lib/phoenix_kit_ai/errors.ex:188
+#: lib/phoenix_kit_ai/errors.ex:194
 #, elixir-autogen, elixir-format
 msgid "You have used your AI allowance for the last 24 hours"
 msgstr "Ha agotado su cupo de IA de las últimas 24 horas"
@@ -2232,7 +2232,7 @@ msgstr "Total de tokens"
 msgid "Variables:"
 msgstr "Variables:"
 
-#: lib/phoenix_kit_ai/errors.ex:191
+#: lib/phoenix_kit_ai/errors.ex:197
 #, elixir-autogen, elixir-format
 msgid "You have made as many AI requests as allowed for the last 24 hours"
 msgstr "Ha hecho todas las solicitudes de IA permitidas en las últimas 24 horas"
@@ -2270,7 +2270,7 @@ msgid_plural "— Select provider (%{count} available) —"
 msgstr[0] "— Seleccione un proveedor (%{count} disponible) —"
 msgstr[1] "— Seleccione un proveedor (%{count} disponibles) —"
 
-#: lib/phoenix_kit_ai/web/playground.ex:894
+#: lib/phoenix_kit_ai/web/playground.ex:897
 #, elixir-autogen, elixir-format
 msgid "(No content in response)"
 msgstr "(La respuesta no tiene contenido)"
@@ -2426,7 +2426,7 @@ msgstr "Endpoints en uso:"
 msgid "Fits"
 msgstr "Adecuado"
 
-#: lib/phoenix_kit_ai/errors.ex:229
+#: lib/phoenix_kit_ai/errors.ex:235
 #, elixir-autogen, elixir-format
 msgid "It is not known whether the endpoint's model can do what this task needs (%{needs}). Mark the model's capabilities on the endpoint first."
 msgstr "No se sabe si el modelo del endpoint puede hacer lo que necesita esta tarea (%{needs}). Marque primero las capacidades del modelo en el endpoint."
@@ -2463,7 +2463,7 @@ msgstr "Necesita:"
 msgid "No module declares an AI task."
 msgstr "Ningún módulo declara una tarea de IA."
 
-#: lib/phoenix_kit_ai/errors.ex:242
+#: lib/phoenix_kit_ai/errors.ex:248
 #, elixir-autogen, elixir-format
 msgid "No provider of this model accepts all the request's parameters (%{params}). Remove the ones it does not support from the endpoint."
 msgstr "Ningún proveedor de este modelo acepta todos los parámetros de la solicitud (%{params}). Quite del endpoint los que no admita."
@@ -2490,18 +2490,18 @@ msgstr "Actualizar los catálogos"
 msgid "Some model catalogues could not be read"
 msgstr "No se pudieron leer algunos catálogos de modelos"
 
-#: lib/phoenix_kit_ai.ex:1225
+#: lib/phoenix_kit_ai.ex:1226
 #: lib/phoenix_kit_ai/web/tasks.ex:66
 #, elixir-autogen, elixir-format
 msgid "Tasks"
 msgstr "Tareas"
 
-#: lib/phoenix_kit_ai/errors.ex:223
+#: lib/phoenix_kit_ai/errors.ex:229
 #, elixir-autogen, elixir-format
 msgid "The endpoint's model cannot do what this task needs: %{needs}"
 msgstr "El modelo del endpoint no puede hacer lo que necesita esta tarea: %{needs}"
 
-#: lib/phoenix_kit_ai.ex:1257
+#: lib/phoenix_kit_ai.ex:1258
 #, elixir-autogen, elixir-format
 msgid "Translation"
 msgstr "Traducción"
@@ -2526,7 +2526,7 @@ msgstr "solo texto"
 msgid "tools"
 msgstr "herramientas"
 
-#: lib/phoenix_kit_ai/errors.ex:236
+#: lib/phoenix_kit_ai/errors.ex:242
 #, elixir-autogen, elixir-format
 msgid "No provider of this model accepts all the request's parameters. Remove the ones it does not support from the endpoint."
 msgstr "Ningún proveedor de este modelo acepta todos los parámetros de la solicitud. Quite del endpoint los que no admita."
@@ -2543,12 +2543,12 @@ msgstr "Rechazada"
 msgid "Refused before reaching the provider"
 msgstr "Rechazada antes de llegar al proveedor"
 
-#: lib/phoenix_kit_ai.ex:1272
+#: lib/phoenix_kit_ai.ex:1273
 #, elixir-autogen, elixir-format
 msgid "Let an administrator try endpoints and prompts by hand."
 msgstr "Permite a un administrador probar endpoints y prompts a mano."
 
-#: lib/phoenix_kit_ai.ex:1260
+#: lib/phoenix_kit_ai.ex:1261
 #, elixir-autogen, elixir-format
 msgid "Translate the text fields of a record from one language into another, keeping the field structure."
 msgstr "Traduce los campos de texto de un elemento de un idioma a otro, manteniendo la estructura de los campos."
@@ -2679,7 +2679,7 @@ msgstr "Un límite debe ser un número entero, o una cantidad en dólares si es 
 msgid "A user"
 msgstr "Un usuario"
 
-#: lib/phoenix_kit_ai.ex:1091
+#: lib/phoenix_kit_ai.ex:1092
 #, elixir-autogen, elixir-format
 msgid "AI task guard"
 msgstr "Control de tareas de IA"
@@ -2743,7 +2743,7 @@ msgstr "Límites y uso:"
 msgid "Limits saved"
 msgstr "Límites guardados"
 
-#: lib/phoenix_kit_ai.ex:1227
+#: lib/phoenix_kit_ai.ex:1228
 #, elixir-autogen, elixir-format
 msgid "Manage the AI task guard"
 msgstr "Gestionar el control de tareas de IA"
@@ -2857,7 +2857,7 @@ msgstr "La tarea de IA %{task} usa el endpoint %{endpoint}, cuyo modelo ahora no
 msgid "The change was not saved"
 msgstr "No se guardó el cambio"
 
-#: lib/phoenix_kit_ai/errors.ex:203
+#: lib/phoenix_kit_ai/errors.ex:209
 #, elixir-autogen, elixir-format
 msgid "This AI task has reached its %{name}"
 msgstr "Esta tarea de IA ha alcanzado su %{name}"
@@ -2897,7 +2897,7 @@ msgstr "Observadores guardados"
 msgid "You have reached your %{name} (%{limit}) in the AI task %{task}."
 msgstr "Ha alcanzado su %{name} (%{limit}) en la tarea de IA %{task}."
 
-#: lib/phoenix_kit_ai/errors.ex:209
+#: lib/phoenix_kit_ai/errors.ex:215
 #, elixir-autogen, elixir-format
 msgid "You have reached your %{name} in this AI task"
 msgstr "Ha alcanzado su %{name} en esta tarea de IA"
@@ -2958,7 +2958,7 @@ msgstr "las llamadas de un usuario"
 msgid "one user's spending"
 msgstr "el gasto de un usuario"
 
-#: lib/phoenix_kit_ai.ex:1817
+#: lib/phoenix_kit_ai.ex:1818
 #, elixir-autogen, elixir-format
 msgid "only a holder of ai.manage may declare capabilities while only verified models are allowed"
 msgstr "mientras solo se permitan modelos verificados, solo quien tenga ai.manage puede declarar capacidades"
@@ -3048,7 +3048,7 @@ msgstr "%{email} tiene bloqueado el acceso a la tarea de IA %{task}."
 msgid "%{email} is no longer blocked from the AI task %{task}."
 msgstr "%{email} ya no tiene bloqueado el acceso a la tarea de IA %{task}."
 
-#: lib/phoenix_kit_ai.ex:1093
+#: lib/phoenix_kit_ai.ex:1094
 #, elixir-autogen, elixir-format
 msgid "An AI task is near or at a limit, a spending cap refused a call, a task's model no longer fits it, a request was flagged as off-purpose, a task is used unusually, or a person was blocked or unblocked"
 msgstr "Una tarea de IA está cerca de un límite o lo ha alcanzado, un tope de gasto rechazó una llamada, el modelo de una tarea ya no es adecuado, una solicitud se marcó como ajena a la finalidad, una tarea se usa de forma inusual, o se bloqueó o desbloqueó a una persona"
@@ -3080,7 +3080,7 @@ msgstr "Bloqueados ahora:"
 msgid "By"
 msgstr "Por"
 
-#: lib/phoenix_kit_ai.ex:1228
+#: lib/phoenix_kit_ai.ex:1229
 #, elixir-autogen, elixir-format
 msgid "Change the limits of AI tasks, who is told about them and which models may be used; block a person from a task; see why a private task's request was flagged"
 msgstr "Cambiar los límites de las tareas de IA, a quién se avisa de ellos y qué modelos se pueden usar; bloquear a una persona en una tarea; ver por qué se marcó una solicitud de una tarea privada"
@@ -3205,7 +3205,7 @@ msgstr "Por qué (lo ven quienes gestionan el control de tareas)"
 msgid "You are blocked from the AI task %{task} until an administrator lifts the block."
 msgstr "Tiene bloqueada la tarea de IA %{task} hasta que un administrador levante el bloqueo."
 
-#: lib/phoenix_kit_ai/errors.ex:220
+#: lib/phoenix_kit_ai/errors.ex:226
 #, elixir-autogen, elixir-format
 msgid "You are blocked from this AI task until an administrator lifts the block"
 msgstr "Tiene bloqueada esta tarea de IA hasta que un administrador levante el bloqueo"
@@ -3601,7 +3601,7 @@ msgstr "El catálogo da un precio a este modelo, que se usa primero: este precio
 msgid "Setting a price needs the “Manage the AI task guard” permission: it decides what the money limits count."
 msgstr "Definir un precio requiere el permiso «Gestionar el control de tareas de IA»: de él depende lo que cuentan los límites de dinero."
 
-#: lib/phoenix_kit_ai.ex:1840
+#: lib/phoenix_kit_ai.ex:1841
 #, elixir-autogen, elixir-format
 msgid "only a holder of ai.manage may set or change a manual price"
 msgstr "solo quien tenga ai.manage puede definir o cambiar un precio manual"
@@ -3642,17 +3642,17 @@ msgstr "Hay demasiadas solicitudes de IA en curso; esta esperó demasiado su tur
 msgid "Too many AI requests are waiting; try again shortly"
 msgstr "Hay demasiadas solicitudes de IA en espera; inténtelo de nuevo en breve"
 
-#: lib/phoenix_kit_ai/errors.ex:200
+#: lib/phoenix_kit_ai/errors.ex:206
 #, elixir-autogen, elixir-format
 msgid "AI requests are paused until the latest database update has run"
 msgstr "Las solicitudes de IA están en pausa hasta que se ejecute la última actualización de la base de datos"
 
-#: lib/phoenix_kit_ai/errors.ex:194
+#: lib/phoenix_kit_ai/errors.ex:200
 #, elixir-autogen, elixir-format
 msgid "AI spending limits need an update before AI requests can run again"
 msgstr "Hay que actualizar los topes de gasto de IA para que las solicitudes de IA puedan volver a ejecutarse"
 
-#: lib/phoenix_kit_ai/errors.ex:197
+#: lib/phoenix_kit_ai/errors.ex:203
 #, elixir-autogen, elixir-format
 msgid "This task's spending limit needs an update before it can run again"
 msgstr "Hay que actualizar el límite de gasto de esta tarea para que pueda volver a ejecutarse"
@@ -3662,22 +3662,22 @@ msgstr "Hay que actualizar el límite de gasto de esta tarea para que pueda volv
 msgid "needs to be set again in dollars"
 msgstr "hay que volver a definirlo en dólares"
 
-#: lib/phoenix_kit_ai.ex:1238
+#: lib/phoenix_kit_ai.ex:1239
 #, elixir-autogen, elixir-format
 msgid "Create, edit, enable, disable, reorder and delete AI endpoints"
 msgstr "Crear, editar, habilitar, deshabilitar, reordenar y eliminar endpoints de IA"
 
-#: lib/phoenix_kit_ai.ex:1237
+#: lib/phoenix_kit_ai.ex:1238
 #, elixir-autogen, elixir-format
 msgid "Manage AI endpoints"
 msgstr "Gestionar endpoints de IA"
 
-#: lib/phoenix_kit_ai.ex:1233
+#: lib/phoenix_kit_ai.ex:1234
 #, elixir-autogen, elixir-format
 msgid "Open the Usage tab: every AI request on the site with its prompt and response"
 msgstr "Abrir la pestaña Uso: todas las solicitudes de IA del sitio con su prompt y su respuesta"
 
-#: lib/phoenix_kit_ai.ex:1232
+#: lib/phoenix_kit_ai.ex:1233
 #, elixir-autogen, elixir-format
 msgid "See AI usage"
 msgstr "Ver el uso de IA"
@@ -3729,7 +3729,7 @@ msgstr "Declarada por %{module} (su aplicación)"
 msgid "Some AI tasks were declared twice; the second declaration is not used:"
 msgstr "Algunas tareas de IA se declararon dos veces; la segunda declaración no se usa:"
 
-#: lib/phoenix_kit_ai/errors.ex:217
+#: lib/phoenix_kit_ai/errors.ex:223
 #, elixir-autogen, elixir-format
 msgid "This AI task's module is switched off, so the task cannot run"
 msgstr "El módulo de esta tarea de IA está desactivado, así que la tarea no se puede ejecutar"
@@ -3739,92 +3739,92 @@ msgstr "El módulo de esta tarea de IA está desactivado, así que la tarea no s
 msgid "The AI module is switched off."
 msgstr "El módulo de IA está desactivado."
 
-#: lib/phoenix_kit_ai/errors.ex:298
+#: lib/phoenix_kit_ai/errors.ex:304
 #, elixir-autogen, elixir-format
 msgid "A journal cleanup is already running"
 msgstr "Ya hay una limpieza del registro en curso"
 
-#: lib/phoenix_kit_ai/errors.ex:311
+#: lib/phoenix_kit_ai/errors.ex:317
 #, elixir-autogen, elixir-format
 msgid "Counting what would be deleted took too long"
 msgstr "Contar lo que se eliminaría tardó demasiado"
 
-#: lib/phoenix_kit_ai/errors.ex:295
+#: lib/phoenix_kit_ai/errors.ex:301
 #, elixir-autogen, elixir-format
 msgid "Invalid retention period for %{kind}"
 msgstr "Periodo de conservación no válido para %{kind}"
 
-#: lib/phoenix_kit_ai/errors.ex:284
+#: lib/phoenix_kit_ai/errors.ex:290
 #, elixir-autogen, elixir-format
 msgid "The AI module is disabled"
 msgstr "El módulo de IA está deshabilitado"
 
-#: lib/phoenix_kit_ai/errors.ex:301
+#: lib/phoenix_kit_ai/errors.ex:307
 #, elixir-autogen, elixir-format
 msgid "The retention periods were changed by someone else; reload the page"
 msgstr "Otra persona cambió los periodos de conservación; recargue la página"
 
-#: lib/phoenix_kit_ai/errors.ex:283
+#: lib/phoenix_kit_ai/errors.ex:289
 #, elixir-autogen, elixir-format
 msgid "You are not allowed to do this"
 msgstr "No tiene permiso para hacer esto"
 
-#: lib/phoenix_kit_ai/errors.ex:357
+#: lib/phoenix_kit_ai/errors.ex:363
 #, elixir-autogen, elixir-format
 msgid "guard events"
 msgstr "eventos del control de tareas"
 
-#: lib/phoenix_kit_ai/errors.ex:356
+#: lib/phoenix_kit_ai/errors.ex:362
 #, elixir-autogen, elixir-format
 msgid "journal entries"
 msgstr "entradas del registro"
 
-#: lib/phoenix_kit_ai/errors.ex:355
+#: lib/phoenix_kit_ai/errors.ex:361
 #, elixir-autogen, elixir-format
 msgid "the content of journal entries"
 msgstr "el contenido de las entradas del registro"
 
-#: lib/phoenix_kit_ai/errors.ex:287
+#: lib/phoenix_kit_ai/errors.ex:293
 #, elixir-autogen, elixir-format
 msgid "The cleanup boundary for %{kind} is in the future"
 msgstr "La fecha de corte de la limpieza para %{kind} está en el futuro"
 
-#: lib/phoenix_kit_ai/errors.ex:304
+#: lib/phoenix_kit_ai/errors.ex:310
 #, elixir-autogen, elixir-format
 msgid "The table %{table} references the AI journal or the guard events in a way that would block or spread the deletion; nothing was deleted"
 msgstr "La tabla %{table} hace referencia al registro de IA o a los eventos del control de tareas de un modo que bloquearía o propagaría la eliminación; no se eliminó nada"
 
-#: lib/phoenix_kit_ai/errors.ex:291
+#: lib/phoenix_kit_ai/errors.ex:297
 #, elixir-autogen, elixir-format
 msgid "The cleanup boundary for %{kind} is not a date and time"
 msgstr "La fecha de corte de la limpieza para %{kind} no es una fecha y hora"
 
-#: lib/phoenix_kit_ai/errors.ex:322
+#: lib/phoenix_kit_ai/errors.ex:328
 #, elixir-autogen, elixir-format
 msgid "Choose what to clean up"
 msgstr "Elija qué limpiar"
 
-#: lib/phoenix_kit_ai/errors.ex:321
+#: lib/phoenix_kit_ai/errors.ex:327
 #, elixir-autogen, elixir-format
 msgid "The journal cleanup could not be queued"
 msgstr "No se pudo poner en cola la limpieza del registro"
 
-#: lib/phoenix_kit_ai/errors.ex:345
+#: lib/phoenix_kit_ai/errors.ex:351
 #, elixir-autogen, elixir-format
 msgid "The journal cleanup failed"
 msgstr "La limpieza del registro falló"
 
-#: lib/phoenix_kit_ai/errors.ex:319
+#: lib/phoenix_kit_ai/errors.ex:325
 #, elixir-autogen, elixir-format
 msgid "The retention periods are being saved by someone else; try again"
 msgstr "Otra persona está guardando los periodos de conservación; inténtelo de nuevo"
 
-#: lib/phoenix_kit_ai/errors.ex:316
+#: lib/phoenix_kit_ai/errors.ex:322
 #, elixir-autogen, elixir-format
 msgid "The retention periods could not be saved"
 msgstr "No se pudieron guardar los periodos de conservación"
 
-#: lib/phoenix_kit_ai/errors.ex:313
+#: lib/phoenix_kit_ai/errors.ex:319
 #, elixir-autogen, elixir-format
 msgid "Unknown kind of journal retention"
 msgstr "Tipo de conservación del registro desconocido"
@@ -4203,22 +4203,22 @@ msgid_plural "years"
 msgstr[0] "año"
 msgstr[1] "años"
 
-#: lib/phoenix_kit_ai/errors.ex:334
+#: lib/phoenix_kit_ai/errors.ex:340
 #, elixir-autogen, elixir-format
 msgid "A cleanup boundary was in the future; nothing was deleted"
 msgstr "Una fecha de corte de la limpieza estaba en el futuro; no se eliminó nada"
 
-#: lib/phoenix_kit_ai/errors.ex:337
+#: lib/phoenix_kit_ai/errors.ex:343
 #, elixir-autogen, elixir-format
 msgid "A cleanup boundary was not a date and time; nothing was deleted"
 msgstr "Una fecha de corte de la limpieza no era una fecha y hora; no se eliminó nada"
 
-#: lib/phoenix_kit_ai/errors.ex:329
+#: lib/phoenix_kit_ai/errors.ex:335
 #, elixir-autogen, elixir-format
 msgid "A table references the AI journal or the guard events in a way that would block or spread the deletion; nothing was deleted"
 msgstr "Una tabla hace referencia al registro de IA o a los eventos del control de tareas de un modo que bloquearía o propagaría la eliminación; no se eliminó nada"
 
-#: lib/phoenix_kit_ai/errors.ex:325
+#: lib/phoenix_kit_ai/errors.ex:331
 #, elixir-autogen, elixir-format
 msgid "Counting what would be deleted failed"
 msgstr "No se pudo contar lo que se eliminaría"
@@ -4228,7 +4228,7 @@ msgstr "No se pudo contar lo que se eliminaría"
 msgid "Someone else changed the retention periods; the card shows them now"
 msgstr "Otra persona cambió los periodos de conservación; la tarjeta ya los muestra"
 
-#: lib/phoenix_kit_ai/errors.ex:340
+#: lib/phoenix_kit_ai/errors.ex:346
 #, elixir-autogen, elixir-format
 msgid "The cleanup job's arguments could not be read; nothing was deleted"
 msgstr "No se pudieron leer los argumentos del trabajo de limpieza; no se eliminó nada"
@@ -4347,12 +4347,12 @@ msgid_plural "%{count} off-purpose flag reasons older than %{date} will be clear
 msgstr[0] "Se borrará el motivo de %{count} marca «fuera de la finalidad» anterior al %{date}."
 msgstr[1] "Se borrarán los motivos de %{count} marcas «fuera de la finalidad» anteriores al %{date}."
 
-#: lib/phoenix_kit_ai/errors.ex:93
+#: lib/phoenix_kit_ai/errors.ex:99
 #, elixir-autogen, elixir-format
 msgid "A batch cannot run %{verb}"
 msgstr "Un lote no puede ejecutar %{verb}"
 
-#: lib/phoenix_kit_ai/errors.ex:69
+#: lib/phoenix_kit_ai/errors.ex:72
 #, elixir-autogen, elixir-format
 msgid "Batch items must be a list"
 msgstr "Los elementos del lote deben ser una lista"
@@ -4362,58 +4362,58 @@ msgstr "Los elementos del lote deben ser una lista"
 msgid "Embedding input must be text or an image"
 msgstr "La entrada de un embedding debe ser texto o una imagen"
 
-#: lib/phoenix_kit_ai/errors.ex:70
+#: lib/phoenix_kit_ai/errors.ex:73
 #, elixir-autogen, elixir-format
 msgid "Labels must be a list of words"
 msgstr "Las etiquetas deben ser una lista de palabras"
 
-#: lib/phoenix_kit_ai/errors.ex:67
+#: lib/phoenix_kit_ai/errors.ex:70
 #, elixir-autogen, elixir-format
 msgid "Statements must be a list of texts"
 msgstr "Las afirmaciones deben ser una lista de textos"
 
-#: lib/phoenix_kit_ai/errors.ex:89
+#: lib/phoenix_kit_ai/errors.ex:95
 #, elixir-autogen, elixir-format
 msgid "The budget must be an amount in dollars"
 msgstr "El presupuesto debe ser una cantidad en dólares"
 
-#: lib/phoenix_kit_ai/errors.ex:88
-#: lib/phoenix_kit_ai/errors.ex:90
+#: lib/phoenix_kit_ai/errors.ex:94
+#: lib/phoenix_kit_ai/errors.ex:96
 #, elixir-autogen, elixir-format
 msgid "The item failed with an internal error"
 msgstr "El elemento falló con un error interno"
 
-#: lib/phoenix_kit_ai/errors.ex:72
+#: lib/phoenix_kit_ai/errors.ex:78
 #, elixir-autogen, elixir-format
 msgid "The item took too long and was stopped"
 msgstr "El elemento tardó demasiado y se detuvo"
 
-#: lib/phoenix_kit_ai/errors.ex:86
+#: lib/phoenix_kit_ai/errors.ex:92
 #, elixir-autogen, elixir-format
 msgid "The answer for this item was missing from its group's answer"
 msgstr "Faltaba la respuesta de este elemento en la respuesta de su grupo"
 
-#: lib/phoenix_kit_ai/errors.ex:172
+#: lib/phoenix_kit_ai/errors.ex:178
 #, elixir-autogen, elixir-format
 msgid "The answer was cut off at the output limit; allow more output tokens (max_tokens)"
 msgstr "La respuesta se cortó en el límite de salida; permita más tokens de salida (max_tokens)"
 
-#: lib/phoenix_kit_ai/errors.ex:83
+#: lib/phoenix_kit_ai/errors.ex:89
 #, elixir-autogen, elixir-format
 msgid "A batch cannot group items here (%{reason})"
 msgstr "Un lote no puede agrupar elementos aquí (%{reason})"
 
-#: lib/phoenix_kit_ai/errors.ex:78
+#: lib/phoenix_kit_ai/errors.ex:84
 #, elixir-autogen, elixir-format
 msgid "Fallback models must be a list of model ids"
 msgstr "Los modelos de reserva deben ser una lista de ID de modelos"
 
-#: lib/phoenix_kit_ai/errors.ex:75
+#: lib/phoenix_kit_ai/errors.ex:81
 #, elixir-autogen, elixir-format
 msgid "Labels must be a list of words; pass options as the fourth argument"
 msgstr "Las etiquetas deben ser una lista de palabras; pase las opciones como cuarto argumento"
 
-#: lib/phoenix_kit_ai/errors.ex:80
+#: lib/phoenix_kit_ai/errors.ex:86
 #, elixir-autogen, elixir-format
 msgid "confirm: must be true or a list of images"
 msgstr "confirm: debe ser true o una lista de imágenes"
@@ -4423,7 +4423,7 @@ msgstr "confirm: debe ser true o una lista de imágenes"
 msgid "An AI spending cap (%{cap}) refused a call. Calls are refused until the month turns or the cap is raised."
 msgstr "Un tope de gasto de IA (%{cap}) rechazó una llamada. Las llamadas se rechazan hasta que empiece el mes siguiente o se suba el tope."
 
-#: lib/phoenix_kit_ai/errors.ex:182
+#: lib/phoenix_kit_ai/errors.ex:188
 #, elixir-autogen, elixir-format
 msgid "The AI budget for this month has been used up"
 msgstr "Se ha agotado el presupuesto de IA de este mes"
@@ -4480,12 +4480,12 @@ msgstr "Entrada"
 msgid "Needed by tasks that write down or understand what was said."
 msgstr "Lo necesitan las tareas que transcriben o entienden lo que se dijo."
 
-#: lib/phoenix_kit_ai/errors.ex:265
+#: lib/phoenix_kit_ai/errors.ex:271
 #, elixir-autogen, elixir-format
 msgid "Recording too large: %{bytes} bytes, the limit is %{max}"
 msgstr "Grabación demasiado grande: %{bytes} bytes; el límite es %{max}"
 
-#: lib/phoenix_kit_ai/errors.ex:272
+#: lib/phoenix_kit_ai/errors.ex:278
 #, elixir-autogen, elixir-format
 msgid "The recording must be bytes, a map with data:, or a data URL"
 msgstr "La grabación debe ser bytes, un mapa con data: o una URL de datos"
@@ -4505,12 +4505,12 @@ msgstr "Una cantidad de dinero se indica en dólares con punto decimal, como 20.
 msgid "The model's answer was empty"
 msgstr "La respuesta del modelo estaba vacía"
 
-#: lib/phoenix_kit_ai/errors.ex:343
+#: lib/phoenix_kit_ai/errors.ex:349
 #, elixir-autogen, elixir-format
 msgid "The periods changed after this cleanup was queued; nothing was deleted"
 msgstr "Los periodos cambiaron después de poner en cola esta limpieza; no se eliminó nada"
 
-#: lib/phoenix_kit_ai/errors.ex:258
+#: lib/phoenix_kit_ai/errors.ex:264
 #, elixir-autogen, elixir-format
 msgid "The provider refused this content"
 msgstr "El proveedor rechazó este contenido"
@@ -4521,7 +4521,7 @@ msgstr "El proveedor rechazó este contenido"
 msgid "Dictate"
 msgstr "Dictar"
 
-#: lib/phoenix_kit_ai.ex:1278
+#: lib/phoenix_kit_ai.ex:1279
 #, elixir-autogen, elixir-format
 msgid "Dictation"
 msgstr "Dictado"
@@ -4571,7 +4571,7 @@ msgstr "No se ha oído nada. Inténtelo de nuevo, un poco más cerca del micróf
 msgid "We couldn't write that down. Please try again."
 msgstr "No se pudo transcribir. Inténtelo de nuevo."
 
-#: lib/phoenix_kit_ai.ex:1281
+#: lib/phoenix_kit_ai.ex:1282
 #, elixir-autogen, elixir-format
 msgid "Write down what a person says on a page, word for word."
 msgstr "Transcribe palabra por palabra lo que dice una persona en una página."
@@ -4581,7 +4581,7 @@ msgstr "Transcribe palabra por palabra lo que dice una persona en una página."
 msgid "Writing down what you said…"
 msgstr "Transcribiendo lo que ha dicho…"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1426
+#: lib/phoenix_kit_ai/web/playground.ex:1429
 #, elixir-autogen, elixir-format
 msgid "%{count} byte of image data"
 msgid_plural "%{count} bytes of image data"
@@ -4595,17 +4595,17 @@ msgid_plural "%{count} models at this provider are known to take audio: start ty
 msgstr[0] "Se sabe que %{count} modelo de este proveedor acepta audio: empiece a escribir en «Modelo» para elegirlo."
 msgstr[1] "Se sabe que %{count} modelos de este proveedor aceptan audio: empiece a escribir en «Modelo» para elegir uno."
 
-#: lib/phoenix_kit_ai/web/playground.ex:1316
+#: lib/phoenix_kit_ai/web/playground.ex:1319
 #, elixir-autogen, elixir-format
 msgid "%{model} does not take audio, so the call will be refused. Pick a model that does, or the speech-to-text API for a speech-to-text model."
 msgstr "%{model} no acepta audio, así que la llamada se rechazará. Elija un modelo que lo acepte, o la API de voz a texto para un modelo de voz a texto."
 
-#: lib/phoenix_kit_ai/web/playground.ex:1305
+#: lib/phoenix_kit_ai/web/playground.ex:1308
 #, elixir-autogen, elixir-format
 msgid "%{model} gets the recording through the speech-to-text API (/audio/transcriptions). Nothing checks beforehand that it is a speech-to-text model."
 msgstr "%{model} recibe la grabación por la API de voz a texto (/audio/transcriptions). Nada comprueba antes que sea un modelo de voz a texto."
 
-#: lib/phoenix_kit_ai/web/playground.ex:1312
+#: lib/phoenix_kit_ai/web/playground.ex:1315
 #, elixir-autogen, elixir-format
 msgid "%{model} takes audio: the recording goes to it in a chat message."
 msgstr "%{model} acepta audio: la grabación le llega en un mensaje de chat."
@@ -4620,17 +4620,17 @@ msgstr "%{price}/M entrada"
 msgid "%{price}/M out"
 msgstr "%{price}/M salida"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1362
+#: lib/phoenix_kit_ai/web/playground.ex:1365
 #, elixir-autogen, elixir-format
 msgid "%{seconds} s"
 msgstr "%{seconds} s"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1369
+#: lib/phoenix_kit_ai/web/playground.ex:1372
 #, elixir-autogen, elixir-format
 msgid "%{size} MB"
 msgstr "%{size} MB"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1371
+#: lib/phoenix_kit_ai/web/playground.ex:1374
 #, elixir-autogen, elixir-format
 msgid "%{size} kB"
 msgstr "%{size} kB"
@@ -4645,12 +4645,12 @@ msgstr "%{tokens} contexto"
 msgid "%{tokens} out"
 msgstr "%{tokens} salida"
 
-#: lib/phoenix_kit_ai/errors.ex:71
+#: lib/phoenix_kit_ai/errors.ex:76
 #, elixir-autogen, elixir-format
 msgid "A run needs a name: a non-empty string, atom or integer"
 msgstr "Una ejecución necesita un nombre: una cadena no vacía, un átomo o un entero"
 
-#: lib/phoenix_kit_ai.ex:1226
+#: lib/phoenix_kit_ai.ex:1227
 #, elixir-autogen, elixir-format
 msgid "AI endpoints, prompts, and usage tracking"
 msgstr "Endpoints de IA, prompts y seguimiento de uso"
@@ -4660,17 +4660,17 @@ msgstr "Endpoints de IA, prompts y seguimiento de uso"
 msgid "Answers, newest first"
 msgstr "Respuestas, las más recientes primero"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1346
+#: lib/phoenix_kit_ai/web/playground.ex:1349
 #, elixir-autogen, elixir-format
 msgid "Automatic"
 msgstr "Automático"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1351
+#: lib/phoenix_kit_ai/web/playground.ex:1354
 #, elixir-autogen, elixir-format
 msgid "Automatic (%{path})"
 msgstr "Automático (%{path})"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1344
+#: lib/phoenix_kit_ai/web/playground.ex:1347
 #, elixir-autogen, elixir-format
 msgid "Chat with the audio attached"
 msgstr "Chat con el audio adjunto"
@@ -4779,17 +4779,17 @@ msgstr "Mi aplicación"
 msgid "No speech was heard in the recording."
 msgstr "No se oyó ninguna voz en la grabación."
 
-#: lib/phoenix_kit_ai/web/playground.ex:1323
+#: lib/phoenix_kit_ai/web/playground.ex:1326
 #, elixir-autogen, elixir-format
 msgid "Nobody has verified that %{model} takes audio, so the call will be refused while only verified models are allowed."
 msgstr "Nadie ha verificado que %{model} acepte audio, así que la llamada se rechazará mientras solo se permitan modelos verificados."
 
-#: lib/phoenix_kit_ai/web/playground.ex:1330
+#: lib/phoenix_kit_ai/web/playground.ex:1333
 #, elixir-autogen, elixir-format
 msgid "Nobody has verified that %{model} takes audio. The call is made; a model that does not hear answers with an error."
 msgstr "Nadie ha verificado que %{model} acepte audio. La llamada se hace; un modelo que no oye responde con un error."
 
-#: lib/phoenix_kit_ai/web/playground.ex:1382
+#: lib/phoenix_kit_ai/web/playground.ex:1385
 #, elixir-autogen, elixir-format
 msgid "One file at a time"
 msgstr "Un archivo cada vez"
@@ -4840,7 +4840,7 @@ msgstr "Grabe o elija una grabación y vea lo que transcribe el endpoint. El cli
 msgid "Record something or pick a file first"
 msgstr "Primero grabe algo o elija un archivo"
 
-#: lib/phoenix_kit_ai/web/playground.ex:670
+#: lib/phoenix_kit_ai/web/playground.ex:668
 #, elixir-autogen, elixir-format
 msgid "Recording"
 msgstr "Grabación"
@@ -4877,7 +4877,7 @@ msgstr "español"
 msgid "Speech to text"
 msgstr "Voz a texto"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1345
+#: lib/phoenix_kit_ai/web/playground.ex:1348
 #, elixir-autogen, elixir-format
 msgid "Speech-to-text API"
 msgstr "API de voz a texto"
@@ -4892,12 +4892,12 @@ msgstr "Secuencias de parada"
 msgid "Temperature"
 msgstr "Temperatura"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1381
+#: lib/phoenix_kit_ai/web/playground.ex:1384
 #, elixir-autogen, elixir-format
 msgid "That file is not a recording"
 msgstr "Ese archivo no es una grabación"
 
-#: lib/phoenix_kit_ai/web/playground.ex:1376
+#: lib/phoenix_kit_ai/web/playground.ex:1379
 #, elixir-autogen, elixir-format
 msgid "That file is too large (%{size} at most)"
 msgstr "Ese archivo es demasiado grande (%{size} como máximo)"
@@ -4907,7 +4907,7 @@ msgstr "Ese archivo es demasiado grande (%{size} como máximo)"
 msgid "The check found changes"
 msgstr "La comprobación encontró cambios"
 
-#: lib/phoenix_kit_ai/errors.ex:269
+#: lib/phoenix_kit_ai/errors.ex:275
 #, elixir-autogen, elixir-format
 msgid "The recording's format could not be detected; pass it as format:"
 msgstr "No se pudo detectar el formato de la grabación; indíquelo con format:"
@@ -4996,7 +4996,12 @@ msgstr "p. ej., Un cliente pide contrachapado. Escribe las medidas como 2500×12
 msgid "e.g. et, en, ru"
 msgstr "p. ej., et, en, ru"
 
-#: lib/phoenix_kit_ai/errors.ex:371
+#: lib/phoenix_kit_ai/errors.ex:377
 #, elixir-autogen, elixir-format
 msgid "unknown"
 msgstr "desconocido"
+
+#: lib/phoenix_kit_ai/errors.ex:67
+#, elixir-autogen, elixir-format
+msgid "An embedding role must be query or document"
+msgstr "El rol de un embedding debe ser query o document"

@@ -70,3 +70,8 @@ config :phoenix_kit_ai, endpoint_cache_ttl: 0, credential_cache_ttl: 0
 # off here so a test sees the rows it has just written. The monthly budget
 # test turns it on where it is under test.
 config :phoenix_kit_ai, budget_month_cache_ttl: 0
+
+# `OpenRouterClient.fetch_embedding_models/2` reads OpenRouter's live list in
+# production; tests get the curated list without a request, and the tests of
+# the live list turn it on with a `Req.Test` stub.
+config :phoenix_kit_ai, embedding_models_live: false

@@ -125,6 +125,7 @@ defmodule PhoenixKitAI do
   alias PhoenixKitAI.{Budget, Endpoint, Prompt, Provider, RequestCache, StructuredOutput}
   alias PhoenixKitAI.CallCost
   alias PhoenixKitAI.Capabilities
+  alias PhoenixKitAI.EmbeddingConventions
   alias PhoenixKitAI.Guard
   alias PhoenixKitAI.GuardBlocks
   alias PhoenixKitAI.GuardEvents
@@ -3213,16 +3214,62 @@ defmodule PhoenixKitAI do
     end
   end
 
-  defp run_embed(endpoint, input, merged_opts, trace) do
+  defp run_embed(endpoint, input, merged_opts, convention, trace) do
     with {:ok, response} <- PhoenixKitAI.Completion.embeddings(endpoint, input, merged_opts) do
-      logged = log_embedding_request(endpoint, input, response, trace)
+      response = maybe_normalize_embeddings(response, merged_opts[:normalize] == true)
+      logged = log_embedding_request(endpoint, input, response, merged_opts, convention, trace)
 
       {:ok,
        response
        |> Map.put("space", embedding_space(response, endpoint))
+       |> put_convention(convention)
        |> Map.put("cost", logged_cost(logged))
        |> put_request_uuid("request_uuid", logged)}
     end
+  end
+
+  # `role:` on an embedding: each text input through the model's template
+  # (a prefix or an instruction); images are left as they are.
+  defp apply_embedding_role(input, %{template: nil}), do: input
+
+  defp apply_embedding_role(input, %{template: template, instruction: instruction}) do
+    apply = &embed_text_with_template(&1, template, instruction)
+    if is_list(input), do: Enum.map(input, apply), else: apply.(input)
+  end
+
+  defp embed_text_with_template(text, template, instruction) when is_binary(text),
+    do: EmbeddingConventions.apply_template(text, template, instruction)
+
+  defp embed_text_with_template(item, _template, _instruction), do: item
+
+  # `normalize: true`: every vector L2-normalised (pplx answers with norms
+  # near 18; a vector cut by the API's `dimensions` is not always rescaled).
+  defp maybe_normalize_embeddings(%{"data" => data} = response, true) when is_list(data) do
+    data =
+      Enum.map(data, fn
+        %{"embedding" => vector} = item when is_list(vector) ->
+          %{item | "embedding" => EmbeddingConventions.normalize(vector)}
+
+        item ->
+          item
+      end)
+
+    %{response | "data" => data}
+  end
+
+  defp maybe_normalize_embeddings(response, _normalize), do: response
+
+  # What a stored vector needs next to it besides its space: the role it
+  # was embedded for and how (a query and a document vector of one text
+  # differ by design).
+  defp put_convention(response, %{role: nil}), do: response
+
+  defp put_convention(response, convention) do
+    Map.put(response, "convention", %{
+      "role" => Atom.to_string(convention.role),
+      "input_type" => convention.input_type,
+      "template" => convention.template
+    })
   end
 
   defp embed_image_item?(%{"content" => parts}) when is_list(parts),
@@ -3865,7 +3912,20 @@ defmodule PhoenixKitAI do
     # so existing caller keys keep their entries. `:statement_texts` too: the
     # verdicts are matched to the statements by number, so an answer about
     # other statements would be pinned on these ones.
-    case Keyword.take(opts, [:regions, :boxes, :box_format, :statement_texts])
+    # An embedding's role (and what decides its convention) and
+    # normalisation too: a query vector must never answer for a document.
+    # And its `dimensions:`: a vector of another size is no answer at all.
+    case Keyword.take(opts, [
+           :regions,
+           :boxes,
+           :box_format,
+           :statement_texts,
+           :role,
+           :input_type,
+           :instruction,
+           :normalize,
+           :dimensions
+         ])
          |> Enum.reject(fn {_, v} -> v in [nil, false] end) do
       [] -> base
       shape -> {base, Enum.sort(shape)}
@@ -4075,6 +4135,13 @@ defmodule PhoenixKitAI do
     first is down, rate-limited or refuses (OpenRouter's model routing); the
     model that answered is recorded as the row's `answered_model`. Each is
     checked by the guard like `:model`; one that does not fit refuses the call.
+  - `:provider` - OpenRouter only: provider preferences sent as the request's
+    `provider` object, e.g. `%{sort: "price", quantizations: ["fp8"],
+    ignore: ["SomeHost"]}` or `%{order: ["deepinfra"], allow_fallbacks:
+    false}`, merged over the endpoint's `provider_settings["provider_preferences"]`;
+    the guard's `require_parameters` is added on top. A value that is not
+    JSON is left out with a warning, never raised. See
+    `PhoenixKitAI.Completion.provider_preferences/2`.
 
   ## Delivery options
 
@@ -4250,6 +4317,8 @@ defmodule PhoenixKitAI do
       :attribution,
       :idempotency_key,
       :user_uuid,
+      # the provider's end-user id on an embedding: who asked, not what
+      :user,
       :cache,
       :prompt_uuid,
       :prompt_name,
@@ -4378,14 +4447,44 @@ defmodule PhoenixKitAI do
   - `input` - Text, or a list of texts and images (see `t:embed_input/0`).
     Images need a multimodal embedding model on the endpoint (on
     OpenRouter e.g. `google/gemini-embedding-2`,
-    `voyageai/voyage-multimodal-3.5`); they are checked like the image
+    `mongodb/voyage-multimodal-3.5`); they are checked like the image
     verbs' inputs (bytes are sent as a data URL, an http(s) URL is passed
     through after the host check), and a text model answers them with an error
   - `opts` - Optional parameter overrides
 
   ## Options
 
-  - `:dimensions` - Override embedding dimensions
+  - `:dimensions` - Override embedding dimensions (what is sent is what the
+    usage row records; never sent to `mistral-embed`, which refuses it)
+  - `:role` - `:query` (a search query) or `:document` (text to be found).
+    Applies the model's convention for that side — an `input_type` value
+    (Gemini 001, Cohere, Voyage, Nvidia; on OpenRouter endpoints), a text
+    prefix (gemini-embedding-2, e5) or a query instruction (Qwen3-Embedding,
+    e5-instruct) — from `PhoenixKitAI.EmbeddingConventions`, overridable per
+    endpoint in `provider_settings["embedding"]`. A model the table does not
+    know gets nothing. Without `:role` nothing changes. Query and document
+    vectors of one text are cached apart. Anything else is
+    `{:error, :invalid_embedding_role}`.
+  - `:instruction` - The task text for instruction-style query templates
+    (default `"Given a web search query, retrieve relevant passages that
+    answer the query"`), e.g. `"Given an image search query, retrieve
+    descriptions of images that match the query"`
+  - `:input_type` - Send this `input_type` as given, whatever the role
+    resolves to (a model may answer 400 to a value it does not know)
+  - `:normalize` - `true` L2-normalises every returned vector (off by
+    default; most models already answer unit vectors, `perplexity/pplx-*`
+    does not)
+  - `:encoding_format` - Passed through; `"base64"` roughly halves the
+    answer's size and the vectors are decoded back to floats (a vector that
+    does not decode whole, a NaN or infinity included, makes the answer
+    `{:error, :invalid_response_format}`)
+  - `:user` - The provider's end-user id, passed through (not part of the
+    cache key)
+  - `:provider` - OpenRouter provider preferences, merged over the
+    endpoint's `provider_settings["provider_preferences"]` — e.g.
+    `%{order: ["deepinfra"], allow_fallbacks: false}` so one index is not
+    filled by vectors from several serving stacks (see
+    `PhoenixKitAI.Completion.provider_preferences/2`)
   - `:source` - Override auto-detected source for request tracking
 
   ## Examples
@@ -4412,7 +4511,9 @@ defmodule PhoenixKitAI do
 
   - `{:ok, response}` - Response with embeddings, in the order given, plus
     `"space"` — `"<model>:<dimensions>"`: vectors are comparable only
-    within one space, so store it next to them — and `"cost"`, the
+    within one space, so store it next to them —, with `role:`
+    `"convention"` (`%{"role", "input_type", "template"}`, worth storing
+    with the vectors too), and `"cost"`, the
     logged cost in dollars (a `Decimal`; nil when no price is known).
     It is available with asynchronous request logging too; a cache hit costs zero.
   - `{:error, reason}` - Error atom or tagged tuple.
@@ -4424,8 +4525,10 @@ defmodule PhoenixKitAI do
     opts = opts |> call_model_opts() |> Keyword.delete(:models)
 
     with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid),
+         # The role's convention is the model's: the call's `model:` decides.
+         {:ok, convention} <- EmbeddingConventions.resolve(with_call_model(endpoint, opts), opts),
          {:ok, admission} <- authorize(endpoint, opts, :embed, []),
-         {:ok, input} <- prepare_embed_input(input, opts) do
+         {:ok, input} <- input |> apply_embedding_role(convention) |> prepare_embed_input(opts) do
       # A call's `model:` is the model sent, checked, cached and logged.
       endpoint = with_call_model(endpoint, opts)
       # Capture caller info (source + stacktrace + context)
@@ -4434,7 +4537,7 @@ defmodule PhoenixKitAI do
       source = Keyword.get(opts, :source) || auto_source
       caller_context = Map.put(caller_context, :user_uuid, opts[:user_uuid])
 
-      merged_opts = merge_embedding_opts(endpoint, opts)
+      merged_opts = merge_embedding_opts(endpoint, opts, convention)
       guard = Guard.row_metadata(admission)
 
       result =
@@ -4445,7 +4548,13 @@ defmodule PhoenixKitAI do
           fn -> {input, cacheable(merged_opts)} end,
           %{source: source, caller_context: caller_context, guard: guard},
           fn ->
-            run_embed(endpoint, input, merged_opts, {source, stacktrace, caller_context, guard})
+            run_embed(
+              endpoint,
+              input,
+              merged_opts,
+              convention,
+              {source, stacktrace, caller_context, guard}
+            )
           end
         )
 
@@ -4463,6 +4572,304 @@ defmodule PhoenixKitAI do
           {:error, reason}
       end
     end
+  end
+
+  @doc """
+  Embeds a long list of inputs in as many requests as the model needs, and
+  returns one response with every vector in the order given.
+
+  The list is split by the model's limits (`PhoenixKitAI.EmbeddingConventions`:
+  inputs per request — Cohere 96, OpenAI 2 048, Voyage 1 000, others 100 —
+  and, for OpenAI and Voyage, an estimated token budget per request), and
+  each part goes through `embed/3` with the same options: one usage row,
+  one cache entry and one `PhoenixKitAI.Limiter` slot per request.
+
+  ## Options
+
+  Every `embed/3` option, plus:
+
+  - `:batch_size` - inputs per request instead of the model's limit
+  - `:max_batch_tokens` - estimated tokens per request (a text's bytes / 3)
+    instead of the model's budget
+  - `:max_concurrency` - requests in flight at once (default 1)
+
+  ## Returns
+
+  - `{:ok, response}` - `"data"` holds every vector, `"index"` counting
+    across the whole list; `"usage"` and `"cost"` are the sums,
+    `"request_uuids"` the parts' rows and `"batches"` their number;
+    `"model"`, `"space"` and `"convention"` are the first part's.
+  - `{:error, reason}` - the first part that failed; nothing is returned
+    for the parts that succeeded (with `cache:` on they are cached, so a
+    retry pays only for the rest).
+  """
+  @spec embed_many(String.t() | Endpoint.t(), embed_input() | [embed_input()], keyword()) ::
+          {:ok, map()} | {:error, term()}
+  def embed_many(endpoint_uuid, inputs, opts \\ [])
+
+  def embed_many(_endpoint_uuid, [], _opts), do: {:error, :empty_input}
+
+  def embed_many(endpoint_uuid, inputs, opts) when is_list(inputs) do
+    with {:ok, endpoint} <- resolve_endpoint(endpoint_uuid) do
+      model = with_call_model(endpoint, call_model_opts(opts)).model
+      {auto_source, _stacktrace, _context} = capture_caller_info()
+
+      embed_opts =
+        opts
+        |> Keyword.drop([:batch_size, :max_batch_tokens, :max_concurrency])
+        |> Keyword.put_new(:source, auto_source)
+
+      inputs
+      |> embedding_batches(
+        positive_opt(opts[:batch_size]) || EmbeddingConventions.max_inputs(model),
+        positive_opt(opts[:max_batch_tokens]) || EmbeddingConventions.max_batch_tokens(model)
+      )
+      |> run_embedding_batches(endpoint, embed_opts, positive_opt(opts[:max_concurrency]) || 1)
+    end
+  end
+
+  def embed_many(endpoint_uuid, input, opts), do: embed(endpoint_uuid, input, opts)
+
+  defp positive_opt(value) when is_integer(value) and value > 0, do: value
+  defp positive_opt(_value), do: nil
+
+  # Consecutive parts of at most `size` inputs and, when there is a token
+  # budget, at most `budget` estimated tokens (one input over the budget
+  # still goes, alone: the provider decides).
+  defp embedding_batches(inputs, size, budget) do
+    inputs
+    |> Enum.chunk_while(
+      {[], 0, 0},
+      fn input, {acc, count, tokens} ->
+        cost = estimated_tokens(input)
+
+        if count > 0 and (count >= size or (budget && tokens + cost > budget)),
+          do: {:cont, Enum.reverse(acc), {[input], 1, cost}},
+          else: {:cont, {[input | acc], count + 1, tokens + cost}}
+      end,
+      fn
+        {[], _, _} -> {:cont, {[], 0, 0}}
+        {acc, _, _} -> {:cont, Enum.reverse(acc), {[], 0, 0}}
+      end
+    )
+  end
+
+  defp estimated_tokens(text) when is_binary(text), do: div(byte_size(text), 3) + 1
+  defp estimated_tokens(_image), do: 1
+
+  defp run_embedding_batches(batches, endpoint, opts, 1) do
+    batches
+    |> Enum.reduce_while({:ok, []}, fn batch, {:ok, acc} ->
+      case embed(endpoint, batch, opts) do
+        {:ok, response} -> {:cont, {:ok, [{batch, response} | acc]}}
+        {:error, _} = error -> {:halt, error}
+      end
+    end)
+    |> case do
+      {:ok, parts} -> {:ok, merge_embedding_parts(Enum.reverse(parts))}
+      error -> error
+    end
+  end
+
+  defp run_embedding_batches(batches, endpoint, opts, concurrency) do
+    batches
+    |> Task.async_stream(&{&1, embed(endpoint, &1, opts)},
+      max_concurrency: concurrency,
+      ordered: true,
+      timeout: :infinity
+    )
+    |> Enum.reduce_while({:ok, []}, fn
+      {:ok, {batch, {:ok, response}}}, {:ok, acc} -> {:cont, {:ok, [{batch, response} | acc]}}
+      {:ok, {_batch, {:error, _} = error}}, _acc -> {:halt, error}
+      {:exit, reason}, _acc -> {:halt, {:error, {:embedding_batch_exit, reason}}}
+    end)
+    |> case do
+      {:ok, parts} -> {:ok, merge_embedding_parts(Enum.reverse(parts))}
+      error -> error
+    end
+  end
+
+  defp merge_embedding_parts([{_batch, first} | _] = parts) do
+    {data, _offset} =
+      Enum.flat_map_reduce(parts, 0, fn {batch, response}, offset ->
+        items =
+          (response["data"] || [])
+          |> Enum.with_index()
+          |> Enum.sort_by(fn {item, position} -> {item_index(item, position), position} end)
+          |> Enum.map(fn {item, position} ->
+            # the part's own number for the vector, moved by the part's start,
+            # so a vector stays paired with its input even if a part answers
+            # fewer vectors than it was sent
+            Map.put(item, "index", offset + item_index(item, position))
+          end)
+
+        {items, offset + length(batch)}
+      end)
+
+    responses = Enum.map(parts, &elem(&1, 1))
+
+    first
+    |> Map.take(["object", "model", "space", "convention"])
+    |> Map.merge(%{
+      "data" => data,
+      "usage" => sum_embedding_usage(responses),
+      "cost" => sum_costs(Enum.map(responses, & &1["cost"])),
+      "request_uuids" => Enum.map(responses, & &1["request_uuid"]),
+      "batches" => length(parts)
+    })
+  end
+
+  defp item_index(%{"index" => index}, _position) when is_integer(index), do: index
+  defp item_index(_item, position), do: position
+
+  defp sum_embedding_usage(responses) do
+    usages = Enum.map(responses, &Completion.extract_usage/1)
+
+    %{
+      "prompt_tokens" => usages |> Enum.map(& &1.prompt_tokens) |> Enum.sum(),
+      "total_tokens" => usages |> Enum.map(& &1.total_tokens) |> Enum.sum()
+    }
+  end
+
+  defp sum_costs(costs) do
+    case Enum.filter(costs, &match?(%Decimal{}, &1)) do
+      [] -> nil
+      known -> Enum.reduce(known, &Decimal.add/2)
+    end
+  end
+
+  @doc """
+  Translates a search query into `to:` (default `"English"`) with a chat
+  endpoint, for searching an index embedded in that language with a model
+  that matches across languages poorly. Small and opt-in: one chat call
+  with a fixed prompt ("reply with the translation only; unchanged if it
+  is already in that language"), cached (`cache: true` unless the call says
+  otherwise), with a 10 s timeout by default.
+
+  **Never fails and never raises**: any error, an empty answer or an
+  answer much longer than the query returns `query` unchanged. Blank input
+  is returned as it is, without a call.
+
+  ## Options
+
+  - `:to` - the target language name (default `"English"`)
+  - `:skip_ascii` - skip the call when the query is printable ASCII.
+    Default `true` when the target is English: free, and it catches the
+    common case, but it also skips Latin-script queries without accents
+    ("magav kass" is Estonian) — pass `false` to translate every query
+  - any `complete/3` option (`:timeout`, `:cache`, `:source`, `:user_uuid`,
+    `:task`, `:model`, `:provider`, …)
+
+  ## Example
+
+      english = PhoenixKitAI.translate_query(chat_endpoint, "спящая кошка")
+      #=> "sleeping cat"
+  """
+  @spec translate_query(String.t() | Endpoint.t(), String.t(), keyword()) :: String.t()
+  def translate_query(endpoint_uuid, query, opts \\ [])
+
+  def translate_query(endpoint_uuid, query, opts) when is_binary(query) do
+    to = translate_target(opts[:to])
+    text = String.trim(query)
+
+    if text == "" or skip_translation?(text, to, opts) do
+      query
+    else
+      messages = [
+        %{
+          role: "system",
+          content:
+            "You translate search queries into #{to}. Reply with the translation only: " <>
+              "no quotes, notes or explanations. Keep names, numbers and codes as they are. " <>
+              "If the query is already in #{to}, reply with it unchanged."
+        },
+        %{role: "user", content: text}
+      ]
+
+      call_opts =
+        opts
+        |> Keyword.drop([:to, :skip_ascii])
+        |> Keyword.put_new(:cache, true)
+        |> Keyword.put_new(:timeout, 10_000)
+        |> Keyword.put_new(:temperature, 0)
+        |> Keyword.put_new(:max_tokens, min(2_048, 64 + byte_size(text) * 2))
+        |> Keyword.put_new(:source, "PhoenixKitAI.translate_query")
+
+      endpoint_uuid |> complete(messages, call_opts) |> translation_answer(query)
+    end
+  rescue
+    error ->
+      Logger.warning("[PhoenixKitAI] translate_query fell back: #{inspect(error.__struct__)}")
+      query
+  catch
+    :exit, _reason -> query
+  end
+
+  def translate_query(_endpoint_uuid, query, _opts), do: query
+
+  defp translation_answer({:ok, response}, query) do
+    case Completion.extract_content(response) do
+      {:ok, content} -> translated_query(content, query)
+      _no_content -> query
+    end
+  end
+
+  defp translation_answer(_error, query), do: query
+
+  defp translate_target(to) when is_binary(to) and to != "", do: to
+  defp translate_target(_to), do: "English"
+
+  defp skip_translation?(text, to, opts) do
+    skip_ascii =
+      Keyword.get_lazy(opts, :skip_ascii, fn -> String.downcase(to) in ["english", "en"] end)
+
+    skip_ascii == true and String.match?(text, ~r/\A[\x20-\x7E]*\z/)
+  end
+
+  # The first non-empty line of the answer, quotes stripped; the query
+  # itself when there is none or it is far longer than the query.
+  defp translated_query(content, query) when is_binary(content) do
+    line =
+      content
+      |> String.split("\n", trim: true)
+      |> Enum.map(&String.trim/1)
+      |> Enum.find("", &(&1 != ""))
+      |> strip_quotes()
+
+    if line == "" or String.length(line) > 4 * String.length(String.trim(query)) + 100,
+      do: query,
+      else: line
+  end
+
+  defp translated_query(_content, query), do: query
+
+  # Quotes a model wraps a whole answer in, as opening and closing pairs:
+  # only a matched pair around the whole line is taken off, so "'tis" or
+  # "dogs’" keep their apostrophes.
+  @quote_pairs [
+    {~s("), ~s(")},
+    {"'", "'"},
+    {"«", "»"},
+    {"»", "«"},
+    {"“", "”"},
+    {"”", "”"},
+    {"„", "“"},
+    {"„", "”"},
+    {"‘", "’"},
+    {"「", "」"}
+  ]
+
+  defp strip_quotes(text) do
+    text = String.trim(text)
+
+    Enum.find_value(@quote_pairs, text, fn {open, close} ->
+      if String.length(text) >= 2 and String.starts_with?(text, open) and
+           String.ends_with?(text, close) do
+        text
+        |> String.slice(String.length(open)..-(String.length(close) + 1)//1)
+        |> strip_quotes()
+      end
+    end)
   end
 
   @doc """
@@ -6089,12 +6496,29 @@ defmodule PhoenixKitAI do
       else: []
   end
 
-  defp merge_embedding_opts(endpoint, opts) do
-    base_opts = [dimensions: endpoint.dimensions]
+  # The options an embedding call sends and keys its cache entry by: the
+  # endpoint's dimensions under the call's, and the `input_type` the role
+  # resolved to (never one the model's table does not name). A model that
+  # refuses `dimensions` (mistral-embed answers 422) does not get it.
+  defp merge_embedding_opts(endpoint, opts, convention) do
+    merged =
+      [dimensions: endpoint.dimensions]
+      |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+      |> Keyword.merge(opts)
+      |> Keyword.delete(:input_type)
 
-    base_opts
-    |> Enum.reject(fn {_k, v} -> is_nil(v) end)
-    |> Keyword.merge(opts)
+    merged =
+      if convention.input_type,
+        do: Keyword.put(merged, :input_type, convention.input_type),
+        else: merged
+
+    if merged[:dimensions] && not EmbeddingConventions.dimensions?(endpoint.model) do
+      Logger.warning("[PhoenixKitAI] #{endpoint.model} takes no dimensions parameter; not sent")
+
+      Keyword.delete(merged, :dimensions)
+    else
+      merged
+    end
   end
 
   # ===========================================
@@ -6407,6 +6831,8 @@ defmodule PhoenixKitAI do
          endpoint,
          input,
          response,
+         merged_opts,
+         convention,
          {source, stacktrace, caller_context, guard}
        ) do
     usage = Completion.extract_usage(response)
@@ -6430,17 +6856,31 @@ defmodule PhoenixKitAI do
         Map.merge(
           %{
             input_count: input_count,
-            dimensions: endpoint.dimensions,
+            # what was sent: the call's `dimensions:` wins over the endpoint's
+            dimensions: merged_opts[:dimensions],
             image_count: image_count,
             # Debug context (source tracking)
             source: source,
             stacktrace: stacktrace,
             caller_context: caller_context
           }
-          |> maybe_put_answered_model(endpoint.model, response["model"]),
+          |> maybe_put_answered_model(endpoint.model, response["model"])
+          |> maybe_put_embedding_convention(convention, merged_opts),
           Map.merge(guard, cost_metadata)
         )
     })
+  end
+
+  defp maybe_put_embedding_convention(metadata, convention, merged_opts) do
+    metadata
+    |> then(fn m -> if convention.role, do: Map.put(m, :role, convention.role), else: m end)
+    |> then(fn m ->
+      if convention.input_type, do: Map.put(m, :input_type, convention.input_type), else: m
+    end)
+    |> then(fn m -> if convention.template, do: Map.put(m, :templated, true), else: m end)
+    |> then(fn m ->
+      if merged_opts[:normalize] == true, do: Map.put(m, :normalized, true), else: m
+    end)
   end
 
   # A call's cost from `CallCost`. An answer without `usage` says nothing

@@ -11,7 +11,9 @@ defmodule PhoenixKitAI.OpenRouterClientTest do
 
       ids = Enum.map(models, & &1["id"])
       assert "openai/text-embedding-3-large" in ids
-      assert "cohere/embed-english-v3.0" in ids
+      assert "cohere/embed-5-pro" in ids
+      assert "mongodb/voyage-4" in ids
+      refute "voyage/voyage-3" in ids
     end
 
     test "appends user-contributed models from config" do
