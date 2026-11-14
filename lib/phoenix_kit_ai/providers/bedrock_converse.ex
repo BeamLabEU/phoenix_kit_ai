@@ -152,10 +152,10 @@ defmodule PhoenixKitAI.Providers.BedrockConverse do
   # percent-encoded (`:` and `/` of a version or an ARN included).
   @spec url(Endpoint.t(), String.t()) :: String.t()
   def url(endpoint, model) do
-    %URI{scheme: scheme, host: host, port: port} = URI.parse(Completion.url(endpoint, ""))
-    origin = %URI{scheme: scheme, host: host, port: port} |> URI.to_string()
+    base = URI.parse(Completion.url(endpoint, ""))
+    path = "/model/" <> URI.encode(model, &URI.char_unreserved?/1) <> "/converse"
 
-    origin <> "/model/" <> URI.encode(model, &URI.char_unreserved?/1) <> "/converse"
+    URI.to_string(%{base | path: path, query: nil, fragment: nil, userinfo: nil})
   end
 
   @doc false
