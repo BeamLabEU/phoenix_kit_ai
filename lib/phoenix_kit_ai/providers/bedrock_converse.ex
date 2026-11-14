@@ -45,36 +45,84 @@ defmodule PhoenixKitAI.Providers.BedrockConverse do
       application inference profile ARN does not name its model, so it is
       sent sampling as a model of another family is: clear the endpoint's
       temperature for a Claude from Opus 4.7 on behind one.
-    * `:tools` (OpenAI function tools) → `toolConfig.tools[].toolSpec`;
-      `:tool_choice` `"auto"` / `"required"` / a function → `auto` / `any` /
-      `tool`. Converse has no `"none"`: the tools are still offered.
+    * A `system` message takes text only: Converse's `system` has no place
+      for an image, so an image part there is `{:error, :not_supported}`
+      before any request is sent. Several `system` messages are joined in
+      order. A transcript may open with an `assistant` message: Converse
+      takes it as it is (checked live with Claude Haiku 4.5 and Sonnet 4.6).
+    * `:tools` (OpenAI function tools) → `toolConfig.tools[].toolSpec`, a
+      tool with no or empty `parameters` given the empty object schema
+      (`{"type": "object", "properties": {}}`; Converse refuses a schema
+      without `"type": "object"`). `:tool_choice` `"auto"` / `"required"` /
+      a function → `auto` / `any` / `tool`. Converse has no `"none"`: the
+      tools are still offered.
+    * Forced tool choice (`"required"` or a function) is refused with a 400
+      by the Claude models that do not take it: Claude Fable 5.1, Mythos
+      5.1, Opus 5.5 and Sonnet 5.5 refuse it always, and an older Claude
+      refuses it while thinking. Send `"auto"` and name the tool in the
+      prompt for those.
+    * Converse refuses `toolUse` / `toolResult` blocks in a request that
+      defines no tools (400 "The toolConfig field must be defined…"). When a
+      transcript holds a tool round but the call passes no `:tools`, the
+      tools are declared from the history itself: each name the assistant
+      called, with the empty object schema and no description. The model
+      may call one of them again; a caller runs only the tools it offered.
     * Not sent, as Converse has no field for them: `:response_format` (the
       JSON schema still rides in the prompt — `PhoenixKitAI.StructuredOutput`),
-      `:seed`, the penalties, `:parallel_tool_calls`, and the reasoning
-      options — a model thinks or not by its own default.
+      `:seed`, the penalties and `:parallel_tool_calls`.
+    * Reasoning: the endpoint's and the call's reasoning options
+      (`reasoning_enabled`, `reasoning_effort`, `reasoning_max_tokens`,
+      `reasoning_exclude`) are ignored — nothing is sent, and a model thinks
+      or not by its own default (the Claude 5 models think by default).
 
   ## Answer
 
   `output.message.content` → one chat choice: the text blocks joined as
   `content` (`nil` when there is none), `toolUse` blocks → `tool_calls`
   (`arguments` as a JSON string), reasoning text → `reasoning`.
-  `stopReason` → `finish_reason`: `end_turn` / `stop_sequence` → `"stop"`,
-  `max_tokens` / `model_context_window_exceeded` → `"length"`, `tool_use` →
-  `"tool_calls"`, `content_filtered` / `guardrail_intervened` → `"content_filter"`.
-  `usage.inputTokens` / `outputTokens` / `totalTokens` → `prompt_tokens` /
-  `completion_tokens` / `total_tokens`. Converse reports no cost: a call is
-  priced by the endpoint's manual price (`PhoenixKitAI.CallCost`).
+  `stopReason` → `finish_reason`, Bedrock's own word kept in
+  `native_finish_reason`:
 
-  Thinking blocks are not sent back on the next turn (a chat message has no
-  place for them); Claude takes a history without them.
+    * `end_turn` / `stop_sequence` → `"stop"`; `tool_use` → `"tool_calls"`;
+    * `max_tokens` / `model_context_window_exceeded` → `"length"`, and so
+      are `malformed_model_output` and `malformed_tool_use`: the answer is
+      not whole, so `PhoenixKitAI.Completion.truncated?/1` keeps a caller
+      from taking it as one (raising `max_tokens` may not help there);
+    * `content_filtered` / `guardrail_intervened` / `refusal` →
+      `"content_filter"`, which `PhoenixKitAI.Completion.filtered?/1` reads;
+    * any other word passes through as it is.
+
+  `usage.inputTokens` / `outputTokens` / `totalTokens` → `prompt_tokens` /
+  `completion_tokens` / `total_tokens` (the sum when Bedrock sends no
+  total).
+
+  **Cost and budgets.** Converse reports no cost: a call is priced only by
+  the endpoint's manual price (`PhoenixKitAI.CallCost`). Without one, its
+  rows carry no cost, and the money limits of `PhoenixKitAI.Budget` count it
+  as nothing — set the manual price on a Bedrock endpoint before relying on
+  a budget.
+
+  **Thinking is not replayed.** Reasoning blocks of an answer come back as
+  `reasoning`, but a chat message has no place for their signature, so they
+  are not sent back on the next turn. Claude takes a history without them
+  (no 400); a thinking model starts each tool round without its earlier
+  reasoning.
 
   ## Errors
 
   Bedrock's error body is `{"message": …}` (or `"Message"`). It is read into
-  the module's vocabulary: a 403 about the key itself (its format, an
-  invalid token or signature) is `:invalid_api_key`; a 404, or a 400 about
-  the model identifier, is `:model_not_found`; 429 is `:rate_limited`; any
-  other status is `{:api_error, status}`.
+  the module's vocabulary, and the request row keeps Bedrock's own status
+  and words (`metadata.provider_error`, `provider_error_message`):
+
+    * a 403 about the key itself (its format, an invalid token or
+      signature) is `:invalid_api_key` — the row still says 403;
+    * a 400 "The provided model identifier is invalid." and a 404 for a
+      model past its end of life are `:model_not_found`;
+    * a 404 about access to a model that exists — the Anthropic use-case
+      form not submitted, a Legacy model not used lately ("Access denied") —
+      is `{:api_error, 404}`, its words in the row; so is a 403 such as
+      "… is not available for this account";
+    * 429 is `:rate_limited`; any other status is `{:api_error, status}`.
   """
 
   alias PhoenixKitAI.{Completion, Endpoint, OpenRouterClient}
@@ -187,7 +235,7 @@ defmodule PhoenixKitAI.Providers.BedrockConverse do
         |> put_present("system", system)
         |> put_present("inferenceConfig", inference_config(opts, claude))
         |> put_present("additionalModelRequestFields", additional_fields(opts, claude))
-        |> put_present("toolConfig", tool_config(opts[:tools], opts[:tool_choice]))
+        |> put_present("toolConfig", tool_config(opts[:tools], opts[:tool_choice], turns))
 
       {:ok, body}
     end
@@ -214,15 +262,18 @@ defmodule PhoenixKitAI.Providers.BedrockConverse do
           "message" => message,
           "finish_reason" => finish_reason(answer["stopReason"])
         }
+        |> put_present("native_finish_reason", answer["stopReason"])
       ],
       "usage" => usage(answer["usage"])
     }
   end
 
   @doc false
-  # Bedrock's error answer as the status and the chat-completions error body
-  # `PhoenixKitAI.Completion.handle_error_status/2` reads.
-  @spec error(integer(), String.t()) :: {integer(), String.t()}
+  # Bedrock's error answer as the chat-completions error body
+  # `PhoenixKitAI.Completion` reads, and the reason it names where the status
+  # alone would mislead (nil: go by the status). The status itself is never
+  # rewritten, so the request row keeps the one Bedrock sent.
+  @spec error(integer(), String.t()) :: {String.t(), :invalid_api_key | :model_not_found | nil}
   def error(status, body) do
     message =
       case Jason.decode(body) do
@@ -231,31 +282,26 @@ defmodule PhoenixKitAI.Providers.BedrockConverse do
         _ -> nil
       end
 
-    {status, code} = classify(status, message || "")
+    error = put_present(%{}, "message", message)
 
-    error =
-      %{}
-      |> put_present("message", message)
-      |> put_present("code", code)
-
-    {status, Jason.encode!(%{"error" => error})}
+    {Jason.encode!(%{"error" => error}), reason(status, message || "")}
   end
 
-  defp classify(403, message) do
-    if message =~ ~r/api key|security token|signature|credential/i,
-      do: {401, nil},
-      else: {403, nil}
+  defp reason(403, message) do
+    if message =~ ~r/api key|security token|signature|credential/i, do: :invalid_api_key
   end
 
-  defp classify(404, _message), do: {404, "model_not_found"}
-
-  defp classify(400, message) do
-    if message =~ ~r/model identifier|resolve the foundation model/i,
-      do: {400, "model_not_found"},
-      else: {400, nil}
+  # A 404 about access to a model that exists is not an unknown model.
+  defp reason(404, message) do
+    unless message =~ ~r/use case|access denied|not available|not authorized|agreement/i,
+      do: :model_not_found
   end
 
-  defp classify(status, _message), do: {status, nil}
+  defp reason(400, message) do
+    if message =~ ~r/model identifier|resolve the foundation model/i, do: :model_not_found
+  end
+
+  defp reason(_status, _message), do: nil
 
   # ── messages ──────────────────────────────────────────────────────
 
@@ -283,8 +329,13 @@ defmodule PhoenixKitAI.Providers.BedrockConverse do
 
   defp append_turn(turns, role, blocks), do: [%{"role" => role, "content" => blocks} | turns]
 
+  # Converse's `system` takes text blocks only.
   defp translate(%{"role" => "system", "content" => content}) do
-    with {:ok, blocks} <- content_blocks(content), do: {:system, blocks}
+    with {:ok, blocks} <- content_blocks(content) do
+      if Enum.all?(blocks, &Map.has_key?(&1, "text")),
+        do: {:system, blocks},
+        else: {:error, :not_supported}
+    end
   end
 
   defp translate(%{"role" => "assistant"} = message) do
@@ -418,27 +469,51 @@ defmodule PhoenixKitAI.Providers.BedrockConverse do
   defp stop_sequences(stop) when is_list(stop), do: stop
   defp stop_sequences(_stop), do: nil
 
-  defp tool_config(tools, choice) when is_list(tools) and tools != [] do
+  defp tool_config(tools, choice, _turns) when is_list(tools) and tools != [] do
     %{"tools" => Enum.map(tools, &tool_spec/1)}
     |> put_present("toolChoice", tool_choice(choice))
   end
 
-  defp tool_config(_tools, _choice), do: nil
+  # No tools offered, but the history holds a tool round: Converse refuses
+  # it without a `toolConfig`, so the tools the assistant called are
+  # declared, by name only.
+  defp tool_config(_tools, _choice, turns) do
+    turns
+    |> Enum.flat_map(& &1["content"])
+    |> Enum.flat_map(fn
+      %{"toolUse" => %{"name" => name}} when is_binary(name) and name != "" -> [name]
+      _block -> []
+    end)
+    |> Enum.uniq()
+    |> case do
+      [] -> nil
+      names -> %{"tools" => Enum.map(names, &%{"toolSpec" => tool_spec_json(&1, nil, nil)})}
+    end
+  end
 
   defp tool_spec(tool) do
     function = field(tool, "function") || tool
 
     spec =
-      %{
-        "name" => field(function, "name"),
-        "inputSchema" => %{
-          "json" => field(function, "parameters") || %{"type" => "object", "properties" => %{}}
-        }
-      }
-      |> put_present("description", blank_to_nil(field(function, "description")))
+      tool_spec_json(
+        field(function, "name"),
+        field(function, "parameters"),
+        field(function, "description")
+      )
 
     %{"toolSpec" => spec}
   end
+
+  defp tool_spec_json(name, parameters, description) do
+    %{"name" => name, "inputSchema" => %{"json" => input_schema(parameters)}}
+    |> put_present("description", blank_to_nil(description))
+  end
+
+  # Converse refuses a schema without `"type": "object"`.
+  defp input_schema(parameters) when is_map(parameters) and map_size(parameters) > 0,
+    do: parameters
+
+  defp input_schema(_parameters), do: %{"type" => "object", "properties" => %{}}
 
   defp tool_choice("auto"), do: %{"auto" => %{}}
   defp tool_choice("required"), do: %{"any" => %{}}
@@ -484,12 +559,15 @@ defmodule PhoenixKitAI.Providers.BedrockConverse do
 
   defp finish_reason(reason) when reason in ["end_turn", "stop_sequence"], do: "stop"
 
-  defp finish_reason(reason) when reason in ["max_tokens", "model_context_window_exceeded"],
-    do: "length"
+  # An answer the model could not finish whole is read as cut short.
+  defp finish_reason(reason)
+       when reason in ~w(max_tokens model_context_window_exceeded malformed_model_output
+                         malformed_tool_use),
+       do: "length"
 
   defp finish_reason("tool_use"), do: "tool_calls"
 
-  defp finish_reason(reason) when reason in ["content_filtered", "guardrail_intervened"],
+  defp finish_reason(reason) when reason in ~w(content_filtered guardrail_intervened refusal),
     do: "content_filter"
 
   defp finish_reason(reason), do: reason

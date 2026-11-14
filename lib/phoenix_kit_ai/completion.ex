@@ -169,8 +169,7 @@ defmodule PhoenixKitAI.Completion do
         parse_converse_response(response_body, model, start_time)
 
       {:ok, %{status_code: status, body: response_body}} ->
-        {status, error_body} = BedrockConverse.error(status, response_body)
-        error_status(status, error_body, opts)
+        converse_error(status, response_body, opts)
 
       {:error, reason} when reason in [:concurrency_limit_timeout, :concurrency_queue_full] ->
         {:error, reason}
@@ -196,6 +195,26 @@ defmodule PhoenixKitAI.Completion do
 
       {:error, _} ->
         {:error, :invalid_json_response}
+    end
+  end
+
+  @converse_label "Bedrock Converse call"
+
+  # Bedrock's own status stays on the row and in the log; only the reason
+  # is read from its words where the status alone misleads (a 403 about
+  # the key, a 400 or 404 about the model id).
+  defp converse_error(status, response_body, opts) do
+    case BedrockConverse.error(status, response_body) do
+      {error_body, nil} ->
+        if Keyword.get(opts, :safety_errors) == true,
+          do: HTTP.error(status, error_body, @converse_label),
+          else: handle_error_status(status, error_body, @converse_label)
+
+      {error_body, reason} ->
+        result = {:error, reason}
+        :ok = ProviderError.note(status, ProviderError.parse(error_body), result)
+        Logger.warning("#{@converse_label} failed: #{status} (#{reason})")
+        result
     end
   end
 
@@ -279,12 +298,13 @@ defmodule PhoenixKitAI.Completion do
   # The body decides where the providers document that the status alone
   # misleads — money sent as a 429, say (`ProviderError`) — and what it
   # said is noted for the request row.
-  def handle_error_status(status, response_body) do
+  # `label` names the call in the log line ("OpenRouter completion failed: 503").
+  def handle_error_status(status, response_body, label \\ "OpenRouter completion") do
     error = ProviderError.parse(response_body)
 
     result =
       case ProviderError.class(status, error) do
-        nil -> status_error(status, response_body)
+        nil -> status_error(status, response_body, label)
         class -> {:error, class}
       end
 
@@ -292,40 +312,39 @@ defmodule PhoenixKitAI.Completion do
     result
   end
 
-  defp status_error(401, _body), do: {:error, :invalid_api_key}
-  defp status_error(402, _body), do: {:error, :insufficient_credits}
-  defp status_error(429, _body), do: {:error, :rate_limited}
+  defp status_error(401, _body, _label), do: {:error, :invalid_api_key}
+  defp status_error(402, _body, _label), do: {:error, :insufficient_credits}
+  defp status_error(429, _body, _label), do: {:error, :rate_limited}
 
   # OpenRouter's answer to `provider.require_parameters` when no upstream
   # provider of the model takes every parameter sent. The model itself is
   # fine; the set of parameters is not. `chat_completion/3` fills in which
   # parameters were sent.
-  defp status_error(404, response_body) do
+  defp status_error(404, response_body, label) do
     message = extract_error_message(response_body) || ""
 
     if message =~ ~r/requested parameters/i do
-      Logger.warning(
-        "OpenRouter completion failed: 404 - no provider for the requested parameters"
-      )
+      Logger.warning("#{label} failed: 404 - no provider for the requested parameters")
 
       {:error, {:no_provider_for_params, []}}
     else
-      generic_error_status(404, response_body)
+      generic_error_status(404, response_body, label)
     end
   end
 
-  defp status_error(status, response_body), do: generic_error_status(status, response_body)
+  defp status_error(status, response_body, label),
+    do: generic_error_status(status, response_body, label)
 
-  defp generic_error_status(status, response_body) do
+  defp generic_error_status(status, response_body, label) do
     # The status only, never the provider's words: they can echo the request
     # or a key. The request row keeps them, trimmed and masked, behind the
     # content gate (`ProviderError`).
     case extract_error_message(response_body) do
       nil ->
-        Logger.warning("OpenRouter completion failed: #{status} (no parsable error body)")
+        Logger.warning("#{label} failed: #{status} (no parsable error body)")
 
       _message ->
-        Logger.warning("OpenRouter completion failed: #{status}")
+        Logger.warning("#{label} failed: #{status}")
     end
 
     {:error, {:api_error, status}}

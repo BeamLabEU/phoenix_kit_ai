@@ -1261,8 +1261,23 @@ Test database `phoenix_kit_ai_test`.
   model (read from the id: `eu.anthropic.claude-opus-4-6-v1` →
   `claude-opus-4-6`) takes sampling by the Anthropic rules above, `top_k`
   in `additionalModelRequestFields`; `response_format`, `seed`, the
-  penalties and the reasoning options are not sent. Images only as `data:`
-  URLs; no cost reported — the endpoint's manual price prices the calls.
+  penalties and the reasoning options are not sent (a model thinks by its
+  own default; thinking blocks are not replayed). Images only as `data:`
+  URLs, never in a `system` message. A transcript with a tool round but no
+  `:tools` declares the called tools from the history (Converse refuses
+  tool blocks without a `toolConfig`); an empty `parameters` gets the
+  empty object schema. Forced `tool_choice` is a 400 on Claude Fable 5.1,
+  Mythos 5.1, Opus 5.5, Sonnet 5.5 and on a thinking Claude. Stop reasons
+  `malformed_*` read as `"length"`, `refusal` / `guardrail_intervened` /
+  `content_filtered` as `"content_filter"` (Bedrock's word in
+  `native_finish_reason`). Errors keep Bedrock's status on the row; a 403
+  about the key is `:invalid_api_key`, an invalid model id or an
+  end-of-life 404 `:model_not_found`, an access 404 (use-case form,
+  Legacy) `{:api_error, 404}`. **No cost reported**: only the endpoint's
+  manual price prices the calls, and without one the money limits
+  (`Budget`) count them as zero — set it before relying on a budget. The
+  endpoint form's manual model-ID entry sits under the fetched list too,
+  for an `eu.anthropic.*` id the list does not show.
 - On OpenRouter a call with a hard `:tools`/`:json_schema` need sends
   `provider.require_parameters` — only when the model's parameter list is
   in the capability cache (not before the first catalogue read after a
@@ -1464,11 +1479,14 @@ folder with no `FOLLOW_UP.md` means "not triaged yet"; a stub file is what
   Trigger: the first consumer that batches, or a second mask-capable
   provider.
 - `PhoenixKitAI.Completion` is both the bottom of the stack (`url/2`,
-  `handle_error_status/2`, `decode_image_url/1`) and the top (the image
+  `handle_error_status/3`, `decode_image_url/1`) and the top (the image
   verbs delegating to adapters). Split the shared helpers into
   `PhoenixKitAI.Providers.Shared` and leave `Completion` the chat /
   embeddings / TTS client. Trigger: the next provider adapter, or the next
-  time a compile-time cycle bites.
+  time a compile-time cycle bites. `Providers.BedrockConverse` was that
+  next adapter and leans on `Completion.normalize_message/1`,
+  `decode_image_url/1`, `anthropic_sampling?/1` and `url/2` while
+  `Completion` calls it back; the split was left for its own change.
 - `PhoenixKitAI.Images.ImageModels` caches in `:persistent_term`; an ETS
   table with single-flight refresh would avoid the global GC on refills
   and unbounded key growth across endpoints. Trigger: more than a handful

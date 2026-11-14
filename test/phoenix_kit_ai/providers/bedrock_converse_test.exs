@@ -115,6 +115,14 @@ defmodule PhoenixKitAI.Providers.BedrockConverseTest do
       assert BedrockConverse.claude_id("amazon.nova-pro-v1:0") == nil
       assert BedrockConverse.claude_id(nil) == nil
     end
+
+    test "bare_model/1 drops a cross-region prefix only before a provider.model id" do
+      assert BedrockConverse.bare_model("eu.anthropic.claude-x-v1:0") == "anthropic.claude-x-v1:0"
+      assert BedrockConverse.bare_model("us-gov.anthropic.claude-x") == "anthropic.claude-x"
+      # A prefix word with no provider after it is the id itself.
+      assert BedrockConverse.bare_model("global.model-x") == "global.model-x"
+      assert BedrockConverse.bare_model("cohere.command-r-v1:0") == "cohere.command-r-v1:0"
+    end
   end
 
   describe "the request" do
@@ -153,6 +161,34 @@ defmodule PhoenixKitAI.Providers.BedrockConverseTest do
 
       assert {:ok, _} = Completion.chat_completion(ep, [%{role: "user", content: "hi"}])
       assert_received {:request, "/model/" <> _, _auth, _body}
+    end
+
+    test "the URL keeps only scheme, host and port of the base URL" do
+      ep = %Endpoint{
+        provider: "amazon_bedrock",
+        base_url:
+          "https://user:pw@bedrock-runtime.eu-west-1.amazonaws.com:8443/openai/v1?a=1#frag",
+        model: "m"
+      }
+
+      assert BedrockConverse.url(ep, "eu.anthropic.m/x") ==
+               "https://bedrock-runtime.eu-west-1.amazonaws.com:8443/model/eu.anthropic.m%2Fx/converse"
+    end
+
+    test "the key is sent trimmed, and the answer carries its latency" do
+      stub(converse_answer([%{"text" => "OK."}]))
+
+      ep = %Endpoint{
+        uuid: Ecto.UUID.generate(),
+        provider: "amazon_bedrock",
+        base_url: "https://bedrock-runtime.eu-west-1.amazonaws.com/openai/v1",
+        model: @haiku,
+        api_key: "  ABSK-test-key\n"
+      }
+
+      assert {:ok, response} = Completion.chat_completion(ep, [%{role: "user", content: "hi"}])
+      assert_received {:request, _path, ["Bearer ABSK-test-key"], _body}
+      assert is_integer(response["latency_ms"]) and response["latency_ms"] >= 0
     end
 
     test "a per-call model: goes in the URL" do
@@ -259,6 +295,117 @@ defmodule PhoenixKitAI.Providers.BedrockConverseTest do
              ]
     end
 
+    test "several system messages are joined in order; blank turns are dropped" do
+      messages = [
+        %{role: "system", content: "One."},
+        %{role: "user", content: "hi"},
+        %{role: "system", content: [%{"type" => "text", "text" => "Two."}]},
+        %{role: "user", content: "   "},
+        %{role: "assistant", content: ""},
+        %{role: "assistant", content: "Hello."},
+        %{role: "user", content: "again"}
+      ]
+
+      assert {:ok, body} = BedrockConverse.request(@haiku, messages, [])
+      assert body["system"] == [%{"text" => "One."}, %{"text" => "Two."}]
+
+      assert body["messages"] == [
+               %{"role" => "user", "content" => [%{"text" => "hi"}]},
+               %{"role" => "assistant", "content" => [%{"text" => "Hello."}]},
+               %{"role" => "user", "content" => [%{"text" => "again"}]}
+             ]
+
+      # A blank turn between two of the other role leaves no empty message:
+      # the two are merged into one.
+      assert {:ok, body} =
+               BedrockConverse.request(
+                 @haiku,
+                 [
+                   %{role: "user", content: "hi"},
+                   %{role: "assistant", content: " "},
+                   %{role: "user", content: "again"}
+                 ],
+                 []
+               )
+
+      assert body["messages"] == [
+               %{"role" => "user", "content" => [%{"text" => "hi"}, %{"text" => "again"}]}
+             ]
+    end
+
+    test "an image in a system message is refused before any request is sent" do
+      stub(converse_answer([%{"text" => "OK."}]))
+      ep = endpoint(@haiku)
+      data_url = "data:image/png;base64," <> Base.encode64(@png)
+
+      messages = [
+        %{
+          role: "system",
+          content: [
+            %{"type" => "text", "text" => "Look."},
+            %{"type" => "image_url", "image_url" => %{"url" => data_url}}
+          ]
+        },
+        %{role: "user", content: "hi"}
+      ]
+
+      assert {:error, :not_supported} = BedrockConverse.request(@haiku, messages, [])
+      assert {:error, :not_supported} = PhoenixKitAI.complete(ep.uuid, messages)
+      refute_received {:request, _, _, _}
+    end
+
+    test "a transcript that opens with the assistant is sent as it is" do
+      # Converse takes it (checked live with Claude Haiku 4.5 and Sonnet 4.6).
+      messages = [%{role: "assistant", content: "Hello!"}, %{role: "user", content: "Say OK."}]
+
+      assert {:ok, %{"messages" => [%{"role" => "assistant"}, %{"role" => "user"}]}} =
+               BedrockConverse.request(@haiku, messages, [])
+    end
+
+    test "a tool round with no tools passed declares the called tools from the history" do
+      messages = [
+        %{role: "user", content: "Weather?"},
+        %{
+          role: "assistant",
+          content: nil,
+          tool_calls: [
+            %{"id" => "t1", "function" => %{"name" => "get_weather", "arguments" => "{}"}},
+            %{"id" => "t2", "function" => %{"name" => "get_weather", "arguments" => "{}"}},
+            %{"id" => "t3", "function" => %{"name" => "get_time", "arguments" => "{}"}}
+          ]
+        },
+        %{role: "tool", tool_call_id: "t1", content: "5C"},
+        %{role: "tool", tool_call_id: "t2", content: "6C"},
+        %{role: "tool", tool_call_id: "t3", content: "noon"}
+      ]
+
+      object = %{"type" => "object", "properties" => %{}}
+
+      for opts <- [[], [tools: []], [tools: nil, tool_choice: "required"]] do
+        assert {:ok, %{"toolConfig" => config}} = BedrockConverse.request(@haiku, messages, opts)
+
+        assert config == %{
+                 "tools" => [
+                   %{
+                     "toolSpec" => %{
+                       "name" => "get_weather",
+                       "inputSchema" => %{"json" => object}
+                     }
+                   },
+                   %{"toolSpec" => %{"name" => "get_time", "inputSchema" => %{"json" => object}}}
+                 ]
+               }
+      end
+
+      # Tools passed are sent as they are, never mixed with the history's.
+      tools = [%{"type" => "function", "function" => %{"name" => "other"}}]
+
+      assert {:ok, %{"toolConfig" => config}} =
+               BedrockConverse.request(@haiku, messages, tools: tools)
+
+      assert [%{"toolSpec" => %{"name" => "other"}}] = config["tools"]
+    end
+
     test "an assistant message that only calls tools carries no text block" do
       messages = [
         %{role: "user", content: "hi"},
@@ -324,6 +471,28 @@ defmodule PhoenixKitAI.Providers.BedrockConverseTest do
                )
     end
 
+    test "image/jpg reads as JPEG; a tool result that is not a string goes as its JSON" do
+      data_url = "data:image/jpg;base64," <> Base.encode64("jpeg-bytes")
+
+      messages = [
+        %{role: "user", content: [%{"type" => "image_url", "image_url" => %{"url" => data_url}}]},
+        %{
+          role: "assistant",
+          content: nil,
+          tool_calls: [%{"id" => "t1", "function" => %{"name" => "f", "arguments" => "{}"}}]
+        },
+        %{role: "tool", tool_call_id: "t1", content: %{"status" => "sent"}}
+      ]
+
+      assert {:ok, %{"messages" => [first, _, last]}} =
+               BedrockConverse.request(@haiku, messages, [])
+
+      assert [%{"image" => %{"format" => "jpeg"}}] = first["content"]
+
+      assert [%{"toolResult" => %{"content" => [%{"text" => ~s({"status":"sent"})}]}}] =
+               last["content"]
+    end
+
     test "parts, tool calls and tools given with atom keys read the same" do
       data_url = "data:image/jpeg;base64," <> Base.encode64("jpeg-bytes")
 
@@ -362,8 +531,16 @@ defmodule PhoenixKitAI.Providers.BedrockConverseTest do
                }
              ] = body["messages"]
 
-      assert [%{"toolSpec" => %{"name" => "f", "description" => "F"}}] =
-               body["toolConfig"]["tools"]
+      # An empty `parameters` gets the object schema Converse requires.
+      assert [
+               %{
+                 "toolSpec" => %{
+                   "name" => "f",
+                   "description" => "F",
+                   "inputSchema" => %{"json" => %{"type" => "object", "properties" => %{}}}
+                 }
+               }
+             ] = body["toolConfig"]["tools"]
     end
 
     test "an unsupported part is refused before any request is sent" do
@@ -576,7 +753,25 @@ defmodule PhoenixKitAI.Providers.BedrockConverseTest do
       assert Completion.truncated?(read.("model_context_window_exceeded"))
       assert Completion.filtered?(read.("content_filtered"))
       assert Completion.filtered?(read.("guardrail_intervened"))
+      assert Completion.filtered?(read.("refusal"))
+      assert Completion.truncated?(read.("malformed_model_output"))
+      assert Completion.truncated?(read.("malformed_tool_use"))
       refute Completion.truncated?(read.("end_turn"))
+      refute Completion.filtered?(read.("end_turn"))
+
+      # Bedrock's own word is kept; one this module does not know passes through.
+      assert [%{"native_finish_reason" => "refusal"}] = read.("refusal")["choices"]
+      assert [%{"finish_reason" => "pause_turn"}] = read.("pause_turn")["choices"]
+    end
+
+    test "total tokens are the sum when Bedrock sends none" do
+      answer =
+        [%{"text" => "x"}]
+        |> converse_answer()
+        |> Map.put("usage", %{"inputTokens" => 7, "outputTokens" => 4})
+
+      assert %{"prompt_tokens" => 7, "completion_tokens" => 4, "total_tokens" => 11} =
+               BedrockConverse.response(answer, @haiku)["usage"]
     end
 
     test "the call is logged with its tokens" do
@@ -598,6 +793,18 @@ defmodule PhoenixKitAI.Providers.BedrockConverseTest do
   end
 
   describe "errors" do
+    import ExUnit.CaptureLog
+
+    defp provider_error(ep) do
+      assert {[%{status: "error"} = row], 1} = PhoenixKitAI.list_requests(endpoint_uuid: ep.uuid)
+      row
+    end
+
+    defp status_of(row) do
+      facts = row.metadata["provider_error"] || row.metadata[:provider_error]
+      facts["status"] || facts[:status]
+    end
+
     test "a 403 about the key is :invalid_api_key, about access {:api_error, 403}" do
       stub(403, %{"Message" => "Invalid API Key format: Delimiter ':' not found"})
       ep = endpoint(@haiku)
@@ -608,20 +815,40 @@ defmodule PhoenixKitAI.Providers.BedrockConverseTest do
 
       stub(403, %{"message" => "You don't have access to the model with the specified model ID."})
       assert {:error, {:api_error, 403}} = PhoenixKitAI.ask(ep.uuid, "hi")
-    end
 
-    test "an unknown or retired model is :model_not_found" do
-      ep = endpoint(@haiku)
-
-      stub(404, %{
+      # Bedrock's answer for a model the account is not offered (live).
+      stub(403, %{
         "message" =>
-          "Access denied. This Model is marked by provider as Legacy and you have not been actively using the model in the last 30 days."
+          "anthropic.claude-sonnet-5-5 is not available for this account. You can explore other available models on Amazon Bedrock."
       })
 
-      assert {:error, :model_not_found} = PhoenixKitAI.ask(ep.uuid, "hi")
+      assert {:error, {:api_error, 403}} = PhoenixKitAI.ask(ep.uuid, "hi")
+    end
+
+    test "an invalid model id or an end-of-life model is :model_not_found" do
+      ep = endpoint(@haiku)
 
       stub(400, %{"message" => "The provided model identifier is invalid."})
       assert {:error, :model_not_found} = PhoenixKitAI.ask(ep.uuid, "hi")
+
+      stub(404, %{
+        "message" =>
+          "This model version has reached the end of its life. Please refer to the AWS documentation for more details."
+      })
+
+      assert {:error, :model_not_found} = PhoenixKitAI.ask(ep.uuid, "hi")
+    end
+
+    test "a 404 about access to a model that exists is {:api_error, 404}, not an unknown model" do
+      ep = endpoint(@haiku)
+
+      for message <- [
+            "Model use case details have not been submitted for this account. Fill out the Anthropic use case details form before using the model.",
+            "Access denied. This Model is marked by provider as Legacy and you have not been actively using the model in the last 30 days."
+          ] do
+        stub(404, %{"message" => message})
+        assert {:error, {:api_error, 404}} = PhoenixKitAI.ask(ep.uuid, "hi"), message
+      end
     end
 
     test "throttling is :rate_limited, a validation error {:api_error, 400}" do
@@ -634,14 +861,40 @@ defmodule PhoenixKitAI.Providers.BedrockConverseTest do
       assert {:error, {:api_error, 400}} = PhoenixKitAI.ask(ep.uuid, "hi")
     end
 
-    test "the provider's words reach the request row, the key never does" do
+    test "the row keeps Bedrock's 403 and its words, the log names Bedrock, the key never shows" do
       stub(403, %{"Message" => "Invalid API Key format: Delimiter ':' not found"})
       ep = endpoint(@haiku)
 
-      assert {:error, :invalid_api_key} = PhoenixKitAI.ask(ep.uuid, "hi")
+      log =
+        capture_log(fn ->
+          assert {:error, :invalid_api_key} = PhoenixKitAI.ask(ep.uuid, "hi")
+        end)
 
-      assert {[%{status: "error"} = row], 1} = PhoenixKitAI.list_requests(endpoint_uuid: ep.uuid)
+      row = provider_error(ep)
+      assert status_of(row) == 403
+      assert row.error_message =~ "Invalid API Key format: Delimiter ':' not found"
       refute inspect(row) =~ "ABSK-test-key"
+
+      assert log =~ "Bedrock Converse call failed: 403"
+      refute log =~ "OpenRouter"
+      refute log =~ "Delimiter"
+    end
+
+    test "a status read by the shared mapping is logged as Bedrock's too" do
+      ep = endpoint(@haiku)
+
+      for opts <- [[], [safety_errors: true]] do
+        stub(400, %{"message" => "messages.0.content: Field required"})
+
+        log =
+          capture_log(fn ->
+            assert {:error, {:api_error, 400}} =
+                     Completion.chat_completion(ep, [%{role: "user", content: "hi"}], opts)
+          end)
+
+        assert log =~ "Bedrock Converse call failed: 400"
+        refute log =~ "OpenRouter"
+      end
     end
   end
 end
