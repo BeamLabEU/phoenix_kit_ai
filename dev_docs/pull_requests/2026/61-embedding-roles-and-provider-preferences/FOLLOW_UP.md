@@ -11,3 +11,17 @@ Claude review with the external panel on 2026-11-13; see [the review](CLAUDE_REV
   `hex.audit` (on upstream too); `dimensions:` missing from a caller cache key
   (pre-existing).
 - **Not changed:** a charlist in `provider:`; the task stacktrace on concurrent `embed_many` rows.
+
+## Maintainer review, 2026-11-14
+
+See [the maintainer review](CLAUDE_MAINTAINER_REVIEW.md).
+
+- **Fixed:** `embed_many/3` with a caller cache key answering every part with the first
+  part's vectors; a part that raised under `max_concurrency > 1` killing the caller; a
+  struct as `provider:` raising; `role: "query"` and `role: :query` cached apart. Each has
+  a test in `embedding_options_test.exs`.
+- **Documented:** `role:` does not template an image's caption.
+- **Closed since the first review:** `dimensions:` in a caller cache key (`02af792`); the
+  `grpc_core` advisory (`main` moved to 1.1.0).
+- **Not changed:** `translate_query/3` failing silently; no single-flight on the live
+  model list; `embed_many`'s cost and usage sums on partly priced or cached parts.

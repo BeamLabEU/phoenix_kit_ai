@@ -3229,7 +3229,8 @@ defmodule PhoenixKitAI do
   end
 
   # `role:` on an embedding: each text input through the model's template
-  # (a prefix or an instruction); images are left as they are.
+  # (a prefix or an instruction); images are left as they are, and so is an
+  # image's caption (the prefixes are documented for text inputs only).
   defp apply_embedding_role(input, %{template: nil}), do: input
 
   defp apply_embedding_role(input, %{template: template, instruction: instruction}) do
@@ -4462,7 +4463,8 @@ defmodule PhoenixKitAI do
     prefix (gemini-embedding-2, e5) or a query instruction (Qwen3-Embedding,
     e5-instruct) — from `PhoenixKitAI.EmbeddingConventions`, overridable per
     endpoint in `provider_settings["embedding"]`. A model the table does not
-    know gets nothing. Without `:role` nothing changes. Query and document
+    know gets nothing. Only text inputs are templated: an image and its
+    caption are sent as given. Without `:role` nothing changes. Query and document
     vectors of one text are cached apart. Anything else is
     `{:error, :invalid_embedding_role}`.
   - `:instruction` - The task text for instruction-style query templates
@@ -4531,6 +4533,9 @@ defmodule PhoenixKitAI do
          {:ok, input} <- input |> apply_embedding_role(convention) |> prepare_embed_input(opts) do
       # A call's `model:` is the model sent, checked, cached and logged.
       endpoint = with_call_model(endpoint, opts)
+      # The role as resolved, so `role: "query"` and `role: :query` share
+      # one cache entry.
+      opts = if convention.role, do: Keyword.put(opts, :role, convention.role), else: opts
       # Capture caller info (source + stacktrace + context)
       {auto_source, stacktrace, caller_context} = capture_caller_info()
       # Allow manual override of source, but all debug info is always captured
@@ -4584,6 +4589,12 @@ defmodule PhoenixKitAI do
   each part goes through `embed/3` with the same options: one usage row,
   one cache entry and one `PhoenixKitAI.Limiter` slot per request.
 
+  A caller `cache: [key: …]` names the whole list. When the list needs more
+  than one request, each part is cached under that key plus the part's
+  place in the list (its first index and its length), so no part answers
+  for another; a list that fits one request keeps the bare key, as
+  `embed/3` would use it.
+
   ## Options
 
   Every `embed/3` option, plus:
@@ -4600,8 +4611,10 @@ defmodule PhoenixKitAI do
     `"request_uuids"` the parts' rows and `"batches"` their number;
     `"model"`, `"space"` and `"convention"` are the first part's.
   - `{:error, reason}` - the first part that failed; nothing is returned
-    for the parts that succeeded (with `cache:` on they are cached, so a
-    retry pays only for the rest).
+    for the parts that succeeded (with `cache:` on the parts that finished
+    are cached, so a retry pays only for the rest; with `:max_concurrency`
+    above 1, parts still in flight when one fails are stopped and are not).
+    A part that raised or exited is `{:error, {:embedding_batch_exit, reason}}`.
   """
   @spec embed_many(String.t() | Endpoint.t(), embed_input() | [embed_input()], keyword()) ::
           {:ok, map()} | {:error, term()}
@@ -4624,7 +4637,8 @@ defmodule PhoenixKitAI do
         positive_opt(opts[:batch_size]) || EmbeddingConventions.max_inputs(model),
         positive_opt(opts[:max_batch_tokens]) || EmbeddingConventions.max_batch_tokens(model)
       )
-      |> run_embedding_batches(endpoint, embed_opts, positive_opt(opts[:max_concurrency]) || 1)
+      |> with_part_cache_keys(embed_opts)
+      |> run_embedding_batches(endpoint, positive_opt(opts[:max_concurrency]) || 1)
     end
   end
 
@@ -4657,9 +4671,37 @@ defmodule PhoenixKitAI do
   defp estimated_tokens(text) when is_binary(text), do: div(byte_size(text), 3) + 1
   defp estimated_tokens(_image), do: 1
 
-  defp run_embedding_batches(batches, endpoint, opts, 1) do
+  # Each part with the options it is embedded with. A caller cache key
+  # replaces the input in the cache key, so parts sharing it would all be
+  # answered with the first part's vectors: with more than one part, each
+  # gets the key plus its place in the list. The place is the first index
+  # and the length, not the part's number, so another `batch_size:` under
+  # the same key cannot be answered with a part of other inputs.
+  defp with_part_cache_keys([batch], opts), do: [{batch, opts}]
+
+  defp with_part_cache_keys(batches, opts) do
+    case RequestCache.caller_key(opts) do
+      nil ->
+        Enum.map(batches, &{&1, opts})
+
+      key ->
+        {parts, _offset} =
+          Enum.map_reduce(batches, 0, fn batch, offset ->
+            size = length(batch)
+            part_key = {key, {:embed_many_part, offset, size}}
+            {{batch, put_caller_key(opts, part_key)}, offset + size}
+          end)
+
+        parts
+    end
+  end
+
+  defp put_caller_key(opts, key),
+    do: Keyword.update!(opts, :cache, &Keyword.put(&1, :key, key))
+
+  defp run_embedding_batches(batches, endpoint, 1) do
     batches
-    |> Enum.reduce_while({:ok, []}, fn batch, {:ok, acc} ->
+    |> Enum.reduce_while({:ok, []}, fn {batch, opts}, {:ok, acc} ->
       case embed(endpoint, batch, opts) do
         {:ok, response} -> {:cont, {:ok, [{batch, response} | acc]}}
         {:error, _} = error -> {:halt, error}
@@ -4671,9 +4713,20 @@ defmodule PhoenixKitAI do
     end
   end
 
-  defp run_embedding_batches(batches, endpoint, opts, concurrency) do
+  defp run_embedding_batches(batches, endpoint, concurrency) do
     batches
-    |> Task.async_stream(&{&1, embed(endpoint, &1, opts)},
+    |> Task.async_stream(
+      # The tasks are linked to the caller: a raise in one would take the
+      # caller down with it, past any `rescue` there. It is an error tuple.
+      fn {batch, opts} ->
+        try do
+          {batch, embed(endpoint, batch, opts)}
+        rescue
+          error -> {batch, {:error, {:embedding_batch_exit, error}}}
+        catch
+          kind, reason -> {batch, {:error, {:embedding_batch_exit, {kind, reason}}}}
+        end
+      end,
       max_concurrency: concurrency,
       ordered: true,
       timeout: :infinity

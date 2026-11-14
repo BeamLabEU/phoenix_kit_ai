@@ -1140,7 +1140,11 @@ defmodule PhoenixKitAI.Completion do
 
   defp json_preferences(nil, _where), do: %{}
 
-  defp json_preferences(prefs, where) when is_map(prefs) or is_list(prefs) do
+  # A struct is a map to the guard, but not every struct is enumerable (a
+  # `Date`), and an enumerable one does not yield pairs (a `Range`): neither
+  # is a preference.
+  defp json_preferences(prefs, where)
+       when (is_map(prefs) and not is_struct(prefs)) or is_list(prefs) do
     if is_list(prefs) and not Keyword.keyword?(prefs) do
       Logger.warning("[PhoenixKitAI] #{where} must be a map or keyword list; ignored")
       %{}

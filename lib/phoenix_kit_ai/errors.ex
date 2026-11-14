@@ -95,6 +95,11 @@ defmodule PhoenixKitAI.Errors do
   def message({:invalid_budget, _reason}), do: gettext("The budget must be an amount in dollars")
   def message({:exception, _kind}), do: gettext("The item failed with an internal error")
 
+  # One request of `embed_many/3` raised or exited. The reason can carry a
+  # stacktrace, so it stays out of the message.
+  def message({:embedding_batch_exit, _reason}),
+    do: gettext("The item failed with an internal error")
+
   def message({:unsupported_batch_verb, verb}),
     do: gettext("A batch cannot run %{verb}", verb: inspect(verb))
 

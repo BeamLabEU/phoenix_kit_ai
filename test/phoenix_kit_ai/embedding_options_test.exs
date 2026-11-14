@@ -353,6 +353,11 @@ defmodule PhoenixKitAI.EmbeddingOptionsTest do
                  provider: %{require_parameters: false}
                )
 
+      # a struct is not a preference map: ignored, never raised
+      for bad <- [~D[2026-01-01], 1..3, MapSet.new([1])] do
+        assert Completion.provider_preferences(base, provider: bad) == %{"sort" => "throughput"}
+      end
+
       # not a map: ignored, never raised
       assert Completion.provider_preferences(base, provider: "fastest") == %{
                "sort" => "throughput"
@@ -470,6 +475,89 @@ defmodule PhoenixKitAI.EmbeddingOptionsTest do
                PhoenixKitAI.embed_many(ep.uuid, ["a", "b", "c"], batch_size: 1)
 
       assert {:error, :empty_input} = PhoenixKitAI.embed_many(ep.uuid, [])
+    end
+
+    # Each vector is its input's number, so a part answered from another
+    # part's cache entry is visible.
+    defp stub_numbered_embeddings do
+      test = self()
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        {:ok, raw, conn} = Plug.Conn.read_body(conn)
+        input = Jason.decode!(raw)["input"]
+        send(test, {:request_body, input})
+
+        data =
+          input
+          |> Enum.with_index()
+          |> Enum.map(fn {text, i} ->
+            %{"index" => i, "embedding" => [String.to_integer(text) * 1.0]}
+          end)
+
+        Req.Test.json(conn, %{"data" => data})
+      end)
+    end
+
+    defp vectors(%{"data" => data}), do: Enum.map(data, &{&1["index"], &1["embedding"]})
+
+    test "a caller cache key does not answer one part with another part's vectors" do
+      ep = endpoint(model: "openai/text-embedding-3-small")
+      stub_numbered_embeddings()
+      opts = [batch_size: 2, cache: [key: "doc:1"]]
+      expected = [{0, [1.0]}, {1, [2.0]}, {2, [3.0]}, {3, [4.0]}]
+
+      assert {:ok, response} = PhoenixKitAI.embed_many(ep.uuid, ~w(1 2 3 4), opts)
+      assert vectors(response) == expected
+      assert length(bodies()) == 2
+
+      # the same call again is answered from the cache, part by part
+      assert {:ok, response} = PhoenixKitAI.embed_many(ep.uuid, ~w(1 2 3 4), opts)
+      assert vectors(response) == expected
+      assert bodies() == []
+
+      # other parts under the same key are other entries
+      assert {:ok, response} =
+               PhoenixKitAI.embed_many(ep.uuid, ~w(1 2 3 4), batch_size: 3, cache: [key: "doc:1"])
+
+      assert vectors(response) == expected
+      assert length(bodies()) == 2
+    end
+
+    test "a list that fits one request shares its caller key with embed/3" do
+      ep = endpoint(model: "openai/text-embedding-3-small")
+      stub_numbered_embeddings()
+
+      assert {:ok, _} = PhoenixKitAI.embed_many(ep.uuid, ~w(1 2), cache: [key: "doc:2"])
+      assert length(bodies()) == 1
+      assert {:ok, response} = PhoenixKitAI.embed(ep.uuid, ~w(1 2), cache: [key: "doc:2"])
+      assert vectors(response) == [{0, [1.0]}, {1, [2.0]}]
+      assert bodies() == []
+    end
+
+    test "a part that raises under max_concurrency is an error, not the caller's exit" do
+      ep = endpoint(model: "openai/text-embedding-3-small")
+      # a pid is not JSON: each part's `embed/3` raises building its request
+      stub_embeddings()
+
+      assert {:error, {:embedding_batch_exit, _reason}} =
+               PhoenixKitAI.embed_many(ep.uuid, ["a", "b", "c"],
+                 batch_size: 1,
+                 max_concurrency: 2,
+                 dimensions: self()
+               )
+
+      assert PhoenixKitAI.Errors.message({:embedding_batch_exit, :boom}) ==
+               "The item failed with an internal error"
+    end
+
+    test "role: \"query\" and role: :query share one cache entry" do
+      ep = endpoint(model: "google/gemini-embedding-2")
+      stub_embeddings()
+
+      assert {:ok, _} = PhoenixKitAI.embed(ep.uuid, "sofa", role: :query, cache: true)
+      assert length(bodies()) == 1
+      assert {:ok, _} = PhoenixKitAI.embed(ep.uuid, "sofa", role: "query", cache: true)
+      assert bodies() == []
     end
   end
 
