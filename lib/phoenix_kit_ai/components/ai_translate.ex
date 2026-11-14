@@ -9,10 +9,10 @@ defmodule PhoenixKitAI.Components.AITranslate do
   handlers (see `PhoenixKitAI.Translations` for the backend and
   any consumer's form LV for the wiring shape). Five surfaces:
 
-    * `<.ai_multilang_tabs>` — core's multilang tabs with the
-      button/progress/hint row bundled underneath in the canonical
-      placement; the preferred entry point for new consumers (the modal
-      still renders separately — see its doc).
+    * `<.ai_multilang_tabs>` — core's multilang tabs with the AI-translate
+      button at the end of the tab row, and the progress/hint row under the
+      tabs while a translation runs; the preferred entry point for new
+      consumers (the modal still renders separately — see its doc).
     * `<.ai_translate_button>` — compact "AI Translate" trigger; toggles
       the modal. Spinner while a job is in flight.
     * `<.ai_translate_modal>` — daisyUI dialog: endpoint + prompt
@@ -328,23 +328,27 @@ defmodule PhoenixKitAI.Components.AITranslate do
   )
 
   attr(:ai_row_class, :any,
-    # Core's tabs wrap the switcher in a hardcoded mb-4; -mt-3 claws that
-    # back to a tight 4px so the row reads as part of the tabs block. px-6
-    # pairs with the default `class` ("card-body pb-0", which pads the tabs) —
-    # the row is a SIBLING of that div, so it needs its own matching padding.
-    default: "flex items-center gap-3 -mt-3 px-6",
+    # No margin of its own: in the default `card-body` (a flex column) the
+    # column's gap spaces it from the tab row, in a plain block (`class=""`)
+    # the tab row's mb-2 does. A negative margin would pull it over the tabs
+    # in the second case.
+    default: "flex items-center gap-3",
     doc: """
-    Class of the button/progress/hint row under the tabs. Tuned as a PAIR
-    with `class`: replace `class` (e.g. with "" inside an already-padded
-    container) and adjust this to match — typically dropping the px-6.
+    Class of the progress/hint row under the tabs. The row is drawn while a
+    translation runs, and its full bar stays until the host clears the
+    finished status; the button itself sits at the end of the tab row.
     """
   )
 
   @doc """
-  Core's `<.multilang_tabs>` with the AI-translate row bundled underneath —
-  the \"just enable it\" wrapper for the canonical placement every consumer
-  was hand-building (a compact button/progress/hint row tucked under the
-  tabs). Attrs mirror `PhoenixKitWeb.Components.MultilangForm.multilang_tabs/1`
+  Core's `<.multilang_tabs>` with the AI-translate button at the end of the
+  tab row — the \"just enable it\" wrapper every consumer uses. The button
+  takes no row of its own (a row under the tabs costs every multilang form
+  its space); the progress bar and the "taking a while" hint show under the
+  tabs while a translation runs (the finished bar until the host clears the
+  status).
+
+  Attrs mirror `PhoenixKitWeb.Components.MultilangForm.multilang_tabs/1`
   plus the `ai_translate` config map from `FormGlue.ai_translate_config/1`;
   when that is nil or disabled, the tabs render exactly as core's component
   alone would, so the attr is safe to pass unconditionally.
@@ -365,32 +369,53 @@ defmodule PhoenixKitAI.Components.AITranslate do
   `FormGlue.assign_ai_translation/4` call in mount with the consumer's
   `FormBinding`. Without it the config is nil and this renders tabs-only.
 
-  `class` and `ai_row_class` defaults are tuned as a pair (the row is a
-  sibling of the tabs div and pads itself to match `card-body`); override
-  both together when embedding in a container that owns the padding.
+  `class` pads the whole block (default `card-body pb-0`); pass `""` inside
+  a container that owns the padding.
   """
   def ai_multilang_tabs(assigns) do
     ~H"""
-    <MultilangForm.multilang_tabs
-      multilang_enabled={@multilang_enabled}
-      language_tabs={@language_tabs}
-      current_lang={@current_lang}
-      compact={@compact}
-      show_header={@show_header}
-      show_info={@show_info}
-      class={@class}
-    />
-    <%!-- Row visibility mirrors the tabs' own render condition — without it
-      a single-language site (where core renders no tabs at all) would show
-      the AI row floating alone with nothing to translate into. --%>
-    <div
-      :if={enabled?(@ai_translate) and @multilang_enabled and match?([_, _ | _], @language_tabs)}
-      class={@ai_row_class}
-    >
-      <.ai_translate_button ai_translate={@ai_translate} />
-      <.ai_translate_progress ai_translate={@ai_translate} />
-      <.ai_translate_hint ai_translate={@ai_translate} />
-    </div>
+    <%= if enabled?(@ai_translate) and @multilang_enabled and match?([_, _ | _], @language_tabs) do %>
+      <div class={@class}>
+        <%!-- One row: the tabs take the width, the button sits at the end.
+             Core's tabs keep their own margin on the switcher; it moves to
+             this row so the button lines up with the tabs, not below. A
+             small one, so no gap opens under the languages: the form
+             around it spaces its fields itself. The button sits on the
+             tabs' middle, not their baseline. --%>
+        <div class="flex items-center gap-2 mb-2">
+          <MultilangForm.multilang_tabs
+            multilang_enabled={@multilang_enabled}
+            language_tabs={@language_tabs}
+            current_lang={@current_lang}
+            compact={@compact}
+            show_header={@show_header}
+            show_info={@show_info}
+            class="flex-1 min-w-0 [&>div:last-child]:mb-0"
+          />
+          <div class="shrink-0">
+            <.ai_translate_button ai_translate={@ai_translate} />
+          </div>
+        </div>
+        <div
+          :if={progress_visible?(@ai_translate) or hint_visible?(@ai_translate)}
+          class={@ai_row_class}
+        >
+          <.ai_translate_progress ai_translate={@ai_translate} />
+          <.ai_translate_hint ai_translate={@ai_translate} />
+        </div>
+      </div>
+    <% else %>
+      <%!-- No AI (or one language): exactly core's tabs. --%>
+      <MultilangForm.multilang_tabs
+        multilang_enabled={@multilang_enabled}
+        language_tabs={@language_tabs}
+        current_lang={@current_lang}
+        compact={@compact}
+        show_header={@show_header}
+        show_info={@show_info}
+        class={@class}
+      />
+    <% end %>
     """
   end
 
