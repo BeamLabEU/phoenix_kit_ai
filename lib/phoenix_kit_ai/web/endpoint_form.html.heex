@@ -648,26 +648,7 @@
                        the operator can't type a value into a field
                        whose action is unreachable. The hint below
                        explains the gate. --%>
-                  <div class="join w-full">
-                    <input
-                      type="text"
-                      id="manual_model_input"
-                      class="input join-item flex-1"
-                      placeholder={gettext("Enter model ID (e.g., anthropic/claude-3-haiku)")}
-                      disabled={!@integration_connected}
-                      phx-hook="PhoenixKitAIManualModelInput"
-                    />
-                    <button
-                      type="button"
-                      phx-click="set_manual_model"
-                      phx-disable-with={gettext("Setting…")}
-                      data-manual-model-submit
-                      disabled={!@integration_connected}
-                      class="btn btn-primary join-item [&.phx-click-loading]:pointer-events-none"
-                    >
-                      {gettext("Set Model")}
-                    </button>
-                  </div>
+                  <.manual_model_entry enabled={@integration_connected} />
                   <label class="label">
                     <span class="fieldset-label text-base-content/50">
                       {gettext("Connect a %{provider} integration above to load available models",
@@ -773,6 +754,18 @@
                       {gettext("Select a provider to see available models with pricing details")}
                     </p>
                   <% end %>
+
+                  <%!-- A model the list does not show (a Bedrock Claude
+                       inference profile, say, when the list holds only the
+                       OpenAI-compatible models) can still be typed in. --%>
+                  <div class="mt-4">
+                    <span class="text-sm text-base-content/70">
+                      {gettext("Or enter a model ID the list does not show")}
+                    </span>
+                    <div class="mt-1">
+                      <.manual_model_entry enabled={@integration_connected} />
+                    </div>
+                  </div>
                 <% end %>
               <% end %>
             </div>

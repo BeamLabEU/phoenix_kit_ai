@@ -155,6 +155,30 @@ defmodule PhoenixKitAI.Web.EndpointFormCoverageTest do
     end
   end
 
+  describe "manual model ID under a fetched list" do
+    test "an id the list does not show can still be typed in", %{conn: conn} do
+      stub = stub_models()
+      name = "cov-#{System.unique_integer([:positive])}"
+      seed = &seed_openrouter_connection(&1, data: Map.put(&2[:data], "status", "connected"))
+      connection = seed.(name, data: %{"api_key" => "sk-test-key"})
+
+      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints/new")
+      Req.Test.allow(stub, self(), view.pid)
+      pick(view, connection)
+      load_models(view, seed, connection)
+      # The fetched list is shown: two providers, so the provider picker.
+      assert has_element?(view, "#provider_picker")
+
+      # The list is loaded, and the free-text entry sits under it, unlocked.
+      assert has_element?(view, "#manual_model_input")
+      refute has_element?(view, "#manual_model_input[disabled]")
+      assert render(view) =~ "Or enter a model ID the list does not show"
+
+      render_hook(view, "set_manual_model", %{"model" => "eu.anthropic.claude-sonnet-4-6"})
+      assert model_input_value(view) == ["eu.anthropic.claude-sonnet-4-6"]
+    end
+  end
+
   describe "toggle_reasoning event" do
     test "shows the reasoning options, then hides them again", %{conn: conn} do
       view = form_with_models(conn)

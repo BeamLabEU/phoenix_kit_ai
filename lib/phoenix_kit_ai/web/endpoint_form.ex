@@ -103,6 +103,38 @@ defmodule PhoenixKitAI.Web.EndpointForm do
     """
   end
 
+  @doc """
+  The free-text model-ID entry: shown alone when model discovery returned
+  nothing, and under the model grid otherwise, for an ID the provider's
+  list does not show. Locked until an integration is connected.
+  """
+  attr(:enabled, :boolean, required: true)
+
+  def manual_model_entry(assigns) do
+    ~H"""
+    <div class="join w-full">
+      <input
+        type="text"
+        id="manual_model_input"
+        class="input join-item flex-1"
+        placeholder={gettext("Enter model ID (e.g., anthropic/claude-3-haiku)")}
+        disabled={!@enabled}
+        phx-hook="PhoenixKitAIManualModelInput"
+      />
+      <button
+        type="button"
+        phx-click="set_manual_model"
+        phx-disable-with={gettext("Setting…")}
+        data-manual-model-submit
+        disabled={!@enabled}
+        class="btn btn-primary join-item [&.phx-click-loading]:pointer-events-none"
+      >
+        {gettext("Set Model")}
+      </button>
+    </div>
+    """
+  end
+
   attr(:model, :map, required: true)
   attr(:selected, :boolean, required: true)
   attr(:show_clear, :boolean, default: false)
