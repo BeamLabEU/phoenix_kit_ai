@@ -290,5 +290,24 @@ defmodule PhoenixKitAI.Components.AiMultilangTabsTest do
 
     # The default changed; the attr did not go away.
     assert html =~ "Content Language"
+    # The button drops to the tabs' line, not the middle of header + tabs.
+    assert html =~ ~r/class="shrink-0 self-end">\s*<button[^>]*>.*AI Translate/s
+  end
+
+  test "without the header the button is centred on the tab row" do
+    assigns = %{tabs: tabs(), config: config()}
+
+    html =
+      rendered_to_string(~H"""
+      <.ai_multilang_tabs
+        multilang_enabled={true}
+        language_tabs={@tabs}
+        current_lang="en-US"
+        ai_translate={@config}
+      />
+      """)
+
+    assert html =~ ~s(class="shrink-0")
+    refute html =~ "self-end"
   end
 end

@@ -392,7 +392,10 @@ defmodule PhoenixKitAI.Components.AITranslate do
             show_info={@show_info}
             class="flex-1 min-w-0 [&>div:last-child]:mb-0"
           />
-          <div class="shrink-0">
+          <%!-- With core's header on, the left column is header + tabs:
+               centred, the button would float between the two, so it
+               drops to the tabs' line instead. --%>
+          <div class={if @show_header, do: "shrink-0 self-end", else: "shrink-0"}>
             <.ai_translate_button ai_translate={@ai_translate} />
           </div>
         </div>
