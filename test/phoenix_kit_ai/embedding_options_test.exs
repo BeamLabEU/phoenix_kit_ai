@@ -259,6 +259,28 @@ defmodule PhoenixKitAI.EmbeddingOptionsTest do
       assert TestRepo.get!(Request, uuid).metadata["dimensions"] == 1536
     end
 
+    test "a caller cache key keeps vectors of different dimensions apart" do
+      ep = endpoint(model: "openai/text-embedding-3-small")
+      stub_embeddings()
+      key = [cache: [key: "photo:1"]]
+
+      assert {:ok, _} = PhoenixKitAI.embed(ep.uuid, "x", [dimensions: 256] ++ key)
+      assert_received {:request_body, %{"dimensions" => 256}}
+
+      assert {:ok, _} = PhoenixKitAI.embed(ep.uuid, "x", [dimensions: 512] ++ key)
+      assert_received {:request_body, %{"dimensions" => 512}}
+
+      # the same size again is a hit, and so is a call that names no size
+      # under a key it was cached without
+      assert {:ok, _} = PhoenixKitAI.embed(ep.uuid, "x", [dimensions: 256] ++ key)
+      refute_received {:request_body, _}
+
+      assert {:ok, _} = PhoenixKitAI.embed(ep.uuid, "y", cache: [key: "photo:2"])
+      assert_received {:request_body, _}
+      assert {:ok, _} = PhoenixKitAI.embed(ep.uuid, "y", cache: [key: "photo:2"])
+      refute_received {:request_body, _}
+    end
+
     test "mistral-embed never gets dimensions (it answers 422)" do
       ep = endpoint(model: "mistralai/mistral-embed-2312", dimensions: 512)
       stub_embeddings()

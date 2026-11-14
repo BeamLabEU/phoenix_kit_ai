@@ -3914,6 +3914,7 @@ defmodule PhoenixKitAI do
     # other statements would be pinned on these ones.
     # An embedding's role (and what decides its convention) and
     # normalisation too: a query vector must never answer for a document.
+    # And its `dimensions:`: a vector of another size is no answer at all.
     case Keyword.take(opts, [
            :regions,
            :boxes,
@@ -3922,7 +3923,8 @@ defmodule PhoenixKitAI do
            :role,
            :input_type,
            :instruction,
-           :normalize
+           :normalize,
+           :dimensions
          ])
          |> Enum.reject(fn {_, v} -> v in [nil, false] end) do
       [] -> base

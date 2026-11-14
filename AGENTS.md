@@ -763,7 +763,8 @@ provided the API exposes `<base_url>/chat/completions` and `/models`.
   know. Never named `:task` — `cacheable/1` drops that; `:role`, the
   resolved `:input_type`, `:instruction` and `:normalize` are in the key
   (and in a caller key's material), so a query vector never answers for a
-  document. The row records `role`, `input_type`, `templated`, `normalized`
+  document; a call's `dimensions:` is in a caller key's material too (the
+  ordinary key has it already). The row records `role`, `input_type`, `templated`, `normalized`
   and the `dimensions` actually sent; `mistral-embed` never gets
   `dimensions` (422). `embed/3` also passes `encoding_format` (base64 is
   decoded back to floats), `user` (not in the key) and OpenRouter
