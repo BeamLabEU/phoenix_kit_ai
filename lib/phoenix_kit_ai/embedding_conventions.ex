@@ -59,6 +59,9 @@ defmodule PhoenixKitAI.EmbeddingConventions do
 
   `max_inputs/1` is the most inputs one request takes (`PhoenixKitAI.embed_many/3`
   splits by it): Cohere 96, OpenAI 2 048, Voyage 1 000, Gemini 100, else 100.
+  Gemini's is measured through OpenRouter (2026-11): Google AI Studio refuses
+  101 inputs ("at most 100 requests can be in one batch"), Vertex 251; no
+  token budget applied up to 200 000 tokens in one request.
   `max_batch_tokens/1` is a request's token budget where the provider has
   one (OpenAI 300 000; Voyage 120 000, the strictest of its models), else nil.
   `dimensions?/1` is false for `mistral-embed`, which answers 422 to a
@@ -305,6 +308,9 @@ defmodule PhoenixKitAI.EmbeddingConventions do
       :cohere -> 96
       :openai -> 2_048
       :voyage -> 1_000
+      # AI Studio's hard limit, the stricter of the two backends OpenRouter
+      # routes Gemini to (Vertex takes 250)
+      family when family in [:gemini, :gemini_2] -> 100
       _ -> 100
     end
   end

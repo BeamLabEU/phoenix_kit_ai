@@ -145,6 +145,9 @@ defmodule PhoenixKitAI.EmbeddingConventionsTest do
       assert Conventions.max_inputs("openai/text-embedding-3-small") == 2_048
       assert Conventions.max_inputs("mongodb/voyage-4") == 1_000
       assert Conventions.max_inputs("someone/else") == 100
+      assert Conventions.max_inputs("google/gemini-embedding-001") == 100
+      assert Conventions.max_inputs("google/gemini-embedding-2") == 100
+      assert Conventions.max_batch_tokens("google/gemini-embedding-001") == nil
       assert Conventions.max_batch_tokens("openai/text-embedding-3-large") == 300_000
       assert Conventions.max_batch_tokens("baai/bge-m3") == nil
       refute Conventions.dimensions?("mistralai/mistral-embed-2312")
