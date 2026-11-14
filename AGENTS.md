@@ -1272,8 +1272,9 @@ Test database `phoenix_kit_ai_test`.
   `content_filtered` as `"content_filter"` (Bedrock's word in
   `native_finish_reason`). Errors keep Bedrock's status on the row; a 403
   about the key is `:invalid_api_key`, an invalid model id or an
-  end-of-life 404 `:model_not_found`, an access 404 (use-case form,
-  Legacy) `{:api_error, 404}`. **No cost reported**: only the endpoint's
+  end-of-life 404 (or one that says the model is unknown)
+  `:model_not_found`, any other 404 (access: use-case form, Legacy; a wrong
+  base URL) `{:api_error, 404}`. **No cost reported**: only the endpoint's
   manual price prices the calls, and without one the money limits
   (`Budget`) count them as zero — set it before relying on a budget. The
   endpoint form's manual model-ID entry sits under the fetched list too,

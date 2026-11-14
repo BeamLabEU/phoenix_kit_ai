@@ -51,7 +51,8 @@ defmodule PhoenixKitAI.Providers.BedrockConverse do
       order. A transcript may open with an `assistant` message: Converse
       takes it as it is (checked live with Claude Haiku 4.5 and Sonnet 4.6).
     * `:tools` (OpenAI function tools) → `toolConfig.tools[].toolSpec`, a
-      tool with no or empty `parameters` given the empty object schema
+      tool with no or empty `parameters` given the empty object schema, and
+      one whose `parameters` omit `"type"` given `"type": "object"`
       (`{"type": "object", "properties": {}}`; Converse refuses a schema
       without `"type": "object"`). `:tool_choice` `"auto"` / `"required"` /
       a function → `auto` / `any` / `tool`. Converse has no `"none"`: the
@@ -117,10 +118,12 @@ defmodule PhoenixKitAI.Providers.BedrockConverse do
     * a 403 about the key itself (its format, an invalid token or
       signature) is `:invalid_api_key` — the row still says 403;
     * a 400 "The provided model identifier is invalid." and a 404 for a
-      model past its end of life are `:model_not_found`;
-    * a 404 about access to a model that exists — the Anthropic use-case
-      form not submitted, a Legacy model not used lately ("Access denied") —
-      is `{:api_error, 404}`, its words in the row; so is a 403 such as
+      model past its end of life (or one that says the model id cannot be
+      resolved) are `:model_not_found`;
+    * any other 404 is `{:api_error, 404}`, its words in the row: access to
+      a model that exists (the Anthropic use-case form not submitted, a
+      Legacy model not used lately), but also a base URL on the wrong host
+      or path, or an empty body. So is a 403 such as
       "… is not available for this account";
     * 429 is `:rate_limited`; any other status is `{:api_error, status}`.
   """
@@ -291,9 +294,13 @@ defmodule PhoenixKitAI.Providers.BedrockConverse do
     if message =~ ~r/api key|security token|signature|credential/i, do: :invalid_api_key
   end
 
-  # A 404 about access to a model that exists is not an unknown model.
+  # Only a 404 that says the model is retired or its id unresolvable is an
+  # unknown model (one worded "not found" / "does not exist" is read so by
+  # `ProviderError.class/2`). Every other 404 (access to a model that exists, a base URL on
+  # the wrong host or path, an empty body) stays a generic API error with
+  # the provider's own words on the row.
   defp reason(404, message) do
-    unless message =~ ~r/use case|access denied|not available|not authorized|agreement/i,
+    if message =~ ~r/end of (its )?life|model identifier|resolve the foundation model/i,
       do: :model_not_found
   end
 
@@ -509,9 +516,13 @@ defmodule PhoenixKitAI.Providers.BedrockConverse do
     |> put_present("description", blank_to_nil(description))
   end
 
-  # Converse refuses a schema without `"type": "object"`.
-  defp input_schema(parameters) when is_map(parameters) and map_size(parameters) > 0,
-    do: parameters
+  # Converse refuses a schema without `"type": "object"`; one that omits
+  # the type gets it, the rest of the schema is sent as it is.
+  defp input_schema(parameters) when is_map(parameters) and map_size(parameters) > 0 do
+    if Map.has_key?(parameters, "type") or Map.has_key?(parameters, :type),
+      do: parameters,
+      else: Map.put(parameters, "type", "object")
+  end
 
   defp input_schema(_parameters), do: %{"type" => "object", "properties" => %{}}
 

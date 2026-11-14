@@ -406,6 +406,34 @@ defmodule PhoenixKitAI.Providers.BedrockConverseTest do
       assert [%{"toolSpec" => %{"name" => "other"}}] = config["tools"]
     end
 
+    test "a tool call in the history with no name declares nothing" do
+      messages = [
+        %{role: "user", content: "Weather?"},
+        %{
+          role: "assistant",
+          content: nil,
+          tool_calls: [%{"id" => "t1", "function" => %{"name" => "", "arguments" => "{}"}}]
+        },
+        %{role: "tool", tool_call_id: "t1", content: "5C"}
+      ]
+
+      assert {:ok, body} = BedrockConverse.request(@haiku, messages, [])
+      refute Map.has_key?(body, "toolConfig")
+
+      # A named call next to an unnamed one declares only the named one.
+      named = %{"id" => "t2", "function" => %{"name" => "get_time", "arguments" => "{}"}}
+
+      with_named = [
+        Enum.at(messages, 0),
+        update_in(Enum.at(messages, 1).tool_calls, &(&1 ++ [named])),
+        Enum.at(messages, 2),
+        %{role: "tool", tool_call_id: "t2", content: "noon"}
+      ]
+
+      assert {:ok, %{"toolConfig" => %{"tools" => [%{"toolSpec" => %{"name" => "get_time"}}]}}} =
+               BedrockConverse.request(@haiku, with_named, [])
+    end
+
     test "an assistant message that only calls tools carries no text block" do
       messages = [
         %{role: "user", content: "hi"},
@@ -620,6 +648,29 @@ defmodule PhoenixKitAI.Providers.BedrockConverseTest do
                %{"tool" => %{"name" => "ping"}}
 
       assert choice.("none") == nil
+
+      # A schema without a type gets one; the rest of it is sent as it is.
+      untyped = [
+        %{
+          "type" => "function",
+          "function" => %{
+            "name" => "find",
+            "parameters" => %{"properties" => %{"q" => %{"type" => "string"}}}
+          }
+        },
+        %{
+          type: "function",
+          function: %{name: "typed", parameters: %{type: "object", properties: %{}}}
+        }
+      ]
+
+      assert {:ok, %{"toolConfig" => %{"tools" => [find, typed]}}} =
+               BedrockConverse.request(@haiku, [%{role: "user", content: "hi"}], tools: untyped)
+
+      assert find["toolSpec"]["inputSchema"]["json"] ==
+               %{"type" => "object", "properties" => %{"q" => %{"type" => "string"}}}
+
+      assert typed["toolSpec"]["inputSchema"]["json"] == %{type: "object", properties: %{}}
 
       assert {:ok, body} = BedrockConverse.request(@haiku, [%{role: "user", content: "hi"}], [])
       refute Map.has_key?(body, "toolConfig")
@@ -848,6 +899,44 @@ defmodule PhoenixKitAI.Providers.BedrockConverseTest do
           ] do
         stub(404, %{"message" => message})
         assert {:error, {:api_error, 404}} = PhoenixKitAI.ask(ep.uuid, "hi"), message
+      end
+    end
+
+    test "any other 404 is {:api_error, 404}, whatever its words" do
+      ep = endpoint(@haiku)
+
+      for message <- [
+            "Model anthropic.claude-x is not available in this region for this account.",
+            "You are not authorized to invoke this model.",
+            "The model agreement has not been accepted for this account.",
+            "UnknownOperationException",
+            ""
+          ] do
+        stub(404, %{"message" => message})
+        assert {:error, {:api_error, 404}} = PhoenixKitAI.ask(ep.uuid, "hi"), message
+      end
+
+      # No body at all, or one that is not JSON.
+      Req.Test.stub(__MODULE__, fn conn -> Plug.Conn.send_resp(conn, 404, "") end)
+      assert {:error, {:api_error, 404}} = PhoenixKitAI.ask(ep.uuid, "hi")
+
+      Req.Test.stub(__MODULE__, fn conn -> Plug.Conn.send_resp(conn, 404, "<html>nope</html>") end)
+
+      assert {:error, {:api_error, 404}} = PhoenixKitAI.ask(ep.uuid, "hi")
+    end
+
+    test "a 404 that says the model is unknown is :model_not_found" do
+      ep = endpoint(@haiku)
+
+      for message <- [
+            "Could not resolve the foundation model from the provided model identifier.",
+            "Could not resolve the foundation model.",
+            "The provided model identifier is invalid.",
+            "The model anthropic.claude-x does not exist.",
+            "Unknown model anthropic.claude-x"
+          ] do
+        stub(404, %{"message" => message})
+        assert {:error, :model_not_found} = PhoenixKitAI.ask(ep.uuid, "hi"), message
       end
     end
 

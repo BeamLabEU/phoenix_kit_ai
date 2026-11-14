@@ -1039,7 +1039,7 @@ defmodule PhoenixKitAI.Web.EndpointForm do
 
   @impl true
   def handle_event("set_manual_model", %{"model" => model_id}, socket) when model_id != "" do
-    # Set model from manual input (when models list not loaded)
+    # Set model from the manual input (shown with or without a fetched list)
     current_params = socket.assigns.form.params || %{}
     new_params = Map.put(current_params, "model", model_id)
 
