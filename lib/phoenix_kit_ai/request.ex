@@ -183,8 +183,8 @@ defmodule PhoenixKitAI.Request do
     # `prompt_uuid` had no declaration at all, so a bad prompt reference raised
     # instead of returning a changeset error — the same defect as the two above.
     #
-    # It needs BOTH names. This module pins core `~> 2.0`, and the surviving
-    # constraint name differs by install age: core's v135 adds the FK twice
+    # It needs BOTH names. The surviving constraint name differs by install
+    # age: core's v135 adds the FK twice
     # under two names, each guarded only by its own name, so a freshly migrated
     # database carries `fk_ai_requests_prompt_uuid` AND
     # `phoenix_kit_ai_requests_prompt_uuid_fkey`, while a database predating the

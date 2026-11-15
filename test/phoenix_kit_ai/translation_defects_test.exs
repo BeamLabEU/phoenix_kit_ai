@@ -1,9 +1,8 @@
 defmodule PhoenixKitAI.TranslationDefectsTest do
   @moduledoc """
   Regression tests for specific ru/et translation defects found during PR
-  review (not gated by `:requires_phoenix_kit_i18n_api` — these exercise
-  plain `Gettext` lookups against this module's own catalogue, not the
-  `PhoenixKit.Dashboard.Tab` API).
+  review. These exercise plain `Gettext` lookups against this module's own
+  catalogue, not the `PhoenixKit.Dashboard.Tab` API.
   """
 
   use ExUnit.Case, async: true

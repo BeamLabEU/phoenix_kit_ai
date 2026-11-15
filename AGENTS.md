@@ -14,13 +14,9 @@ is no hardcoded provider whitelist. Implements the `PhoenixKit.Module`
 behaviour for auto-discovery by the host application; it is a library, and the
 host supplies endpoint and router (`config/` exists only for tests).
 
-- **Depends on:** `phoenix_kit` `>= 2.65.0 and < 4.0.0` (Hex; 2.65 is the
-  first core with the `file_references/0` and `expected_schema/0` callbacks,
-  and 3.x stops creating this module's tables; the floor also carries V223's
-  dollar-valued request cost and removes the legacy account reference;
-  `PhoenixKit.Module.oban_crons/0` ships in 2.63, needed to schedule the nightly
-  journal cleanup (`PhoenixKitAI.JournalPruneWorker`);
-  Activity and Actor also need at least 2.38). No sibling
+- **Depends on:** `phoenix_kit` `>= 3.5.0 and < 4.0.0` (Hex; floor 3.5.0, the
+  minimum core every module requires, ceiling open through 3.x. Core 3.x does
+  not create this module's tables). No sibling
   `phoenix_kit_*` deps. Non-kit deps: `phoenix_live_view` `~> 1.1`, `gettext` `~> 1.0`, `xai`
   `~> 0.2` (realtime voice only — `Xai.Realtime`; `gun`/`mint` are deliberately
   not added so cowlib's CVE surface stays out of the tree), `rustler`
@@ -582,8 +578,7 @@ sub-permission to Admin once while Admin holds `ai`. Every context function
 that changes the guard or the retention takes the actor's scope and checks
 it; the Tasks page and the Usage page's retention card check again per
 event, against the socket's scope and the scope as it is now
-(`PhoenixKitAI.Web.Access`: the session's through core's `SessionRef`
-where core has it, else the user's current row). The card's acting events
+(`PhoenixKitAI.Web.Access`: the session's, through core's `SessionRef`). The card's acting events
 go through `Access.manage_scope/1`, which hands back the scope it checked
 so the context function gets that same, current scope.
 
@@ -969,7 +964,7 @@ Test database `phoenix_kit_ai_test`.
   (`async: false`); the LiveView-mounted one is tagged `:destructive` and needs
   `--include destructive`.
 - Conformance tests guard two cross-repo invariants:
-  `test/core_pin_conformance_test.exs` rejects a three-segment `~> 2.x.y` core pin
+  `test/core_pin_conformance_test.exs` rejects a three-segment `~> 3.x.y` core pin
   (which would exclude every later core minor and break consumers, never this
   repo) and a path override reaching a commit;
   `test/schema_prefix_conformance_test.exs` asserts every table-backed schema uses

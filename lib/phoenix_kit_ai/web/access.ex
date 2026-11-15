@@ -11,12 +11,9 @@ defmodule PhoenixKitAI.Web.Access do
   rights of the mount. A check here passes only if two scopes both hold:
 
     * the socket's (`:phoenix_kit_current_scope`, set by core's `on_mount`);
-    * the scope as it is now. With a core that has
-      `PhoenixKit.Users.Auth.SessionRef`, that is the scope of the
-      **session** (it must still be live, its user active and confirmed,
-      narrowed to the role the session acts as); with an older core, the
-      scope rebuilt from the user's current row (an active user and their
-      roles now).
+    * the scope as it is now: the scope of the **session**
+      (`PhoenixKit.Users.Auth.SessionRef`; it must still be live, its user
+      active and confirmed, narrowed to the role the session acts as).
 
   The page calls `assign_session/2` in its `mount/3`. The session reference
   is read from the signed session only in the connected mount; the static
@@ -27,21 +24,19 @@ defmodule PhoenixKitAI.Web.Access do
 
   import Phoenix.Component, only: [assign: 3]
 
-  alias PhoenixKit.Users.Auth
   alias PhoenixKit.Users.Auth.Scope
+  alias PhoenixKit.Users.Auth.SessionRef
   alias PhoenixKitAI.Guard
 
   @doc """
   Keeps the reference of the session the page runs in (see the moduledoc):
-  read from `session` in the connected mount, `nil` in the static render or
-  with a core that cannot resolve one.
+  read from `session` in the connected mount, `nil` in the static render.
   """
   @spec assign_session(Phoenix.LiveView.Socket.t(), map()) :: Phoenix.LiveView.Socket.t()
   def assign_session(socket, session) do
     ref =
       with true <- Phoenix.LiveView.connected?(socket),
-           true <- session_ref?(),
-           {:ok, ref} <- session_ref().from_session(session) do
+           {:ok, ref} <- SessionRef.from_session(session) do
         ref
       else
         _none -> nil
@@ -99,7 +94,7 @@ defmodule PhoenixKitAI.Web.Access do
   defp current_scope(socket) do
     case socket.assigns[:phoenix_kit_current_scope] do
       %Scope{user: %{uuid: uuid}} when is_binary(uuid) ->
-        if session_ref?(), do: from_session(socket, uuid), else: from_user(uuid)
+        from_session(socket, uuid)
 
       _ ->
         nil
@@ -110,23 +105,10 @@ defmodule PhoenixKitAI.Web.Access do
 
   defp from_session(socket, user_uuid) do
     with {token_uuid, _user_uuid} <- socket.assigns[:ai_session_ref],
-         {:ok, %Scope{} = scope} <- session_ref().scope_for_session(token_uuid, user_uuid) do
+         {:ok, %Scope{} = scope} <- SessionRef.scope_for_session(token_uuid, user_uuid) do
       scope
     else
       _gone -> nil
     end
   end
-
-  defp from_user(user_uuid) do
-    case user_uuid |> Auth.get_user() |> Auth.ensure_active_user() do
-      %Auth.User{} = user -> Scope.for_user(user)
-      _inactive -> nil
-    end
-  end
-
-  # Built at run time, not written as a module: an older core has no such
-  # module, and a call the compiler can see would not compile with warnings
-  # as errors.
-  defp session_ref, do: Module.concat(PhoenixKit.Users.Auth, SessionRef)
-  defp session_ref?, do: Code.ensure_loaded?(session_ref())
 end

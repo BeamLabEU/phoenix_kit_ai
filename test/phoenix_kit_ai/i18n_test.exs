@@ -27,13 +27,6 @@ defmodule PhoenixKitAI.I18nTest do
 
   use ExUnit.Case, async: true
 
-  # Excluded by `test/test_helper.exs` when running against a `phoenix_kit`
-  # release that pre-dates the `gettext_backend` API (PR BeamLabEU/phoenix_kit#522).
-  # Once the consumer's `phoenix_kit` dep resolves to a release that ships
-  # `Tab.localized_label/1`, the helper detects it and these tests run
-  # automatically — no follow-up edit needed.
-  @moduletag :requires_phoenix_kit_i18n_api
-
   alias PhoenixKit.Dashboard.Tab
   alias PhoenixKitAI.Gettext, as: AIGettext
 

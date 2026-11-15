@@ -480,9 +480,6 @@ defmodule PhoenixKitAI do
 
   defp do_run_legacy_api_key_migration do
     cond do
-      not Code.ensure_loaded?(PhoenixKit.Integrations) ->
-        :skipped
-
       legacy_api_key_migration_completed?() ->
         :skipped
 

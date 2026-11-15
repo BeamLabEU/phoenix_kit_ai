@@ -128,27 +128,9 @@ defmodule PhoenixKitAI.MixProject do
   defp deps do
     [
       # PhoenixKit provides the Module behaviour and Settings API.
-      # 1.7.155+ required: the provider list is built from
-      # PhoenixKit.Integrations.Providers.with_capability/1 and base_url/1
-      # (capability-driven discovery). Also relies on PhoenixKit.Utils.{Reorder,
-      # Values,Format} and the <.form_section> / :sort_bar core components.
-      # 1.7.184+ required: `disabled`/`wrapper_class`/`title`/`:description`
-      # attrs on <.checkbox> (PhoenixKitWeb.Components.Core.Checkbox).
-      # 1.7.194+ required: xAI provider declares the `:realtime_voice`
-      # capability that gates the streaming-voice Playground panel — an
-      # older core would just never show the panel (silent no-op, not a
-      # crash), so this floor is what actually guarantees the feature works.
-      # 1.7.214+ required: Scope.can_access_admin_area?/1 (the rename of the
-      # now-`@deprecated` Scope.admin?/1) — an older core has no such function,
-      # so this is an UndefinedFunctionError at runtime, not a warning.
-      # 2.38+ required: `PhoenixKit.Activity.log/3` and `PhoenixKitWeb.Actor`
-      # carry every activity entry and the acting user — an older core raises
-      # UndefinedFunctionError on each endpoint/prompt mutation.
-      # 2.63+ required: `oban_crons/0` schedules the journal cleanup through
-      # the module registry. Earlier cores never install that cron.
-      # Floor 2.65.0: the first core with the `file_references/0` and `expected_schema/0`
-      # callbacks this module implements (`@impl`). The ceiling is open through core 3.x.
-      pk_dep(:phoenix_kit, ">= 2.65.0 and < 4.0.0"),
+      # Floor 3.5.0, the minimum core every module requires; the ceiling is
+      # open through core 3.x (see test/core_pin_conformance_test.exs).
+      pk_dep(:phoenix_kit, ">= 3.5.0 and < 4.0.0"),
 
       # LiveView is needed for the admin pages.
       {:phoenix_live_view, "~> 1.1"},
