@@ -167,8 +167,8 @@ window.PhoenixKitAIHooks = (function () {
     },
   };
 
-  // Endpoint form — manual model-ID fallback, shown when model discovery
-  // returned nothing. Stamps the input's current value onto the sibling
+  // Endpoint form — manual model-ID entry, shown whether or not model
+  // discovery returned a list. Stamps the input's current value onto the sibling
   // submit button's `phx-value-model` just before LiveView reads the click.
   // A hook rather than an `onclick="..."` attribute because inline event
   // handlers mix imperative DOM with LV events and trip strict-CSP setups.

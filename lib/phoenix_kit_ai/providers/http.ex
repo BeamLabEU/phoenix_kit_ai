@@ -119,8 +119,8 @@ defmodule PhoenixKitAI.Providers.HTTP do
   """
   @account_words ~r/api[ _-]?key|account|billing|quota|credit|balance|payment|subscription|unauthori[sz]ed|forbidden key/i
 
-  @spec error(non_neg_integer(), term()) :: {:error, term()}
-  def error(status, body) do
+  @spec error(non_neg_integer(), term(), String.t()) :: {:error, term()}
+  def error(status, body, label \\ "OpenRouter completion") do
     text = body_string(body)
 
     # A recognised account error (an exhausted balance, a rate limit, an
@@ -141,7 +141,7 @@ defmodule PhoenixKitAI.Providers.HTTP do
       :ok = ProviderError.note(status, ProviderError.parse(text), result)
       result
     else
-      _ -> Completion.handle_error_status(status, text)
+      _ -> Completion.handle_error_status(status, text, label)
     end
   end
 
