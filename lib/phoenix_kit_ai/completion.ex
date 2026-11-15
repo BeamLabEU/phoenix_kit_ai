@@ -33,7 +33,7 @@ defmodule PhoenixKitAI.Completion do
     ProviderError
   }
 
-  alias PhoenixKitAI.Providers.HTTP
+  alias PhoenixKitAI.Providers.{BedrockConverse, HTTP}
 
   @timeout 120_000
   @retry_statuses [408, 429, 500, 502, 503, 504]
@@ -73,6 +73,14 @@ defmodule PhoenixKitAI.Completion do
   `tool_call_id` and `name` on `tool` messages. Read the model's calls from
   the response with `extract_tool_calls/1`.
 
+  ## Amazon Bedrock
+
+  An endpoint on the `amazon_bedrock` integration whose model is not an
+  `openai.*` one (Claude, by its `eu.*` / `global.*` inference profile, say)
+  is sent to Bedrock's Converse API instead, and its answer comes back in
+  the shape below — see `PhoenixKitAI.Providers.BedrockConverse` for what
+  is translated and what Converse does not take.
+
   ## Returns
 
   - `{:ok, response}` - Successful response with completion
@@ -103,11 +111,18 @@ defmodule PhoenixKitAI.Completion do
   ```
   """
   def chat_completion(endpoint, messages, opts \\ []) do
-    url = build_url(endpoint, "/chat/completions")
-    headers = OpenRouterClient.build_headers_from_endpoint(endpoint)
     # A per-call `model:` stands in for the endpoint's everywhere the body
     # depends on the model (the Anthropic sampling and thinking rules too).
     model = Keyword.get(opts, :model) || endpoint.model
+
+    if BedrockConverse.converse?(endpoint, model),
+      do: converse(endpoint, model, messages, opts),
+      else: openai_chat_completion(endpoint, model, messages, opts)
+  end
+
+  defp openai_chat_completion(endpoint, model, messages, opts) do
+    url = build_url(endpoint, "/chat/completions")
+    headers = OpenRouterClient.build_headers_from_endpoint(endpoint)
 
     body =
       %{endpoint | model: model}
@@ -133,6 +148,73 @@ defmodule PhoenixKitAI.Completion do
       {:error, reason} ->
         Logger.warning("OpenRouter completion transport error: #{inspect(reason)}")
         {:error, {:connection_error, reason}}
+    end
+  end
+
+  # Amazon Bedrock's Converse API (`PhoenixKitAI.Providers.BedrockConverse`):
+  # the same limiter, retries and error vocabulary, the request and the
+  # answer translated from and into the chat-completions shape.
+  defp converse(endpoint, model, messages, opts) do
+    with {:ok, body} <- BedrockConverse.request(model, messages, opts),
+         do: post_converse(endpoint, model, body, opts)
+  end
+
+  defp post_converse(endpoint, model, body, opts) do
+    url = BedrockConverse.url(endpoint, model)
+    headers = BedrockConverse.headers(endpoint)
+    start_time = System.monotonic_time(:millisecond)
+
+    case Limiter.run(endpoint, opts, fn -> http_post(url, headers, body, opts) end) do
+      {:ok, %{status_code: 200, body: response_body}} ->
+        parse_converse_response(response_body, model, start_time)
+
+      {:ok, %{status_code: status, body: response_body}} ->
+        converse_error(status, response_body, opts)
+
+      {:error, reason} when reason in [:concurrency_limit_timeout, :concurrency_queue_full] ->
+        {:error, reason}
+
+      {:error, :timeout} ->
+        {:error, :request_timeout}
+
+      {:error, reason} ->
+        Logger.warning("Bedrock Converse transport error: #{inspect(reason)}")
+        {:error, {:connection_error, reason}}
+    end
+  end
+
+  defp parse_converse_response(response_body, model, start_time) do
+    latency_ms = System.monotonic_time(:millisecond) - start_time
+
+    case Jason.decode(response_body) do
+      {:ok, %{"output" => %{}} = answer} ->
+        {:ok, answer |> BedrockConverse.response(model) |> Map.put("latency_ms", latency_ms)}
+
+      {:ok, _other} ->
+        {:error, :invalid_response_format}
+
+      {:error, _} ->
+        {:error, :invalid_json_response}
+    end
+  end
+
+  @converse_label "Bedrock Converse call"
+
+  # Bedrock's own status stays on the row and in the log; only the reason
+  # is read from its words where the status alone misleads (a 403 about
+  # the key, a 400 or 404 about the model id).
+  defp converse_error(status, response_body, opts) do
+    case BedrockConverse.error(status, response_body) do
+      {error_body, nil} ->
+        if Keyword.get(opts, :safety_errors) == true,
+          do: HTTP.error(status, error_body, @converse_label),
+          else: handle_error_status(status, error_body, @converse_label)
+
+      {error_body, reason} ->
+        result = {:error, reason}
+        :ok = ProviderError.note(status, ProviderError.parse(error_body), result)
+        Logger.warning("#{@converse_label} failed: #{status} (#{reason})")
+        result
     end
   end
 
@@ -216,12 +298,13 @@ defmodule PhoenixKitAI.Completion do
   # The body decides where the providers document that the status alone
   # misleads — money sent as a 429, say (`ProviderError`) — and what it
   # said is noted for the request row.
-  def handle_error_status(status, response_body) do
+  # `label` names the call in the log line ("OpenRouter completion failed: 503").
+  def handle_error_status(status, response_body, label \\ "OpenRouter completion") do
     error = ProviderError.parse(response_body)
 
     result =
       case ProviderError.class(status, error) do
-        nil -> status_error(status, response_body)
+        nil -> status_error(status, response_body, label)
         class -> {:error, class}
       end
 
@@ -229,40 +312,39 @@ defmodule PhoenixKitAI.Completion do
     result
   end
 
-  defp status_error(401, _body), do: {:error, :invalid_api_key}
-  defp status_error(402, _body), do: {:error, :insufficient_credits}
-  defp status_error(429, _body), do: {:error, :rate_limited}
+  defp status_error(401, _body, _label), do: {:error, :invalid_api_key}
+  defp status_error(402, _body, _label), do: {:error, :insufficient_credits}
+  defp status_error(429, _body, _label), do: {:error, :rate_limited}
 
   # OpenRouter's answer to `provider.require_parameters` when no upstream
   # provider of the model takes every parameter sent. The model itself is
   # fine; the set of parameters is not. `chat_completion/3` fills in which
   # parameters were sent.
-  defp status_error(404, response_body) do
+  defp status_error(404, response_body, label) do
     message = extract_error_message(response_body) || ""
 
     if message =~ ~r/requested parameters/i do
-      Logger.warning(
-        "OpenRouter completion failed: 404 - no provider for the requested parameters"
-      )
+      Logger.warning("#{label} failed: 404 - no provider for the requested parameters")
 
       {:error, {:no_provider_for_params, []}}
     else
-      generic_error_status(404, response_body)
+      generic_error_status(404, response_body, label)
     end
   end
 
-  defp status_error(status, response_body), do: generic_error_status(status, response_body)
+  defp status_error(status, response_body, label),
+    do: generic_error_status(status, response_body, label)
 
-  defp generic_error_status(status, response_body) do
+  defp generic_error_status(status, response_body, label) do
     # The status only, never the provider's words: they can echo the request
     # or a key. The request row keeps them, trimmed and masked, behind the
     # content gate (`ProviderError`).
     case extract_error_message(response_body) do
       nil ->
-        Logger.warning("OpenRouter completion failed: #{status} (no parsable error body)")
+        Logger.warning("#{label} failed: #{status} (no parsable error body)")
 
       _message ->
-        Logger.warning("OpenRouter completion failed: #{status}")
+        Logger.warning("#{label} failed: #{status}")
     end
 
     {:error, {:api_error, status}}
