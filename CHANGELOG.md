@@ -1,3 +1,31 @@
+## 0.30.0 - 2026-11-15
+
+Requires PhoenixKit core 3.5.0 or later. No migration.
+
+### Added
+
+- **Claude and the other Amazon Bedrock models through the Converse API.** A chat call on an `amazon_bedrock` endpoint whose model is not `openai.*` (an `eu.anthropic.*` / `global.anthropic.*` inference profile, a model or profile ARN) goes to `POST <base URL host>/model/<model id>/converse` with the integration's Bedrock API key, through the same limiter, retries and error vocabulary as other chat calls (`PhoenixKitAI.Providers.BedrockConverse`). The request and answer are translated from and into the chat-completions shape: system blocks, merged turns, tool calls and results, `data:` URL images, tools and `tool_choice`, sampling by the Anthropic rules for a Claude model, stop reasons, usage. The `openai.gpt-oss-*` models stay on the OpenAI-compatible URL. Converse reports no cost: set a manual price on a Bedrock endpoint before relying on a spend cap.
+- **The endpoint form's manual model-ID entry also sits under a fetched model list,** for an id the list does not show.
+- **Embedding roles:** `embed/3` takes `role: :query | :document` and applies the model family's convention (`input_type`, a prefix or a query instruction) from `PhoenixKitAI.EmbeddingConventions`, overridable per endpoint in `provider_settings["embedding"]`.
+- **`embed_many/3`** splits a long list by the model's batch limits, embeds the parts (optionally in parallel) and merges the vectors in order with summed usage and cost.
+- **`translate_query/3`:** one cached chat call that translates a search query into the index's language, returning the query unchanged on any failure.
+- **OpenRouter provider preferences** for chat and embeddings (`provider_settings["provider_preferences"]`, a call's `provider:`), and `encoding_format`, `input_type` and `user` passed through on embeddings.
+- OpenRouter's live embedding model list (`GET /embeddings/models`, kept for an hour; `embedding_models_live:` / `embedding_models_ttl:`).
+
+### Changed
+
+- **The `phoenix_kit` requirement is `>= 3.5.0 and < 4.0.0`.** The fallbacks for older cores are gone (`Web.Access` always checks the session through core's `SessionRef`).
+- The AI translate button sits at the end of the language tab row instead of taking a row of its own under the tabs; the progress bar shows under the tabs only while a translation runs.
+- Gemini embedding batches are capped at 100 inputs, as measured through OpenRouter.
+
+### Fixed
+
+- **A non-ASCII project title or site URL** (Cyrillic, accents) in `X-Title` / `HTTP-Referer` made every completion fail with `invalid_header_value`; it is percent-encoded now. Anthropic's model list asks for one `lifecycle[]` per stage, so retired models are listed again.
+- `embed_many/3` with a caller cache key answered every part with the first part's vectors; and one `cache: [key: …]` reused with two `dimensions:` returned the first size's vector for both.
+- An embedding row records the dimensions actually sent, not the endpoint's; a base64 vector holding NaN or infinity is `:invalid_response_format` instead of a shorter vector, and `normalize: true` no longer raises after the paid call.
+- On Bedrock, `tool_choice: "none"` leaves the tools out instead of offering them.
+- The endpoint form's "Or enter a model ID the list does not show" is translated in every shipped language.
+
 ## 0.29.1 - 2026-11-08
 
 ### Added
