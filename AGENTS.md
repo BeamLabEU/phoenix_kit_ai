@@ -1292,7 +1292,8 @@ Test database `phoenix_kit_ai_test`.
   URLs, never in a `system` message. A transcript with a tool round but no
   `:tools` declares the called tools from the history (Converse refuses
   tool blocks without a `toolConfig`); an empty `parameters` gets the
-  empty object schema. Forced `tool_choice` is a 400 on Claude Fable 5.1,
+  empty object schema. `tool_choice: "none"` leaves the call's tools out
+  (Converse has no "none"). Forced `tool_choice` is a 400 on Claude Fable 5.1,
   Mythos 5.1, Opus 5.5, Sonnet 5.5 and on a thinking Claude. Stop reasons
   `malformed_*` read as `"length"`, `refusal` / `guardrail_intervened` /
   `content_filtered` as `"content_filter"` (Bedrock's word in

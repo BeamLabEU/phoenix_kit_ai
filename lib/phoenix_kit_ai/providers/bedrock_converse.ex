@@ -55,8 +55,9 @@ defmodule PhoenixKitAI.Providers.BedrockConverse do
       one whose `parameters` omit `"type"` given `"type": "object"`
       (`{"type": "object", "properties": {}}`; Converse refuses a schema
       without `"type": "object"`). `:tool_choice` `"auto"` / `"required"` /
-      a function → `auto` / `any` / `tool`. Converse has no `"none"`: the
-      tools are still offered.
+      a function → `auto` / `any` / `tool`. Converse has no `"none"`, so
+      `"none"` leaves the tools out (a tool round in the history still
+      declares the tools it called, as below).
     * Forced tool choice (`"required"` or a function) is refused with a 400
       by the Claude models that do not take it: Claude Fable 5.1, Mythos
       5.1, Opus 5.5 and Sonnet 5.5 refuse it always, and an older Claude
@@ -476,7 +477,11 @@ defmodule PhoenixKitAI.Providers.BedrockConverse do
   defp stop_sequences(stop) when is_list(stop), do: stop
   defp stop_sequences(_stop), do: nil
 
-  defp tool_config(tools, choice, _turns) when is_list(tools) and tools != [] do
+  # Converse has no `"none"`: the tools are left out instead, so the model
+  # has nothing to call; a tool round in the history still declares its own
+  # tools by name (below), as Converse requires.
+  defp tool_config(tools, choice, _turns)
+       when is_list(tools) and tools != [] and choice != "none" do
     %{"tools" => Enum.map(tools, &tool_spec/1)}
     |> put_present("toolChoice", tool_choice(choice))
   end

@@ -647,7 +647,46 @@ defmodule PhoenixKitAI.Providers.BedrockConverseTest do
       assert choice.(%{"type" => "function", "function" => %{"name" => "ping"}}) ==
                %{"tool" => %{"name" => "ping"}}
 
-      assert choice.("none") == nil
+      # Converse has no "none": the tools are left out, so nothing can be called.
+      assert {:ok, body} =
+               BedrockConverse.request(@haiku, [%{role: "user", content: "hi"}],
+                 tools: tools,
+                 tool_choice: "none"
+               )
+
+      refute Map.has_key?(body, "toolConfig")
+
+      # With a tool round in the history, only the tools it called are
+      # declared (Converse refuses tool blocks without a toolConfig).
+      history = [
+        %{role: "user", content: "order 7?"},
+        %{
+          role: "assistant",
+          content: nil,
+          tool_calls: [
+            %{
+              "id" => "t1",
+              "type" => "function",
+              "function" => %{"name" => "get_order", "arguments" => ~s({"number":"7"})}
+            }
+          ]
+        },
+        %{role: "tool", tool_call_id: "t1", content: "shipped"}
+      ]
+
+      assert {:ok, %{"toolConfig" => config}} =
+               BedrockConverse.request(@haiku, history, tools: tools, tool_choice: "none")
+
+      assert config == %{
+               "tools" => [
+                 %{
+                   "toolSpec" => %{
+                     "name" => "get_order",
+                     "inputSchema" => %{"json" => %{"type" => "object", "properties" => %{}}}
+                   }
+                 }
+               ]
+             }
 
       # A schema without a type gets one; the rest of it is sent as it is.
       untyped = [
