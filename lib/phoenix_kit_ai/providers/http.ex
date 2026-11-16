@@ -51,7 +51,7 @@ defmodule PhoenixKitAI.Providers.HTTP do
 
     case Req.request(all) do
       {:ok, %Req.Response{status: status, body: body} = response} ->
-        if status not in 200..299, do: ProviderError.put_retry_after(response)
+        if status not in 200..299, do: ProviderError.put_response(response)
         {:ok, %{status: status, body: body}}
 
       {:error, %Req.TransportError{reason: :timeout}} ->

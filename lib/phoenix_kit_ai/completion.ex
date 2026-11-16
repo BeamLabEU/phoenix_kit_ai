@@ -131,13 +131,16 @@ defmodule PhoenixKitAI.Completion do
       |> maybe_include_usage(endpoint)
 
     start_time = System.monotonic_time(:millisecond)
+    label = completion_label(endpoint)
 
     case Limiter.run(endpoint, opts, fn -> http_post(url, headers, body, opts) end) do
       {:ok, %{status_code: 200, body: response_body}} ->
-        response_body |> parse_success_response(start_time, opts) |> with_sent_params(body)
+        response_body
+        |> parse_success_response(start_time, opts, label)
+        |> with_sent_params(body)
 
       {:ok, %{status_code: status, body: response_body}} ->
-        status |> error_status(response_body, opts) |> with_sent_params(body)
+        status |> error_status(response_body, opts, label) |> with_sent_params(body)
 
       {:error, reason} when reason in [:concurrency_limit_timeout, :concurrency_queue_full] ->
         {:error, reason}
@@ -146,10 +149,17 @@ defmodule PhoenixKitAI.Completion do
         {:error, :request_timeout}
 
       {:error, reason} ->
-        Logger.warning("OpenRouter completion transport error: #{inspect(reason)}")
+        Logger.warning("#{label} transport error: #{inspect(reason)}")
         {:error, {:connection_error, reason}}
     end
   end
+
+  # Names the endpoint's provider in the log line of a failed chat call
+  # ("AI completion (anthropic) failed: 400").
+  defp completion_label(%{provider: provider}) when is_binary(provider),
+    do: "AI completion (#{Endpoint.base_provider(provider)})"
+
+  defp completion_label(_endpoint), do: "AI completion"
 
   # Amazon Bedrock's Converse API (`PhoenixKitAI.Providers.BedrockConverse`):
   # the same limiter, retries and error vocabulary, the request and the
@@ -223,13 +233,18 @@ defmodule PhoenixKitAI.Completion do
   # one is `{:content_policy, message}`, as the image adapters report it,
   # so a caller can move to another model. Plain chat keeps the generic
   # mapping its callers (and their retry rules) rely on.
-  defp error_status(status, response_body, opts) do
+  defp error_status(status, response_body, opts, label) do
     if Keyword.get(opts, :safety_errors) == true,
-      do: HTTP.error(status, response_body),
-      else: handle_error_status(status, response_body)
+      do: HTTP.error(status, response_body, label),
+      else: handle_error_status(status, response_body, label)
   end
 
-  defp parse_success_response(response_body, start_time, opts \\ []) do
+  defp parse_success_response(
+         response_body,
+         start_time,
+         opts \\ [],
+         label \\ "OpenRouter completion"
+       ) do
     latency_ms = System.monotonic_time(:millisecond) - start_time
 
     case Jason.decode(response_body) do
@@ -245,7 +260,7 @@ defmodule PhoenixKitAI.Completion do
       {:ok, %{"error" => error} = response}
       when not is_map_key(response, "choices") and not is_map_key(response, "data") and
              not is_nil(error) ->
-        error_in_body(error_code(error), response_body, opts)
+        error_in_body(error_code(error), response_body, opts, label)
 
       {:ok, response} when is_map(response) ->
         {:ok, Map.put(response, "latency_ms", latency_ms)}
@@ -265,8 +280,10 @@ defmodule PhoenixKitAI.Completion do
   # A code the body names is classified like that status; an error without
   # one like a bad gateway (the provider passing on an upstream failure), so
   # the provider's words reach the row (`PhoenixKitAI.ProviderError`).
-  defp error_in_body(code, body, opts) when is_integer(code), do: error_status(code, body, opts)
-  defp error_in_body(nil, body, opts), do: error_status(502, body, opts)
+  defp error_in_body(code, body, opts, label) when is_integer(code),
+    do: error_status(code, body, opts, label)
+
+  defp error_in_body(nil, body, opts, label), do: error_status(502, body, opts, label)
 
   @doc """
   Whether a chat-shaped answer stopped at the output limit: the first
@@ -336,15 +353,19 @@ defmodule PhoenixKitAI.Completion do
     do: generic_error_status(status, response_body, label)
 
   defp generic_error_status(status, response_body, label) do
-    # The status only, never the provider's words: they can echo the request
-    # or a key. The request row keeps them, trimmed and masked, behind the
-    # content gate (`ProviderError`).
+    # The status and the provider's code (its error `type` where it names no
+    # other), never its words: they can echo the request or a key. The
+    # request row keeps them, trimmed and masked, behind the content gate
+    # (`ProviderError`). The code is a short token checked for key shapes.
     case extract_error_message(response_body) do
       nil ->
         Logger.warning("#{label} failed: #{status} (no parsable error body)")
 
       _message ->
-        Logger.warning("#{label} failed: #{status}")
+        case ProviderError.code(status, ProviderError.parse(response_body)) do
+          nil -> Logger.warning("#{label} failed: #{status}")
+          code -> Logger.warning("#{label} failed: #{status} (#{code})")
+        end
     end
 
     {:error, {:api_error, status}}
@@ -708,7 +729,7 @@ defmodule PhoenixKitAI.Completion do
       # A provider error delivered with a 200, as on chat: it is not audio.
       {:ok, %{"error" => error} = body}
       when not is_nil(error) and not is_map_key(body, "audio_data") ->
-        error_in_body(error_code(error), response_body, [])
+        error_in_body(error_code(error), response_body, [], "OpenRouter completion")
 
       decoded ->
         audio_answer(decoded, response_body, format, start_time)
@@ -1658,7 +1679,7 @@ defmodule PhoenixKitAI.Completion do
 
     case Req.post(url, req_opts) do
       {:ok, %Req.Response{status: status, body: response_body} = response} ->
-        if status not in 200..299, do: ProviderError.put_retry_after(response)
+        if status not in 200..299, do: ProviderError.put_response(response)
 
         # Raw bytes (`decode_body: false`); a test plug may still hand back a
         # decoded term.

@@ -23,7 +23,9 @@ defmodule PhoenixKitAI.ProviderError do
   #      `error.details.error_code` is enforced_spend_limit_reached; the 400
   #      invalid_request_error of a spend limit you set, whose message
   #      starts "You have reached your specified (workspace) API usage
-  #      limits".
+  #      limits"; and the 400 invalid_request_error of a prepaid credit
+  #      balance run out, whose message starts "Your credit balance is too
+  #      low" (not on those pages).
   #    * OpenRouter — https://openrouter.ai/docs/api-reference/errors and
   #      https://openrouter.ai/docs/api_reference/limits: 402 (credits); a
   #      403 whose `error.metadata.limit_source` is a spent guardrail,
@@ -38,10 +40,13 @@ defmodule PhoenixKitAI.ProviderError do
   #
   # 2. A note of the provider's own words for the request row: its status,
   #    code and message — the message trimmed, key-shaped words taken out,
-  #    never the whole body nor a header — and the Retry-After of an error
-  #    that is not about money, in seconds. The HTTP doors (`Completion`,
-  #    `Providers.HTTP`) clear the note before each request and put the
-  #    Retry-After; `Completion.handle_error_status/2` adds the rest;
+  #    never the whole body nor any other header — the Retry-After of an
+  #    error that is not about money, in seconds, and the provider's id of
+  #    the request (`request-id`, Anthropic; `x-request-id`, OpenAI and the
+  #    others of its shape), to look the call up on the provider's side.
+  #    The HTTP doors (`Completion`, `Providers.HTTP`) clear the note before
+  #    each request and put what the headers say (`put_response/1`);
+  #    `Completion.handle_error_status/2` adds the rest;
   #    the row writers in `PhoenixKitAI` take it. It lives in the calling
   #    process, so the `{:error, reason}` shape every caller matches on
   #    stays as it is.
@@ -54,7 +59,7 @@ defmodule PhoenixKitAI.ProviderError do
                    project_spend_limit_exceeded organization_usage_limit_exceeded)
   @openrouter_money ~w(openrouter_credits openrouter_guardrail_budget openrouter_workspace_budget
                        openrouter_key_limit)
-  @anthropic_spend_limit ~r/^You have reached your specified (workspace )?API usage limits/
+  @anthropic_money_400 ~r/^(You have reached your specified (workspace )?API usage limits|Your credit balance is too low)/
 
   # Words that look like a credential: a prefixed key (`sk-…`, `xai-…`),
   # an AWS key id, a bearer token, or a long unbroken token with a digit or
@@ -74,6 +79,7 @@ defmodule PhoenixKitAI.ProviderError do
   @long_part ~r/[A-Za-z0-9_\-\.+=]{32,}/
   @link ~r/\bhttps?:\/\/[^\s]+/
   @code_shape ~r/\A[A-Za-z0-9_.\-]{1,64}\z/
+  @request_id_shape ~r/\A[A-Za-z0-9_.:\-]{1,128}\z/
 
   @doc false
   @spec parse(term()) :: map() | nil
@@ -124,7 +130,7 @@ defmodule PhoenixKitAI.ProviderError do
       field(error, ["metadata", "limit_source"]) in @openrouter_money or
       field(error, ["metadata", "error_type"]) == "payment_required" or
       (status == 400 and is_binary(error["message"]) and
-         error["message"] =~ @anthropic_spend_limit)
+         error["message"] =~ @anthropic_money_400)
   end
 
   @doc false
@@ -153,22 +159,39 @@ defmodule PhoenixKitAI.ProviderError do
   end
 
   @doc false
-  # The Retry-After of a refused request, as seconds; an unreadable one
-  # is left out. Nothing here waits on it, so it is not capped.
-  @spec put_retry_after(Req.Response.t()) :: :ok
-  def put_retry_after(%Req.Response{} = response) do
-    case retry_after_ms(response) do
-      ms when is_integer(ms) -> Process.put(@key, %{retry_after_s: div(ms + 999, 1000)})
-      _ -> :ok
-    end
+  # What the headers of a refused request say: its Retry-After, as seconds
+  # (an unreadable one is left out; nothing here waits on it, so it is not
+  # capped), and the provider's id of the request. Neither is content.
+  @spec put_response(Req.Response.t()) :: :ok
+  def put_response(%Req.Response{} = response) do
+    note =
+      %{}
+      |> maybe_put(:retry_after_s, retry_after_s(response))
+      |> maybe_put(:request_id, request_id(response))
 
+    if note != %{}, do: Process.put(@key, note)
     :ok
+  end
+
+  defp retry_after_s(response) do
+    case retry_after_ms(response) do
+      ms when is_integer(ms) -> div(ms + 999, 1000)
+      _ -> nil
+    end
   end
 
   defp retry_after_ms(response) do
     Req.Response.get_retry_after(response)
   rescue
     _ -> nil
+  end
+
+  # The first of the two headers holding an id-shaped value (letters,
+  # digits and `_-.:`, at most 128 characters); anything else is left out.
+  defp request_id(response) do
+    ["request-id", "x-request-id"]
+    |> Enum.flat_map(&Req.Response.get_header(response, &1))
+    |> Enum.find(&(&1 =~ @request_id_shape))
   end
 
   @doc false
@@ -204,10 +227,14 @@ defmodule PhoenixKitAI.ProviderError do
   defp drop_retry_after(note, :insufficient_credits), do: Map.delete(note, :retry_after_s)
   defp drop_retry_after(note, _reason), do: note
 
+  @doc false
   # The most specific code the body carries that reads as a code: a short
   # token, nothing key-shaped. OpenRouter's numeric `code` repeats the
   # status and says nothing more.
-  defp code(status, error) do
+  @spec code(integer(), map() | nil) :: String.t() | nil
+  def code(_status, nil), do: nil
+
+  def code(status, error) do
     [
       field(error, ["details", "error_code"]),
       field(error, ["metadata", "limit_source"]),

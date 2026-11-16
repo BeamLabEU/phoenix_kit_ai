@@ -149,6 +149,15 @@ defmodule PhoenixKitAI.ProviderErrorTest do
                {:error, {:api_error, 400}}
     end
 
+    test "a 400 for a too-low credit balance is money" do
+      message =
+        "Your credit balance is too low to access the Anthropic API. " <>
+          "Please go to Plans & Billing to upgrade or purchase credits."
+
+      assert class(400, anthropic("invalid_request_error", message)) ==
+               {:error, :insufficient_credits}
+    end
+
     test "402 billing_error is money" do
       assert class(402, anthropic("billing_error", "Check your payment details")) ==
                {:error, :insufficient_credits}
@@ -533,6 +542,18 @@ defmodule PhoenixKitAI.ProviderErrorTest do
       assert row_for(ep).metadata["provider_error"]["retry_after_s"] == 30
     end
 
+    test "an image call's row carries the provider's request id" do
+      stub(429, %{}, [{"x-request-id", "req_7f3a9c2e"}])
+      ep = image_endpoint()
+
+      assert {:error, :rate_limited} = PhoenixKitAI.generate_image(ep.uuid, "a cat")
+
+      assert row_for(ep).metadata["provider_error"] == %{
+               "status" => 429,
+               "request_id" => "req_7f3a9c2e"
+             }
+    end
+
     test "nothing from an earlier call reaches an image row" do
       stub(429, zai("1113", "Insufficient balance"))
 
@@ -700,6 +721,58 @@ defmodule PhoenixKitAI.ProviderErrorTest do
       assert %{"status" => 400, "code" => "invalid_prompt"} = row.metadata["provider_error"]
     end
 
+    test "with capture off a money 400 keeps its type and the request id, not its words" do
+      ep = endpoint_fixture()
+
+      stub(
+        400,
+        anthropic(
+          "invalid_request_error",
+          "Your credit balance is too low to access the Anthropic API. " <>
+            "Please go to Plans & Billing to upgrade or purchase credits."
+        ),
+        [{"request-id", "req_011CSHoEeqs5C35K2UUqR7Fy"}]
+      )
+
+      assert {:error, :insufficient_credits} =
+               PhoenixKitAI.ask(ep.uuid, "hi", capture_request_content: false)
+
+      row = row_for(ep)
+
+      assert row.metadata["provider_error"] == %{
+               "status" => 400,
+               "code" => "invalid_request_error",
+               "request_id" => "req_011CSHoEeqs5C35K2UUqR7Fy"
+             }
+
+      assert row.error_message == "Insufficient credits (invalid_request_error)"
+      refute Map.has_key?(row.metadata, "provider_error_message")
+      refute inspect(row.metadata) =~ "credit balance"
+    end
+
+    test "an OpenAI-shaped x-request-id is kept; a value that is no id is not" do
+      ep = endpoint_fixture()
+
+      stub(500, %{"error" => %{"message" => "boom", "type" => "server_error"}}, [
+        {"x-request-id", "req_8b2c41d0e9"}
+      ])
+
+      assert {:error, {:api_error, 500}} =
+               PhoenixKitAI.ask(ep.uuid, "hi", capture_request_content: false)
+
+      assert row_for(ep).metadata["provider_error"]["request_id"] == "req_8b2c41d0e9"
+
+      other = endpoint_fixture()
+      stub(500, %{"error" => %{"message" => "boom"}}, [{"x-request-id", "Mari Tamm <b>"}])
+
+      assert {:error, {:api_error, 500}} =
+               PhoenixKitAI.ask(other.uuid, "hi", capture_request_content: false)
+
+      row = row_for(other)
+      refute Map.has_key?(row.metadata["provider_error"] || %{}, "request_id")
+      refute inspect(row.metadata) =~ "Mari"
+    end
+
     test "with capture on they are kept" do
       ep = endpoint_fixture()
       stub(400, @echo)
@@ -734,6 +807,20 @@ defmodule PhoenixKitAI.ProviderErrorTest do
 
       assert log =~ "400"
       refute log =~ "sk-live"
+      refute log =~ "Mari"
+    end
+
+    test "names the endpoint's provider and the error type, never the words" do
+      ep = endpoint_fixture(%{provider: "anthropic", model: "claude-haiku-4-5"})
+      stub(400, anthropic("invalid_request_error", "max_tokens: field required for Mari"))
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:error, {:api_error, 400}} = PhoenixKitAI.ask(ep.uuid, "hi")
+        end)
+
+      assert log =~ "AI completion (anthropic) failed: 400 (invalid_request_error)"
+      refute log =~ "OpenRouter"
       refute log =~ "Mari"
     end
   end
