@@ -9,7 +9,12 @@ defmodule PhoenixKitAI.ProviderErrorTest do
 
   use PhoenixKitAI.DataCase, async: false
 
+  # A refused call logs a warning (the classified line, the generic one);
+  # the tests that read the log capture it themselves.
+  @moduletag :capture_log
+
   alias PhoenixKitAI.Completion
+  alias PhoenixKitAI.ProviderError
   alias PhoenixKitAI.Providers.HTTP
   alias PhoenixKitAI.Request
 
@@ -156,6 +161,31 @@ defmodule PhoenixKitAI.ProviderErrorTest do
 
       assert class(400, anthropic("invalid_request_error", message)) ==
                {:error, :insufficient_credits}
+    end
+
+    # The credit-balance wording is read as money on a 400 only, and only as
+    # the start of the message: a rate limit or any other answer that happens
+    # to quote it must stay what its status says (a money class is never
+    # retried).
+    test "the credit-balance wording is not money on another status" do
+      body =
+        anthropic(
+          "invalid_request_error",
+          "Your credit balance is too low to access the Anthropic API."
+        )
+
+      assert class(429, body) == {:error, :rate_limited}
+      assert class(403, body) == {:error, {:api_error, 403}}
+    end
+
+    test "the credit-balance wording with a prefix, a leading space or lower case is not money" do
+      message = "Your credit balance is too low to access the Anthropic API."
+
+      for text <- ["Error: " <> message, " " <> message, String.downcase(message)] do
+        assert class(400, anthropic("invalid_request_error", text)) ==
+                 {:error, {:api_error, 400}},
+               text
+      end
     end
 
     test "402 billing_error is money" do
@@ -420,6 +450,40 @@ defmodule PhoenixKitAI.ProviderErrorTest do
 
       refute Map.has_key?(note, "code")
       assert byte_size(text) < 100
+    end
+
+    # Jason refuses an integer of more than 1024 digits, so a body that
+    # reaches the row can carry that many at most.
+    test "an overlong integer code is left out" do
+      code = String.to_integer(String.duplicate("7", 1024))
+      {text, note} = note_for(%{"error" => %{"code" => code, "message" => "x"}})
+
+      refute Map.has_key?(note, "code")
+      assert byte_size(text) < 100
+    end
+
+    test "an overlong integer code falls through to the type, as a bad string does" do
+      code = String.to_integer(String.duplicate("7", 1024))
+
+      {text, note} =
+        note_for(%{"error" => %{"code" => code, "type" => "api_error", "message" => "x"}})
+
+      assert note["code"] == "api_error"
+      assert byte_size(text) < 100
+    end
+
+    test "an integer code of any size passes the same check, decoded or not" do
+      huge = String.to_integer(String.duplicate("7", 20_000))
+
+      assert ProviderError.code(500, %{"code" => huge}) == nil
+      assert ProviderError.code(500, %{"code" => huge, "type" => "api_error"}) == "api_error"
+      assert ProviderError.code(500, %{"code" => 4711}) == "4711"
+      assert ProviderError.code(500, %{"code" => 500, "type" => "api_error"}) == "api_error"
+    end
+
+    test "an ordinary integer code is kept" do
+      {_text, note} = note_for(%{"error" => %{"code" => 1302, "message" => "x"}})
+      assert note["code"] == "1302"
     end
 
     test "a code in the other fields goes through the same check" do
@@ -848,6 +912,31 @@ defmodule PhoenixKitAI.ProviderErrorTest do
       assert log =~ "AI completion (anthropic) failed: 400 (invalid_request_error)"
       refute log =~ "OpenRouter"
       refute log =~ "Mari"
+    end
+
+    test "an overlong integer code is not in the line; an ordinary one is" do
+      ep = endpoint_fixture(%{provider: "anthropic", model: "claude-haiku-4-5"})
+      huge = String.to_integer(String.duplicate("7", 1024))
+
+      stub(500, %{"error" => %{"code" => huge, "message" => "x"}})
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:error, {:api_error, 500}} = PhoenixKitAI.ask(ep.uuid, "hi")
+        end)
+
+      assert log =~ "AI completion (anthropic) failed: 500"
+      refute log =~ "7777"
+      assert byte_size(log) < 500
+
+      stub(500, %{"error" => %{"code" => 4711, "message" => "x"}})
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:error, {:api_error, 500}} = PhoenixKitAI.ask(ep.uuid, "hi")
+        end)
+
+      assert log =~ "AI completion (anthropic) failed: 500 (4711)"
     end
 
     test "the credit-balance 400 leaves one line with provider, code and class, never the words" do

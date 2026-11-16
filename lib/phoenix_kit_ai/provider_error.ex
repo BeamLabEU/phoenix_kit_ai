@@ -235,8 +235,8 @@ defmodule PhoenixKitAI.ProviderError do
 
   @doc false
   # The most specific code the body carries that reads as a code: a short
-  # token, nothing key-shaped. OpenRouter's numeric `code` repeats the
-  # status and says nothing more.
+  # token, nothing key-shaped, a number as much as a string. OpenRouter's
+  # numeric `code` repeats the status and says nothing more.
   @spec code(integer(), map() | nil) :: String.t() | nil
   def code(_status, nil), do: nil
 
@@ -249,11 +249,13 @@ defmodule PhoenixKitAI.ProviderError do
       error["type"]
     ]
     |> Enum.find_value(fn
-      code when is_integer(code) and code != status -> Integer.to_string(code)
-      code when is_binary(code) -> if code_shaped?(code), do: code
+      code when is_integer(code) and code != status -> shaped(Integer.to_string(code))
+      code when is_binary(code) -> shaped(code)
       _ -> nil
     end)
   end
+
+  defp shaped(code), do: if(code_shaped?(code), do: code)
 
   defp code_shaped?(code), do: code =~ @code_shape and redact(code) == code
 
