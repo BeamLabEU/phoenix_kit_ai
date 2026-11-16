@@ -1126,6 +1126,50 @@ defmodule PhoenixKitAI.ProviderErrorTest do
       assert {:error, :insufficient_credits} =
                PhoenixKitAI.edit_image(ep.uuid, "brighter", [image])
     end
+
+    # An integer `code` outside 100..599 is the provider's own number, not
+    # an HTTP status: the answer reads as a bad gateway and the number stays
+    # the row's code. An overlong one (Jason decodes up to 1024 digits)
+    # reaches neither the status nor the code.
+    test "an integer code that is no HTTP status reads as a bad gateway" do
+      ep = endpoint_fixture()
+      stub(200, %{"error" => %{"code" => 4711, "message" => "x"}})
+
+      assert {:error, {:api_error, 502}} = PhoenixKitAI.ask(ep.uuid, "hi")
+      assert %{"status" => 502, "code" => "4711"} = row_for(ep).metadata["provider_error"]
+
+      other = endpoint_fixture()
+      huge = String.to_integer(String.duplicate("7", 1024))
+      stub(200, %{"error" => %{"code" => huge, "message" => "x"}})
+
+      assert {:error, {:api_error, 502}} = PhoenixKitAI.ask(other.uuid, "hi")
+      row = row_for(other)
+      assert %{"status" => 502} = row.metadata["provider_error"]
+      refute Map.has_key?(row.metadata["provider_error"], "code")
+      assert byte_size(row.error_message) < 200
+    end
+
+    test "the chat image path reads a code that is no status, or none, as a bad gateway" do
+      ep = endpoint_fixture(%{provider: "mistral", model: "pixtral"})
+      image = <<0xFF, 0xD8, 0xFF, 0xE0, 0, 16, "JFIF", 0, 1, 2, 3>>
+
+      for error <- [
+            %{"code" => 4711, "message" => "x"},
+            %{"code" => "server_error", "message" => "upstream gone for Mari"},
+            %{"message" => "upstream gone"}
+          ] do
+        stub(200, %{"error" => error})
+
+        log =
+          ExUnit.CaptureLog.capture_log(fn ->
+            assert {:error, {:api_error, 502}} =
+                     PhoenixKitAI.edit_image(ep.uuid, "brighter", [image])
+          end)
+
+        assert log =~ "AI images (mistral) failed: 502"
+        refute log =~ "Mari"
+      end
+    end
   end
 
   describe "other_model/2 and short dated snapshots" do

@@ -1003,9 +1003,37 @@ defmodule PhoenixKitAI.Providers.BedrockConverseTest do
       assert row.error_message =~ "Invalid API Key format: Delimiter ':' not found"
       refute inspect(row) =~ "ABSK-test-key"
 
-      assert log =~ "Bedrock Converse call failed: 403"
+      assert log =~ "AI completion (amazon_bedrock) failed: 403, read as invalid_api_key"
+      assert length(String.split(log, "failed:")) == 2
       refute log =~ "OpenRouter"
       refute log =~ "Delimiter"
+    end
+
+    test "the row keeps Bedrock's request id, the transport error names Bedrock" do
+      ep = endpoint(@haiku)
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        conn
+        |> Plug.Conn.put_resp_header("x-amzn-requestid", "0b1c2d3e-4f50-6172-8394-a5b6c7d8e9f0")
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(500, Jason.encode!(%{"message" => "Internal error"}))
+      end)
+
+      assert {:error, {:api_error, 500}} =
+               PhoenixKitAI.ask(ep.uuid, "hi", capture_request_content: false)
+
+      assert provider_error(ep).metadata["provider_error"]["request_id"] ==
+               "0b1c2d3e-4f50-6172-8394-a5b6c7d8e9f0"
+
+      Req.Test.stub(__MODULE__, &Req.Test.transport_error(&1, :econnrefused))
+
+      log =
+        capture_log(fn ->
+          assert {:error, {:connection_error, :econnrefused}} =
+                   Completion.chat_completion(ep, [%{role: "user", content: "hi"}])
+        end)
+
+      assert log =~ "AI completion (amazon_bedrock) transport error: :econnrefused"
     end
 
     test "a status read by the shared mapping is logged as Bedrock's too" do
@@ -1020,7 +1048,7 @@ defmodule PhoenixKitAI.Providers.BedrockConverseTest do
                      Completion.chat_completion(ep, [%{role: "user", content: "hi"}], opts)
           end)
 
-        assert log =~ "Bedrock Converse call failed: 400"
+        assert log =~ "AI completion (amazon_bedrock) failed: 400"
         refute log =~ "OpenRouter"
       end
     end

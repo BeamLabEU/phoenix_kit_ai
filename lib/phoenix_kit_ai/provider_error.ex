@@ -49,7 +49,8 @@ defmodule PhoenixKitAI.ProviderError do
   #    never the whole body nor any other header — the Retry-After of an
   #    error that is not about money, in seconds, and the provider's id of
   #    the request (`request-id`, Anthropic; `x-request-id`, OpenAI and the
-  #    others of its shape), to look the call up on the provider's side.
+  #    others of its shape; `x-amzn-requestid`, Amazon Bedrock), to look the
+  #    call up on the provider's side.
   #    The HTTP doors (`Completion`, `Providers.HTTP`) clear the note before
   #    each request and put what the headers say (`put_response/1`);
   #    `Completion.handle_error_status/2` adds the rest;
@@ -192,10 +193,10 @@ defmodule PhoenixKitAI.ProviderError do
     _ -> nil
   end
 
-  # The first of the two headers holding an id-shaped value (letters,
-  # digits and `_-.:`, at most 128 characters); anything else is left out.
+  # The first of these headers holding an id-shaped value (letters, digits
+  # and `_-.:`, at most 128 characters); anything else is left out.
   defp request_id(response) do
-    ["request-id", "x-request-id"]
+    ["request-id", "x-request-id", "x-amzn-requestid"]
     |> Enum.flat_map(&Req.Response.get_header(response, &1))
     |> Enum.find(&(&1 =~ @request_id_shape))
   end

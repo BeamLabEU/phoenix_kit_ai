@@ -88,6 +88,19 @@ defmodule PhoenixKitAI.CompletionTest do
     end
   end
 
+  describe "call_label/2" do
+    test "names the kind of call and the endpoint's base provider" do
+      assert Completion.call_label(%{provider: "anthropic"}, "completion") ==
+               "AI completion (anthropic)"
+
+      assert Completion.call_label(%{provider: "openrouter:work"}, "images") ==
+               "AI images (openrouter)"
+
+      assert Completion.call_label(%{provider: nil}, "speech") == "AI speech"
+      assert Completion.call_label(nil, "embeddings") == "AI embeddings"
+    end
+  end
+
   describe "extract_error_message/1" do
     test "parses nested error.message shape" do
       body = ~s({"error":{"message":"Invalid model"}})

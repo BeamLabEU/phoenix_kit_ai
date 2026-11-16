@@ -181,7 +181,7 @@ defmodule PhoenixKitAI.Completion do
         parse_converse_response(response_body, model, start_time)
 
       {:ok, %{status_code: status, body: response_body}} ->
-        converse_error(status, response_body, opts)
+        converse_error(status, response_body, opts, call_label(endpoint, "completion"))
 
       {:error, reason} when reason in [:concurrency_limit_timeout, :concurrency_queue_full] ->
         {:error, reason}
@@ -190,7 +190,10 @@ defmodule PhoenixKitAI.Completion do
         {:error, :request_timeout}
 
       {:error, reason} ->
-        Logger.warning("Bedrock Converse transport error: #{inspect(reason)}")
+        Logger.warning(
+          "#{call_label(endpoint, "completion")} transport error: #{inspect(reason)}"
+        )
+
         {:error, {:connection_error, reason}}
     end
   end
@@ -210,22 +213,20 @@ defmodule PhoenixKitAI.Completion do
     end
   end
 
-  @converse_label "Bedrock Converse call"
-
   # Bedrock's own status stays on the row and in the log; only the reason
   # is read from its words where the status alone misleads (a 403 about
-  # the key, a 400 or 404 about the model id).
-  defp converse_error(status, response_body, opts) do
+  # the key, a 400 or 404 about the model id). The log line has the shape
+  # of every other call's (`log_classified/4`).
+  defp converse_error(status, response_body, opts, label) do
     case BedrockConverse.error(status, response_body) do
       {error_body, nil} ->
-        if Keyword.get(opts, :safety_errors) == true,
-          do: HTTP.error(status, error_body, @converse_label),
-          else: handle_error_status(status, error_body, @converse_label)
+        error_status(status, error_body, opts, label)
 
       {error_body, reason} ->
+        error = ProviderError.parse(error_body)
         result = {:error, reason}
-        :ok = ProviderError.note(status, ProviderError.parse(error_body), result)
-        Logger.warning("#{@converse_label} failed: #{status} (#{reason})")
+        log_classified(result, status, error, label)
+        :ok = ProviderError.note(status, error, result)
         result
     end
   end
@@ -271,7 +272,11 @@ defmodule PhoenixKitAI.Completion do
     end
   end
 
-  defp error_code(%{"code" => code}) when is_integer(code), do: code
+  # Only an integer that is an HTTP status counts as one: a provider's own
+  # number (Z.ai's 1113) or an overlong one (Jason decodes up to 1024
+  # digits) is a code, left to `ProviderError`, and the answer reads as a
+  # bad gateway.
+  defp error_code(%{"code" => code}) when is_integer(code) and code in 100..599, do: code
   defp error_code(_error), do: nil
 
   # A code the body names is classified like that status; an error without

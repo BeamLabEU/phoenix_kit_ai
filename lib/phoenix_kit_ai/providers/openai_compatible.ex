@@ -107,7 +107,12 @@ defmodule PhoenixKitAI.Providers.OpenAICompatible do
 
     case HTTP.post_json(url, headers(endpoint), body) do
       {:ok, %{status: 200, body: response}} ->
-        decode_chat_images(response, started, used_model)
+        decode_chat_images(
+          response,
+          started,
+          used_model,
+          Completion.call_label(endpoint, "images")
+        )
 
       {:ok, %{status: status, body: response}} ->
         HTTP.error(status, response, Completion.call_label(endpoint, "images"))
@@ -192,9 +197,9 @@ defmodule PhoenixKitAI.Providers.OpenAICompatible do
   @doc false
   # A chat completion whose message carries images (OpenRouter puts them
   # on `message.images`; some gateways use content parts).
-  @spec decode_chat_images(term(), integer(), String.t() | nil) ::
+  @spec decode_chat_images(term(), integer(), String.t() | nil, String.t()) ::
           {:ok, PhoenixKitAI.Provider.image_result()} | {:error, term()}
-  def decode_chat_images(response, started, model) do
+  def decode_chat_images(response, started, model, label \\ "AI call") do
     latency_ms = System.monotonic_time(:millisecond) - started
 
     case HTTP.body_map(response) do
@@ -204,9 +209,15 @@ defmodule PhoenixKitAI.Providers.OpenAICompatible do
       {:ok, %{"choices" => []}} ->
         {:error, :no_choices_in_response}
 
-      # A provider error delivered with a 200, as on chat: read as its status.
-      {:ok, %{"error" => %{"code" => code}} = map} when is_integer(code) ->
-        HTTP.error(code, Jason.encode!(map))
+      # A provider error delivered with a 200, as on chat: read as the HTTP
+      # status its integer `code` names, else as a bad gateway (a provider's
+      # own number, Z.ai's 1113, is no status). Its words reach the row.
+      {:ok, %{"error" => %{"code" => code}} = map} when is_integer(code) and code in 100..599 ->
+        HTTP.error(code, Jason.encode!(map), label)
+
+      {:ok, %{"error" => error} = map}
+      when not is_nil(error) and not is_map_key(map, "choices") ->
+        HTTP.error(502, Jason.encode!(map), label)
 
       {:ok, _} ->
         {:error, :invalid_response_format}

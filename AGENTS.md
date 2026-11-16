@@ -716,8 +716,10 @@ provided the API exposes `<base_url>/chat/completions` and `/models`.
 - **Answers that are not answers**: Req never decodes a response body
   (`decode_body: false` in `Completion.post_once/4`); every caller decodes
   it. A 200 with an `error` and no `choices` / `data` (chat, embeddings,
-  TTS) is an error of the status its integer `code` names, or of a 502 when
-  it names none — never a success the request cache would replay. A 200 whose
+  TTS, the image adapters' chat path) is an error of the HTTP status its
+  integer `code` names (100–599), or of a 502 when it names none or another
+  number (Z.ai's 1113 stays the row's `code`) — never a success the request
+  cache would replay. A 200 whose
   JSON is not an object (`[]`, `42`) is `:invalid_response_format`; one that
   does not parse is `:invalid_json_response`, not a retried transport error.
 - **Usage accounting**: OpenRouter chat calls send `usage: {include: true}` so the

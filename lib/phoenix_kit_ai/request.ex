@@ -40,9 +40,9 @@ defmodule PhoenixKitAI.Request do
     in `model` itself.
   - `metadata.provider_error`: on a failed call, what is known of the
     provider's refusal: `status`, `code`, the provider's `request_id` (its
-    `request-id` / `x-request-id` header) and `retry_after_s` for an error
-    that is not about money. None of it is content, so it is kept with
-    request content capture off too.
+    `request-id` / `x-request-id` / `x-amzn-requestid` header) and
+    `retry_after_s` for an error that is not about money. None of it is
+    content, so it is kept with request content capture off too.
   - `metadata.provider_error_message`: its words (trimmed, key-shaped words
     redacted), behind the content gate and cleared with the content. Older rows
     keep them as `metadata.provider_error.message`.
