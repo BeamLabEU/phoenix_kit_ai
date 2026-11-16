@@ -6796,9 +6796,10 @@ defmodule PhoenixKitAI do
   # What the provider said on the call that just failed
   # (`PhoenixKitAI.ProviderError`): its words after the module's text in
   # `error_message` and under `provider_error_message` in the metadata, its
-  # status, code and Retry-After under `provider_error`. The words can echo the
-  # request, so they sit behind the content gate, and in a key of their own so the
-  # content step can take them (`Retention.content_keys/0`) and leave the rest.
+  # status, code, request id and Retry-After under `provider_error`. The
+  # words can echo the request, so they sit behind the content gate, and in
+  # a key of their own so the content step can take them
+  # (`Retention.content_keys/0`) and leave the rest.
   defp with_provider_error(%{error_message: text, metadata: metadata} = attrs, capture?) do
     case ProviderError.take() do
       nil ->

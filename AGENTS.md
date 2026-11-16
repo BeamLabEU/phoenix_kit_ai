@@ -1529,8 +1529,12 @@ folder with no `FOLLOW_UP.md` means "not triaged yet"; a stub file is what
   `FOLLOW_UP.md`): `latency_ms` includes the limiter's wait and retry backoff
   (#54); a run killed mid-way leaves no audit entry for the chunks it committed
   (#57); a picked connection that becomes usable starts no model fetch (#55);
-  Mistral's top-level error shape and Anthropic's and xAI's out-of-money bodies
-  (#53), which `ProviderError` adds only once documented.
+  Mistral's top-level error shape and xAI's out-of-money body (#53), which
+  `ProviderError` adds only once documented. Anthropic's credit-balance 400
+  is the one exception (#66): not on its error pages, the wording quoted in
+  anthropics/anthropic-sdk-typescript#618 and
+  anthropics/anthropic-sdk-python#1646, matched only on a 400 and at the
+  start of the message.
 - `metadata.error_reason` is stored via `inspect/1` in `log_failed_request/7`
   and `log_failed_embedding_request/5`. A raw `reason` value would filter better
   through JSONB, but no consumer filters on it yet. Trigger: the first consumer

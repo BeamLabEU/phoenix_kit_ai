@@ -51,7 +51,7 @@ defmodule PhoenixKitAI.Providers.OpenAI do
           )
 
         {:ok, %{status: status, body: response}} ->
-          HTTP.error(status, response)
+          HTTP.error(status, response, Completion.call_label(endpoint, "images"))
 
         {:error, _} = error ->
           error

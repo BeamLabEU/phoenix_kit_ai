@@ -106,9 +106,14 @@ defmodule PhoenixKitAI.Providers.OpenAICompatible do
     started = System.monotonic_time(:millisecond)
 
     case HTTP.post_json(url, headers(endpoint), body) do
-      {:ok, %{status: 200, body: response}} -> decode_chat_images(response, started, used_model)
-      {:ok, %{status: status, body: response}} -> HTTP.error(status, response)
-      {:error, _} = error -> error
+      {:ok, %{status: 200, body: response}} ->
+        decode_chat_images(response, started, used_model)
+
+      {:ok, %{status: status, body: response}} ->
+        HTTP.error(status, response, Completion.call_label(endpoint, "images"))
+
+      {:error, _} = error ->
+        error
     end
   end
 
@@ -125,7 +130,7 @@ defmodule PhoenixKitAI.Providers.OpenAICompatible do
         decode_data_images(response, started, body["model"])
 
       {:ok, %{status: status, body: response}} ->
-        HTTP.error(status, response)
+        HTTP.error(status, response, Completion.call_label(endpoint, "images"))
 
       {:error, _} = error ->
         error
