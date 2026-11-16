@@ -61,9 +61,14 @@ defmodule PhoenixKitAI.Providers.OpenRouter do
        |> Enum.map(&ImageModel.from_openrouter/1)
        |> Enum.reject(&is_nil/1)}
     else
-      {:ok, %{status: status, body: response}} -> HTTP.error(status, response)
-      {:ok, _other} -> {:error, :invalid_response_format}
-      {:error, _} = error -> error
+      {:ok, %{status: status, body: response}} ->
+        HTTP.error(status, response, Completion.call_label(endpoint, "image models"))
+
+      {:ok, _other} ->
+        {:error, :invalid_response_format}
+
+      {:error, _} = error ->
+        error
     end
   end
 

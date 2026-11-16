@@ -26,7 +26,7 @@ defmodule PhoenixKitAI.CompletionTest do
           assert Completion.handle_error_status(503, body) == {:error, {:api_error, 503}}
         end)
 
-      assert log =~ "OpenRouter completion failed: 503"
+      assert log =~ "AI call failed: 503"
       # Neither the body nor its message: a provider's words can echo the request
       # or a key. The request row keeps them, behind the content gate.
       refute log =~ "Upstream timeout"
@@ -40,7 +40,7 @@ defmodule PhoenixKitAI.CompletionTest do
                    {:error, {:api_error, 500}}
         end)
 
-      assert log =~ "OpenRouter completion failed: 500 (no parsable error body)"
+      assert log =~ "AI call failed: 500 (no parsable error body)"
       # Raw HTML body should NOT be logged
       refute log =~ "DOCTYPE"
     end
@@ -53,8 +53,38 @@ defmodule PhoenixKitAI.CompletionTest do
           assert Completion.handle_error_status(400, body) == {:error, {:api_error, 400}}
         end)
 
-      assert log =~ "OpenRouter completion failed: 400"
+      assert log =~ "AI call failed: 400"
       refute log =~ "missing required field: model"
+    end
+
+    test "a refusal read as a class logs one line: status, code and class, never the words" do
+      body =
+        Jason.encode!(%{
+          "type" => "error",
+          "error" => %{
+            "type" => "invalid_request_error",
+            "message" => "Your credit balance is too low to access the Anthropic API."
+          }
+        })
+
+      log =
+        capture_log(fn ->
+          assert Completion.handle_error_status(400, body, "AI completion (anthropic)") ==
+                   {:error, :insufficient_credits}
+        end)
+
+      assert log =~
+               "AI completion (anthropic) failed: 400 (invalid_request_error), read as insufficient_credits"
+
+      assert length(String.split(log, "failed:")) == 2
+      refute log =~ "credit balance"
+
+      log =
+        capture_log(fn ->
+          assert Completion.handle_error_status(401, "") == {:error, :invalid_api_key}
+        end)
+
+      assert log =~ "AI call failed: 401, read as invalid_api_key"
     end
   end
 

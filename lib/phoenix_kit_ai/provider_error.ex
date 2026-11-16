@@ -5,7 +5,8 @@ defmodule PhoenixKitAI.ProviderError do
   # 1. The class its body names where the HTTP status alone misleads:
   #    money (`:insufficient_credits`, never worth a retry) sent as a 429,
   #    a 400 or a 403, and a transient budget sent as a 402. Only what the
-  #    providers document:
+  #    providers document, and one wording they do not (Anthropic's
+  #    credit-balance 400, below):
   #
   #    * Z.ai — https://docs.z.ai/api-reference/api-code: `error.code` 1113
   #      (insufficient balance or no resource package), 1309 (GLM Coding
@@ -23,9 +24,14 @@ defmodule PhoenixKitAI.ProviderError do
   #      `error.details.error_code` is enforced_spend_limit_reached; the 400
   #      invalid_request_error of a spend limit you set, whose message
   #      starts "You have reached your specified (workspace) API usage
-  #      limits"; and the 400 invalid_request_error of a prepaid credit
-  #      balance run out, whose message starts "Your credit balance is too
-  #      low" (not on those pages).
+  #      limits". The one undocumented body read here: the 400
+  #      invalid_request_error of a prepaid credit balance run out, whose
+  #      message starts "Your credit balance is too low". It is on neither
+  #      page; the wording is the one quoted in
+  #      anthropics/anthropic-sdk-typescript#618 and
+  #      anthropics/anthropic-sdk-python#1646. It is matched only on a 400
+  #      and only at the start of the message, so no rate limit can be read
+  #      as money (and never retried) through it.
   #    * OpenRouter — https://openrouter.ai/docs/api-reference/errors and
   #      https://openrouter.ai/docs/api_reference/limits: 402 (credits); a
   #      403 whose `error.metadata.limit_source` is a spent guardrail,

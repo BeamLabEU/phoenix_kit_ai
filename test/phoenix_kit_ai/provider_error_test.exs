@@ -750,7 +750,31 @@ defmodule PhoenixKitAI.ProviderErrorTest do
       refute inspect(row.metadata) =~ "credit balance"
     end
 
-    test "an OpenAI-shaped x-request-id is kept; a value that is no id is not" do
+    test "request-id wins over x-request-id; a bad request-id falls back to x-request-id" do
+      ep = endpoint_fixture()
+      stub(500, %{}, [{"request-id", "req_anthropic"}, {"x-request-id", "req_other"}])
+      assert {:error, {:api_error, 500}} = PhoenixKitAI.ask(ep.uuid, "hi")
+      assert row_for(ep).metadata["provider_error"]["request_id"] == "req_anthropic"
+
+      other = endpoint_fixture()
+      stub(500, %{}, [{"request-id", "not an id"}, {"x-request-id", "req_fallback"}])
+      assert {:error, {:api_error, 500}} = PhoenixKitAI.ask(other.uuid, "hi")
+      assert row_for(other).metadata["provider_error"]["request_id"] == "req_fallback"
+    end
+
+    test "a request id is kept up to 128 characters, not beyond" do
+      at_cap = "req_" <> String.duplicate("a", 124)
+      over = at_cap <> "b"
+
+      for {id, kept} <- [{at_cap, at_cap}, {over, nil}] do
+        ep = endpoint_fixture()
+        stub(500, %{}, [{"x-request-id", id}])
+        assert {:error, {:api_error, 500}} = PhoenixKitAI.ask(ep.uuid, "hi")
+        assert (row_for(ep).metadata["provider_error"] || %{})["request_id"] == kept
+      end
+    end
+
+    test "an OpenAI-shaped x-request-id is kept; one with characters outside an id's is not" do
       ep = endpoint_fixture()
 
       stub(500, %{"error" => %{"message" => "boom", "type" => "server_error"}}, [
@@ -762,15 +786,17 @@ defmodule PhoenixKitAI.ProviderErrorTest do
 
       assert row_for(ep).metadata["provider_error"]["request_id"] == "req_8b2c41d0e9"
 
-      other = endpoint_fixture()
-      stub(500, %{"error" => %{"message" => "boom"}}, [{"x-request-id", "Mari Tamm <b>"}])
+      for value <- ["Mari Tamm", "<b>", "a/b", "id;x=1", "a=b", "ид-1", "req\"1", ""] do
+        other = endpoint_fixture()
+        stub(500, %{"error" => %{"message" => "boom"}}, [{"x-request-id", value}])
 
-      assert {:error, {:api_error, 500}} =
-               PhoenixKitAI.ask(other.uuid, "hi", capture_request_content: false)
+        assert {:error, {:api_error, 500}} =
+                 PhoenixKitAI.ask(other.uuid, "hi", capture_request_content: false)
 
-      row = row_for(other)
-      refute Map.has_key?(row.metadata["provider_error"] || %{}, "request_id")
-      refute inspect(row.metadata) =~ "Mari"
+        row = row_for(other)
+        refute Map.has_key?(row.metadata["provider_error"] || %{}, "request_id"), value
+        refute inspect(row.metadata) =~ "Mari"
+      end
     end
 
     test "with capture on they are kept" do
@@ -822,6 +848,89 @@ defmodule PhoenixKitAI.ProviderErrorTest do
       assert log =~ "AI completion (anthropic) failed: 400 (invalid_request_error)"
       refute log =~ "OpenRouter"
       refute log =~ "Mari"
+    end
+
+    test "the credit-balance 400 leaves one line with provider, code and class, never the words" do
+      ep = endpoint_fixture(%{provider: "anthropic", model: "claude-haiku-4-5"})
+
+      stub(
+        400,
+        anthropic(
+          "invalid_request_error",
+          "Your credit balance is too low to access the Anthropic API. " <>
+            "Please go to Plans & Billing to upgrade or purchase credits."
+        )
+      )
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:error, :insufficient_credits} =
+                   PhoenixKitAI.ask(ep.uuid, "hi", capture_request_content: false)
+        end)
+
+      assert log =~
+               "AI completion (anthropic) failed: 400 (invalid_request_error), read as insufficient_credits"
+
+      assert length(String.split(log, "failed:")) == 2
+      refute log =~ "credit balance"
+      refute log =~ "Plans & Billing"
+    end
+
+    test "the label names the provider on the error-in-a-200, transport and vision paths" do
+      ep = endpoint_fixture(%{provider: "anthropic", model: "claude-haiku-4-5"})
+
+      stub(200, %{"error" => %{"message" => "upstream gone for Mari", "type" => "server_error"}})
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:error, {:api_error, 502}} = PhoenixKitAI.ask(ep.uuid, "hi")
+        end)
+
+      assert log =~ "AI completion (anthropic) failed: 502 (server_error)"
+
+      Req.Test.stub(__MODULE__, &Req.Test.transport_error(&1, :econnrefused))
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:error, {:connection_error, :econnrefused}} = PhoenixKitAI.ask(ep.uuid, "hi")
+        end)
+
+      assert log =~ "AI completion (anthropic) transport error: :econnrefused"
+
+      stub(400, anthropic("invalid_request_error", "image too small for Mari"))
+      image = <<0xFF, 0xD8, 0xFF, 0xE0, 0, 16, "JFIF", 0, 1, 2, 3>>
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:error, {:api_error, 400}} = PhoenixKitAI.describe_image(ep.uuid, image)
+        end)
+
+      assert log =~ "AI completion (anthropic) failed: 400 (invalid_request_error)"
+      refute log =~ "Mari"
+      refute log =~ "OpenRouter"
+    end
+
+    test "embeddings and image calls name the provider too" do
+      embed = endpoint_fixture(%{provider: "openai", model: "text-embedding-3-small"})
+      stub(400, openai("invalid_request_error", nil, "bad input"))
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:error, {:api_error, 400}} = PhoenixKitAI.embed(embed.uuid, "hello")
+        end)
+
+      assert log =~ "AI embeddings (openai) failed: 400 (invalid_request_error)"
+
+      image = endpoint_fixture(%{provider: "openai", model: "gpt-image-1"})
+      stub(500, openai("server_error", nil, "boom"))
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:error, {:api_error, 500}} = PhoenixKitAI.generate_image(image.uuid, "a cat")
+        end)
+
+      assert log =~ "AI images (openai) failed: 500 (server_error)"
+      refute log =~ "OpenRouter"
     end
   end
 
