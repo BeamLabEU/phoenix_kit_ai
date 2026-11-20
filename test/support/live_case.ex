@@ -44,6 +44,10 @@ defmodule PhoenixKitAI.LiveCase do
     pid = Sandbox.start_owner!(TestRepo, shared: not tags[:async])
     on_exit(fn -> Sandbox.stop_owner(pid) end)
 
+    # Same as DataCase: core's :settings cache must not carry entries across
+    # the sandbox's rollback.
+    PhoenixKitAI.DataCase.clear_settings_cache()
+
     # The guard's per-node caches outlive the sandbox's rollback. Only in a
     # synchronous test: the table is shared with tests running alongside.
     unless tags[:async], do: PhoenixKitAI.Guard.reset_caches()

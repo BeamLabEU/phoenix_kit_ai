@@ -157,6 +157,18 @@ Application.put_env(:phoenix_kit_ai, :test_repo_available, repo_available)
 # Start minimal PhoenixKit services needed for tests
 {:ok, _pid} = PhoenixKit.PubSub.Manager.start_link([])
 
+# Core's settings cache — `PhoenixKit.Supervisor` starts the Registry and the
+# named `:settings` cache in production. Without them every cached settings
+# read falls back with an "unknown registry" warning (the write-side fallbacks
+# in `PhoenixKit.Cache` log unconditionally) and the suite never exercises the
+# cached path production runs. Mirrors boards / knowledge_base / legal /
+# web_analytics / billing. Guarded on the repo: under PK_AI_SKIP_DB there is
+# no database for a cache miss to fill from.
+if repo_available do
+  {:ok, _pid} = PhoenixKit.Cache.Registry.start_link()
+  {:ok, _pid} = PhoenixKit.Cache.start_link(name: :settings)
+end
+
 case PhoenixKitAI.RequestCache.start_link([]) do
   {:ok, _pid} -> :ok
   {:error, {:already_started, _pid}} -> :ok
@@ -167,7 +179,9 @@ end
 # The task registry's one writer (`PhoenixKitAI.Tasks.Builder`, one of
 # `PhoenixKitAI.children/0`): without it a lookup builds for itself only and
 # never caches. Started unlinked so a test that stops it to exercise that
-# fallback can start it again (`PhoenixKitAI.Test.restart_task_builder/0`).
+# fallback can start it again with a plain
+# `GenServer.start(PhoenixKitAI.Tasks.Builder, :ok, name: ...)` (see
+# task_providers_test.exs).
 {:ok, _pid} =
   GenServer.start(PhoenixKitAI.Tasks.Builder, :ok, name: PhoenixKitAI.Tasks.Builder)
 

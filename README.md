@@ -1,9 +1,14 @@
 # PhoenixKitAI
 
-AI module for PhoenixKit — provides endpoint management, prompt templates,
-completions, and usage tracking via three OpenAI-compatible providers
-(OpenRouter, Mistral, DeepSeek). Implements the `PhoenixKit.Module`
-behaviour for auto-discovery by a parent Phoenix application.
+AI module for PhoenixKit — endpoint management, prompt templates, chat
+completions, embeddings, speech, image processing and generation, realtime
+voice, and per-request usage tracking. Providers are OpenAI-compatible and
+discovered at runtime from core's `PhoenixKit.Integrations` registry (every
+provider with the `:ai_completions` capability — OpenRouter, OpenAI,
+Anthropic, Mistral, DeepSeek, xAI, Z.ai, Amazon Bedrock, …), so there is no
+hardcoded provider list here; Amazon Bedrock's non-OpenAI models go through
+its Converse API. Implements the `PhoenixKit.Module` behaviour for
+auto-discovery by a parent Phoenix application.
 
 ## Features
 
@@ -22,8 +27,8 @@ behaviour for auto-discovery by a parent Phoenix application.
   thinking) automatically persisted to request metadata
 - **Usage Tracking** — Every API call logged with tokens, cost
   (US dollars), latency, status, and full caller context
-- **Admin UI** — LiveView pages for Endpoints, Prompts, Usage, and a live
-  Playground
+- **Admin UI** — one `AI` tab with five subtabs: Endpoints, Prompts,
+  Playground, Usage (journal + retention), and Tasks (limits, guard, blocks)
 - **Dynamic model selector** — Models auto-load from each provider's
   `/models` endpoint when an integration is picked, with a 10-second
   "still loading" hint and a retry button on transient failures
@@ -45,12 +50,13 @@ Add to your parent app's `mix.exs`:
 Run `mix deps.get` and start the server. The module appears in:
 
 - **Admin sidebar** — AI with subtabs for Endpoints, Prompts, Playground,
-  and Usage
+  Usage, and Tasks
 - **Admin → Modules** — toggle on/off
 - **Admin → Roles** — grant/revoke access per role
 - **Admin → Settings → Integrations** — set up at least one provider
-  connection (OpenRouter, Mistral, or DeepSeek). The endpoint form's
-  picker filters to whichever provider is selected on the dropdown.
+  connection (OpenRouter is the only required one; any provider in core's
+  registry with the `:ai_completions` capability works). The endpoint
+  form's picker filters to whichever provider is selected on the dropdown.
 
 ## Installation
 
@@ -63,7 +69,7 @@ Run `mix deps.get` and start the server. The module appears in:
 ### Hex package
 
 ```elixir
-{:phoenix_kit_ai, "~> 0.1"}
+{:phoenix_kit_ai, "~> 0.30"}
 ```
 
 ## API usage
@@ -904,56 +910,43 @@ $0.0001, 6 from $0.000001, 10 below.
 
 ```
 lib/
-  phoenix_kit_ai.ex                    # Main module (behaviour + context)
+  phoenix_kit_ai.ex                    # Main module (behaviour + the whole public context)
   phoenix_kit_ai/
-    endpoint.ex                        # Endpoint schema
-    prompt.ex                          # Prompt template schema
-    request.ex                         # Request logging schema
-    errors.ex                          # Atom → translated message mapping
-    completion.ex                      # OpenRouter HTTP client
-    openrouter_client.ex               # API key validation & model discovery
-    ai_model.ex                        # Normalized model struct
-    routes.ex                          # Admin sub-routes (new/edit forms)
-    web/
-      endpoints.ex/.heex               # Endpoints list + usage page
-      endpoint_form.ex/.heex           # Create/edit endpoint
-      prompts.ex/.heex                 # Prompts list
-      prompt_form.ex/.heex             # Create/edit prompt
-      playground.ex/.heex              # Interactive testing
+    endpoint.ex prompt.ex request.ex   # Ecto schemas
+    completion.ex                      # Provider-agnostic HTTP client (chat, embeddings, TTS, STT)
+    providers/                         # Adapters per provider key (+ the shared HTTP door, Bedrock Converse)
+    openrouter_client.ex               # Generic provider client (key resolution, model discovery)
+    images.ex images/ box.ex           # Image generation/editing, vision verbs, located answers
+    transcription.ex                   # Speech to text (chat path or /audio/transcriptions)
+    guard.ex guard_blocks.ex           # Call-time model/task guard; blocks of people
+    task_limits.ex task_spec.ex tasks.ex  # AI task registry and per-task/per-user limits
+    budget.ex cache.ex limiter.ex request_log.ex  # Spend caps, caches, concurrency, async usage rows
+    retention.ex journal_prune_worker.ex # Journal retention policy + nightly cleanup job
+    migrations.ex                      # The module's own migration chain
+    routes.ex                          # Admin sub-routes
+    web/                               # Admin LiveViews: endpoints, endpoint_form, prompts,
+                                       # prompt_form, playground, usage, tasks, …
 test/
   phoenix_kit_ai_test.exs              # Behaviour compliance tests
-  phoenix_kit_ai/
-    completion_test.exs                # HTTP + error parsing (unit)
-    completion_coverage_test.exs       # Req.Test-stubbed integration tests
-    endpoint_test.exs                  # Schema + CRUD + SSRF guard
-    errors_test.exs                    # Atom → message mapping
-    openrouter_client_test.exs         # API key + model discovery (unit)
-    openrouter_client_coverage_test.exs# Req.Test-stubbed integration tests
-    prompt_test.exs                    # Variable extraction + changeset
-    prompt_changeset_test.exs          # Persistence + uniqueness
-    request_test.exs                   # Schema + format_cost
-    coverage_test.exs                  # Top-level public API integration
-    schema_coverage_test.exs           # Schema-level edge cases
-    activity_logging_test.exs          # Per-action activity log assertions
-    legacy_api_key_migration_test.exs  # Auto-migrator (idempotency + dedup)
-    destructive_rescue_test.exs        # DROP-TABLE-in-sandbox rescue tests
-    web/                               # LiveView smoke + coverage tests
-  support/                             # Test infra (DataCase, LiveCase, etc.)
+  phoenix_kit_ai/                      # Unit + integration tests (HTTP stubbed via Req.Test)
+  support/                             # Test infra (TestRepo, DataCase, LiveCase, fixtures)
 ```
 
 ## Database tables
 
-All tables use UUIDv7 primary keys and timestamptz columns. The three
-tables below are created by the parent PhoenixKit project's migrations:
+All tables use UUIDv7 primary keys and timestamptz columns. Core 3.x no
+longer creates this module's tables — the module's own migration chain
+owns them:
 
 - **`phoenix_kit_ai_endpoints`** — endpoint configurations
 - **`phoenix_kit_ai_prompts`** — prompt templates
 - **`phoenix_kit_ai_requests`** — request logs (FK to endpoints, prompts,
   users)
 
-The module's own chain (`PhoenixKitAI.Migrations`, run by
-`mix phoenix_kit.update` after core's) holds only tables core does not
-create:
+The module's chain (`PhoenixKitAI.Migrations`, run by
+`mix phoenix_kit.update` after core's) adopts those three (V5 creates them
+exactly as a fresh core 2.x built them, a no-op on existing installs) and
+holds the rest:
 
 - **`phoenix_kit_ai_model_capabilities`** — the snapshot of what each
   endpoint's model can do (images and documents in, images out, tools,
@@ -986,16 +979,31 @@ large journal, measure it first and update in a quiet window.
 
 ## Supported providers
 
-Three OpenAI-compatible providers are wired into the endpoint form. All
-share the same `Completion.chat_completion/3` HTTP path; the form's
-provider dropdown drives the picker filter, default base URL, and
-model-list fetcher.
+There is no hardcoded provider list in this module: the endpoint form's
+provider dropdown is driven by core's `PhoenixKit.Integrations` registry —
+every entry with the `:ai_completions` capability works, and adding a
+provider is one registry entry in core plus a `base_url`, as long as the
+API exposes `<base_url>/chat/completions` and `/models`. The providers core
+ships with `:ai_completions`:
 
-| Provider | Default base URL | Models endpoint | Notes |
-|---|---|---|---|
-| **OpenRouter** | `https://openrouter.ai/api/v1` | `/models` (~100 aggregated chat models with pricing + modality metadata) | Models grouped by underlying provider (`anthropic`, `openai`, `meta-llama`, etc.). Embedding models served separately — see below |
-| **Mistral** | `https://api.mistral.ai/v1` | `/v1/models` (chat + embedding mixed in one list) | OpenAI-compatible response. Pricing / context-length / modality fields aren't returned; the form renders sparser model cards |
-| **DeepSeek** | `https://api.deepseek.com/v1` | `/models` (chat only — `deepseek-chat`, `deepseek-reasoner`) | OpenAI-compatible. Reasoner models return chain-of-thought (see Reasoning capture above) |
+| Provider | Default base URL | Notes |
+|---|---|---|
+| **OpenRouter** | `https://openrouter.ai/api/v1` | Aggregated gateway; `/models` carries pricing + modality metadata, models grouped by underlying provider. Embedding models are listed separately — see below. The only provider `required_integrations/0` asks for |
+| **OpenAI** | `https://api.openai.com/v1` | OpenAI-compatible path |
+| **Anthropic** | `https://api.anthropic.com/v1` | Its OpenAI-compatible layer; native model list + lifecycle, built-in price table |
+| **Mistral** | `https://api.mistral.ai/v1` | `/v1/models` mixes chat and embeddings; `/audio/voices` feeds the TTS voice picker |
+| **DeepSeek** | `https://api.deepseek.com/v1` | `/models` carries input/output modalities + context window; reasoner models return chain-of-thought (see Reasoning capture above) |
+| **xAI** | `https://api.x.ai/v1` | OpenAI-compatible; also the realtime voice transport |
+| **Z.ai** | `https://api.z.ai/api/paas/v4` | OpenAI-compatible |
+| **Amazon Bedrock** | `https://bedrock-runtime.<region>.amazonaws.com/openai/v1` | `openai.gpt-oss-*` models on the OpenAI-compatible URL; every other model (e.g. `eu.anthropic.*` inference profiles) goes through the native Converse API (`PhoenixKitAI.Providers.BedrockConverse`). Converse reports no cost — set a manual price before relying on a spend cap |
+
+All OpenAI-compatible providers share the same `Completion.chat_completion/3`
+HTTP path; the form's provider dropdown drives the picker filter, default
+base URL, and model-list fetcher. Image verbs pick an adapter by provider
+key (OpenRouter's unified Images API, xAI, OpenAI multipart, and the
+OpenAI-compatible default for the rest) — a new image provider is a
+`PhoenixKitAI.Provider` adapter plus a `config :phoenix_kit_ai,
+:provider_adapters` entry.
 
 Each provider's connection is set up under **Settings → Integrations**
 (those entries live in core's `PhoenixKit.Integrations.Providers`
@@ -1041,7 +1049,7 @@ the right one manually. DeepSeek currently exposes chat models only.
 | `enable_system/0` / `disable_system/0` | Persist via Settings API |
 | `version/0` | current package version |
 | `permission_metadata/0` | key `"ai"`, icon `hero-sparkles` |
-| `admin_tabs/0` | Parent + 4 subtabs |
+| `admin_tabs/0` | Parent + 5 subtabs (endpoints, prompts, playground, usage, tasks) |
 | `css_sources/0` | `[:phoenix_kit_ai]` |
 | `route_module/0` | `PhoenixKitAI.Routes` |
 | `required_integrations/0` | `["openrouter"]` |
@@ -1062,20 +1070,24 @@ mix quality           # format + credo --strict + dialyzer
 ## Testing
 
 ```bash
-# Unit tests (no DB needed)
-mix test
-
-# Integration tests (need PostgreSQL)
-createdb phoenix_kit_ai_test
+# Full suite — provisions and migrates its own PostgreSQL database
+# (phoenix_kit_ai_test) via the `test` alias; a broken database ABORTS
+# the run rather than silently skipping the integration tests
 mix test
 
 # LiveView tests (same DB, uses local Test.Endpoint)
 mix test test/phoenix_kit_ai/web/
+
+# Unit tests only, on a machine with no Postgres (explicit opt-out —
+# never in CI or before a release)
+PK_AI_SKIP_DB=1 mix test
 ```
 
 Integration tests use an embedded `PhoenixKitAI.Test.Repo` with Ecto
-sandbox. When the test database is absent they are automatically
-excluded and unit tests still run.
+sandbox and are tagged `:integration`. That tag is excluded ONLY under the
+explicit `PK_AI_SKIP_DB=1` opt-out above — an unreachable or broken test
+database makes `test_helper.exs` raise, so a red run can never masquerade
+as "0 failures, most tests skipped".
 
 ## Troubleshooting
 

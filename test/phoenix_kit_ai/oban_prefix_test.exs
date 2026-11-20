@@ -198,8 +198,26 @@ defmodule PhoenixKitAI.ObanPrefixTest do
 
     test "is nil with no instance running" do
       stop_supervised!(Oban)
+      wait_until_unregistered(Oban)
 
       assert ObanQuery.prefix() == nil
+    end
+  end
+
+  # `stop_supervised!/1` returns once the supervisor process has exited, but
+  # the Registry drops its entries when it processes the DOWN, which can lag
+  # by a scheduler cycle — `Oban.config/1` right after the stop would still
+  # see the dead instance's config and race it.
+  defp wait_until_unregistered(name, attempts \\ 200)
+
+  defp wait_until_unregistered(_name, 0), do: :ok
+
+  defp wait_until_unregistered(name, attempts) do
+    if Oban.Registry.whereis(name) do
+      Process.sleep(1)
+      wait_until_unregistered(name, attempts - 1)
+    else
+      :ok
     end
   end
 end

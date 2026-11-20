@@ -948,7 +948,12 @@ Test database `phoenix_kit_ai_test`.
   let the next `mix test` build it, or point `PGDATABASE` at a new one.
 - `test_helper.exs` explicitly `Code.require_file`s the support modules (Elixir
   1.19's `mix test` no longer auto-loads them), then boots the minimal runtime
-  the suite needs: `PhoenixKit.PubSub.Manager`, `PhoenixKit.ModuleRegistry`,
+  the suite needs: `PhoenixKit.PubSub.Manager`, `PhoenixKit.Cache.Registry` +
+  the named `:settings` cache (without them every cached settings read/write
+  logs an "unknown registry" warning and the suite never exercises the cached
+  path production runs; `DataCase`/`LiveCase` clear the cache around each test
+  so a value read inside the sandbox's transaction cannot outlive the
+  rollback), `PhoenixKit.ModuleRegistry`,
   `PhoenixKit.Users.RateLimiter.Backend` (without it user fixtures die on a
   missing ETS table), `PhoenixKit.TaskSupervisor` (the endpoint form's
   validate-then-fetch uses `Task.Supervisor.start_child/2`),
