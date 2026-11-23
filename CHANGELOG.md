@@ -1,3 +1,20 @@
+## Unreleased
+
+No migration.
+
+### Added
+
+- **The provider's request id on a failed call's row.** `metadata.provider_error.request_id` holds the id the provider's error response carried — `request-id` (Anthropic), `x-request-id` (OpenAI and its shape), `x-amzn-requestid` (Amazon Bedrock) — next to the `status`, `code` and `retry_after_s` already kept there, to look the call up on the provider's side. It is not content, so it stays on the row with request content capture off.
+
+### Changed
+
+- **Failure log lines name the call.** `AI completion (anthropic) failed: 400 (invalid_request_error), read as insufficient_credits` — the kind of call and the endpoint's base provider (`Completion.call_label/2`), plus the provider's code; a refusal read as one of the module's classes now logs one line of its own. Never the provider's words.
+
+### Fixed
+
+- **Anthropic's credit-balance 400 is money.** A 400 `invalid_request_error` whose message starts "Your credit balance is too low" (the prepaid-balance body, on neither of Anthropic's error pages) is `{:error, :insufficient_credits}`, so it is never retried. It is matched only on a 400 and only at the start of the message, so a rate limit quoting the same words stays `:rate_limited`.
+- **An integer `error.code` in a 200 counts as the HTTP status only in 100–599**, on chat and on the image adapters' chat path; any other number (Z.ai's 1113, an overlong one) reads as a 502 and stays the row's `provider_error.code` instead of being dropped as a status-echo. A 200 error with a string or no code on the image chat path is a 502 too, not `:invalid_response_format`.
+
 ## 0.30.0 - 2026-11-15
 
 Requires PhoenixKit core 3.5.0 or later. No migration.

@@ -324,7 +324,7 @@ defmodule PhoenixKitAI.Completion do
 
     result =
       case ProviderError.class(status, error) do
-        nil -> status_error(status, response_body, label)
+        nil -> status_error(status, error, label)
         class -> {:error, class}
       end
 
@@ -346,43 +346,43 @@ defmodule PhoenixKitAI.Completion do
 
   defp log_classified(_result, _status, _error, _label), do: :ok
 
-  defp status_error(401, _body, _label), do: {:error, :invalid_api_key}
-  defp status_error(402, _body, _label), do: {:error, :insufficient_credits}
-  defp status_error(429, _body, _label), do: {:error, :rate_limited}
+  # The body's parsed error is threaded through, so a refusal decodes it
+  # once, not once per mapping step.
+  defp status_error(401, _error, _label), do: {:error, :invalid_api_key}
+  defp status_error(402, _error, _label), do: {:error, :insufficient_credits}
+  defp status_error(429, _error, _label), do: {:error, :rate_limited}
 
   # OpenRouter's answer to `provider.require_parameters` when no upstream
   # provider of the model takes every parameter sent. The model itself is
   # fine; the set of parameters is not. `chat_completion/3` fills in which
   # parameters were sent.
-  defp status_error(404, response_body, label) do
-    message = extract_error_message(response_body) || ""
+  defp status_error(404, error, label) do
+    message = if is_binary(error && error["message"]), do: error["message"], else: ""
 
     if message =~ ~r/requested parameters/i do
       Logger.warning("#{label} failed: 404 - no provider for the requested parameters")
 
       {:error, {:no_provider_for_params, []}}
     else
-      generic_error_status(404, response_body, label)
+      generic_error_status(404, error, label)
     end
   end
 
-  defp status_error(status, response_body, label),
-    do: generic_error_status(status, response_body, label)
+  defp status_error(status, error, label),
+    do: generic_error_status(status, error, label)
 
-  defp generic_error_status(status, response_body, label) do
+  defp generic_error_status(status, error, label) do
     # The status and the provider's code (its error `type` where it names no
     # other), never its words: they can echo the request or a key. The
     # request row keeps them, trimmed and masked, behind the content gate
     # (`ProviderError`). The code is a short token checked for key shapes.
-    case extract_error_message(response_body) do
-      nil ->
-        Logger.warning("#{label} failed: #{status} (no parsable error body)")
-
-      _message ->
-        case ProviderError.code(status, ProviderError.parse(response_body)) do
-          nil -> Logger.warning("#{label} failed: #{status}")
-          code -> Logger.warning("#{label} failed: #{status} (#{code})")
-        end
+    if is_binary(error && error["message"]) do
+      case ProviderError.code(status, error) do
+        nil -> Logger.warning("#{label} failed: #{status}")
+        code -> Logger.warning("#{label} failed: #{status} (#{code})")
+      end
+    else
+      Logger.warning("#{label} failed: #{status} (no parsable error body)")
     end
 
     {:error, {:api_error, status}}
