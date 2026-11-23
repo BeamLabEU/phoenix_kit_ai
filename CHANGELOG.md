@@ -1,4 +1,4 @@
-## Unreleased
+## 0.31.0 - 2026-11-23
 
 No migration.
 
