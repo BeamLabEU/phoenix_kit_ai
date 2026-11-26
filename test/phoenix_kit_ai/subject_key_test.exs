@@ -92,6 +92,16 @@ defmodule PhoenixKitAI.SubjectKeyTest do
   end
 
   describe "create_request/1" do
+    test "a key of 255 graphemes but more code points is hashed, and the row is kept" do
+      combining = String.duplicate("e\u0301", 255)
+      assert "sha256:" <> _ = Request.subject_key(combining)
+
+      assert {:ok, row} =
+               PhoenixKitAI.create_request(Map.put(base_attrs(), :subject_key, combining))
+
+      assert "sha256:" <> _ = row.subject_key
+    end
+
     test "stores a subject key" do
       assert {:ok, row} = PhoenixKitAI.create_request(Map.put(base_attrs(), :subject_key, 7))
       assert row.subject_key == "7"

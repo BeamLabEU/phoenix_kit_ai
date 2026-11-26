@@ -397,7 +397,7 @@ defmodule PhoenixKitAI.Request do
   A subject key as the usage row stores it and the spend caps look it up: a
   string (an integer or atom is turned into one), trimmed, without NUL
   characters; `nil` for anything else or a blank one. A key longer than
-  #{@subject_key_max} characters is replaced by `"sha256:"` and the hex digest
+  #{@subject_key_max} characters (code points) is replaced by `"sha256:"` and the hex digest
   of the whole key, so two long keys sharing a prefix never become one subject.
   """
   @spec subject_key(term()) :: String.t() | nil
@@ -407,7 +407,8 @@ defmodule PhoenixKitAI.Request do
         nil
 
       key ->
-        if String.length(key) > @subject_key_max,
+        # Code points, as `character varying(255)` counts them.
+        if length(String.codepoints(key)) > @subject_key_max,
           do: "sha256:" <> Base.encode16(:crypto.hash(:sha256, key), case: :lower),
           else: key
     end
