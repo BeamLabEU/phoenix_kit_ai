@@ -193,6 +193,22 @@ defmodule PhoenixKitAI.SubjectKeyTest do
                PhoenixKitAI.ask(ep.uuid, "c", subject_key: "tenant-1")
     end
 
+    test "a uuid of no user with a subject_key: the subject is capped, not escaped",
+         %{endpoint: ep} do
+      stub_chat()
+      {:ok, _} = Budget.set_limit(:user, "0.40")
+      ghost = Ecto.UUID.generate()
+
+      assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "a", user_uuid: ghost, subject_key: "visitor-9")
+      assert [%{user_uuid: nil, subject_key: "visitor-9"}] = rows(ep)
+
+      # The rows carry the subject, so the subject is what is counted.
+      assert {:error, {:budget_exceeded, :user}} =
+               PhoenixKitAI.ask(ep.uuid, "b", user_uuid: ghost, subject_key: "visitor-9")
+
+      assert [%{scope: :user}] = Budget.status(ep, user_uuid: ghost, subject_key: "visitor-9")
+    end
+
     test "a visitor id passed as user_uuid is recorded as the subject; on its own it is not capped",
          %{endpoint: ep} do
       stub_chat()

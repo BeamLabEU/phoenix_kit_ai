@@ -71,7 +71,9 @@ defmodule PhoenixKitAI.Budget do
   The per-user caps bite when the caller passes `user_uuid:` (a PhoenixKit
   user uuid: the usage row has a foreign key on it) or `subject_key:` (any
   string naming who asks — an anonymous visitor's own id, an API client; the
-  row's `subject_key`, module chain V7). With both, the user is the subject.
+  row's `subject_key`, module chain V7). With both, the user is the subject
+  — unless the uuid names no user, whose rows carry the `subject_key`: then
+  the subject is.
   A `user_uuid:` that names no user is written to the row's `subject_key`
   (and `metadata["unresolved_refs"]`), but on its own it still counts toward
   no per-user cap: pass the visitor's id as `subject_key:` to cap visitors
@@ -156,9 +158,9 @@ defmodule PhoenixKitAI.Budget do
 
     case Enum.find(@money_scopes, &(limits[&1] == :unmigrated)) do
       nil ->
-        entries = status(endpoint, opts, limits, now)
+        who = who(opts, limits)
+        entries = status(endpoint, who, limits, now)
         unread = take_unread()
-        who = who(opts)
 
         for %{scope: scope} = entry <- entries,
             scope not in unread,
@@ -193,7 +195,8 @@ defmodule PhoenixKitAI.Budget do
   end
 
   def status(%Endpoint{} = endpoint, opts) do
-    entries = status(endpoint, opts, limits(), DateTime.utc_now())
+    limits = limits()
+    entries = status(endpoint, who(opts, limits), limits, DateTime.utc_now())
     take_unread()
     entries
   end
@@ -202,9 +205,7 @@ defmodule PhoenixKitAI.Budget do
   # the usage table's column is a uuid, so its sum could only fail — and was
   # logged as the database failing. A `subject_key:` is the per-user scopes'
   # subject when there is no user.
-  defp status(endpoint, opts, limits, now) do
-    who = who(opts)
-
+  defp status(endpoint, who, limits, now) do
     for scope <- @scopes,
         limit = limits[scope],
         positive?(limit),
@@ -215,18 +216,38 @@ defmodule PhoenixKitAI.Budget do
   end
 
   # Whom the per-user scopes count: a PhoenixKit user, else the call's
-  # external subject, else nobody.
-  defp who(opts) do
+  # external subject, else nobody. With both, the user — when there is one:
+  # a uuid that names no user has its rows written without it (under the
+  # call's `subject_key`), so counting it would count nothing, and the
+  # caller who named a subject would never be capped. That costs one lookup,
+  # only for a call naming both while a per-user cap is set.
+  defp who(opts, limits) do
+    subject = PhoenixKitAI.Request.subject_key(opts[:subject_key])
+
     case user_uuid(opts[:user_uuid]) do
+      nil when is_binary(subject) ->
+        {:subject, subject}
+
       nil ->
-        case PhoenixKitAI.Request.subject_key(opts[:subject_key]) do
-          nil -> nil
-          key -> {:subject, key}
-        end
+        nil
+
+      uuid when is_binary(subject) ->
+        if user_capped?(limits) and not user?(uuid), do: {:subject, subject}, else: {:user, uuid}
 
       uuid ->
         {:user, uuid}
     end
+  end
+
+  defp user_capped?(limits), do: Enum.any?(@user_scopes, &positive?(limits[&1]))
+
+  # A failing lookup reads as a user: the call is counted as it was before.
+  defp user?(uuid) do
+    PhoenixKit.RepoHelper.repo().exists?(
+      from(u in PhoenixKit.Users.Auth.User, where: u.uuid == ^uuid)
+    )
+  rescue
+    _ -> true
   end
 
   defp user_uuid(value) when is_binary(value) and byte_size(value) == 36 do
