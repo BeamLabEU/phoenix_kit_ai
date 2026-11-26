@@ -132,8 +132,10 @@ defmodule PhoenixKitAI.VisionBatch do
          {:ok, group} <- check_group(opts, verb),
          {:ok, items} <- normalize_items(items),
          {:ok, budget} <- budget(opts[:budget]),
-         # The batch always has a run (its own when the caller names none).
-         :ok <- Runs.validate_ceiling(Keyword.put_new(opts, :run, "batch")),
+         # The batch always has a run (its own when the caller names none, or
+         # names one that is no tag, `run: nil` included).
+         :ok <-
+           Runs.validate_ceiling(Keyword.put(opts, :run, Guard.run_tag(opts[:run]) || "batch")),
          {:ok, endpoint} <- PhoenixKitAI.resolve_endpoint(endpoint) do
       run_tag = Guard.run_tag(opts[:run]) || "batch-" <> UUIDv7.generate()
       step = Guard.run_tag(opts[:step]) || Atom.to_string(verb)

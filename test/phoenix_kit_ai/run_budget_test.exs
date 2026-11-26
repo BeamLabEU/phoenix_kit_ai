@@ -141,6 +141,28 @@ defmodule PhoenixKitAI.RunBudgetTest do
     assert :ok = Runs.validate_ceiling(run: "x")
   end
 
+  test "a run tag cut at its length limit is checked as the rows carry it", %{endpoint: ep} do
+    stub(0.5)
+    # 201 characters: cut to 200, the cut ends in a space.
+    run = String.duplicate("x", 199) <> " y"
+    opts = [run: run, run_budget: "0.40"]
+
+    assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "a", opts)
+    assert {:error, {:run_budget_reached, _}} = PhoenixKitAI.ask(ep.uuid, "b", opts)
+  end
+
+  test "vision_batch with run: nil and a ceiling runs under its own run", %{endpoint: ep} do
+    stub(0.5, Jason.encode!(%{"ok" => true}))
+
+    assert {:ok, %{counts: %{ok: 1}}} =
+             PhoenixKitAI.vision_batch(ep.uuid, [@jpeg],
+               json: true,
+               cache: false,
+               run: nil,
+               run_budget: "1.00"
+             )
+  end
+
   test "vision_batch stops on the run's ceiling with stopped: :run_budget", %{endpoint: ep} do
     stub(0.5, Jason.encode!(%{"ok" => true}))
     items = for i <- 1..5, do: %{id: i, images: @jpeg <> <<i>>}
