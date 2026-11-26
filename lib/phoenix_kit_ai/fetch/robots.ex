@@ -97,8 +97,8 @@ defmodule PhoenixKitAI.Fetch.Robots do
     |> Enum.map(&line/1)
     |> Enum.reject(&is_nil/1)
     |> Enum.reduce({[], nil}, fn
-      {"user-agent", agent}, {groups, {agents, [], :agents}} ->
-        {groups, {[token(agent) | agents], [], :agents}}
+      {"user-agent", agent}, {groups, {agents, lines, :agents}} ->
+        {groups, {[token(agent) | agents], lines, :agents}}
 
       {"user-agent", agent}, {groups, current} ->
         {close(groups, current), {[token(agent)], [], :agents}}
@@ -106,6 +106,11 @@ defmodule PhoenixKitAI.Fetch.Robots do
       _line, {groups, nil} ->
         # A rule before any User-agent belongs to no group.
         {groups, nil}
+
+      # Crawl-delay is no rule of RFC 9309's: it does not end the run of
+      # User-agent lines that starts a group.
+      {"crawl-delay", _} = line, {groups, {agents, lines, mode}} ->
+        {groups, {agents, [line | lines], mode}}
 
       line, {groups, {agents, lines, _}} ->
         {groups, {agents, [line | lines], :rules}}
@@ -173,8 +178,10 @@ defmodule PhoenixKitAI.Fetch.Robots do
   # RFC 9309 §2.2.2: compared percent-encoded — a non-ASCII (or control or
   # space) octet encoded, an encoded unreserved character decoded, the hex
   # of every other escape upper-cased.
+  # Consecutive `*` are one (and would each cost a pass of the matcher).
   defp normalize(text) do
     text
+    |> String.replace(~r/\*{2,}/, "*")
     |> decode_unreserved()
     |> URI.encode(&(&1 > 0x20 and &1 < 0x7F))
   end
