@@ -323,6 +323,119 @@ defmodule PhoenixKitAI.FetchTest do
     end
   end
 
+  describe "fetch/2: robots.txt reading, encodings, attempts" do
+    defp routes(table) do
+      test = self()
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        send(test, {:hit, conn.request_path, Plug.Conn.get_req_header(conn, "user-agent")})
+        Map.get(table, conn.request_path, &text(&1, "", 404)).(conn)
+      end)
+    end
+
+    defp moved(conn, to), do: conn |> Plug.Conn.put_resp_header("location", to) |> text("", 302)
+
+    test "robots.txt behind a chain of redirects is read once, not checked against itself" do
+      routes(%{
+        "/robots.txt" => &moved(&1, "/rules"),
+        "/rules" => &moved(&1, "/rules-v2"),
+        "/rules-v2" => &text(&1, "User-agent: *\nDisallow: /private\n"),
+        "/open" => &html(&1, "<p>open</p>")
+      })
+
+      assert {:error, {:disallowed_by_robots, _}} =
+               Fetch.fetch("https://chain.test/private", opts())
+
+      assert {:ok, %{text: "open"}} = Fetch.fetch("https://chain.test/open", opts())
+      assert Enum.count(collect_hits(), &(&1 == "/robots.txt")) == 1
+    end
+
+    test "a robots.txt over 512 000 bytes: its first 512 000 bytes count" do
+      big = "User-agent: *\nDisallow: /private\n" <> String.duplicate("# padding\n", 60_000)
+
+      routes(%{"/robots.txt" => &text(&1, big), "/open" => &html(&1, "<p>open</p>")})
+
+      assert {:ok, %{text: "open"}} = Fetch.fetch("https://big.test/open", opts())
+
+      assert {:error, {:disallowed_by_robots, _}} =
+               Fetch.fetch("https://big.test/private", opts())
+    end
+
+    test "the robots cache is per product token; an unreadable file per call's policy" do
+      routes(%{
+        "/robots.txt" => &text(&1, "User-agent: BotA\nDisallow: /\n"),
+        "/page" => &html(&1, "<p>page</p>")
+      })
+
+      assert {:error, {:disallowed_by_robots, _}} =
+               Fetch.fetch("https://agents.test/page", opts(user_agent: "BotA/1.0"))
+
+      assert {:ok, _} = Fetch.fetch("https://agents.test/page", opts(user_agent: "BotB/1.0"))
+
+      routes(%{"/robots.txt" => &text(&1, "down", 503), "/page" => &html(&1, "<p>page</p>")})
+
+      assert {:error, {:disallowed_by_robots, _}} = Fetch.fetch("https://down2.test/page", opts())
+
+      # Cached as unreadable, not as the first caller's verdict.
+      assert {:ok, _} =
+               Fetch.fetch("https://down2.test/page", opts(robots_unreachable: :allow))
+    end
+
+    test "an IPv6 literal keeps its brackets in the robots.txt URL" do
+      test = self()
+
+      routes(%{
+        "/robots.txt" => fn conn ->
+          send(test, {:robots_at, conn.host, conn.port})
+          text(conn, "User-agent: *\nDisallow: /private\n")
+        end,
+        "/x" => &html(&1, "<p>x</p>")
+      })
+
+      assert {:ok, %{text: "x"}} = Fetch.fetch("http://[::1]:8080/x", opts())
+      assert_received {:robots_at, host, 8080} when host in ["::1", "[::1]"]
+
+      assert {:error, {:disallowed_by_robots, _}} =
+               Fetch.fetch("http://[::1]:8080/private", opts())
+    end
+
+    test "a name that does not resolve is refused like an internal one" do
+      assert {:error, {:unsafe_url, _}} =
+               Fetch.fetch("https://no-such-host.invalid/x", opts(allow_internal: false))
+    end
+
+    test "a body sent compressed although none was asked for is refused" do
+      routes(%{
+        "/gz" => fn conn ->
+          conn
+          |> Plug.Conn.put_resp_header("content-encoding", "gzip")
+          |> html(:zlib.gzip("<p>zipped</p>"))
+        end
+      })
+
+      assert {:error, {:unsupported_content_encoding, "gzip"}} =
+               Fetch.fetch("https://gz.test/gz", opts(robots: false))
+    end
+
+    test "attempts counts every request for the page, redirects included" do
+      counter = :counters.new(1, [])
+
+      routes(%{
+        "/start" => fn conn ->
+          :counters.add(counter, 1, 1)
+
+          if :counters.get(counter, 1) == 1,
+            do: text(conn, "busy", 503),
+            else: moved(conn, "/end")
+        end,
+        "/end" => &html(&1, "<p>end</p>")
+      })
+
+      assert {:ok, %{text: "end", attempts: 3}} =
+               Fetch.fetch("https://count.test/start", opts(robots: false))
+    end
+  end
+
   describe "Robots per RFC 9309" do
     test "a group applies only when its user-agent is our product token" do
       body = """

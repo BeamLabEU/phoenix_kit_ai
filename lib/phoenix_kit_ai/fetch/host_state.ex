@@ -35,7 +35,7 @@ defmodule PhoenixKitAI.Fetch.HostState do
   end
 
   @doc "The cached robots rules of `origin`, or nil (none, expired, or no process)."
-  @spec robots(String.t()) :: term() | nil
+  @spec robots(term()) :: term() | nil
   def robots(origin) do
     now = System.monotonic_time(:millisecond)
 
@@ -48,7 +48,7 @@ defmodule PhoenixKitAI.Fetch.HostState do
   end
 
   @doc "Caches `rules` for `origin` for `ttl_ms`."
-  @spec put_robots(String.t(), term(), non_neg_integer()) :: :ok
+  @spec put_robots(term(), term(), non_neg_integer()) :: :ok
   def put_robots(origin, rules, ttl_ms) do
     :ets.insert(@table, {{:robots, origin}, rules, System.monotonic_time(:millisecond) + ttl_ms})
     :ok

@@ -16,17 +16,23 @@ defmodule PhoenixKitAI.Fetch do
   ## What a fetch does
 
     1. **The URL is checked** like an image URL (`Providers.HTTP.host_class/2`):
-       http(s) only, and a host that is or resolves to an internal address is
-       refused (`{:error, {:unsafe_url, url}}`) unless `allow_internal: true`
-       (or `config :phoenix_kit_ai, :fetch, allow_internal: true`). Every
-       redirect hop is checked again; at most `max_redirects:`.
+       http(s) only, and a host that is or resolves to an internal address —
+       or does not resolve at all — is refused (`{:error, {:unsafe_url, url}}`)
+       unless `allow_internal: true` (or `config :phoenix_kit_ai, :fetch,
+       allow_internal: true`). Every redirect hop is checked again; at most
+       `max_redirects:`. The check resolves the name and the connection
+       resolves it again, so a host that changes its answer in between (DNS
+       rebinding) is out of its reach: a server that must never reach its
+       internal network should also firewall its egress.
     2. **robots.txt** of the URL's origin is read (and cached on the node for
-       `robots_ttl:` seconds) and matched for the `user_agent:`'s product
-       token. A disallowed path is `{:error, {:disallowed_by_robots, url}}`
-       and no request is made. A missing robots.txt (4xx) allows everything;
-       one that cannot be read (5xx, 429, unreachable) disallows everything
-       for a few minutes, as RFC 9309 asks — `robots_unreachable: :allow`
-       turns that around. `robots: false` skips it (your own sites).
+       `robots_ttl:` seconds, per origin and product token) and matched for
+       the `user_agent:`'s product token. A disallowed path is
+       `{:error, {:disallowed_by_robots, url}}` and no request is made. A
+       missing robots.txt (4xx) allows everything; one that cannot be read
+       (5xx, 429, unreachable) disallows everything for a few minutes, as
+       RFC 9309 asks — `robots_unreachable: :allow` turns that around. Only
+       its first 512 000 bytes are read. `robots: false` skips it (your own
+       sites).
     3. **The host's rate limit**: requests to one host start at least
        `rate_limit_ms:` apart on this node (the robots.txt `Crawl-delay`
        raises it, up to `max_crawl_delay_ms:`). The caller sleeps for its slot.
@@ -35,7 +41,9 @@ defmodule PhoenixKitAI.Fetch do
        `base_delay_ms × 2^(n-1)` (at most `max_delay_ms:`), or the
        `Retry-After` seconds when the server names them (capped the same).
     5. **The body** is read up to `max_bytes:`; past it the fetch is
-       `{:error, {:too_large, max}}`. HTML is turned into text by
+       `{:error, {:too_large, max}}`. No compression is asked for, and a body
+       sent compressed anyway is `{:error, {:unsupported_content_encoding,
+       encoding}}`. HTML is turned into text by
        `PhoenixKitAI.Fetch.Extract`; `text/plain` is kept as it is; anything
        else is `{:error, {:unsupported_content_type, type}}`.
 
@@ -55,7 +63,7 @@ defmodule PhoenixKitAI.Fetch do
         main_content?: true,       # the page marked its main content and that was kept
         bytes: 211_000,            # body as received
         text_bytes: 4_300,
-        attempts: 1,
+        attempts: 1,               # requests made for the page, redirects included
         fetched_at: ~U[…],
         html: "…"                  # only with `keep_html: true`
       }
@@ -143,7 +151,7 @@ defmodule PhoenixKitAI.Fetch do
 
     with {:ok, uri} <- check_url(url, opts),
          :ok <- check_robots(uri, opts),
-         {:ok, response, final_url, attempts} <- get(url, opts, opts[:max_redirects]) do
+         {:ok, response, final_url, attempts} <- get(url, opts, opts[:max_redirects], 0) do
       to_page(url, final_url, response, attempts, opts)
     end
   end
@@ -176,7 +184,9 @@ defmodule PhoenixKitAI.Fetch do
     case URI.parse(url) do
       %URI{scheme: scheme, host: host} = uri
       when scheme in ["http", "https"] and is_binary(host) and host != "" ->
-        if opts[:allow_internal] == true or HTTP.host_class(host, timeout: 5_000) != :internal,
+        # `:unresolved` is refused too: a name that resolves only by the time
+        # the connection asks again is what rebinding looks like.
+        if opts[:allow_internal] == true or HTTP.host_class(host, timeout: 5_000) == :public,
           do: {:ok, uri},
           else: {:error, {:unsafe_url, url}}
 
@@ -191,37 +201,54 @@ defmodule PhoenixKitAI.Fetch do
       else: {:error, {:disallowed_by_robots, URI.to_string(uri)}}
   end
 
+  # Cached per origin and product token (two agents read different groups);
+  # an unreadable file is cached as such, and each call's own
+  # `robots_unreachable:` decides what that means.
   defp robots(uri, opts) do
-    origin = origin(uri)
+    key = robots_key(uri, opts)
 
-    case HostState.robots(origin) do
-      nil ->
-        {rules, ttl} = read_robots(origin, opts)
-        HostState.put_robots(origin, rules, ttl)
-        rules
+    rules =
+      case HostState.robots(key) do
+        nil ->
+          {rules, ttl} = read_robots(origin(uri), opts)
+          HostState.put_robots(key, rules, ttl)
+          rules
 
-      rules ->
-        rules
+        rules ->
+          rules
+      end
+
+    cond do
+      rules != :unreachable -> rules
+      opts[:robots_unreachable] == :allow -> Robots.allow_all()
+      true -> Robots.deny_all()
     end
   end
 
+  defp robots_key(uri, opts), do: {origin(uri), agent_token(opts[:user_agent])}
+
   defp read_robots(origin, opts) do
     # robots.txt is fetched once, without retries: its absence or failure has
-    # a meaning of its own.
-    robots_opts = Keyword.merge(opts, max_attempts: 1, max_bytes: 512_000)
+    # a meaning of its own. Its redirects are not themselves checked against
+    # robots.txt (that would read robots.txt again, without end), and past
+    # 512 000 bytes the rest is not read (RFC 9309 §2.5).
+    robots_opts =
+      Keyword.merge(opts, max_attempts: 1, max_bytes: 512_000, robots: false, truncate: true)
 
-    case get(origin <> "/robots.txt", robots_opts, opts[:max_redirects]) do
-      {:ok, %{status: status, body: body}, _final, _attempts} when status in 200..299 ->
-        {Robots.parse(to_string(body), agent_token(opts[:user_agent])), opts[:robots_ttl] * 1_000}
+    case get(origin <> "/robots.txt", robots_opts, opts[:max_redirects], 0) do
+      {:ok, %{status: status, body: body} = response, _final, _attempts}
+      when status in 200..299 ->
+        if encoded?(response),
+          do: {:unreachable, @unreachable_ttl_ms},
+          else:
+            {Robots.parse(to_string(body), agent_token(opts[:user_agent])),
+             opts[:robots_ttl] * 1_000}
 
       {:ok, %{status: status}, _final, _attempts} when status in 400..499 and status != 429 ->
         {Robots.allow_all(), opts[:robots_ttl] * 1_000}
 
       _unreachable ->
-        rules =
-          if opts[:robots_unreachable] == :allow, do: Robots.allow_all(), else: Robots.deny_all()
-
-        {rules, @unreachable_ttl_ms}
+        {:unreachable, @unreachable_ttl_ms}
     end
   end
 
@@ -231,13 +258,14 @@ defmodule PhoenixKitAI.Fetch do
 
   # ── the request ──────────────────────────────────────────────────────
 
-  defp get(url, opts, redirects_left) do
+  # `before` is how many requests the earlier hops made.
+  defp get(url, opts, redirects_left, before) do
     case attempt(url, opts, 1) do
       {:ok, %{status: status} = response, attempts} when status in [301, 302, 303, 307, 308] ->
-        redirect(url, response, opts, redirects_left, attempts)
+        redirect(url, response, opts, redirects_left, before + attempts)
 
       {:ok, response, attempts} ->
-        {:ok, response, url, attempts}
+        {:ok, response, url, before + attempts}
 
       {:error, _} = error ->
         error
@@ -246,25 +274,21 @@ defmodule PhoenixKitAI.Fetch do
 
   defp redirect(_url, _response, _opts, 0, _attempts), do: {:error, :too_many_redirects}
 
-  defp redirect(url, response, opts, redirects_left, _attempts) do
+  # Each hop is checked like the first URL; `Robots.allowed?/2` always lets
+  # a `/robots.txt` through.
+  defp redirect(url, response, opts, redirects_left, attempts) do
     case Req.Response.get_header(response, "location") do
       [location | _] ->
         next = url |> URI.merge(location) |> URI.to_string()
 
         with {:ok, uri} <- check_url(next, opts),
-             :ok <- check_hop_robots(url, uri, opts),
-             do: get(next, opts, redirects_left - 1)
+             :ok <- check_robots(uri, opts),
+             do: get(next, opts, redirects_left - 1, attempts)
 
       [] ->
         {:error, {:redirect_without_location, url}}
     end
   end
-
-  # robots.txt itself is fetched whatever the rules say.
-  defp check_hop_robots(url, uri, opts),
-    do: if(robots_txt?(url), do: :ok, else: check_robots(uri, opts))
-
-  defp robots_txt?(url), do: String.ends_with?(URI.parse(url).path || "", "/robots.txt")
 
   defp attempt(url, opts, n) do
     wait_for_slot(url, opts)
@@ -306,7 +330,7 @@ defmodule PhoenixKitAI.Fetch do
         decode_body: false,
         receive_timeout: timeout,
         connect_options: [timeout: min(timeout, 10_000)],
-        into: bounded_collector(opts[:max_bytes])
+        into: bounded_collector(opts[:max_bytes], opts[:truncate] == true)
       ] ++ List.wrap(opts[:req_options]) ++ Application.get_env(:phoenix_kit_ai, :req_options, [])
 
     Req.request(req)
@@ -332,7 +356,7 @@ defmodule PhoenixKitAI.Fetch do
     delay =
       case URI.parse(url) do
         %URI{scheme: scheme, host: host} = uri when is_binary(scheme) and is_binary(host) ->
-          case HostState.robots(origin(uri)) do
+          case HostState.robots(robots_key(uri, opts)) do
             %{crawl_delay: seconds} when is_number(seconds) ->
               min(round(seconds * 1_000), opts[:max_crawl_delay_ms])
 
@@ -373,20 +397,26 @@ defmodule PhoenixKitAI.Fetch do
   # reason atom, else their module — never their message.
   defp transport_tag(%{__exception__: true, __struct__: module}), do: module
 
-  # Streams the body, halting once it outgrows `max`.
-  defp bounded_collector(max) do
+  # Streams the body, halting once it outgrows `max`: the body is then
+  # `{:too_large, seen}`, or with `truncate?` its first `max` bytes.
+  defp bounded_collector(max, truncate?) do
     fn {:data, chunk}, {req, resp} ->
-      {verdict, body} = collect(resp.body, chunk, max)
+      {verdict, body} = collect(resp.body, chunk, max, truncate?)
       {verdict, {req, %{resp | body: body}}}
     end
   end
 
-  defp collect({:too_large, _} = marker, _chunk, _max), do: {:halt, marker}
+  defp collect({:too_large, _} = marker, _chunk, _max, _truncate?), do: {:halt, marker}
 
-  defp collect(body, chunk, max) do
+  defp collect(body, chunk, max, truncate?) do
     body = if is_binary(body), do: body, else: ""
     seen = byte_size(body) + byte_size(chunk)
-    if seen > max, do: {:halt, {:too_large, seen}}, else: {:cont, body <> chunk}
+
+    cond do
+      seen <= max -> {:cont, body <> chunk}
+      truncate? -> {:halt, binary_part(body <> chunk, 0, max)}
+      true -> {:halt, {:too_large, seen}}
+    end
   end
 
   # ── the page ─────────────────────────────────────────────────────────
@@ -398,6 +428,9 @@ defmodule PhoenixKitAI.Fetch do
     cond do
       status not in 200..299 ->
         {:error, {:http_status, status}}
+
+      encoded?(response) ->
+        {:error, {:unsupported_content_encoding, content_encoding(response)}}
 
       type in @html_types or (type == nil and html?(body)) ->
         extracted = Extract.extract(body)
@@ -439,6 +472,17 @@ defmodule PhoenixKitAI.Fetch do
     if opts[:keep_html] == true, do: Map.put(page, :html, body), else: page
   end
 
+  # A body sent compressed although no compression was asked for: its bytes
+  # are not the text.
+  defp encoded?(response), do: content_encoding(response) not in [nil, "identity"]
+
+  defp content_encoding(response) do
+    case Req.Response.get_header(response, "content-encoding") do
+      [value | _] -> value |> String.trim() |> String.downcase()
+      [] -> nil
+    end
+  end
+
   defp content_type(response) do
     case Req.Response.get_header(response, "content-type") do
       [value | _] -> value |> String.split(";") |> hd() |> String.trim() |> String.downcase()
@@ -459,6 +503,8 @@ defmodule PhoenixKitAI.Fetch do
 
   defp origin(%URI{scheme: scheme, host: host, port: port}) do
     default? = (scheme == "http" and port == 80) or (scheme == "https" and port == 443)
+    # An IPv6 literal goes back in brackets (`URI` hands it out without).
+    host = if String.contains?(host, ":"), do: "[#{host}]", else: host
     "#{scheme}://#{host}" <> if(default? or is_nil(port), do: "", else: ":#{port}")
   end
 
