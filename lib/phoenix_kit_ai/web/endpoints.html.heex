@@ -387,7 +387,7 @@
             <div class="join">
               <%= for page_num <- 1..total_pages do %>
                 <button
-                  class={"join-item btn btn-sm #{if page_num == @page, do: "btn-active", else: ""}"}
+                  class={"join-item btn btn-sm #{if page_num == @endpoints_page, do: "btn-active", else: ""}"}
                   phx-click="goto_page"
                   phx-value-page={page_num}
                 >

@@ -144,7 +144,7 @@ defmodule PhoenixKitAI.Web.Endpoints do
       |> assign(:sort_by, :inserted_at)
       |> assign(:sort_dir, :desc)
       |> assign(:sort_options, sort_options())
-      |> assign(:page, 1)
+      |> assign(:endpoints_page, 1)
       |> assign(:page_size, @page_size)
       |> assign(:total_endpoints, 0)
       |> assign(:active_tab, "endpoints")
@@ -212,7 +212,7 @@ defmodule PhoenixKitAI.Web.Endpoints do
             socket
             |> assign(:sort_by, sort_by)
             |> assign(:sort_dir, sort_dir)
-            |> assign(:page, page)
+            |> assign(:endpoints_page, page)
             |> maybe_reload_endpoints(tab)
             |> JournalRetention.assign_retained_since()
 
@@ -587,7 +587,7 @@ defmodule PhoenixKitAI.Web.Endpoints do
   defp reload_endpoints(socket) do
     sort_by = socket.assigns.sort_by
     sort_dir = socket.assigns.sort_dir
-    page = socket.assigns.page
+    page = socket.assigns.endpoints_page
     page_size = socket.assigns.page_size
 
     {endpoints, total} =
