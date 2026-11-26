@@ -58,9 +58,10 @@ defmodule PhoenixKitAI.Review do
     |> cast(attrs, [:kind, :subject_type, :subject_id, :request_uuid, :payload, :metadata])
     |> validate_required([:kind])
     |> update_change(:kind, &String.trim/1)
-    |> validate_length(:kind, min: 1, max: 100)
-    |> validate_length(:subject_type, max: 100)
-    |> validate_length(:subject_id, max: 255)
+    # In code points, as the `character varying` columns count.
+    |> validate_length(:kind, min: 1, max: 100, count: :codepoints)
+    |> validate_length(:subject_type, max: 100, count: :codepoints)
+    |> validate_length(:subject_id, max: 255, count: :codepoints)
     |> foreign_key_constraint(:request_uuid, name: :phoenix_kit_ai_reviews_request_uuid_fkey)
   end
 

@@ -115,6 +115,49 @@ defmodule PhoenixKitAI.ReviewsTest do
              Reviews.reject(raising, on_decide: fn _review -> {:ok, :done} end)
   end
 
+  test "a handler that throws or exits rolls back too, and decide/3 still returns" do
+    thrown = review()
+
+    assert {:error, {:on_decide_failed, {:thrown, :term}}} =
+             Reviews.confirm(thrown, on_decide: fn _ -> throw(:secret) end)
+
+    assert TestRepo.get!(Review, thrown.uuid).status == "pending"
+
+    exited = review()
+
+    assert {:error, {:on_decide_failed, {:exited, :term}}} =
+             Reviews.confirm(exited, on_decide: fn _ -> exit(:secret) end)
+
+    assert TestRepo.get!(Review, exited.uuid).status == "pending"
+  end
+
+  test "an actor_uuid that names no user is refused, not raised; a real one is recorded" do
+    review = review()
+    assert {:error, :unknown_actor} = Reviews.confirm(review, actor_uuid: Ecto.UUID.generate())
+    assert TestRepo.get!(Review, review.uuid).status == "pending"
+
+    user = Fixtures.user_fixture()
+    assert {:ok, %Review{decided_by_uuid: by}} = Reviews.confirm(review, actor_uuid: user.uuid)
+    assert by == user.uuid
+  end
+
+  test "lengths are counted in code points, as the columns count them" do
+    # 100 graphemes of two code points each: 200 characters to Postgres.
+    combining = String.duplicate("e\u0301", 100)
+    assert {:error, %Ecto.Changeset{}} = Reviews.create(%{kind: combining})
+
+    assert {:error, %Ecto.Changeset{}} =
+             Reviews.create(%{kind: "k", subject_id: combining <> String.duplicate("x", 100)})
+
+    review = review()
+
+    assert {:ok, %Review{decision_note: note}} =
+             Reviews.reject(review, note: String.duplicate("e\u0301", 1_000))
+
+    assert String.length(note) == 500
+    assert length(String.codepoints(note)) == 1_000
+  end
+
   test "on_decide: wins over the configured handler; a kind with no handler has no effect" do
     review = review()
 
@@ -143,6 +186,13 @@ defmodule PhoenixKitAI.ReviewsTest do
     assert TestRepo.get!(Review, review.uuid).decision_note == "fixed the greeting"
     uuid = review.uuid
     assert_received {:decided, ^uuid, "confirmed", %{"text" => "Hello"}}
+
+    # What was proposed is the payload at the decision, not a value the
+    # creator put in metadata under that name.
+    planted = review(%{metadata: %{"proposed_payload" => %{"text" => "planted"}}})
+
+    assert {:ok, %Review{metadata: %{"proposed_payload" => %{"text" => "Hi"}}}} =
+             Reviews.confirm(planted, payload: %{"text" => "Edited"})
   end
 
   test "with a scope, deciding needs ai.manage or an Owner, and records the person" do

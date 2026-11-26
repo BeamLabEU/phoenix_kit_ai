@@ -37,10 +37,11 @@ defmodule PhoenixKitAI.Reviews do
   optionally `summary/1` for the admin list), or for one call
   `on_decide: fun` (arity 1), which wins over the configured handler. It is
   called with the decided review **inside the decision's transaction**: `:ok`
-  or `{:ok, _}` commits both, `{:error, reason}` — or a raise — rolls the
-  decision back (`{:error, {:on_decide_failed, reason}}`; a raise is reported by
-  its exception module only), so the review stays pending and can be decided
-  again. Keep the handler to database work; anything slow or external (a
+  or `{:ok, _}` commits both, `{:error, reason}` — or a raise, throw or exit —
+  rolls the decision back (`{:error, {:on_decide_failed, reason}}`; a raise is
+  reported by its exception module only, a throw or exit as
+  `{:thrown, :term}` / `{:exited, :term}`), so the review stays pending and
+  can be decided again. Keep the handler to database work; anything slow or external (a
   mail, an API) belongs in a job the handler enqueues, which then commits or
   rolls back with the decision. A kind with no handler is decided with no
   effect.
@@ -49,12 +50,17 @@ defmodule PhoenixKitAI.Reviews do
 
   With `scope:` (a `PhoenixKit.Users.Auth.Scope`) the decision needs
   `ai.manage` or an Owner, and the person is recorded; app code deciding on
-  its own (a rule, a job) passes `actor_uuid:` or nothing. The admin page
+  its own (a rule, a job) passes `actor_uuid:` (a user's uuid:
+  `{:error, :unknown_actor}` for one that names no user) or nothing. The admin page
   (AI → Reviews) always passes the viewer's scope.
 
   A confirmation may carry `payload:` — the reviewer's edit — which replaces
   the payload; the first proposal stays in `metadata["proposed_payload"]`.
   `note:` is kept as `decision_note` (cut to 1 000 characters).
+
+  Called inside a transaction of the caller's, the decision commits — or
+  not — with it, but the broadcast and the Activity entry below happen when
+  `decide/3` returns, before the caller's transaction commits.
 
   Every decision broadcasts `{:review_decided, uuid}` on
   `phoenix_kit:ai:reviews` (creation: `{:review_created, uuid}`) and writes an
@@ -68,6 +74,7 @@ defmodule PhoenixKitAI.Reviews do
 
   alias PhoenixKit.PubSub.Manager, as: PubSubManager
   alias PhoenixKit.Users.Auth.Scope
+  alias PhoenixKit.Users.Auth.User
   alias PhoenixKitAI.{Guard, Review}
 
   @topic "phoenix_kit:ai:reviews"
@@ -150,7 +157,7 @@ defmodule PhoenixKitAI.Reviews do
   `payload:` (on a confirmation), `on_decide:`.
 
   Errors: `:not_found`, `{:already_decided, status}`, `:forbidden`,
-  `:invalid_decision`, `{:on_decide_failed, reason}`.
+  `:unknown_actor`, `:invalid_decision`, `{:on_decide_failed, reason}`.
   """
   @spec decide(Review.t() | String.t(), decision() | String.t(), keyword()) ::
           {:ok, Review.t()} | {:error, term()}
@@ -223,7 +230,7 @@ defmodule PhoenixKitAI.Reviews do
   defp actor(opts) do
     case Keyword.get(opts, :scope) do
       nil ->
-        {:ok, opts |> Keyword.get(:actor_uuid) |> uuid_or_nil()}
+        opts |> Keyword.get(:actor_uuid) |> uuid_or_nil() |> known_actor()
 
       %Scope{} = scope ->
         if Guard.may_manage?(scope),
@@ -233,6 +240,16 @@ defmodule PhoenixKitAI.Reviews do
       _other ->
         {:error, :forbidden}
     end
+  end
+
+  # `decided_by_uuid` references the users: a uuid of no user would fail the
+  # update with a raise.
+  defp known_actor(nil), do: {:ok, nil}
+
+  defp known_actor(uuid) do
+    if repo().exists?(from(u in User, where: u.uuid == ^uuid)),
+      do: {:ok, uuid},
+      else: {:error, :unknown_actor}
   end
 
   defp uuid_or_nil(value) when is_binary(value) do
@@ -280,7 +297,9 @@ defmodule PhoenixKitAI.Reviews do
   end
 
   defp maybe_edit_payload(review, "confirmed", %{} = payload) when payload != review.payload do
-    metadata = Map.put_new(review.metadata || %{}, "proposed_payload", review.payload)
+    # A review is decided once, so this is the first edit: what was proposed
+    # is the payload now, whatever the creator put in `metadata`.
+    metadata = Map.put(review.metadata || %{}, "proposed_payload", review.payload)
 
     review
     |> Ecto.Changeset.change(payload: payload, metadata: metadata)
@@ -292,7 +311,8 @@ defmodule PhoenixKitAI.Reviews do
   defp note(note) when is_binary(note) do
     case String.trim(note) do
       "" -> nil
-      text -> String.slice(text, 0, Review.note_max())
+      # In code points, as the column's CHECK (`char_length`) counts.
+      text -> text |> String.codepoints() |> Enum.take(Review.note_max()) |> Enum.join()
     end
   end
 
@@ -357,6 +377,9 @@ defmodule PhoenixKitAI.Reviews do
     fun.(review)
   rescue
     error -> {:error, {:raised, error.__struct__}}
+  catch
+    :throw, _value -> {:error, {:thrown, :term}}
+    :exit, _reason -> {:error, {:exited, :term}}
   end
 
   defp handler_result(:ok), do: :ok
