@@ -1331,7 +1331,9 @@ defmodule PhoenixKitAI do
       PhoenixKitAI.GuardWatch,
       PhoenixKitAI.Cache,
       PhoenixKitAI.Limiter,
-      PhoenixKitAI.RequestLog
+      PhoenixKitAI.RequestLog,
+      # robots.txt cache and per-host pace of `PhoenixKitAI.Fetch`.
+      PhoenixKitAI.Fetch.HostState
     ]
   end
 

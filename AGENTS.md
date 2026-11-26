@@ -55,6 +55,10 @@ host supplies endpoint and router (`config/` exists only for tests).
   The migration is opt-in: a host calls
   `PhoenixKit.ModuleRegistry.run_all_legacy_migrations/0` from
   `Application.start/2`, which invokes `PhoenixKitAI.migrate_legacy/0`.
+- **No crawling of its own.** `PhoenixKitAI.Fetch` fetches one page when
+  a host asks (robots.txt, per-host pace, retries, clean text); the host
+  owns the crawl — what to visit, when, and what to do with the text. No
+  JavaScript is run.
 - **No public HTTP/API surface.** Admin-only; consumers call the `PhoenixKitAI`
   context module.
 - **No file storage.** Image verbs take bytes or URLs in and hand bytes back;
@@ -400,6 +404,8 @@ lib/phoenix_kit_ai/
   vision_batch.ex                PhoenixKitAI.VisionBatch — one vision verb over many items, per-item status, budget and fatal stop
   runs.ex                        PhoenixKitAI.Runs — a run's totals from the journal (`run:` / `step:` tags), its ceiling (`run_budget:`)
   content_hashes.ex content_hash.ex   PhoenixKitAI.ContentHashes — "has this content changed": a stored hash per (namespace, source key)
+  fetch.ex fetch/                PhoenixKitAI.Fetch — optional page fetching for crawl-style input: robots.txt (fetch/robots.ex), per-host pace and robots cache
+                                 (fetch/host_state.ex, in children/0), retries, a size bound, main-content extraction to clean text (fetch/extract.ex)
   openrouter_client.ex           generic across providers despite the name
   embedding_conventions.ex       PhoenixKitAI.EmbeddingConventions — per-model-family query/document conventions (`input_type`, prefixes, instructions), batch limits
   capabilities.ex                what a model can do (catalogue + declared), ETS cache process
@@ -627,6 +633,7 @@ so the context function gets that same, current scope.
 | `:log_cache_hits` | `true` | `false` skips the zero-cost usage row of a cache hit (a call's `log_cache_hit:` wins); the hit telemetry event still fires |
 | `:box_formats` | `%{}` | Model-id prefix → how that model writes a box (`:yx_1000`, `:xy_1000`, `:xy_fraction`, `:yx_fraction`), merged over the built-in table (`PhoenixKitAI.Box.format_for/2`; longest prefix wins; a call's `box_format:` wins over both). An unknown value is ignored with a warning |
 | `:allow_internal_image_urls` | `false` | Lift the image-fetch host policy (loopback / link-local / RFC 1918 / `.local`, resolved addresses included) — tests and air-gapped installs only; separate from the endpoint base-URL switch |
+| `:fetch` | `[]` | Defaults of `PhoenixKitAI.Fetch` (a call's options win): `user_agent:`, `robots:` (`true`), `robots_ttl:` (3 600 s), `robots_unreachable:` (`:deny`), `rate_limit_ms:` (1 000 per host), `max_crawl_delay_ms:` (30 000), `max_attempts:` (3), `base_delay_ms:` (500), `max_delay_ms:` (10 000), `timeout:` (15 000), `max_bytes:` (5 000 000), `max_redirects:` (5), `allow_internal:` (`false` — internal hosts refused like image URLs), `keep_html:`, `headers:`, `req_options:` |
 | `:journal_prune` | `[]` | Options of the journal cleanup (`PhoenixKitAI.JournalPruneWorker` → `Retention.run/3`): `request_batch:` 1 000, `content_batch:` 500 (halved after a chunk's `statement_timeout`, down to `content_min_batch:` 50, which is capped at `content_batch`), `event_batch:` 1 000, `pause_ms:` 50 between chunks (at most 5 000; a longer one is 5 000, with a warning), `max_rows:` 1 000 000 per counter per run, `statement_timeout_ms:` 30 000 and `lock_timeout_ms:` 5 000 per chunk, `time_limits:` `%{requests: 600_000, content: 360_000, guard_reasons: 60_000, guard_events: 120_000}` (ms). An invalid value falls back to its default with a warning; time limits that would not fit in the job's 25-minute `timeout/1` — their sum plus, per counter, one `pause_ms` and one chunk and one probe at `statement_timeout_ms` + 5 s (a counter overruns its slice by at most that; the content step starts no later range once its slice is over), plus a minute — fall back to the defaults as a whole, and a `statement_timeout_ms` too long for even the default slices (32 500 − `pause_ms` / 2 or more; 32 475 at the default pause) is lowered, with a warning naming it, to the largest that fits (`Retention.run_options/1`; the run never budgets past `timeout/1`). `lock_timeout_ms` is not part of the budget: PostgreSQL's statement timeout bounds a lock wait too. `:now` and `:actor_uuid` are ignored (they are the job's own); a value that is not a keyword list is ignored with a warning. `preview_timeout_ms:` (60 000) is the statement and lock timeout of a preview's counts, read separately; past it the preview is `{:error, :preview_timeout}` |
 
 ### Providers

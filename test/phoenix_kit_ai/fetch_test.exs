@@ -1,0 +1,362 @@
+defmodule PhoenixKitAI.FetchTest do
+  @moduledoc """
+  `PhoenixKitAI.Fetch` against `Req.Test` stubs — no network: robots.txt,
+  retries, the per-host pace, redirects, the size bound and the extraction.
+  """
+
+  use ExUnit.Case, async: false
+
+  @moduletag :capture_log
+
+  alias PhoenixKitAI.Fetch
+  alias PhoenixKitAI.Fetch.{Extract, HostState, Robots}
+
+  @page """
+  <!doctype html>
+  <html lang="et">
+  <head>
+    <title>Saal A — Example</title>
+    <meta name="description" content="A hall for 40 &amp; more">
+    <meta property="og:site_name" content="Example">
+    <link rel="canonical" href="https://example.test/saal-a">
+    <style>body { color: red }</style>
+    <script>var nav = "<nav>not a tag</nav>";</script>
+  </head>
+  <body>
+    <header><a href="/">Home</a> <a href="/halls">Halls</a></header>
+    <nav><ul><li><a href="/a">A</a></li><li><a href="/b">B</a></li></ul></nav>
+    <div class="cookie-banner">We use cookies. <button>OK</button></div>
+    <main>
+      <h1>Saal A</h1>
+      <p>A bright hall with room for forty people, a projector and a small kitchen.</p>
+      <ul><li><p>Projector</p></li><li>Kitchen</li></ul>
+      <p>Price: 50&nbsp;€ per hour &mdash; weekends 70&#160;€.</p>
+      <div class="share"><a href="/fb">Facebook</a> <a href="/x">X</a></div>
+    </main>
+    <aside>Other halls nearby</aside>
+    <footer>© Example 2026 · <a href="/privacy">Privacy</a></footer>
+  </body>
+  </html>
+  """
+
+  setup do
+    case Process.whereis(HostState) do
+      nil -> start_supervised!(HostState)
+      _ -> :ok
+    end
+
+    HostState.clear()
+    on_exit(&HostState.clear/0)
+    :ok
+  end
+
+  defp opts(extra \\ []) do
+    Keyword.merge(
+      [
+        req_options: [plug: {Req.Test, __MODULE__}],
+        allow_internal: true,
+        rate_limit_ms: 0,
+        base_delay_ms: 0
+      ],
+      extra
+    )
+  end
+
+  # Routes by path: robots.txt answers `robots`, everything else `page`.
+  defp stub(robots, page) do
+    test = self()
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      send(test, {:hit, conn.request_path, Plug.Conn.get_req_header(conn, "user-agent")})
+
+      case conn.request_path do
+        "/robots.txt" -> robots.(conn)
+        _ -> page.(conn)
+      end
+    end)
+  end
+
+  defp html(conn, body, status \\ 200) do
+    conn
+    |> Plug.Conn.put_resp_content_type("text/html")
+    |> Plug.Conn.send_resp(status, body)
+  end
+
+  defp text(conn, body, status \\ 200) do
+    conn
+    |> Plug.Conn.put_resp_content_type("text/plain")
+    |> Plug.Conn.send_resp(status, body)
+  end
+
+  describe "fetch/2" do
+    test "returns the main content as clean text, with the head's metadata" do
+      stub(&text(&1, "", 404), &html(&1, @page))
+
+      assert {:ok, page} = Fetch.fetch("https://example.test/saal-a", opts())
+
+      assert page.title == "Saal A — Example"
+      assert page.description == "A hall for 40 & more"
+      assert page.lang == "et"
+      assert page.canonical == "https://example.test/saal-a"
+      assert page.site_name == "Example"
+      assert page.status == 200
+      assert page.content_type == "text/html"
+      assert page.final_url == "https://example.test/saal-a"
+      assert page.main_content?
+      assert page.attempts == 1
+      assert page.bytes == byte_size(@page)
+      refute Map.has_key?(page, :html)
+
+      assert page.text ==
+               """
+               # Saal A
+
+               A bright hall with room for forty people, a projector and a small kitchen.
+
+               - Projector
+
+               - Kitchen
+
+               Price: 50 € per hour — weekends 70 €.\
+               """
+
+      for gone <- [
+            "Home",
+            "Halls",
+            "cookies",
+            "Other halls",
+            "Privacy",
+            "Facebook",
+            "color",
+            "nav"
+          ],
+          do: refute(page.text =~ gone, "#{gone} should be gone")
+
+      assert_received {:hit, "/robots.txt", [ua]}
+      assert ua =~ "PhoenixKitAI/"
+    end
+
+    test "robots.txt: a disallowed path is not requested, and the rules are cached per host" do
+      robots = """
+      User-agent: *
+      Disallow: /private
+      Allow: /private/open$
+      """
+
+      stub(&text(&1, robots), &html(&1, "<p>#{&1.request_path}</p>"))
+
+      assert {:error, {:disallowed_by_robots, "https://example.test/private/x"}} =
+               Fetch.fetch("https://example.test/private/x", opts())
+
+      assert {:ok, %{text: "/private/open"}} =
+               Fetch.fetch("https://example.test/private/open", opts())
+
+      assert {:ok, _} = Fetch.fetch("https://example.test/public", opts())
+
+      hits = collect_hits()
+      assert Enum.count(hits, &(&1 == "/robots.txt")) == 1
+      refute "/private/x" in hits
+      assert Fetch.allowed?("https://example.test/private/y", opts()) == false
+    end
+
+    test "robots.txt that cannot be read disallows, unless told otherwise; robots: false skips it" do
+      stub(&text(&1, "oops", 503), &html(&1, "<p>ok</p>"))
+
+      assert {:error, {:disallowed_by_robots, _}} = Fetch.fetch("https://down.test/a", opts())
+
+      HostState.clear()
+
+      assert {:ok, %{text: "ok"}} =
+               Fetch.fetch("https://down.test/a", opts(robots_unreachable: :allow))
+
+      HostState.clear()
+      assert {:ok, _} = Fetch.fetch("https://down.test/b", opts(robots: false))
+      refute "/robots.txt" in (collect_hits() |> Enum.drop(2))
+    end
+
+    test "retries a 503 and a 429 with backoff, then succeeds" do
+      counter = :counters.new(1, [])
+
+      stub(&text(&1, "", 404), fn conn ->
+        :counters.add(counter, 1, 1)
+
+        case :counters.get(counter, 1) do
+          1 -> text(conn, "busy", 503)
+          2 -> conn |> Plug.Conn.put_resp_header("retry-after", "0") |> text("slow down", 429)
+          _ -> html(conn, "<p>third time</p>")
+        end
+      end)
+
+      assert {:ok, %{text: "third time", attempts: 3}} =
+               Fetch.fetch("https://flaky.test/p", opts(max_attempts: 3))
+    end
+
+    test "gives up after max_attempts and says why" do
+      stub(&text(&1, "", 404), &text(&1, "busy", 503))
+
+      assert {:error, {:http_status, 503}} =
+               Fetch.fetch("https://flaky.test/p", opts(max_attempts: 2))
+
+      stub(&text(&1, "", 404), &Req.Test.transport_error(&1, :econnrefused))
+
+      assert {:error, {:fetch_failed, :econnrefused}} =
+               Fetch.fetch("https://flaky.test/p", opts(max_attempts: 2))
+    end
+
+    test "requests to one host start at least rate_limit_ms apart" do
+      stub(&text(&1, "", 404), &html(&1, "<p>x</p>"))
+      started = System.monotonic_time(:millisecond)
+
+      for n <- 1..3, do: {:ok, _} = Fetch.fetch("https://slow.test/#{n}", opts(rate_limit_ms: 60))
+
+      # robots.txt + 3 pages = 4 slots, 3 gaps of 60 ms.
+      assert System.monotonic_time(:millisecond) - started >= 180
+    end
+
+    test "Crawl-delay raises the pace" do
+      stub(&text(&1, "User-agent: *\nCrawl-delay: 0.1\n"), &html(&1, "<p>x</p>"))
+      {:ok, _} = Fetch.fetch("https://delay.test/1", opts())
+      started = System.monotonic_time(:millisecond)
+      {:ok, _} = Fetch.fetch("https://delay.test/2", opts())
+      {:ok, _} = Fetch.fetch("https://delay.test/3", opts())
+      assert System.monotonic_time(:millisecond) - started >= 100
+    end
+
+    test "follows redirects (checking each hop) up to max_redirects" do
+      stub(&text(&1, "", 404), fn conn ->
+        case conn.request_path do
+          "/old" -> conn |> Plug.Conn.put_resp_header("location", "/new") |> text("", 301)
+          "/loop" -> conn |> Plug.Conn.put_resp_header("location", "/loop") |> text("", 302)
+          _ -> html(conn, "<p>new</p>")
+        end
+      end)
+
+      assert {:ok, %{text: "new", final_url: "https://r.test/new", url: "https://r.test/old"}} =
+               Fetch.fetch("https://r.test/old", opts())
+
+      assert {:error, :too_many_redirects} =
+               Fetch.fetch("https://r.test/loop", opts(max_redirects: 2))
+    end
+
+    test "an internal host is refused unless allowed; only http(s)" do
+      assert {:error, {:unsafe_url, _}} =
+               Fetch.fetch("http://127.0.0.1/x", opts(allow_internal: false))
+
+      assert {:error, {:unsafe_url, _}} = Fetch.fetch("ftp://example.test/x", opts())
+      assert {:error, {:unsafe_url, _}} = Fetch.fetch("not a url", opts())
+    end
+
+    test "a body over max_bytes is refused; text/plain is kept; other types are not text" do
+      stub(&text(&1, "", 404), fn conn ->
+        case conn.request_path do
+          "/big" ->
+            html(conn, String.duplicate("a", 2_000))
+
+          "/plain" ->
+            text(conn, "  just text \n")
+
+          _ ->
+            conn
+            |> Plug.Conn.put_resp_content_type("image/png")
+            |> Plug.Conn.send_resp(200, "png")
+        end
+      end)
+
+      assert {:error, {:too_large, 1_000}} =
+               Fetch.fetch("https://t.test/big", opts(max_bytes: 1_000))
+
+      assert {:ok, %{text: "just text", content_type: "text/plain"}} =
+               Fetch.fetch("https://t.test/plain", opts())
+
+      assert {:error, {:unsupported_content_type, "image/png"}} =
+               Fetch.fetch("https://t.test/img", opts())
+    end
+
+    test "keep_html: true keeps the page" do
+      stub(&text(&1, "", 404), &html(&1, "<p>x</p>"))
+      assert {:ok, %{html: "<p>x</p>"}} = Fetch.fetch("https://k.test/", opts(keep_html: true))
+    end
+  end
+
+  describe "Robots" do
+    test "the longest matching rule wins, Allow on a tie; wildcards and $" do
+      rules =
+        Robots.parse(
+          """
+          # comment
+          User-agent: *
+          Disallow: /shop
+          Allow: /shop/public
+          Disallow: /*.pdf$
+          Disallow:
+          """,
+          "PhoenixKitAI"
+        )
+
+      refute Robots.allowed?(rules, "/shop/cart")
+      assert Robots.allowed?(rules, "/shop/public/item")
+      refute Robots.allowed?(rules, "/files/a.pdf")
+      assert Robots.allowed?(rules, "/files/a.pdf?x=1")
+      assert Robots.allowed?(rules, "/")
+    end
+
+    test "our own group wins over *, and groups naming us are merged" do
+      rules =
+        Robots.parse(
+          """
+          User-agent: *
+          Disallow: /
+
+          User-agent: OtherBot
+          User-agent: phoenixkitai
+          Disallow: /admin
+
+          User-agent: PhoenixKitAI
+          Crawl-delay: 2
+          """,
+          "PhoenixKitAI"
+        )
+
+      assert Robots.allowed?(rules, "/halls")
+      refute Robots.allowed?(rules, "/admin/x")
+      assert rules.crawl_delay == 2.0
+    end
+  end
+
+  describe "Extract" do
+    test "without main content marks, link rows and boilerplate classes are dropped" do
+      html = """
+      <body>
+        <div id="menu"><a href="/1">One</a> <a href="/2">Two</a></div>
+        <div class="article-body">
+          <p>The text of the article, long enough to be the content of the page by any measure.</p>
+          <p><a href="/a">Home</a> | <a href="/b">About</a> | <a href="/c">Contact</a></p>
+          <p>Read <a href="/more">more about halls</a> in the guide that explains everything there is to know.</p>
+        </div>
+      </body>
+      """
+
+      %{text: text, main_content?: false} = Extract.extract(html)
+      assert text =~ "The text of the article"
+      assert text =~ "Read more about halls in the guide"
+      refute text =~ "One"
+      refute text =~ "Contact"
+    end
+
+    test "entities, Latin-1 bytes and unclosed scripts" do
+      assert Extract.decode_entities("&lt;b&gt; &#x41;&#66; &unknown; &#0;") ==
+               "<b> AB &unknown; &#0;"
+
+      %{text: text} = Extract.extract("<p>caf\xE9</p><script>never closed")
+      assert text == "café"
+    end
+  end
+
+  defp collect_hits(acc \\ []) do
+    receive do
+      {:hit, path, _ua} -> collect_hits([path | acc])
+    after
+      0 -> Enum.reverse(acc)
+    end
+  end
+end
