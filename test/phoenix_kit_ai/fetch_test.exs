@@ -436,6 +436,20 @@ defmodule PhoenixKitAI.FetchTest do
     end
   end
 
+  describe "HostState" do
+    test "prune/0 deletes expired rules and past slots, keeps the live ones" do
+      HostState.put_robots({"https://old.test", "x"}, Robots.allow_all(), 0)
+      HostState.put_robots({"https://live.test", "x"}, Robots.allow_all(), 60_000)
+      assert HostState.reserve("old.test", 0) == 0
+      assert HostState.reserve("busy.test", 60_000) == 0
+
+      assert HostState.prune() == 2
+      assert HostState.robots({"https://live.test", "x"}) == Robots.allow_all()
+      # busy.test's next slot is still a minute away.
+      assert HostState.reserve("busy.test", 0) > 0
+    end
+  end
+
   describe "Robots per RFC 9309" do
     test "a group applies only when its user-agent is our product token" do
       body = """

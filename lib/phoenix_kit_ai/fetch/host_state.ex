@@ -9,11 +9,16 @@ defmodule PhoenixKitAI.Fetch.HostState do
   callers never take the same moment. Without it (a host app that does not
   start `PhoenixKitAI.children/0`) robots.txt is fetched on every call and no
   rate limit applies — `PhoenixKitAI.Fetch` says so in a warning, once.
+
+  Every 10 minutes the rows that no longer say
+  anything — expired rules, slots already in the past — are deleted, so a
+  crawl over many hosts does not keep one row per host for the node's life.
   """
 
   use GenServer
 
   @table :phoenix_kit_ai_fetch_hosts
+  @prune_every_ms 10 * 60_000
 
   @doc false
   def start_link(opts \\ []), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
@@ -65,11 +70,36 @@ defmodule PhoenixKitAI.Fetch.HostState do
     ArgumentError -> :ok
   end
 
+  @doc "Deletes the expired rules and past slots now; returns how many rows went."
+  @spec prune() :: non_neg_integer()
+  def prune do
+    now = System.monotonic_time(:millisecond)
+
+    :ets.select_delete(@table, [
+      {{{:robots, :_}, :_, :"$1"}, [{:"=<", :"$1", now}], [true]},
+      {{{:next, :_}, :"$1"}, [{:"=<", :"$1", now}], [true]}
+    ])
+  rescue
+    ArgumentError -> 0
+  end
+
   @impl GenServer
   def init(_opts) do
     :ets.new(@table, [:named_table, :public, :set, read_concurrency: true])
+    schedule_prune()
     {:ok, %{}}
   end
+
+  @impl GenServer
+  def handle_info(:prune, state) do
+    prune()
+    schedule_prune()
+    {:noreply, state}
+  end
+
+  def handle_info(_message, state), do: {:noreply, state}
+
+  defp schedule_prune, do: Process.send_after(self(), :prune, @prune_every_ms)
 
   @impl GenServer
   def handle_call({:reserve, host, interval_ms}, _from, state) do
