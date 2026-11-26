@@ -372,6 +372,19 @@ defmodule PhoenixKitAI.FetchTest do
       assert Extract.extract("<head><title>T &amp; U</title></head><p>x</p>").title == "T & U"
     end
 
+    test "main content marked by role=\"main\" ends at its own closing tag" do
+      html = """
+      <body>
+        <div role="main"><div><p>The main text, long enough to be most of the page by far.</p></div></div>
+        <p>Outside the main content.</p>
+      </body>
+      """
+
+      assert %{text: text, main_content?: true} = Extract.extract(html)
+      assert text =~ "The main text"
+      refute text =~ "Outside"
+    end
+
     test "entities, Latin-1 bytes and unclosed scripts" do
       assert Extract.decode_entities("&lt;b&gt; &#x41;&#66; &unknown; &#0;") ==
                "<b> AB &unknown; &#0;"

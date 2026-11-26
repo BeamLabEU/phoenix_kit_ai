@@ -235,7 +235,8 @@ defmodule PhoenixKitAI.Fetch.Extract do
   # ── stage 3: blocks ──────────────────────────────────────────────────
 
   # The walk's state: the open drop (tag name and depth of the same name),
-  # how deep inside main content and inside a link it is, the block being
+  # the open main-content elements (each its tag name and the depth of
+  # that name inside it, innermost first), how deep inside a link it is, the block being
   # filled (its kind and text) and the blocks done (newest first).
   defp blocks(html) do
     body =
@@ -244,7 +245,7 @@ defmodule PhoenixKitAI.Fetch.Extract do
         _ -> drop_elements(html, "head", :keep)
       end
 
-    state = %{drop: nil, main: 0, link: 0, kind: :p, text: [], links: [], done: []}
+    state = %{drop: nil, main: [], link: 0, kind: :p, text: [], links: [], done: []}
 
     ~r/<[^>]*>/
     |> Regex.split(body, include_captures: true)
@@ -304,10 +305,7 @@ defmodule PhoenixKitAI.Fetch.Extract do
   defp open(state, "a", _attrs), do: %{state | link: state.link + 1}
 
   defp open(state, name, attrs) do
-    state =
-      if name in @main or attrs["role"] == "main",
-        do: %{state | main: state.main + 1},
-        else: state
+    state = %{state | main: open_main(state.main, name, attrs)}
 
     case name do
       "li" -> %{state | kind: :li}
@@ -317,16 +315,29 @@ defmodule PhoenixKitAI.Fetch.Extract do
     end
   end
 
-  # A closing tag cannot tell whether its opening one had `role="main"`;
-  # `main` / `article` are what is counted down.
-  defp close(state, "a"), do: %{state | link: max(state.link - 1, 0)}
+  # Main content ends where the element that opened it closes — the same
+  # tag name back at its depth — so a `<div role="main">` ends at its own
+  # `</div>`, not at the page's end.
+  defp open_main(stack, name, attrs) do
+    cond do
+      name in @main or attrs["role"] == "main" -> [{name, 1} | stack]
+      match?([{^name, _} | _], stack) -> [{name, elem(hd(stack), 1) + 1} | tl(stack)]
+      true -> stack
+    end
+  end
 
-  defp close(state, name) when name in @main, do: %{state | main: max(state.main - 1, 0)}
+  defp close_main([{name, 1} | rest], name), do: rest
+  defp close_main([{name, depth} | rest], name), do: [{name, depth - 1} | rest]
+  defp close_main(stack, _name), do: stack
+
+  defp close(state, "a"), do: %{state | link: max(state.link - 1, 0)}
 
   # The kind a list item, heading or preformatted block gave lasts until it
   # closes, so a `<p>` inside an `<li>` is still the item.
-  defp close(state, name) when name in ~w(li h1 h2 h3 h4 h5 h6 pre), do: %{state | kind: :p}
-  defp close(state, _name), do: state
+  defp close(state, name) when name in ~w(li h1 h2 h3 h4 h5 h6 pre),
+    do: %{state | kind: :p, main: close_main(state.main, name)}
+
+  defp close(state, name), do: %{state | main: close_main(state.main, name)}
 
   defp flush(%{text: text, links: links, kind: kind, main: main} = state) do
     text = IO.iodata_to_binary(text)
@@ -344,7 +355,7 @@ defmodule PhoenixKitAI.Fetch.Extract do
             text: squeezed,
             chars: String.length(squeezed),
             link_chars: link_chars,
-            main?: main > 0
+            main?: main != []
           }
           | state.done
         ]
