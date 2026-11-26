@@ -369,9 +369,9 @@ defmodule PhoenixKitAI.Fetch do
   end
 
   defp transport_tag(%{__exception__: true, reason: reason}) when is_atom(reason), do: reason
+  # Req's errors are exceptions (and `request/2` rescues into one): their
+  # reason atom, else their module — never their message.
   defp transport_tag(%{__exception__: true, __struct__: module}), do: module
-  defp transport_tag(reason) when is_atom(reason), do: reason
-  defp transport_tag(_reason), do: :unknown
 
   # Streams the body, halting once it outgrows `max`.
   defp bounded_collector(max) do
