@@ -34,9 +34,6 @@ defmodule PhoenixKitAI.Fetch.Extract do
   @block ~w(address article blockquote body dd details div dl dt figcaption figure h1 h2 h3 h4 h5 h6 hr li main ol p pre section summary table tbody td tfoot th thead tr ul br)
   @main ~w(main article)
 
-  @unlikely ~r/(?:^|[\s_\-])(?:nav|navbar|menu|header|footer|sidebar|side-bar|breadcrumbs?|cookies?|consent|banner|advert|ads?|sponsor|social|share|sharing|related|recommended|comments?|popup|modal|newsletter|subscribe|signup|login|skip|masthead|toolbar|pagination|pager)(?:$|[\s_\-])/i
-  @likely ~r/article|content|main|post|entry|body|text|story/i
-
   @type t :: %{
           text: String.t(),
           title: String.t() | nil,
@@ -73,7 +70,7 @@ defmodule PhoenixKitAI.Fetch.Extract do
   @doc "Decodes HTML entities (named ones in common use, and every numeric one)."
   @spec decode_entities(String.t()) :: String.t()
   def decode_entities(text) do
-    Regex.replace(~r/&(#x[0-9a-fA-F]+|#[0-9]+|[a-zA-Z][a-zA-Z0-9]*);/, text, fn whole, name ->
+    Regex.replace(re(:entity), text, fn whole, name ->
       entity(name) || whole
     end)
   end
@@ -93,15 +90,75 @@ defmodule PhoenixKitAI.Fetch.Extract do
     end
   end
 
+  # Every scan here is linear in the page: a lazy `<x>.*?</x>` regex retries
+  # from each opening tag that has no closing one, which is quadratic on a
+  # hostile page (tens of thousands of `<script>` with no `</script>`).
   defp strip_raw(html) do
-    html = Regex.replace(~r/<!--.*?-->/s, html, " ")
-    html = Regex.replace(~r/<!\[CDATA\[.*?\]\]>/s, html, " ")
+    html = html |> drop_between("<!--", "-->") |> drop_between("<![CDATA[", "]]>")
 
-    Enum.reduce(@raw_text, html, fn tag, acc ->
-      acc = Regex.replace(~r/<#{tag}\b[^>]*>.*?<\/#{tag}\s*>/is, acc, " ")
-      # An unclosed one runs to the end of the page.
-      Regex.replace(~r/<#{tag}\b[^>]*>.*\z/is, acc, " ")
-    end)
+    # An unclosed one runs to the end of the page.
+    Enum.reduce(@raw_text, html, &drop_elements(&2, &1, :to_end))
+  end
+
+  # Each `open … close` span replaced by a space; an `open` with no `close`
+  # after it is left as it is.
+  defp drop_between(html, open, close), do: drop_between(html, open, close, [])
+
+  defp drop_between(html, open, close, acc) do
+    with {start, len} <- :binary.match(html, open),
+         rest = binary_part(html, start + len, byte_size(html) - start - len),
+         {close_start, close_len} <- :binary.match(rest, close) do
+      after_close = close_start + close_len
+      tail = binary_part(rest, after_close, byte_size(rest) - after_close)
+      drop_between(tail, open, close, [acc, binary_part(html, 0, start), " "])
+    else
+      :nomatch -> IO.iodata_to_binary([acc, html])
+    end
+  end
+
+  # Each `<tag …>…</tag>` (any case) replaced by a space, the first closing
+  # tag ending it. An opening tag with no closing one after it drops the rest
+  # of the page (`:to_end`) or is left as it is (`:keep`).
+  defp drop_elements(html, tag, unclosed) do
+    open = Regex.compile!("<#{tag}\\b[^>]*>", "i")
+    close = Regex.compile!("</#{tag}\\s*>", "i")
+    drop_elements(html, open, close, unclosed, 0, [])
+  end
+
+  defp drop_elements(html, open, close, unclosed, from, acc) do
+    case element_span(html, open, close, from) do
+      {:span, start, stop} ->
+        kept = binary_part(html, from, start - from)
+        drop_elements(html, open, close, unclosed, stop, [acc, kept, " "])
+
+      {:unclosed, start} when unclosed == :to_end ->
+        IO.iodata_to_binary([acc, binary_part(html, from, start - from), " "])
+
+      _none ->
+        IO.iodata_to_binary([acc, binary_part(html, from, byte_size(html) - from)])
+    end
+  end
+
+  # The byte span of the first element at or after `from`: `{:span, start, stop}`,
+  # `{:unclosed, start}` or nil. Each search starts where the last one ended.
+  defp element_span(html, open, close, from) do
+    with [{start, len}] <- Regex.run(open, html, return: :index, offset: from) do
+      case Regex.run(close, html, return: :index, offset: start + len) do
+        [{close_start, close_len}] -> {:span, start, close_start + close_len}
+        nil -> {:unclosed, start}
+      end
+    end
+  end
+
+  # The text between the first `<tag …>` and the `</tag>` after it, or nil.
+  defp element_text(html, tag) do
+    open = Regex.compile!("<#{tag}\\b[^>]*>", "i")
+    close = Regex.compile!("</#{tag}\\s*>", "i")
+
+    with [{start, len}] <- Regex.run(open, html, return: :index),
+         [{close_start, _}] <- Regex.run(close, html, return: :index, offset: start + len) do
+      binary_part(html, start + len, close_start - start - len)
+    end
   end
 
   # ── stage 2 ──────────────────────────────────────────────────────────
@@ -112,7 +169,7 @@ defmodule PhoenixKitAI.Fetch.Extract do
     %{
       title:
         clean(metas["og:title"]) ||
-          clean(first(~r/<title\b[^>]*>(.*?)<\/title\s*>/is, html)),
+          clean(element_text(html, "title")),
       description: clean(metas["description"]) || clean(metas["og:description"]),
       lang: clean(first(~r/<html\b[^>]*\blang\s*=\s*["']?([^"'\s>]+)/i, html)),
       canonical: canonical(html),
@@ -149,7 +206,8 @@ defmodule PhoenixKitAI.Fetch.Extract do
   end
 
   defp attributes(text) do
-    ~r/([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/
+    :attribute
+    |> re()
     |> Regex.scan(text)
     |> Map.new(fn [_ | [name | values]] ->
       {String.downcase(name), values |> Enum.reject(&(&1 == "")) |> List.first("")}
@@ -183,7 +241,7 @@ defmodule PhoenixKitAI.Fetch.Extract do
     body =
       case Regex.run(~r/<body\b[^>]*>(.*)/is, html, capture: :all_but_first) do
         [inner] -> inner
-        _ -> Regex.replace(~r/<head\b[^>]*>.*?<\/head\s*>/is, html, " ")
+        _ -> drop_elements(html, "head", :keep)
       end
 
     state = %{drop: nil, main: 0, link: 0, kind: :p, text: [], links: [], done: []}
@@ -295,10 +353,27 @@ defmodule PhoenixKitAI.Fetch.Extract do
     %{state | text: [], links: [], done: done}
   end
 
+  # Only the name is matched by a regex, anchored at the start; the rest is
+  # the attributes. (A single regex over the whole tag backtracks through a
+  # long run of whitespace at every position: quadratic on a hostile tag.)
   defp tag_info(tag) do
-    case Regex.run(~r/\A<\s*(\/?)\s*([a-zA-Z][a-zA-Z0-9:-]*)(.*?)\/?\s*>\z/s, tag) do
-      [_, "/", name, _] -> {:close, String.downcase(name)}
-      [_, "", name, attrs] -> {:open, String.downcase(name), attributes(attrs)}
+    with true <- String.ends_with?(tag, ">"),
+         inner = binary_part(tag, 1, byte_size(tag) - 2),
+         [whole, slash, name] <- Regex.run(re(:tag_name), inner) do
+      name = String.downcase(name)
+
+      if slash == "/" do
+        {:close, name}
+      else
+        attrs =
+          inner
+          |> binary_part(byte_size(whole), byte_size(inner) - byte_size(whole))
+          |> String.trim_trailing()
+          |> String.trim_trailing("/")
+
+        {:open, name, attributes(attrs)}
+      end
+    else
       _ -> nil
     end
   end
@@ -306,8 +381,8 @@ defmodule PhoenixKitAI.Fetch.Extract do
   defp unlikely?(attrs) do
     names = Enum.map_join(["class", "id", "role"], " ", &Map.get(attrs, &1, ""))
 
-    String.trim(names) != "" and Regex.match?(@unlikely, names) and
-      not Regex.match?(@likely, names)
+    String.trim(names) != "" and Regex.match?(re(:unlikely), names) and
+      not Regex.match?(re(:likely), names)
   end
 
   # ── stage 5 ──────────────────────────────────────────────────────────
@@ -326,6 +401,42 @@ defmodule PhoenixKitAI.Fetch.Extract do
   # A no-break space is a space here (`String.split/1` keeps it).
   defp squeeze(text),
     do: text |> String.replace("\u00A0", " ") |> String.split() |> Enum.join(" ")
+
+  # ── regexes ──────────────────────────────────────────────────────────
+
+  # The regexes run once per tag or text run, compiled once per node: a
+  # `~r` in a function body is compiled again on every call under OTP 28,
+  # which on a page of 100 000 tags is most of the time spent.
+  defp re(name) do
+    key = {__MODULE__, :re, name}
+
+    case :persistent_term.get(key, nil) do
+      nil ->
+        regex = compile(name)
+        :persistent_term.put(key, regex)
+        regex
+
+      regex ->
+        regex
+    end
+  end
+
+  defp compile(:entity), do: ~r/&(#x[0-9a-fA-F]+|#[0-9]+|[a-zA-Z][a-zA-Z0-9]*);/
+
+  # A name starts only where no name character precedes it, and nothing
+  # backtracks into it: otherwise a long name with no usable value after it
+  # is retried from each of its characters (quadratic).
+  defp compile(:attribute),
+    do:
+      ~r/(?<![-a-zA-Z0-9_:.])([a-zA-Z_:][-a-zA-Z0-9_:.]*+)\s*+=\s*+(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/
+
+  defp compile(:tag_name), do: ~r/\A\s*(\/?)\s*([a-zA-Z][a-zA-Z0-9:-]*)/
+
+  defp compile(:unlikely),
+    do:
+      ~r/(?:^|[\s_\-])(?:nav|navbar|menu|header|footer|sidebar|side-bar|breadcrumbs?|cookies?|consent|banner|advert|ads?|sponsor|social|share|sharing|related|recommended|comments?|popup|modal|newsletter|subscribe|signup|login|skip|masthead|toolbar|pagination|pager)(?:$|[\s_\-])/i
+
+  defp compile(:likely), do: ~r/article|content|main|post|entry|body|text|story/i
 
   # ── entities ─────────────────────────────────────────────────────────
 

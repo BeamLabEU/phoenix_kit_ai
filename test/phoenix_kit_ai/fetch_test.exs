@@ -343,6 +343,35 @@ defmodule PhoenixKitAI.FetchTest do
       refute text =~ "Contact"
     end
 
+    test "a hostile page is read in linear time (no regex retried from every opening tag)" do
+      # Each of these took tens of seconds at these sizes with lazy
+      # `<x>.*?</x>` regexes and a whole-tag regex; each is milliseconds now.
+      hostile = [
+        "<p>kept</p>" <> String.duplicate("<script>x", 20_000),
+        "<p>kept</p>" <> String.duplicate("<!-->", 40_000),
+        String.duplicate("<head>", 20_000) <> "<p>kept</p>",
+        String.duplicate("<title>", 20_000) <> "<p>kept</p>",
+        "<p>kept</p><a" <> String.duplicate(" ", 200_000) <> "!>",
+        "<p>kept</p><a " <> String.duplicate("a", 200_000) <> "=\">"
+      ]
+
+      for html <- hostile do
+        {microseconds, %{text: text}} = :timer.tc(fn -> Extract.extract(html) end)
+        assert text =~ "kept"
+        assert microseconds < 3_000_000, "took #{div(microseconds, 1000)} ms"
+      end
+    end
+
+    test "comments, CDATA and raw-text elements are dropped, whatever their case" do
+      html = """
+      <body><!-- <p>comment</p> --><p>one</p><SCRIPT type="x">two</Script >
+      <![CDATA[ three ]]><p>four</p><style>five</style><p>six</p><textarea>seven
+      """
+
+      assert Extract.extract(html).text == "one\n\nfour\n\nsix"
+      assert Extract.extract("<head><title>T &amp; U</title></head><p>x</p>").title == "T & U"
+    end
+
     test "entities, Latin-1 bytes and unclosed scripts" do
       assert Extract.decode_entities("&lt;b&gt; &#x41;&#66; &unknown; &#0;") ==
                "<b> AB &unknown; &#0;"
