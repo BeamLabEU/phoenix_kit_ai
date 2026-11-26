@@ -2,6 +2,14 @@ defmodule PhoenixKitAI.Web.EndpointsTest do
   use PhoenixKitAI.LiveCase
 
   describe "mount" do
+    test "keeps its page number under a module-specific assign, never a host layout's :page",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/en/admin/ai/endpoints")
+      assigns = :sys.get_state(view.pid).socket.assigns
+      refute Map.has_key?(assigns, :page)
+      assert assigns[:endpoints_page] == 1
+    end
+
     test "renders the endpoints list with the seeded endpoint", %{conn: conn} do
       fixture_endpoint(name: "Visible Endpoint")
 
