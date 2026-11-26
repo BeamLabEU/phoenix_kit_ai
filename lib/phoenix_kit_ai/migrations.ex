@@ -103,7 +103,7 @@ defmodule PhoenixKitAI.Migrations do
       takes audio with a chat request (`PhoenixKitAI.Capabilities`, the
       guard's `:audio_input` need). Down to 5 drops the column.
 
-  ## V7: visitors, one prompt key
+  ## V7: visitors, one prompt key, content hashes
 
     * `phoenix_kit_ai_requests.subject_key` — a nullable external subject
       (`character varying(255)`) next to `user_uuid`, for a caller that is not
@@ -123,6 +123,12 @@ defmodule PhoenixKitAI.Migrations do
       `fk_` one it is renamed, so the column is never without its key. Both
       names are looked up in the chain's own schema only. Down to 6 leaves
       the survivor alone (re-adding a duplicate restores nothing).
+    * `phoenix_kit_ai_content_hashes` — what a source (`namespace` +
+      `source_key`, unique together) held when last recorded: its content
+      hash, size, `changed_at` / `checked_at` and a small `metadata` map
+      (`PhoenixKitAI.ContentHashes`, for "has this page changed since the
+      last crawl"). `source_key` ≤ 2 048 characters (CHECK). Down to 6
+      drops it.
 
   ## Version marker
 
@@ -299,7 +305,7 @@ defmodule PhoenixKitAI.Migrations do
 
   defp version_down(7, prefix), do: v7_down_statements(prefix)
 
-  # ── V7: visitors, one prompt key ──────────────────────────────────────
+  # ── V7: visitors, one prompt key, content hashes ──────────────────────
 
   defp v7_statements(prefix) do
     requests = Helpers.qualify_table("phoenix_kit_ai_requests", prefix)
@@ -310,6 +316,33 @@ defmodule PhoenixKitAI.Migrations do
         "USING btree (subject_key, inserted_at) INCLUDE (cost) " <>
         "WHERE (((status)::text = 'success'::text) AND (subject_key IS NOT NULL))",
       prompt_fk_dedupe(prefix)
+    ] ++ content_hash_statements(prefix)
+  end
+
+  defp content_hash_statements(prefix) do
+    uuid7 = Helpers.uuid_v7_call(prefix)
+    hashes = Helpers.qualify_table("phoenix_kit_ai_content_hashes", prefix)
+
+    [
+      """
+      CREATE TABLE IF NOT EXISTS #{hashes} (
+        uuid uuid DEFAULT #{uuid7} NOT NULL,
+        namespace character varying(255) NOT NULL,
+        source_key text NOT NULL,
+        content_hash character varying(100) NOT NULL,
+        content_bytes integer,
+        metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+        changed_at timestamp without time zone NOT NULL,
+        checked_at timestamp without time zone NOT NULL,
+        inserted_at timestamp without time zone NOT NULL,
+        updated_at timestamp without time zone NOT NULL,
+        CONSTRAINT phoenix_kit_ai_content_hashes_pkey PRIMARY KEY (uuid),
+        CONSTRAINT phoenix_kit_ai_content_hashes_source_key_check
+          CHECK (char_length(source_key) <= 2048)
+      )
+      """,
+      "CREATE UNIQUE INDEX IF NOT EXISTS phoenix_kit_ai_content_hashes_namespace_source_key_index ON #{hashes} (namespace, source_key)",
+      "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_content_hashes_namespace_checked_at_index ON #{hashes} (namespace, checked_at)"
     ]
   end
 
@@ -353,6 +386,7 @@ defmodule PhoenixKitAI.Migrations do
     index = Helpers.qualify_table("phoenix_kit_ai_requests_subject_spend_idx", prefix)
 
     [
+      "DROP TABLE IF EXISTS #{Helpers.qualify_table("phoenix_kit_ai_content_hashes", prefix)}",
       "DROP INDEX IF EXISTS #{index}",
       "ALTER TABLE #{requests} DROP COLUMN IF EXISTS subject_key"
     ]

@@ -379,9 +379,13 @@ defmodule PhoenixKitAI.MigrationsTest do
       assert index =~ "'success'"
     end
 
-    test "down to 6 drops the column and its index; up adds them again" do
+    test "down to 6 drops the column, its index and the content hashes; up adds them again" do
       run(Migrations.down_statements("public", 6))
       assert subject_column() == []
+
+      assert query(
+               "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'phoenix_kit_ai_content_hashes'"
+             ) == []
 
       assert query(
                "SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'phoenix_kit_ai_requests_subject_spend_idx'"
@@ -392,6 +396,14 @@ defmodule PhoenixKitAI.MigrationsTest do
       run(Migrations.up_statements("public"))
       assert [["character varying", 255, "YES"]] = subject_column()
       assert marker() == "ai_schema:7"
+
+      assert indexdef("phoenix_kit_ai_content_hashes_namespace_source_key_index") =~
+               "UNIQUE INDEX"
+
+      assert {:error, %Postgrex.Error{postgres: %{code: :check_violation}}} =
+               Repo.query(
+                 "INSERT INTO phoenix_kit_ai_content_hashes (namespace, source_key, content_hash, changed_at, checked_at, inserted_at, updated_at) VALUES ('n', repeat('k', 2049), 'h', now(), now(), now(), now())"
+               )
     end
   end
 

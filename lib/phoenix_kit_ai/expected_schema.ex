@@ -22,7 +22,7 @@ defmodule PhoenixKitAI.ExpectedSchema do
   @schema_token "__SCHEMA__"
   @name_marker_exempt "__PK_NAME_EXEMPT__"
   @name_marker_always "__PK_NAME_ALWAYS__"
-  @chain_hash "86d799d7d939b8eab4a7ac322cecc6c166d3636eb1febb01200eac710d70d526"
+  @chain_hash "a583688d00f925bf0875651508fa25791ed08ee96491a7e61a59800c99ba53b1"
 
   def objects(prefix) do
     prefix = normalize_prefix!(prefix)
@@ -97,6 +97,17 @@ defmodule PhoenixKitAI.ExpectedSchema do
 
   defp raw_objects do
     [
+      %{
+        id: "table:phoenix_kit_ai_content_hashes",
+        owner: :phoenix_kit_ai,
+        check: {:catalog, %{name: "phoenix_kit_ai_content_hashes", kind: :table}},
+        create: "CREATE TABLE IF NOT EXISTS __SCHEMA__.phoenix_kit_ai_content_hashes ()",
+        since: 1,
+        class: :table,
+        revisions: [{1, %{}}],
+        presence: :required,
+        backfill: nil
+      },
       %{
         id: "table:phoenix_kit_ai_endpoints",
         owner: :phoenix_kit_ai,
@@ -184,6 +195,154 @@ defmodule PhoenixKitAI.ExpectedSchema do
         revisions: [{1, %{}}],
         presence: :required,
         backfill: nil
+      },
+      %{
+        id: "column:phoenix_kit_ai_content_hashes.changed_at",
+        owner: :phoenix_kit_ai,
+        check:
+          {:catalog,
+           %{table: "phoenix_kit_ai_content_hashes", column: "changed_at", kind: :column}},
+        create:
+          "ALTER TABLE __SCHEMA__.phoenix_kit_ai_content_hashes ADD COLUMN IF NOT EXISTS \"changed_at\" timestamp without time zone",
+        since: 1,
+        class: :column,
+        revisions: [
+          {1, %{default: nil, type: "timestamp without time zone", pos: 7, not_null: true}}
+        ],
+        presence: :required,
+        backfill: nil
+      },
+      %{
+        id: "column:phoenix_kit_ai_content_hashes.checked_at",
+        owner: :phoenix_kit_ai,
+        check:
+          {:catalog,
+           %{table: "phoenix_kit_ai_content_hashes", column: "checked_at", kind: :column}},
+        create:
+          "ALTER TABLE __SCHEMA__.phoenix_kit_ai_content_hashes ADD COLUMN IF NOT EXISTS \"checked_at\" timestamp without time zone",
+        since: 1,
+        class: :column,
+        revisions: [
+          {1, %{default: nil, type: "timestamp without time zone", pos: 8, not_null: true}}
+        ],
+        presence: :required,
+        backfill: nil
+      },
+      %{
+        id: "column:phoenix_kit_ai_content_hashes.content_bytes",
+        owner: :phoenix_kit_ai,
+        check:
+          {:catalog,
+           %{table: "phoenix_kit_ai_content_hashes", column: "content_bytes", kind: :column}},
+        create:
+          "ALTER TABLE __SCHEMA__.phoenix_kit_ai_content_hashes ADD COLUMN IF NOT EXISTS \"content_bytes\" integer",
+        since: 1,
+        class: :column,
+        revisions: [{1, %{default: nil, type: "integer", pos: 5, not_null: false}}],
+        presence: :required,
+        backfill: nil
+      },
+      %{
+        id: "column:phoenix_kit_ai_content_hashes.content_hash",
+        owner: :phoenix_kit_ai,
+        check:
+          {:catalog,
+           %{table: "phoenix_kit_ai_content_hashes", column: "content_hash", kind: :column}},
+        create:
+          "ALTER TABLE __SCHEMA__.phoenix_kit_ai_content_hashes ADD COLUMN IF NOT EXISTS \"content_hash\" character varying(100)",
+        since: 1,
+        class: :column,
+        revisions: [{1, %{default: nil, type: "character varying(100)", pos: 4, not_null: true}}],
+        presence: :required,
+        backfill: nil
+      },
+      %{
+        id: "column:phoenix_kit_ai_content_hashes.inserted_at",
+        owner: :phoenix_kit_ai,
+        check:
+          {:catalog,
+           %{table: "phoenix_kit_ai_content_hashes", column: "inserted_at", kind: :column}},
+        create:
+          "ALTER TABLE __SCHEMA__.phoenix_kit_ai_content_hashes ADD COLUMN IF NOT EXISTS \"inserted_at\" timestamp without time zone",
+        since: 1,
+        class: :column,
+        revisions: [
+          {1, %{default: nil, type: "timestamp without time zone", pos: 9, not_null: true}}
+        ],
+        presence: :required,
+        backfill: nil
+      },
+      %{
+        id: "column:phoenix_kit_ai_content_hashes.metadata",
+        owner: :phoenix_kit_ai,
+        check:
+          {:catalog, %{table: "phoenix_kit_ai_content_hashes", column: "metadata", kind: :column}},
+        create:
+          "ALTER TABLE __SCHEMA__.phoenix_kit_ai_content_hashes ADD COLUMN IF NOT EXISTS \"metadata\" jsonb DEFAULT '{}'::jsonb NOT NULL",
+        since: 1,
+        class: :column,
+        revisions: [{1, %{default: "'{}'::jsonb", type: "jsonb", pos: 6, not_null: true}}],
+        presence: :required,
+        backfill: :default
+      },
+      %{
+        id: "column:phoenix_kit_ai_content_hashes.namespace",
+        owner: :phoenix_kit_ai,
+        check:
+          {:catalog,
+           %{table: "phoenix_kit_ai_content_hashes", column: "namespace", kind: :column}},
+        create:
+          "ALTER TABLE __SCHEMA__.phoenix_kit_ai_content_hashes ADD COLUMN IF NOT EXISTS \"namespace\" character varying(255)",
+        since: 1,
+        class: :column,
+        revisions: [{1, %{default: nil, type: "character varying(255)", pos: 2, not_null: true}}],
+        presence: :required,
+        backfill: nil
+      },
+      %{
+        id: "column:phoenix_kit_ai_content_hashes.source_key",
+        owner: :phoenix_kit_ai,
+        check:
+          {:catalog,
+           %{table: "phoenix_kit_ai_content_hashes", column: "source_key", kind: :column}},
+        create:
+          "ALTER TABLE __SCHEMA__.phoenix_kit_ai_content_hashes ADD COLUMN IF NOT EXISTS \"source_key\" text",
+        since: 1,
+        class: :column,
+        revisions: [{1, %{default: nil, type: "text", pos: 3, not_null: true}}],
+        presence: :required,
+        backfill: nil
+      },
+      %{
+        id: "column:phoenix_kit_ai_content_hashes.updated_at",
+        owner: :phoenix_kit_ai,
+        check:
+          {:catalog,
+           %{table: "phoenix_kit_ai_content_hashes", column: "updated_at", kind: :column}},
+        create:
+          "ALTER TABLE __SCHEMA__.phoenix_kit_ai_content_hashes ADD COLUMN IF NOT EXISTS \"updated_at\" timestamp without time zone",
+        since: 1,
+        class: :column,
+        revisions: [
+          {1, %{default: nil, type: "timestamp without time zone", pos: 10, not_null: true}}
+        ],
+        presence: :required,
+        backfill: nil
+      },
+      %{
+        id: "column:phoenix_kit_ai_content_hashes.uuid",
+        owner: :phoenix_kit_ai,
+        check:
+          {:catalog, %{table: "phoenix_kit_ai_content_hashes", column: "uuid", kind: :column}},
+        create:
+          "ALTER TABLE __SCHEMA__.phoenix_kit_ai_content_hashes ADD COLUMN IF NOT EXISTS \"uuid\" uuid DEFAULT __SCHEMA__.uuid_generate_v7() NOT NULL",
+        since: 1,
+        class: :column,
+        revisions: [
+          {1, %{default: "__SCHEMA__.uuid_generate_v7()", type: "uuid", pos: 1, not_null: true}}
+        ],
+        presence: :required,
+        backfill: :default
       },
       %{
         id: "column:phoenix_kit_ai_endpoints.api_key",
@@ -1921,6 +2080,68 @@ defmodule PhoenixKitAI.ExpectedSchema do
         backfill: :default
       },
       %{
+        id: "index:phoenix_kit_ai_content_hashes_namespace_checked_at_index",
+        owner: :phoenix_kit_ai,
+        check:
+          {:catalog,
+           %{
+             name: "phoenix_kit_ai_content_hashes_namespace_checked_at_index",
+             table: "phoenix_kit_ai_content_hashes",
+             kind: :index
+           }},
+        create:
+          "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_content_hashes_namespace_checked_at_index ON __SCHEMA__.phoenix_kit_ai_content_hashes USING btree (namespace, checked_at)",
+        since: 1,
+        class: :index,
+        revisions: [
+          {1,
+           %{
+             table: "phoenix_kit_ai_content_hashes",
+             keys: ["namespace", "checked_at"],
+             unique: false,
+             method: "btree",
+             definition:
+               "CREATE INDEX phoenix_kit_ai_content_hashes_namespace_checked_at_index ON __SCHEMA__.phoenix_kit_ai_content_hashes USING btree (namespace, checked_at)",
+             predicate: nil,
+             opclasses: ["text_ops", "timestamp_ops"],
+             name_template: nil
+           }}
+        ],
+        presence: :required,
+        backfill: nil
+      },
+      %{
+        id: "index:phoenix_kit_ai_content_hashes_namespace_source_key_index",
+        owner: :phoenix_kit_ai,
+        check:
+          {:catalog,
+           %{
+             name: "phoenix_kit_ai_content_hashes_namespace_source_key_index",
+             table: "phoenix_kit_ai_content_hashes",
+             kind: :index
+           }},
+        create:
+          "CREATE UNIQUE INDEX IF NOT EXISTS phoenix_kit_ai_content_hashes_namespace_source_key_index ON __SCHEMA__.phoenix_kit_ai_content_hashes USING btree (namespace, source_key)",
+        since: 1,
+        class: :index,
+        revisions: [
+          {1,
+           %{
+             table: "phoenix_kit_ai_content_hashes",
+             keys: ["namespace", "source_key"],
+             unique: true,
+             method: "btree",
+             definition:
+               "CREATE UNIQUE INDEX phoenix_kit_ai_content_hashes_namespace_source_key_index ON __SCHEMA__.phoenix_kit_ai_content_hashes USING btree (namespace, source_key)",
+             predicate: nil,
+             opclasses: ["text_ops", "text_ops"],
+             name_template: nil
+           }}
+        ],
+        presence: :required,
+        backfill: nil
+      },
+      %{
         id: "index:phoenix_kit_ai_endpoints_enabled_idx",
         owner: :phoenix_kit_ai,
         check:
@@ -3031,6 +3252,67 @@ defmodule PhoenixKitAI.ExpectedSchema do
              predicate: nil,
              opclasses: ["uuid_ops"],
              name_template: nil
+           }}
+        ],
+        presence: :required,
+        backfill: nil
+      },
+      %{
+        id: "constraint:phoenix_kit_ai_content_hashes.phoenix_kit_ai_content_hashes_pkey",
+        owner: :phoenix_kit_ai,
+        check:
+          {:catalog,
+           %{
+             name: "phoenix_kit_ai_content_hashes_pkey",
+             table: "phoenix_kit_ai_content_hashes",
+             kind: :constraint
+           }},
+        create:
+          "DO $$\nBEGIN\n  IF NOT EXISTS (\n    SELECT 1\n    FROM pg_constraint c\n    JOIN pg_class t ON t.oid = c.conrelid\n    JOIN pg_namespace n ON n.oid = t.relnamespace\n    WHERE c.conname = 'phoenix_kit_ai_content_hashes_pkey'\n      AND t.relname = 'phoenix_kit_ai_content_hashes'\n      AND n.nspname = '__SCHEMA__'\n  ) THEN\n    ALTER TABLE __SCHEMA__.phoenix_kit_ai_content_hashes ADD CONSTRAINT phoenix_kit_ai_content_hashes_pkey PRIMARY KEY (uuid);\n  END IF;\nEND\n$$",
+        since: 1,
+        class: :constraint,
+        revisions: [
+          {1,
+           %{
+             type: "p",
+             columns: ["uuid"],
+             definition: "PRIMARY KEY (uuid)",
+             name_template: nil,
+             foreign_table: nil,
+             foreign_columns: nil,
+             on_delete: nil,
+             on_update: nil
+           }}
+        ],
+        presence: :required,
+        backfill: nil
+      },
+      %{
+        id:
+          "constraint:phoenix_kit_ai_content_hashes.phoenix_kit_ai_content_hashes_source_key_check",
+        owner: :phoenix_kit_ai,
+        check:
+          {:catalog,
+           %{
+             name: "phoenix_kit_ai_content_hashes_source_key_check",
+             table: "phoenix_kit_ai_content_hashes",
+             kind: :constraint
+           }},
+        create:
+          "DO $$\nBEGIN\n  IF NOT EXISTS (\n    SELECT 1\n    FROM pg_constraint c\n    JOIN pg_class t ON t.oid = c.conrelid\n    JOIN pg_namespace n ON n.oid = t.relnamespace\n    WHERE c.conname = 'phoenix_kit_ai_content_hashes_source_key_check'\n      AND t.relname = 'phoenix_kit_ai_content_hashes'\n      AND n.nspname = '__SCHEMA__'\n  ) THEN\n    ALTER TABLE __SCHEMA__.phoenix_kit_ai_content_hashes ADD CONSTRAINT phoenix_kit_ai_content_hashes_source_key_check CHECK ((char_length(source_key) <= 2048));\n  END IF;\nEND\n$$",
+        since: 1,
+        class: :constraint,
+        revisions: [
+          {1,
+           %{
+             type: "c",
+             columns: ["source_key"],
+             definition: "CHECK ((char_length(source_key) <= 2048))",
+             name_template: nil,
+             foreign_table: nil,
+             foreign_columns: nil,
+             on_delete: nil,
+             on_update: nil
            }}
         ],
         presence: :required,

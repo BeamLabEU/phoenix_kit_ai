@@ -356,6 +356,10 @@ Repo-local aliases:
   across users (scope a caller `key:` yourself), and without the module's
   supervisor tree every lookup is a silent miss. Never use it as the store
   for "write once, keep forever".
+  "Has this page changed since the last crawl" is `PhoenixKitAI.ContentHashes`
+  (a table, keyed on a hash of the extracted text, not on the request):
+  `check/3` only reads, `record/4` writes — record after the processing
+  succeeded, or a failed page counts as done.
 - Clearing a field in the endpoint form must write `""`, not `nil`. The
   template's `@form.params[...] || @endpoint...` fallback treats `nil` as "no
   intent" and the old value reappears; `""` is truthy and wins.
@@ -394,7 +398,8 @@ lib/phoenix_kit_ai/
                                  images/regions.ex — schemas, prompts and parsing of located answers (regions, text boxes, statements)
   box.ex                         PhoenixKitAI.Box — the one box type ([x0, y0, x1, y1] fractions, top-left) and each model's box format
   vision_batch.ex                PhoenixKitAI.VisionBatch — one vision verb over many items, per-item status, budget and fatal stop
-  runs.ex                        PhoenixKitAI.Runs — a run's totals from the journal (`run:` / `step:` tags)
+  runs.ex                        PhoenixKitAI.Runs — a run's totals from the journal (`run:` / `step:` tags), its ceiling (`run_budget:`)
+  content_hashes.ex content_hash.ex   PhoenixKitAI.ContentHashes — "has this content changed": a stored hash per (namespace, source key)
   openrouter_client.ex           generic across providers despite the name
   embedding_conventions.ex       PhoenixKitAI.EmbeddingConventions — per-model-family query/document conventions (`input_type`, prefixes, instructions), batch limits
   capabilities.ex                what a model can do (catalogue + declared), ETS cache process
@@ -462,6 +467,7 @@ Notes on the less obvious modules:
 | `phoenix_kit_ai_task_user_limits` | `PhoenixKitAI.TaskUserLimit` | a user's personal limits in a task (module chain V2) |
 | `phoenix_kit_ai_guard_events` | `PhoenixKitAI.GuardEvent` | what the guard noticed; `dedupe_key` unique where set (module chain V2) |
 | `phoenix_kit_ai_guard_blocks` | `PhoenixKitAI.GuardBlock` | a person blocked from a block group until lifted; one active per group and person (module chain V3) |
+| `phoenix_kit_ai_content_hashes` | `PhoenixKitAI.ContentHash` | what a source (`namespace`, `source_key`) held when last recorded: its content hash, `changed_at` / `checked_at` (module chain V7; `PhoenixKitAI.ContentHashes`) |
 
 ### PubSub topics
 
@@ -893,7 +899,9 @@ lift note ≤ 500; one active block per group and person — unique
 the others); down to 5 drops it. V7 adds `phoenix_kit_ai_requests.subject_key`
 (`varchar(255)`, nullable) and its partial spend index
 `phoenix_kit_ai_requests_subject_spend_idx`; down to 6 drops both. V7 also
-leaves one foreign key on `phoenix_kit_ai_requests.prompt_uuid` (below). V5 adopts
+leaves one foreign key on `phoenix_kit_ai_requests.prompt_uuid` (below) and
+creates `phoenix_kit_ai_content_hashes` (unique `(namespace, source_key)`,
+`source_key` ≤ 2 048); down to 6 drops the table. V5 adopts
 the three core-created tables: `CREATE TABLE IF NOT EXISTS`, guarded
 constraints and indexes, exactly as a fresh core builds them, a no-op on
 every existing install. **It is emitted ahead of V2's statements, not last**
