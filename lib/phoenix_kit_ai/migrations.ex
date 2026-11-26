@@ -103,7 +103,7 @@ defmodule PhoenixKitAI.Migrations do
       takes audio with a chat request (`PhoenixKitAI.Capabilities`, the
       guard's `:audio_input` need). Down to 5 drops the column.
 
-  ## V7: visitors
+  ## V7: visitors, one prompt key
 
     * `phoenix_kit_ai_requests.subject_key` — a nullable external subject
       (`character varying(255)`) next to `user_uuid`, for a caller that is not
@@ -112,6 +112,17 @@ defmodule PhoenixKitAI.Migrations do
       With it the index `phoenix_kit_ai_requests_subject_spend_idx`,
       `(subject_key, inserted_at) INCLUDE (cost)` over successful rows that
       carry one — the shape of core's user spend index. Down to 6 drops both.
+    * One foreign key on `phoenix_kit_ai_requests.prompt_uuid`. Core's V135
+      added it twice under two names (`fk_ai_requests_prompt_uuid` and
+      `phoenix_kit_ai_requests_prompt_uuid_fkey`), and V5's adoption adds the
+      second where only the first existed, so an install could carry both —
+      two identical checks on every write of a usage row.
+      `phoenix_kit_ai_requests_prompt_uuid_fkey` is the one kept (the name
+      the installed base carries, the one V5 builds, and the one Ecto
+      derives): with both present the `fk_` one is dropped, with only the
+      `fk_` one it is renamed, so the column is never without its key. Both
+      names are looked up in the chain's own schema only. Down to 6 leaves
+      the survivor alone (re-adding a duplicate restores nothing).
 
   ## Version marker
 
@@ -288,7 +299,7 @@ defmodule PhoenixKitAI.Migrations do
 
   defp version_down(7, prefix), do: v7_down_statements(prefix)
 
-  # ── V7: visitors ──────────────────────────────────────────────────────
+  # ── V7: visitors, one prompt key ──────────────────────────────────────
 
   defp v7_statements(prefix) do
     requests = Helpers.qualify_table("phoenix_kit_ai_requests", prefix)
@@ -297,8 +308,44 @@ defmodule PhoenixKitAI.Migrations do
       "ALTER TABLE #{requests} ADD COLUMN IF NOT EXISTS subject_key character varying(255)",
       "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_requests_subject_spend_idx ON #{requests} " <>
         "USING btree (subject_key, inserted_at) INCLUDE (cost) " <>
-        "WHERE (((status)::text = 'success'::text) AND (subject_key IS NOT NULL))"
+        "WHERE (((status)::text = 'success'::text) AND (subject_key IS NOT NULL))",
+      prompt_fk_dedupe(prefix)
     ]
+  end
+
+  @prompt_fk "phoenix_kit_ai_requests_prompt_uuid_fkey"
+  @prompt_fk_duplicate "fk_ai_requests_prompt_uuid"
+
+  @doc "The name of the one foreign key on `phoenix_kit_ai_requests.prompt_uuid` (V7 on)."
+  @spec prompt_fk() :: String.t()
+  def prompt_fk, do: @prompt_fk
+
+  # Both names checked in this schema only, so a sibling schema's constraints
+  # never decide what happens here.
+  defp prompt_fk_dedupe(prefix) do
+    requests = Helpers.qualify_table("phoenix_kit_ai_requests", prefix)
+
+    exists = fn name ->
+      "EXISTS (SELECT 1 FROM pg_constraint c " <>
+        "JOIN pg_class t ON t.oid = c.conrelid " <>
+        "JOIN pg_namespace n ON n.oid = t.relnamespace " <>
+        "WHERE c.conname = '#{name}' AND t.relname = 'phoenix_kit_ai_requests' " <>
+        "AND n.nspname = '#{prefix}')"
+    end
+
+    """
+    DO $$
+    BEGIN
+      IF #{exists.(@prompt_fk_duplicate)} THEN
+        IF #{exists.(@prompt_fk)} THEN
+          ALTER TABLE #{requests} DROP CONSTRAINT #{@prompt_fk_duplicate};
+        ELSE
+          ALTER TABLE #{requests} RENAME CONSTRAINT #{@prompt_fk_duplicate} TO #{@prompt_fk};
+        END IF;
+      END IF;
+    END
+    $$
+    """
   end
 
   defp v7_down_statements(prefix) do

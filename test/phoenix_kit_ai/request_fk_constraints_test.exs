@@ -7,13 +7,10 @@ defmodule PhoenixKitAI.RequestFkConstraintsTest do
   `phoenix_kit_ai_requests_<field>_fkey` that `foreign_key_constraint/2` derives
   by default, so a declaration without an explicit `:name` never matches.
 
-  `prompt_uuid` is the awkward one: v135 adds its FK TWICE under two different
-  names, each block guarded only by its own name, so a freshly migrated database
-  carries both while an older one carries only
-  `phoenix_kit_ai_requests_prompt_uuid_fkey` (measured on the max-dev box). The
-  changeset therefore declares both names, and this test asserts the behaviour
-  that matters — a changeset error, not a raise — against whichever name the
-  database under test actually has.
+  `prompt_uuid` was the awkward one: v135 added its FK TWICE under two
+  different names, so installs carried one or both. Module chain V7 keeps one,
+  `phoenix_kit_ai_requests_prompt_uuid_fkey`, and the changeset declares that
+  name alone.
   """
   use PhoenixKitAI.DataCase, async: false
 
@@ -157,26 +154,29 @@ defmodule PhoenixKitAI.RequestFkConstraintsTest do
     assert request.endpoint_uuid == ep.uuid
   end
 
-  test "prompt_uuid declares both constraint names core can have created" do
-    # The database under test carries only one of the two names, so the
-    # behavioural tests above can only ever exercise that one. This asserts the
-    # other declaration is present too, which is what keeps the module working
-    # against the opposite install shape.
+  test "prompt_uuid declares the one constraint name module chain V7 keeps" do
     names =
       %Request{}
       |> Request.changeset(base_attrs())
       |> Map.fetch!(:constraints)
       |> Enum.filter(&(&1.field == :prompt_uuid))
-      |> MapSet.new(& &1.constraint)
+      |> Enum.map(& &1.constraint)
 
-    assert MapSet.equal?(
-             names,
-             MapSet.new([
-               "fk_ai_requests_prompt_uuid",
-               "phoenix_kit_ai_requests_prompt_uuid_fkey"
-             ])
-           ),
-           "expected both prompt_uuid constraint names, got: #{inspect(MapSet.to_list(names))}"
+    assert names == [PhoenixKitAI.Migrations.prompt_fk()]
+  end
+
+  test "the database under test carries exactly that one key on prompt_uuid" do
+    %{rows: rows} =
+      Repo.query!("""
+      SELECT c.conname FROM pg_constraint c
+      JOIN pg_class t ON t.oid = c.conrelid
+      JOIN pg_namespace n ON n.oid = t.relnamespace
+      JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(c.conkey)
+      WHERE c.contype = 'f' AND t.relname = 'phoenix_kit_ai_requests'
+        AND n.nspname = 'public' AND a.attname = 'prompt_uuid'
+      """)
+
+    assert rows == [[PhoenixKitAI.Migrations.prompt_fk()]]
   end
 
   test "every belongs_to on the schema declares a foreign key constraint" do

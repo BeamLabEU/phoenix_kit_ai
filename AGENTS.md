@@ -885,7 +885,8 @@ lift note ≤ 500; one active block per group and person — unique
 `audio_input` flag to the snapshot (`unknown` by default, the same CHECK as
 the others); down to 5 drops it. V7 adds `phoenix_kit_ai_requests.subject_key`
 (`varchar(255)`, nullable) and its partial spend index
-`phoenix_kit_ai_requests_subject_spend_idx`; down to 6 drops both. V5 adopts
+`phoenix_kit_ai_requests_subject_spend_idx`; down to 6 drops both. V7 also
+leaves one foreign key on `phoenix_kit_ai_requests.prompt_uuid` (below). V5 adopts
 the three core-created tables: `CREATE TABLE IF NOT EXISTS`, guarded
 constraints and indexes, exactly as a fresh core builds them, a no-op on
 every existing install. **It is emitted ahead of V2's statements, not last**
@@ -928,9 +929,12 @@ string, so kit tables are always queried through their schema (core's
 of ours covers, through `PhoenixKitAI.ObanQuery.scoped/1`.
 
 `Request` declares `foreign_key_constraint` for `endpoint_uuid`, `user_uuid`
-and `prompt_uuid`; the prompt constraint has to tolerate two possible index
-names, because databases created before and after the named-constraint change
-carry different ones.
+and `prompt_uuid`, each by the name the database carries. The prompt key used
+to exist under two names depending on install age (core's V135 added it twice,
+and V5's adoption adds `phoenix_kit_ai_requests_prompt_uuid_fkey` beside an
+`fk_ai_requests_prompt_uuid`); V7 keeps that one name — dropping the `fk_`
+duplicate, or renaming it when it is the only one — so the changeset declares
+one name (`Migrations.prompt_fk/0`).
 
 ## Testing
 

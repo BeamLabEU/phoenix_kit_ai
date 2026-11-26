@@ -395,6 +395,67 @@ defmodule PhoenixKitAI.MigrationsTest do
     end
   end
 
+  describe "V7: one key on the journal's prompt_uuid" do
+    @canonical "phoenix_kit_ai_requests_prompt_uuid_fkey"
+    @duplicate "fk_ai_requests_prompt_uuid"
+
+    defp prompt_keys do
+      query("""
+      SELECT c.conname, c.confdeltype FROM pg_constraint c
+      JOIN pg_class t ON t.oid = c.conrelid
+      JOIN pg_namespace n ON n.oid = t.relnamespace
+      JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(c.conkey)
+      WHERE c.contype = 'f' AND t.relname = 'phoenix_kit_ai_requests'
+        AND n.nspname = 'public' AND a.attname = 'prompt_uuid'
+      ORDER BY c.conname
+      """)
+    end
+
+    defp add_duplicate do
+      run([
+        "ALTER TABLE public.phoenix_kit_ai_requests ADD CONSTRAINT #{@duplicate} " <>
+          "FOREIGN KEY (prompt_uuid) REFERENCES public.phoenix_kit_ai_prompts(uuid) ON DELETE SET NULL"
+      ])
+    end
+
+    test "with both names, the duplicate is dropped" do
+      add_duplicate()
+      assert [[@duplicate, _], [@canonical, _]] = prompt_keys()
+
+      run(Migrations.down_statements("public", 6))
+      # Down leaves the keys as they are.
+      assert length(prompt_keys()) == 2
+      run(Migrations.up_statements("public"))
+
+      assert prompt_keys() == [[@canonical, "n"]]
+    end
+
+    test "with only the duplicate, it is renamed, so the column never loses its key" do
+      run(["ALTER TABLE public.phoenix_kit_ai_requests DROP CONSTRAINT #{@canonical}"])
+      add_duplicate()
+      run(Migrations.down_statements("public", 6))
+      run(Migrations.up_statements("public"))
+
+      assert prompt_keys() == [[@canonical, "n"]]
+    end
+
+    test "a re-run changes nothing" do
+      run(Migrations.up_statements("public"))
+      assert prompt_keys() == [[@canonical, "n"]]
+    end
+
+    test "the step looks at its own schema only" do
+      statement =
+        "tenant_a"
+        |> Migrations.up_statements()
+        |> Enum.find(&String.contains?(&1, "RENAME CONSTRAINT"))
+
+      assert statement =~ "n.nspname = 'tenant_a'"
+      assert statement =~ "ALTER TABLE tenant_a.phoenix_kit_ai_requests"
+      refute statement =~ "public"
+    end
+  end
+
   describe "V6: audio in" do
     defp audio_column do
       query(
