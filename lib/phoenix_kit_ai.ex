@@ -71,6 +71,13 @@ defmodule PhoenixKitAI do
   - Every verb returns `{:error, {:budget_exceeded, scope}}` once a spend
     cap (daily or monthly) is reached (`PhoenixKitAI.Budget`), cached
     answers included, and every usage row emits `[:phoenix_kit_ai, :request]`.
+  - `run:` / `step:` - tags every row of the call with a run (one job, one
+    nightly crawl; `PhoenixKitAI.Runs`). `run_budget:` (dollars) with
+    `run:` - the run's own ceiling: once the run's rows (from `run_since:`, a
+    `DateTime`, when given) have cost that much, the call returns
+    `{:error, {:run_budget_reached, run}}` with no provider call —
+    `PhoenixKitAI.Runs.ceiling_reached?/1` tells a job it is done, not
+    failed. None of them is part of a cache key.
 
   ### Usage Tracking
   - `list_requests/1` - List requests with pagination/filters
@@ -140,6 +147,7 @@ defmodule PhoenixKitAI do
   alias PhoenixKitAI.Money
   alias PhoenixKitAI.ProviderError
   alias PhoenixKitAI.Request
+  alias PhoenixKitAI.Runs
   alias PhoenixKitAI.TaskLimits
   alias PhoenixKitAI.Tasks
   alias PhoenixKitAI.TaskSpec
@@ -4382,6 +4390,8 @@ defmodule PhoenixKitAI do
       # bookkeeping tags: which run asked, not what is asked
       :run,
       :step,
+      :run_budget,
+      :run_since,
       :fallback_models,
       # delivery options: how the call is made, not what is asked
       :retry,
@@ -6030,8 +6040,9 @@ defmodule PhoenixKitAI do
   cost, counts: %{ok, error, unparsed, skipped}, stopped}}`: `status` is
   `:ok`, `:error`, `:unparsed` (the model answered without valid JSON —
   billed, no result) or `:skipped` (not started after the batch stopped);
-  `stopped` is nil, `:budget`, or `{:error, reason}` for a refusal every
-  later item would hit. `cost` sums the items' costs, unparsed answers and
+  `stopped` is nil, `:budget`, `:run_budget` (the run's own ceiling,
+  `run_budget:`, was reached — a graceful end, the rest `:skipped`), or
+  `{:error, reason}` for a refusal every later item would hit. `cost` sums the items' costs, unparsed answers and
   billed fallback attempts included; `run_costs/2` on `run` totals the
   journal rows. A call that times out (`item_timeout:`) may still be billed
   by the provider: its cost is unknown here, and the provider's own row, if
@@ -6051,6 +6062,17 @@ defmodule PhoenixKitAI do
   """
   @spec run_costs(term(), keyword()) :: {:ok, PhoenixKitAI.Runs.t()} | {:error, :invalid_run}
   def run_costs(run, opts \\ []), do: PhoenixKitAI.Runs.costs(run, opts)
+
+  @doc """
+  What a run has spent against a ceiling of its own — the question every verb
+  asks before its call when given `run_budget:`. See `PhoenixKitAI.Runs.ceiling/3`.
+
+      {:ok, %{remaining: left, reached?: false}} =
+        PhoenixKitAI.run_ceiling("crawl-2026-11-26", "2.00")
+  """
+  @spec run_ceiling(term(), Decimal.t() | String.t(), keyword()) ::
+          {:ok, PhoenixKitAI.Runs.ceiling_status()} | {:error, term()}
+  def run_ceiling(run, ceiling, opts \\ []), do: PhoenixKitAI.Runs.ceiling(run, ceiling, opts)
 
   @doc """
   The image models the endpoint's provider offers, with what each accepts
@@ -6423,7 +6445,8 @@ defmodule PhoenixKitAI do
   # `refuse/4`; an unusable endpoint is not (that is a configuration error,
   # not a call that was turned away).
   defp authorize(endpoint, opts, verb, implied, spends? \\ true) do
-    with {:ok, endpoint} <- validate_endpoint(endpoint) do
+    with {:ok, endpoint} <- validate_endpoint(endpoint),
+         :ok <- Runs.validate_ceiling(opts) do
       # The model checked (and named on a refusal row) is the one the verb
       # sends: speech always sends the endpoint's; chat, embeddings and the
       # image verbs send a call's `model:` when it names one.
@@ -6446,7 +6469,9 @@ defmodule PhoenixKitAI do
          {:ok, admission} <- Guard.check(endpoint, opts, task, implied),
          :ok <- check_fallbacks(endpoint, opts, task, implied),
          :ok <- if(spends?, do: task_limits(task, opts), else: :ok),
-         :ok <- if(spends?, do: budget(endpoint, opts), else: :ok) do
+         :ok <- if(spends?, do: budget(endpoint, opts), else: :ok),
+         # The run's own ceiling (`run_budget:`) after the site's caps.
+         :ok <- if(spends?, do: Runs.check_ceiling(opts), else: :ok) do
       {:ok, admission}
     end
   end

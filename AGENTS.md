@@ -746,7 +746,14 @@ provided the API exposes `<base_url>/chat/completions` and `/models`.
   `step:`. Not part of the cache key (`cacheable/1` drops them), so two
   runs over the same input share an entry. `process_image(verify:)` passes
   them to its check. The tag has no index: pass `since:` on a large
-  journal.
+  journal. A run's own ceiling: `run_budget:` (dollars) with `run:` (and
+  `run_since:`) refuses a call once the run's successful rows cost that
+  much — `{:run_budget_reached, run}`, a refusal row, checked in `admit/4`
+  after `Budget`; `Runs.ceiling_reached?/1` tells a job it is done rather
+  than failed, `Runs.ceiling/3` / `run_ceiling/3` asks without a call,
+  `vision_batch/3` stops with `stopped: :run_budget`. A ceiling without a
+  run or not an amount is refused before the gate, with no row
+  (`Runs.validate_ceiling/1`). Not in the cache key.
 - **Image embeddings**: `embed/3` takes images (`{:image, input}`,
   `%{image:, text:}`), checked and inlined by `Images.normalize_inputs/2`
   and sent as OpenRouter multimodal `content` inputs; the image bytes are

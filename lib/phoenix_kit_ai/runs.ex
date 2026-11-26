@@ -13,11 +13,44 @@ defmodule PhoenixKitAI.Runs do
   pass `since:` (a `DateTime`, the run's start) on a large journal, which
   narrows the scan to the time range. Rows removed by journal retention are
   gone from the totals too.
+
+  ## A ceiling for a run
+
+  The spend caps (`PhoenixKitAI.Budget`) are the site's, an endpoint's or a
+  user's. A job wants its own: "this nightly crawl may spend $2, then we are
+  done for today". Any verb takes `run_budget:` (dollars, a `Decimal` or a
+  decimal string) next to `run:`; before the call the run's spend so far —
+  its successful rows' cost, from `run_since:` (a `DateTime`) on when given —
+  is compared with it, and once it is reached the call is refused with
+  `{:error, {:run_budget_reached, run}}` before any provider call (a refusal
+  row, like the caps'; cached answers included). `ceiling_reached?/1` tells
+  that answer apart from a failure, so a job loop ends with a clear result
+  instead of an error:
+
+      for page <- pages, reduce: {:cont, 0} do
+        {:halt, _} = done -> done
+        {:cont, n} ->
+          case PhoenixKitAI.ask(ep, prompt(page), run: run, run_budget: "2.00") do
+            {:ok, _} -> {:cont, n + 1}
+            {:error, reason} ->
+              if PhoenixKitAI.Runs.ceiling_reached?(reason), do: {:halt, n}, else: {:cont, n}
+          end
+      end
+
+  `ceiling/3` answers the same question without a call (`remaining`,
+  `reached?`), for a job that wants to stop before it starts a page. Like the
+  caps it reads the journal before the call, so calls running at the same
+  time overshoot by what they cost, and with `request_log_mode: :async` the
+  last few rows may not be counted yet. `vision_batch/3` stops on it as on
+  its own `budget:` (`stopped: :run_budget`).
+  `{:error, :run_budget_without_run}` for a `run_budget:` without a usable
+  `run:`, `{:error, {:invalid_run_budget, reason}}` for an amount that is not
+  one.
   """
 
   import Ecto.Query, only: [from: 2, where: 3]
 
-  alias PhoenixKitAI.{Guard, Request}
+  alias PhoenixKitAI.{Guard, Money, Request}
 
   @type bucket :: %{
           calls: non_neg_integer(),
@@ -57,6 +90,134 @@ defmodule PhoenixKitAI.Runs do
       nil -> {:error, :invalid_run}
       tag -> {:ok, summarize(tag, rows(tag, opts))}
     end
+  end
+
+  @typedoc "A run's spend against its ceiling (`ceiling/3`)."
+  @type ceiling_status :: %{
+          run: String.t(),
+          spent: Decimal.t(),
+          ceiling: Decimal.t(),
+          remaining: Decimal.t(),
+          reached?: boolean()
+        }
+
+  @doc """
+  What `run` has spent (its successful rows' cost, in dollars) against
+  `ceiling` (dollars, a `Decimal` or a decimal string). Options: `since:`
+  (a `DateTime`), as `run_since:` on a verb. `reached?` is true once
+  `spent >= ceiling`; `remaining` is never negative.
+  """
+  @spec ceiling(term(), Decimal.t() | String.t(), keyword()) ::
+          {:ok, ceiling_status()} | {:error, term()}
+  def ceiling(run, ceiling, opts \\ []) do
+    with {:ok, tag} <- tag(run),
+         {:ok, ceiling} <- ceiling_amount(ceiling) do
+      spent = spent(tag, opts[:since])
+      remaining = Decimal.sub(ceiling, spent)
+
+      {:ok,
+       %{
+         run: tag,
+         spent: spent,
+         ceiling: ceiling,
+         remaining: if(Decimal.negative?(remaining), do: Decimal.new(0), else: remaining),
+         reached?: Decimal.compare(spent, ceiling) != :lt
+       }}
+    end
+  end
+
+  @doc """
+  The check every verb runs before its call (see "A ceiling for a run"):
+  `:ok` when the call names no `run_budget:` or the run has room,
+  `{:error, {:run_budget_reached, run}}` once it has spent it.
+  """
+  @spec check_ceiling(keyword()) :: :ok | {:error, term()}
+  def check_ceiling(opts) do
+    case Keyword.get(opts, :run_budget) do
+      nil ->
+        :ok
+
+      budget ->
+        with {:ok, tag} <- ceiling_run(opts[:run]),
+             {:ok, %{reached?: reached?}} <- ceiling(tag, budget, since: since(opts)) do
+          if reached?, do: {:error, {:run_budget_reached, tag}}, else: :ok
+        end
+    end
+  end
+
+  @doc """
+  Whether a call's `run_budget:` is usable, before anything is checked or
+  written: `:ok` without one, else `{:error, :run_budget_without_run}` or
+  `{:error, {:invalid_run_budget, reason}}`. A call refused here writes no row
+  (it is the caller's mistake, not a call turned away).
+  """
+  @spec validate_ceiling(keyword()) :: :ok | {:error, term()}
+  def validate_ceiling(opts) do
+    case Keyword.get(opts, :run_budget) do
+      nil ->
+        :ok
+
+      budget ->
+        with {:ok, _tag} <- ceiling_run(opts[:run]),
+             {:ok, _amount} <- ceiling_amount(budget),
+             do: :ok
+    end
+  end
+
+  @doc """
+  Whether an error is a run's ceiling (`{:run_budget_reached, run}`): the
+  job is done for now, nothing failed.
+  """
+  @spec ceiling_reached?(term()) :: boolean()
+  def ceiling_reached?({:run_budget_reached, _run}), do: true
+  def ceiling_reached?({:error, {:run_budget_reached, _run}}), do: true
+  def ceiling_reached?(_reason), do: false
+
+  defp tag(run) do
+    case Guard.run_tag(run) do
+      nil -> {:error, :invalid_run}
+      tag -> {:ok, tag}
+    end
+  end
+
+  defp ceiling_run(run) do
+    case Guard.run_tag(run) do
+      nil -> {:error, :run_budget_without_run}
+      tag -> {:ok, tag}
+    end
+  end
+
+  defp since(opts) do
+    case opts[:run_since] do
+      %DateTime{} = since -> since
+      _ -> nil
+    end
+  end
+
+  defp ceiling_amount(value) do
+    case Money.amount(value) do
+      {:ok, amount} -> {:ok, amount}
+      {:error, reason} -> {:error, {:invalid_run_budget, reason}}
+      :error -> {:error, {:invalid_run_budget, :not_an_amount}}
+    end
+  end
+
+  # Successful rows only, like the caps: a failure or a refusal costs nothing.
+  # `"success"` stays a literal for the partial indexes (see `Budget`).
+  defp spent(tag, since) do
+    query =
+      from(r in Request,
+        where: fragment("?->>'run' = ?", r.metadata, ^tag) and r.status == "success",
+        select: coalesce(sum(r.cost), 0)
+      )
+
+    query =
+      case since do
+        %DateTime{} -> where(query, [r], r.inserted_at >= ^since)
+        nil -> query
+      end
+
+    query |> PhoenixKit.RepoHelper.repo().one() |> Money.sum()
   end
 
   defp rows(tag, opts) do

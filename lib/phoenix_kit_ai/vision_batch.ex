@@ -26,6 +26,12 @@ defmodule PhoenixKitAI.VisionBatch do
     `models:`, `fallback_models:`), only the refusals that do not depend on those stop the
     batch — an exhausted balance, a bad key, the site's or the endpoint's
     spend cap.
+  * the run's own ceiling is reached (`run_budget:`, passed to every call
+    like any call option; `PhoenixKitAI.Runs`): `stopped: :run_budget`, a
+    graceful end — the item that met the ceiling and the rest are `:skipped`.
+    Unlike `budget:`, which counts this batch's items, the ceiling counts
+    every row of the run, so several batches (or a batch and other calls) of
+    one nightly run share it.
 
   Items run unlinked under core's `PhoenixKit.TaskSupervisor` when it is
   running (a crashed item is an error for that item, not a crash of the
@@ -40,7 +46,7 @@ defmodule PhoenixKitAI.VisionBatch do
 
   require Logger
 
-  alias PhoenixKitAI.{Guard, Money}
+  alias PhoenixKitAI.{Guard, Money, Runs}
   alias PhoenixKitAI.Images.Regions
 
   @verbs [:describe_image, :extract_text, :detect_regions, :check_statements]
@@ -110,7 +116,7 @@ defmodule PhoenixKitAI.VisionBatch do
           items: [item_result()],
           cost: Decimal.t(),
           counts: %{required(item_status()) => non_neg_integer()},
-          stopped: nil | :budget | {:error, term()}
+          stopped: nil | :budget | :run_budget | {:error, term()}
         }
 
   @doc "The verbs a batch can run."
@@ -126,6 +132,8 @@ defmodule PhoenixKitAI.VisionBatch do
          {:ok, group} <- check_group(opts, verb),
          {:ok, items} <- normalize_items(items),
          {:ok, budget} <- budget(opts[:budget]),
+         # The batch always has a run (its own when the caller names none).
+         :ok <- Runs.validate_ceiling(Keyword.put_new(opts, :run, "batch")),
          {:ok, endpoint} <- PhoenixKitAI.resolve_endpoint(endpoint) do
       run_tag = Guard.run_tag(opts[:run]) || "batch-" <> UUIDv7.generate()
       step = Guard.run_tag(opts[:step]) || Atom.to_string(verb)
@@ -573,6 +581,10 @@ defmodule PhoenixKitAI.VisionBatch do
        when tag in [:no_json_in_response, :output_truncated],
        do: item_result(id, :unparsed, nil, reason, nil)
 
+  # The run's ceiling: not started, not failed.
+  defp to_item_result(id, {:error, {:run_budget_reached, _run} = reason}),
+    do: item_result(id, :skipped, nil, reason, nil)
+
   defp to_item_result(id, {:error, reason}), do: item_result(id, :error, nil, reason, nil)
 
   defp item_result(id, status, result, error, cost),
@@ -585,6 +597,7 @@ defmodule PhoenixKitAI.VisionBatch do
       stop =
         cond do
           st.stop -> st.stop
+          Runs.ceiling_reached?(result.error) -> :run_budget
           result.status == :error and fatal?(result.error, st.scoped?) -> {:error, result.error}
           budget && Decimal.compare(spent, budget) != :lt -> :budget
           true -> nil

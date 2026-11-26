@@ -93,6 +93,16 @@ defmodule PhoenixKitAI.Errors do
 
   def message({:item_exit, _tag}), do: gettext("The item failed with an internal error")
   def message({:invalid_budget, _reason}), do: gettext("The budget must be an amount in dollars")
+
+  def message({:run_budget_reached, _run}),
+    do: gettext("This run has spent its budget; it stops here for now")
+
+  def message(:run_budget_without_run),
+    do: gettext("A run budget needs a run tag (run:)")
+
+  def message({:invalid_run_budget, _reason}),
+    do: gettext("The run budget must be an amount in dollars")
+
   def message({:exception, _kind}), do: gettext("The item failed with an internal error")
 
   # One request of `embed_many/3` raised or exited. The reason can carry a
