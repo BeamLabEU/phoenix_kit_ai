@@ -22,7 +22,7 @@ defmodule PhoenixKitAI.ExpectedSchema do
   @schema_token "__SCHEMA__"
   @name_marker_exempt "__PK_NAME_EXEMPT__"
   @name_marker_always "__PK_NAME_ALWAYS__"
-  @chain_hash "a583688d00f925bf0875651508fa25791ed08ee96491a7e61a59800c99ba53b1"
+  @chain_hash "a29b1d21f42985fcf3f723b6e62984f83541af8930f44d0881e5e6452b17e968"
 
   def objects(prefix) do
     prefix = normalize_prefix!(prefix)
@@ -168,6 +168,17 @@ defmodule PhoenixKitAI.ExpectedSchema do
         owner: :phoenix_kit_ai,
         check: {:catalog, %{name: "phoenix_kit_ai_requests", kind: :table}},
         create: "CREATE TABLE IF NOT EXISTS __SCHEMA__.phoenix_kit_ai_requests ()",
+        since: 1,
+        class: :table,
+        revisions: [{1, %{}}],
+        presence: :required,
+        backfill: nil
+      },
+      %{
+        id: "table:phoenix_kit_ai_reviews",
+        owner: :phoenix_kit_ai,
+        check: {:catalog, %{name: "phoenix_kit_ai_reviews", kind: :table}},
+        create: "CREATE TABLE IF NOT EXISTS __SCHEMA__.phoenix_kit_ai_reviews ()",
         since: 1,
         class: :table,
         revisions: [{1, %{}}],
@@ -1813,6 +1824,186 @@ defmodule PhoenixKitAI.ExpectedSchema do
         backfill: :default
       },
       %{
+        id: "column:phoenix_kit_ai_reviews.decided_at",
+        owner: :phoenix_kit_ai,
+        check:
+          {:catalog, %{table: "phoenix_kit_ai_reviews", column: "decided_at", kind: :column}},
+        create:
+          "ALTER TABLE __SCHEMA__.phoenix_kit_ai_reviews ADD COLUMN IF NOT EXISTS \"decided_at\" timestamp without time zone",
+        since: 1,
+        class: :column,
+        revisions: [
+          {1, %{default: nil, type: "timestamp without time zone", pos: 9, not_null: false}}
+        ],
+        presence: :required,
+        backfill: nil
+      },
+      %{
+        id: "column:phoenix_kit_ai_reviews.decided_by_uuid",
+        owner: :phoenix_kit_ai,
+        check:
+          {:catalog, %{table: "phoenix_kit_ai_reviews", column: "decided_by_uuid", kind: :column}},
+        create:
+          "ALTER TABLE __SCHEMA__.phoenix_kit_ai_reviews ADD COLUMN IF NOT EXISTS \"decided_by_uuid\" uuid",
+        since: 1,
+        class: :column,
+        revisions: [{1, %{default: nil, type: "uuid", pos: 8, not_null: false}}],
+        presence: :required,
+        backfill: nil
+      },
+      %{
+        id: "column:phoenix_kit_ai_reviews.decision_note",
+        owner: :phoenix_kit_ai,
+        check:
+          {:catalog, %{table: "phoenix_kit_ai_reviews", column: "decision_note", kind: :column}},
+        create:
+          "ALTER TABLE __SCHEMA__.phoenix_kit_ai_reviews ADD COLUMN IF NOT EXISTS \"decision_note\" text",
+        since: 1,
+        class: :column,
+        revisions: [{1, %{default: nil, type: "text", pos: 10, not_null: false}}],
+        presence: :required,
+        backfill: nil
+      },
+      %{
+        id: "column:phoenix_kit_ai_reviews.inserted_at",
+        owner: :phoenix_kit_ai,
+        check:
+          {:catalog, %{table: "phoenix_kit_ai_reviews", column: "inserted_at", kind: :column}},
+        create:
+          "ALTER TABLE __SCHEMA__.phoenix_kit_ai_reviews ADD COLUMN IF NOT EXISTS \"inserted_at\" timestamp without time zone",
+        since: 1,
+        class: :column,
+        revisions: [
+          {1, %{default: nil, type: "timestamp without time zone", pos: 12, not_null: true}}
+        ],
+        presence: :required,
+        backfill: nil
+      },
+      %{
+        id: "column:phoenix_kit_ai_reviews.kind",
+        owner: :phoenix_kit_ai,
+        check: {:catalog, %{table: "phoenix_kit_ai_reviews", column: "kind", kind: :column}},
+        create:
+          "ALTER TABLE __SCHEMA__.phoenix_kit_ai_reviews ADD COLUMN IF NOT EXISTS \"kind\" character varying(100)",
+        since: 1,
+        class: :column,
+        revisions: [{1, %{default: nil, type: "character varying(100)", pos: 2, not_null: true}}],
+        presence: :required,
+        backfill: nil
+      },
+      %{
+        id: "column:phoenix_kit_ai_reviews.metadata",
+        owner: :phoenix_kit_ai,
+        check: {:catalog, %{table: "phoenix_kit_ai_reviews", column: "metadata", kind: :column}},
+        create:
+          "ALTER TABLE __SCHEMA__.phoenix_kit_ai_reviews ADD COLUMN IF NOT EXISTS \"metadata\" jsonb DEFAULT '{}'::jsonb NOT NULL",
+        since: 1,
+        class: :column,
+        revisions: [{1, %{default: "'{}'::jsonb", type: "jsonb", pos: 11, not_null: true}}],
+        presence: :required,
+        backfill: :default
+      },
+      %{
+        id: "column:phoenix_kit_ai_reviews.payload",
+        owner: :phoenix_kit_ai,
+        check: {:catalog, %{table: "phoenix_kit_ai_reviews", column: "payload", kind: :column}},
+        create:
+          "ALTER TABLE __SCHEMA__.phoenix_kit_ai_reviews ADD COLUMN IF NOT EXISTS \"payload\" jsonb DEFAULT '{}'::jsonb NOT NULL",
+        since: 1,
+        class: :column,
+        revisions: [{1, %{default: "'{}'::jsonb", type: "jsonb", pos: 6, not_null: true}}],
+        presence: :required,
+        backfill: :default
+      },
+      %{
+        id: "column:phoenix_kit_ai_reviews.request_uuid",
+        owner: :phoenix_kit_ai,
+        check:
+          {:catalog, %{table: "phoenix_kit_ai_reviews", column: "request_uuid", kind: :column}},
+        create:
+          "ALTER TABLE __SCHEMA__.phoenix_kit_ai_reviews ADD COLUMN IF NOT EXISTS \"request_uuid\" uuid",
+        since: 1,
+        class: :column,
+        revisions: [{1, %{default: nil, type: "uuid", pos: 5, not_null: false}}],
+        presence: :required,
+        backfill: nil
+      },
+      %{
+        id: "column:phoenix_kit_ai_reviews.status",
+        owner: :phoenix_kit_ai,
+        check: {:catalog, %{table: "phoenix_kit_ai_reviews", column: "status", kind: :column}},
+        create:
+          "ALTER TABLE __SCHEMA__.phoenix_kit_ai_reviews ADD COLUMN IF NOT EXISTS \"status\" character varying(16) DEFAULT 'pending'::character varying NOT NULL",
+        since: 1,
+        class: :column,
+        revisions: [
+          {1,
+           %{
+             default: "'pending'::character varying",
+             type: "character varying(16)",
+             pos: 7,
+             not_null: true
+           }}
+        ],
+        presence: :required,
+        backfill: :default
+      },
+      %{
+        id: "column:phoenix_kit_ai_reviews.subject_id",
+        owner: :phoenix_kit_ai,
+        check:
+          {:catalog, %{table: "phoenix_kit_ai_reviews", column: "subject_id", kind: :column}},
+        create:
+          "ALTER TABLE __SCHEMA__.phoenix_kit_ai_reviews ADD COLUMN IF NOT EXISTS \"subject_id\" character varying(255)",
+        since: 1,
+        class: :column,
+        revisions: [{1, %{default: nil, type: "character varying(255)", pos: 4, not_null: false}}],
+        presence: :required,
+        backfill: nil
+      },
+      %{
+        id: "column:phoenix_kit_ai_reviews.subject_type",
+        owner: :phoenix_kit_ai,
+        check:
+          {:catalog, %{table: "phoenix_kit_ai_reviews", column: "subject_type", kind: :column}},
+        create:
+          "ALTER TABLE __SCHEMA__.phoenix_kit_ai_reviews ADD COLUMN IF NOT EXISTS \"subject_type\" character varying(100)",
+        since: 1,
+        class: :column,
+        revisions: [{1, %{default: nil, type: "character varying(100)", pos: 3, not_null: false}}],
+        presence: :required,
+        backfill: nil
+      },
+      %{
+        id: "column:phoenix_kit_ai_reviews.updated_at",
+        owner: :phoenix_kit_ai,
+        check:
+          {:catalog, %{table: "phoenix_kit_ai_reviews", column: "updated_at", kind: :column}},
+        create:
+          "ALTER TABLE __SCHEMA__.phoenix_kit_ai_reviews ADD COLUMN IF NOT EXISTS \"updated_at\" timestamp without time zone",
+        since: 1,
+        class: :column,
+        revisions: [
+          {1, %{default: nil, type: "timestamp without time zone", pos: 13, not_null: true}}
+        ],
+        presence: :required,
+        backfill: nil
+      },
+      %{
+        id: "column:phoenix_kit_ai_reviews.uuid",
+        owner: :phoenix_kit_ai,
+        check: {:catalog, %{table: "phoenix_kit_ai_reviews", column: "uuid", kind: :column}},
+        create:
+          "ALTER TABLE __SCHEMA__.phoenix_kit_ai_reviews ADD COLUMN IF NOT EXISTS \"uuid\" uuid DEFAULT __SCHEMA__.uuid_generate_v7() NOT NULL",
+        since: 1,
+        class: :column,
+        revisions: [
+          {1, %{default: "__SCHEMA__.uuid_generate_v7()", type: "uuid", pos: 1, not_null: true}}
+        ],
+        presence: :required,
+        backfill: :default
+      },
+      %{
         id: "column:phoenix_kit_ai_task_settings.auto_block_threshold",
         owner: :phoenix_kit_ai,
         check:
@@ -3103,6 +3294,161 @@ defmodule PhoenixKitAI.ExpectedSchema do
         backfill: nil
       },
       %{
+        id: "index:phoenix_kit_ai_reviews_decided_by_uuid_index",
+        owner: :phoenix_kit_ai,
+        check:
+          {:catalog,
+           %{
+             name: "phoenix_kit_ai_reviews_decided_by_uuid_index",
+             table: "phoenix_kit_ai_reviews",
+             kind: :index
+           }},
+        create:
+          "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_reviews_decided_by_uuid_index ON __SCHEMA__.phoenix_kit_ai_reviews USING btree (decided_by_uuid) WHERE (decided_by_uuid IS NOT NULL)",
+        since: 1,
+        class: :index,
+        revisions: [
+          {1,
+           %{
+             table: "phoenix_kit_ai_reviews",
+             keys: ["decided_by_uuid"],
+             unique: false,
+             method: "btree",
+             definition:
+               "CREATE INDEX phoenix_kit_ai_reviews_decided_by_uuid_index ON __SCHEMA__.phoenix_kit_ai_reviews USING btree (decided_by_uuid) WHERE (decided_by_uuid IS NOT NULL)",
+             predicate: "(decided_by_uuid IS NOT NULL)",
+             opclasses: ["uuid_ops"],
+             name_template: nil
+           }}
+        ],
+        presence: :required,
+        backfill: nil
+      },
+      %{
+        id: "index:phoenix_kit_ai_reviews_kind_status_index",
+        owner: :phoenix_kit_ai,
+        check:
+          {:catalog,
+           %{
+             name: "phoenix_kit_ai_reviews_kind_status_index",
+             table: "phoenix_kit_ai_reviews",
+             kind: :index
+           }},
+        create:
+          "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_reviews_kind_status_index ON __SCHEMA__.phoenix_kit_ai_reviews USING btree (kind, status)",
+        since: 1,
+        class: :index,
+        revisions: [
+          {1,
+           %{
+             table: "phoenix_kit_ai_reviews",
+             keys: ["kind", "status"],
+             unique: false,
+             method: "btree",
+             definition:
+               "CREATE INDEX phoenix_kit_ai_reviews_kind_status_index ON __SCHEMA__.phoenix_kit_ai_reviews USING btree (kind, status)",
+             predicate: nil,
+             opclasses: ["text_ops", "text_ops"],
+             name_template: nil
+           }}
+        ],
+        presence: :required,
+        backfill: nil
+      },
+      %{
+        id: "index:phoenix_kit_ai_reviews_request_uuid_index",
+        owner: :phoenix_kit_ai,
+        check:
+          {:catalog,
+           %{
+             name: "phoenix_kit_ai_reviews_request_uuid_index",
+             table: "phoenix_kit_ai_reviews",
+             kind: :index
+           }},
+        create:
+          "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_reviews_request_uuid_index ON __SCHEMA__.phoenix_kit_ai_reviews USING btree (request_uuid) WHERE (request_uuid IS NOT NULL)",
+        since: 1,
+        class: :index,
+        revisions: [
+          {1,
+           %{
+             table: "phoenix_kit_ai_reviews",
+             keys: ["request_uuid"],
+             unique: false,
+             method: "btree",
+             definition:
+               "CREATE INDEX phoenix_kit_ai_reviews_request_uuid_index ON __SCHEMA__.phoenix_kit_ai_reviews USING btree (request_uuid) WHERE (request_uuid IS NOT NULL)",
+             predicate: "(request_uuid IS NOT NULL)",
+             opclasses: ["uuid_ops"],
+             name_template: nil
+           }}
+        ],
+        presence: :required,
+        backfill: nil
+      },
+      %{
+        id: "index:phoenix_kit_ai_reviews_status_inserted_at_index",
+        owner: :phoenix_kit_ai,
+        check:
+          {:catalog,
+           %{
+             name: "phoenix_kit_ai_reviews_status_inserted_at_index",
+             table: "phoenix_kit_ai_reviews",
+             kind: :index
+           }},
+        create:
+          "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_reviews_status_inserted_at_index ON __SCHEMA__.phoenix_kit_ai_reviews USING btree (status, inserted_at)",
+        since: 1,
+        class: :index,
+        revisions: [
+          {1,
+           %{
+             table: "phoenix_kit_ai_reviews",
+             keys: ["status", "inserted_at"],
+             unique: false,
+             method: "btree",
+             definition:
+               "CREATE INDEX phoenix_kit_ai_reviews_status_inserted_at_index ON __SCHEMA__.phoenix_kit_ai_reviews USING btree (status, inserted_at)",
+             predicate: nil,
+             opclasses: ["text_ops", "timestamp_ops"],
+             name_template: nil
+           }}
+        ],
+        presence: :required,
+        backfill: nil
+      },
+      %{
+        id: "index:phoenix_kit_ai_reviews_subject_index",
+        owner: :phoenix_kit_ai,
+        check:
+          {:catalog,
+           %{
+             name: "phoenix_kit_ai_reviews_subject_index",
+             table: "phoenix_kit_ai_reviews",
+             kind: :index
+           }},
+        create:
+          "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_reviews_subject_index ON __SCHEMA__.phoenix_kit_ai_reviews USING btree (subject_type, subject_id)",
+        since: 1,
+        class: :index,
+        revisions: [
+          {1,
+           %{
+             table: "phoenix_kit_ai_reviews",
+             keys: ["subject_type", "subject_id"],
+             unique: false,
+             method: "btree",
+             definition:
+               "CREATE INDEX phoenix_kit_ai_reviews_subject_index ON __SCHEMA__.phoenix_kit_ai_reviews USING btree (subject_type, subject_id)",
+             predicate: nil,
+             opclasses: ["text_ops", "text_ops"],
+             name_template: nil
+           }}
+        ],
+        presence: :required,
+        backfill: nil
+      },
+      %{
         id: "index:phoenix_kit_ai_task_settings_classifier_endpoint_uuid_index",
         owner: :phoenix_kit_ai,
         check:
@@ -3719,6 +4065,67 @@ defmodule PhoenixKitAI.ExpectedSchema do
         backfill: nil
       },
       %{
+        id: "constraint:phoenix_kit_ai_reviews.phoenix_kit_ai_reviews_pkey",
+        owner: :phoenix_kit_ai,
+        check:
+          {:catalog,
+           %{
+             name: "phoenix_kit_ai_reviews_pkey",
+             table: "phoenix_kit_ai_reviews",
+             kind: :constraint
+           }},
+        create:
+          "DO $$\nBEGIN\n  IF NOT EXISTS (\n    SELECT 1\n    FROM pg_constraint c\n    JOIN pg_class t ON t.oid = c.conrelid\n    JOIN pg_namespace n ON n.oid = t.relnamespace\n    WHERE c.conname = 'phoenix_kit_ai_reviews_pkey'\n      AND t.relname = 'phoenix_kit_ai_reviews'\n      AND n.nspname = '__SCHEMA__'\n  ) THEN\n    ALTER TABLE __SCHEMA__.phoenix_kit_ai_reviews ADD CONSTRAINT phoenix_kit_ai_reviews_pkey PRIMARY KEY (uuid);\n  END IF;\nEND\n$$",
+        since: 1,
+        class: :constraint,
+        revisions: [
+          {1,
+           %{
+             type: "p",
+             columns: ["uuid"],
+             definition: "PRIMARY KEY (uuid)",
+             name_template: nil,
+             foreign_table: nil,
+             foreign_columns: nil,
+             on_delete: nil,
+             on_update: nil
+           }}
+        ],
+        presence: :required,
+        backfill: nil
+      },
+      %{
+        id: "constraint:phoenix_kit_ai_reviews.phoenix_kit_ai_reviews_values_check",
+        owner: :phoenix_kit_ai,
+        check:
+          {:catalog,
+           %{
+             name: "phoenix_kit_ai_reviews_values_check",
+             table: "phoenix_kit_ai_reviews",
+             kind: :constraint
+           }},
+        create:
+          "DO $$\nBEGIN\n  IF NOT EXISTS (\n    SELECT 1\n    FROM pg_constraint c\n    JOIN pg_class t ON t.oid = c.conrelid\n    JOIN pg_namespace n ON n.oid = t.relnamespace\n    WHERE c.conname = 'phoenix_kit_ai_reviews_values_check'\n      AND t.relname = 'phoenix_kit_ai_reviews'\n      AND n.nspname = '__SCHEMA__'\n  ) THEN\n    ALTER TABLE __SCHEMA__.phoenix_kit_ai_reviews ADD CONSTRAINT phoenix_kit_ai_reviews_values_check CHECK ((((status)::text = ANY ((ARRAY['pending'::character varying, 'confirmed'::character varying, 'rejected'::character varying])::text[])) AND ((decision_note IS NULL) OR (char_length(decision_note) <= 1000))));\n  END IF;\nEND\n$$",
+        since: 1,
+        class: :constraint,
+        revisions: [
+          {1,
+           %{
+             type: "c",
+             columns: ["status", "decision_note"],
+             definition:
+               "CHECK ((((status)::text = ANY ((ARRAY['pending'::character varying, 'confirmed'::character varying, 'rejected'::character varying])::text[])) AND ((decision_note IS NULL) OR (char_length(decision_note) <= 1000))))",
+             name_template: nil,
+             foreign_table: nil,
+             foreign_columns: nil,
+             on_delete: nil,
+             on_update: nil
+           }}
+        ],
+        presence: :required,
+        backfill: nil
+      },
+      %{
         id: "constraint:phoenix_kit_ai_task_settings.phoenix_kit_ai_task_settings_pkey",
         owner: :phoenix_kit_ai,
         check:
@@ -4152,6 +4559,68 @@ defmodule PhoenixKitAI.ExpectedSchema do
                "FOREIGN KEY (prompt_uuid) REFERENCES __SCHEMA__.phoenix_kit_ai_prompts(uuid) ON DELETE SET NULL",
              name_template: nil,
              foreign_table: "phoenix_kit_ai_prompts",
+             foreign_columns: ["uuid"],
+             on_delete: "n",
+             on_update: "a"
+           }}
+        ],
+        presence: :required,
+        backfill: nil
+      },
+      %{
+        id: "constraint:phoenix_kit_ai_reviews.phoenix_kit_ai_reviews_decided_by_uuid_fkey",
+        owner: :phoenix_kit_ai,
+        check:
+          {:catalog,
+           %{
+             name: "phoenix_kit_ai_reviews_decided_by_uuid_fkey",
+             table: "phoenix_kit_ai_reviews",
+             kind: :constraint
+           }},
+        create:
+          "DO $$\nBEGIN\n  IF NOT EXISTS (\n    SELECT 1\n    FROM pg_constraint c\n    JOIN pg_class t ON t.oid = c.conrelid\n    JOIN pg_namespace n ON n.oid = t.relnamespace\n    WHERE c.conname = 'phoenix_kit_ai_reviews_decided_by_uuid_fkey'\n      AND t.relname = 'phoenix_kit_ai_reviews'\n      AND n.nspname = '__SCHEMA__'\n  ) THEN\n    ALTER TABLE __SCHEMA__.phoenix_kit_ai_reviews ADD CONSTRAINT phoenix_kit_ai_reviews_decided_by_uuid_fkey FOREIGN KEY (decided_by_uuid) REFERENCES __SCHEMA__.phoenix_kit_users(uuid) ON DELETE SET NULL;\n  END IF;\nEND\n$$",
+        since: 1,
+        class: :constraint,
+        revisions: [
+          {1,
+           %{
+             type: "f",
+             columns: ["decided_by_uuid"],
+             definition:
+               "FOREIGN KEY (decided_by_uuid) REFERENCES __SCHEMA__.phoenix_kit_users(uuid) ON DELETE SET NULL",
+             name_template: nil,
+             foreign_table: "phoenix_kit_users",
+             foreign_columns: ["uuid"],
+             on_delete: "n",
+             on_update: "a"
+           }}
+        ],
+        presence: :required,
+        backfill: nil
+      },
+      %{
+        id: "constraint:phoenix_kit_ai_reviews.phoenix_kit_ai_reviews_request_uuid_fkey",
+        owner: :phoenix_kit_ai,
+        check:
+          {:catalog,
+           %{
+             name: "phoenix_kit_ai_reviews_request_uuid_fkey",
+             table: "phoenix_kit_ai_reviews",
+             kind: :constraint
+           }},
+        create:
+          "DO $$\nBEGIN\n  IF NOT EXISTS (\n    SELECT 1\n    FROM pg_constraint c\n    JOIN pg_class t ON t.oid = c.conrelid\n    JOIN pg_namespace n ON n.oid = t.relnamespace\n    WHERE c.conname = 'phoenix_kit_ai_reviews_request_uuid_fkey'\n      AND t.relname = 'phoenix_kit_ai_reviews'\n      AND n.nspname = '__SCHEMA__'\n  ) THEN\n    ALTER TABLE __SCHEMA__.phoenix_kit_ai_reviews ADD CONSTRAINT phoenix_kit_ai_reviews_request_uuid_fkey FOREIGN KEY (request_uuid) REFERENCES __SCHEMA__.phoenix_kit_ai_requests(uuid) ON DELETE SET NULL;\n  END IF;\nEND\n$$",
+        since: 1,
+        class: :constraint,
+        revisions: [
+          {1,
+           %{
+             type: "f",
+             columns: ["request_uuid"],
+             definition:
+               "FOREIGN KEY (request_uuid) REFERENCES __SCHEMA__.phoenix_kit_ai_requests(uuid) ON DELETE SET NULL",
+             name_template: nil,
+             foreign_table: "phoenix_kit_ai_requests",
              foreign_columns: ["uuid"],
              on_delete: "n",
              on_update: "a"

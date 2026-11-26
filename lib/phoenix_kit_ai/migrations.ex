@@ -103,7 +103,7 @@ defmodule PhoenixKitAI.Migrations do
       takes audio with a chat request (`PhoenixKitAI.Capabilities`, the
       guard's `:audio_input` need). Down to 5 drops the column.
 
-  ## V7: visitors, one prompt key, content hashes
+  ## V7: visitors, one prompt key, content hashes, reviews
 
     * `phoenix_kit_ai_requests.subject_key` — a nullable external subject
       (`character varying(255)`) next to `user_uuid`, for a caller that is not
@@ -129,6 +129,13 @@ defmodule PhoenixKitAI.Migrations do
       (`PhoenixKitAI.ContentHashes`, for "has this page changed since the
       last crawl"). `source_key` ≤ 2 048 characters (CHECK). Down to 6
       drops it.
+    * `phoenix_kit_ai_reviews` — AI results waiting for a person's word
+      (`PhoenixKitAI.Reviews`): `kind`, the subject (`subject_type`,
+      `subject_id`, no foreign key), the `payload`, `status` (`pending`,
+      `confirmed`, `rejected` — CHECK), who decided and when, a note
+      (≤ 1 000). `request_uuid` references the journal `ON DELETE SET NULL`
+      with an index leading with it (journal retention requires both),
+      `decided_by_uuid` the users `ON DELETE SET NULL`. Down to 6 drops it.
 
   ## Version marker
 
@@ -305,7 +312,7 @@ defmodule PhoenixKitAI.Migrations do
 
   defp version_down(7, prefix), do: v7_down_statements(prefix)
 
-  # ── V7: visitors, one prompt key, content hashes ──────────────────────
+  # ── V7: visitors, one prompt key, content hashes, reviews ─────────────
 
   defp v7_statements(prefix) do
     requests = Helpers.qualify_table("phoenix_kit_ai_requests", prefix)
@@ -316,7 +323,48 @@ defmodule PhoenixKitAI.Migrations do
         "USING btree (subject_key, inserted_at) INCLUDE (cost) " <>
         "WHERE (((status)::text = 'success'::text) AND (subject_key IS NOT NULL))",
       prompt_fk_dedupe(prefix)
-    ] ++ content_hash_statements(prefix)
+    ] ++ content_hash_statements(prefix) ++ review_statements(prefix)
+  end
+
+  defp review_statements(prefix) do
+    uuid7 = Helpers.uuid_v7_call(prefix)
+    reviews = Helpers.qualify_table("phoenix_kit_ai_reviews", prefix)
+    requests = Helpers.qualify_table("phoenix_kit_ai_requests", prefix)
+    users = Helpers.qualify_table("phoenix_kit_users", prefix)
+
+    [
+      """
+      CREATE TABLE IF NOT EXISTS #{reviews} (
+        uuid uuid DEFAULT #{uuid7} NOT NULL,
+        kind character varying(100) NOT NULL,
+        subject_type character varying(100),
+        subject_id character varying(255),
+        request_uuid uuid,
+        payload jsonb DEFAULT '{}'::jsonb NOT NULL,
+        status character varying(16) DEFAULT 'pending' NOT NULL,
+        decided_by_uuid uuid,
+        decided_at timestamp without time zone,
+        decision_note text,
+        metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+        inserted_at timestamp without time zone NOT NULL,
+        updated_at timestamp without time zone NOT NULL,
+        CONSTRAINT phoenix_kit_ai_reviews_pkey PRIMARY KEY (uuid),
+        CONSTRAINT phoenix_kit_ai_reviews_request_uuid_fkey
+          FOREIGN KEY (request_uuid) REFERENCES #{requests}(uuid) ON DELETE SET NULL,
+        CONSTRAINT phoenix_kit_ai_reviews_decided_by_uuid_fkey
+          FOREIGN KEY (decided_by_uuid) REFERENCES #{users}(uuid) ON DELETE SET NULL,
+        CONSTRAINT phoenix_kit_ai_reviews_values_check CHECK (
+          status IN ('pending', 'confirmed', 'rejected') AND
+          (decision_note IS NULL OR char_length(decision_note) <= 1000)
+        )
+      )
+      """,
+      "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_reviews_status_inserted_at_index ON #{reviews} (status, inserted_at)",
+      "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_reviews_kind_status_index ON #{reviews} (kind, status)",
+      "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_reviews_subject_index ON #{reviews} (subject_type, subject_id)",
+      "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_reviews_request_uuid_index ON #{reviews} (request_uuid) WHERE request_uuid IS NOT NULL",
+      "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_reviews_decided_by_uuid_index ON #{reviews} (decided_by_uuid) WHERE decided_by_uuid IS NOT NULL"
+    ]
   end
 
   defp content_hash_statements(prefix) do
@@ -386,6 +434,7 @@ defmodule PhoenixKitAI.Migrations do
     index = Helpers.qualify_table("phoenix_kit_ai_requests_subject_spend_idx", prefix)
 
     [
+      "DROP TABLE IF EXISTS #{Helpers.qualify_table("phoenix_kit_ai_reviews", prefix)}",
       "DROP TABLE IF EXISTS #{Helpers.qualify_table("phoenix_kit_ai_content_hashes", prefix)}",
       "DROP INDEX IF EXISTS #{index}",
       "ALTER TABLE #{requests} DROP COLUMN IF EXISTS subject_key"

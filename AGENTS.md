@@ -27,8 +27,9 @@ host supplies endpoint and router (`config/` exists only for tests).
 - **Consumed by:** `phoenix_kit_catalogue`, `phoenix_kit_publishing`,
   `phoenix_kit_projects`, `phoenix_kit_restyle`, `phoenix_kit_ecommerce` — all
   through the `PhoenixKitAI` context module.
-- **Admin surface:** one parent tab `AI` at `ai` with five subtabs —
-  `ai/endpoints`, `ai/prompts`, `ai/playground`, `ai/usage`, `ai/tasks`.
+- **Admin surface:** one parent tab `AI` at `ai` with six subtabs —
+  `ai/endpoints`, `ai/prompts`, `ai/playground`, `ai/usage`, `ai/tasks`,
+  `ai/reviews`.
   Sub-routes for the new/edit forms come from `route_module/0`.
 - **Module key** `"ai"`; settings prefix `ai_`.
 
@@ -404,6 +405,7 @@ lib/phoenix_kit_ai/
   vision_batch.ex                PhoenixKitAI.VisionBatch — one vision verb over many items, per-item status, budget and fatal stop
   runs.ex                        PhoenixKitAI.Runs — a run's totals from the journal (`run:` / `step:` tags), its ceiling (`run_budget:`)
   content_hashes.ex content_hash.ex   PhoenixKitAI.ContentHashes — "has this content changed": a stored hash per (namespace, source key)
+  reviews.ex review.ex review_handler.ex   PhoenixKitAI.Reviews — the review envelope: pending → confirmed / rejected once, the app's on_decide in the transaction
   fetch.ex fetch/                PhoenixKitAI.Fetch — optional page fetching for crawl-style input: robots.txt (fetch/robots.ex), per-host pace and robots cache
                                  (fetch/host_state.ex, in children/0), retries, a size bound, main-content extraction to clean text (fetch/extract.ex)
   openrouter_client.ex           generic across providers despite the name
@@ -473,6 +475,7 @@ Notes on the less obvious modules:
 | `phoenix_kit_ai_task_user_limits` | `PhoenixKitAI.TaskUserLimit` | a user's personal limits in a task (module chain V2) |
 | `phoenix_kit_ai_guard_events` | `PhoenixKitAI.GuardEvent` | what the guard noticed; `dedupe_key` unique where set (module chain V2) |
 | `phoenix_kit_ai_guard_blocks` | `PhoenixKitAI.GuardBlock` | a person blocked from a block group until lifted; one active per group and person (module chain V3) |
+| `phoenix_kit_ai_reviews` | `PhoenixKitAI.Review` | AI results waiting for a person: `pending` → `confirmed` / `rejected`, decided once (module chain V7; `PhoenixKitAI.Reviews`) |
 | `phoenix_kit_ai_content_hashes` | `PhoenixKitAI.ContentHash` | what a source (`namespace`, `source_key`) held when last recorded: its content hash, `changed_at` / `checked_at` (module chain V7; `PhoenixKitAI.ContentHashes`) |
 
 ### PubSub topics
@@ -484,6 +487,7 @@ Notes on the less obvious modules:
 | `phoenix_kit:ai:requests` | `subscribe_requests/0` |
 | `phoenix_kit:ai:capabilities` | `Capabilities.subscribe/0` |
 | `phoenix_kit:ai:guard` | `TaskLimits.topic/0` (`GuardWatch` subscribes) |
+| `phoenix_kit:ai:reviews` | `Reviews.subscribe/0` |
 
 Every message is `{event, uuid}`; a subscriber that needs the record reads
 it by uuid. The capabilities topic carries
@@ -634,6 +638,7 @@ so the context function gets that same, current scope.
 | `:box_formats` | `%{}` | Model-id prefix → how that model writes a box (`:yx_1000`, `:xy_1000`, `:xy_fraction`, `:yx_fraction`), merged over the built-in table (`PhoenixKitAI.Box.format_for/2`; longest prefix wins; a call's `box_format:` wins over both). An unknown value is ignored with a warning |
 | `:allow_internal_image_urls` | `false` | Lift the image-fetch host policy (loopback / link-local / RFC 1918 / `.local`, resolved addresses included) — tests and air-gapped installs only; separate from the endpoint base-URL switch |
 | `:fetch` | `[]` | Defaults of `PhoenixKitAI.Fetch` (a call's options win): `user_agent:`, `robots:` (`true`), `robots_ttl:` (3 600 s), `robots_unreachable:` (`:deny`), `rate_limit_ms:` (1 000 per host), `max_crawl_delay_ms:` (30 000), `max_attempts:` (3), `base_delay_ms:` (500), `max_delay_ms:` (10 000), `timeout:` (15 000), `max_bytes:` (5 000 000), `max_redirects:` (5), `allow_internal:` (`false` — internal hosts refused like image URLs), `keep_html:`, `headers:`, `req_options:` |
+| `:review_handlers` | `%{}` | Review kind → module implementing `PhoenixKitAI.ReviewHandler` (`on_decide/1`, optional `summary/1`), run when a review of the kind is decided |
 | `:journal_prune` | `[]` | Options of the journal cleanup (`PhoenixKitAI.JournalPruneWorker` → `Retention.run/3`): `request_batch:` 1 000, `content_batch:` 500 (halved after a chunk's `statement_timeout`, down to `content_min_batch:` 50, which is capped at `content_batch`), `event_batch:` 1 000, `pause_ms:` 50 between chunks (at most 5 000; a longer one is 5 000, with a warning), `max_rows:` 1 000 000 per counter per run, `statement_timeout_ms:` 30 000 and `lock_timeout_ms:` 5 000 per chunk, `time_limits:` `%{requests: 600_000, content: 360_000, guard_reasons: 60_000, guard_events: 120_000}` (ms). An invalid value falls back to its default with a warning; time limits that would not fit in the job's 25-minute `timeout/1` — their sum plus, per counter, one `pause_ms` and one chunk and one probe at `statement_timeout_ms` + 5 s (a counter overruns its slice by at most that; the content step starts no later range once its slice is over), plus a minute — fall back to the defaults as a whole, and a `statement_timeout_ms` too long for even the default slices (32 500 − `pause_ms` / 2 or more; 32 475 at the default pause) is lowered, with a warning naming it, to the largest that fits (`Retention.run_options/1`; the run never budgets past `timeout/1`). `lock_timeout_ms` is not part of the budget: PostgreSQL's statement timeout bounds a lock wait too. `:now` and `:actor_uuid` are ignored (they are the job's own); a value that is not a keyword list is ignored with a warning. `preview_timeout_ms:` (60 000) is the statement and lock timeout of a preview's counts, read separately; past it the preview is `{:error, :preview_timeout}` |
 
 ### Providers
@@ -908,7 +913,10 @@ the others); down to 5 drops it. V7 adds `phoenix_kit_ai_requests.subject_key`
 `phoenix_kit_ai_requests_subject_spend_idx`; down to 6 drops both. V7 also
 leaves one foreign key on `phoenix_kit_ai_requests.prompt_uuid` (below) and
 creates `phoenix_kit_ai_content_hashes` (unique `(namespace, source_key)`,
-`source_key` ≤ 2 048); down to 6 drops the table. V5 adopts
+`source_key` ≤ 2 048) and `phoenix_kit_ai_reviews` (status CHECK, note ≤ 1 000;
+`request_uuid` → the journal `SET NULL` with a partial index, as journal
+retention's foreign-key check requires; `decided_by_uuid` → users `SET NULL`);
+down to 6 drops both. V5 adopts
 the three core-created tables: `CREATE TABLE IF NOT EXISTS`, guarded
 constraints and indexes, exactly as a fresh core builds them, a no-op on
 every existing install. **It is emitted ahead of V2's statements, not last**
@@ -1390,6 +1398,20 @@ Test database `phoenix_kit_ai_test`.
   `PhoenixKitAI.Translatable` (`fetch/2`, `source_fields/2`,
   `put_translation/4`); a configured entry wins over a module's adapter
   for the same type without a duplicate warning.
+- Review envelope (`PhoenixKitAI.Reviews`): an app `create/1`s a review
+  (kind, subject, payload, the journal row); `decide/3` / `confirm/2` /
+  `reject/2` move it from `pending` once — one conditional `UPDATE … WHERE
+  status = 'pending'`, so a race has one winner and the rest get
+  `{:already_decided, status}` — and run the app's handler for the kind
+  (`config :phoenix_kit_ai, review_handlers: %{kind => module}`,
+  `PhoenixKitAI.ReviewHandler`; a call's `on_decide:` fun wins) inside the
+  same transaction: `{:error, _}` or a raise rolls the decision back. With
+  `scope:` it needs `ai.manage` (or an Owner). AI → Reviews lists them for
+  every `ai` holder and decides with `ai.manage`, checked per event through
+  `Access.manage_scope/1`; it implements `phoenix_kit_scope_changed/1`.
+  Broadcasts `{:review_created | :review_decided, uuid}` on
+  `phoenix_kit:ai:reviews`; Activity `review.confirmed` / `review.rejected`
+  (kind and subject, never the payload).
 - Translations are pinned to their source: the worker hands
   `put_translation/4` a `:source_hash` (the job's `source_hash` arg, from
   `Translations.enqueue/1`'s `source_hash:`, else `Translations.source_hash/1`

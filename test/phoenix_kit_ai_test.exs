@@ -106,7 +106,7 @@ defmodule PhoenixKitAITest do
     test "returns a list of Tab structs" do
       tabs = PhoenixKitAI.admin_tabs()
       assert is_list(tabs)
-      assert length(tabs) == 6
+      assert length(tabs) == 7
     end
 
     test "parent tab has required fields" do

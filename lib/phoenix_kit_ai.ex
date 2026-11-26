@@ -1202,6 +1202,20 @@ defmodule PhoenixKitAI do
         parent: :admin_ai,
         gettext_backend: PhoenixKitAI.Gettext,
         gettext_domain: "default"
+      },
+      %Tab{
+        id: :admin_ai_reviews,
+        label: "Reviews",
+        icon: "hero-check-badge",
+        path: "ai/reviews",
+        priority: 646,
+        level: :admin,
+        # Every `ai` holder sees the list; deciding needs `ai.manage`
+        # (`Web.Reviews` checks it on every event).
+        permission: module_key(),
+        parent: :admin_ai,
+        gettext_backend: PhoenixKitAI.Gettext,
+        gettext_domain: "default"
       }
     ]
   end
@@ -1235,6 +1249,7 @@ defmodule PhoenixKitAI do
       dgettext_noop("default", "Playground"),
       dgettext_noop("default", "Usage"),
       dgettext_noop("default", "Tasks"),
+      dgettext_noop("default", "Reviews"),
       dgettext_noop("default", "AI endpoints, prompts, and usage tracking"),
       dgettext_noop("default", "Manage the AI task guard"),
       dgettext_noop(

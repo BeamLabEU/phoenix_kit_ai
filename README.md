@@ -27,8 +27,9 @@ auto-discovery by a parent Phoenix application.
   thinking) automatically persisted to request metadata
 - **Usage Tracking** — Every API call logged with tokens, cost
   (US dollars), latency, status, and full caller context
-- **Admin UI** — one `AI` tab with five subtabs: Endpoints, Prompts,
-  Playground, Usage (journal + retention), and Tasks (limits, guard, blocks)
+- **Admin UI** — one `AI` tab with six subtabs: Endpoints, Prompts,
+  Playground, Usage (journal + retention), Tasks (limits, guard, blocks),
+  and Reviews (AI results waiting for a person to confirm or reject)
 - **Dynamic model selector** — Models auto-load from each provider's
   `/models` endpoint when an integration is picked, with a 10-second
   "still loading" hint and a retry button on transient failures
@@ -976,6 +977,7 @@ large journal, measure it first and update in a quiet window.
 | Playground | `/admin/ai/playground` | Interactive testing with live variables |
 | Usage | `/admin/ai/usage` | Dashboard stats and request history |
 | Tasks | `/admin/ai/tasks` | Declared AI tasks, their needs, endpoints and fitness; limits, use, watchers; off-purpose flags and blocks (changes need `ai.manage`) |
+| Reviews | `/admin/ai/reviews` | AI results apps put up for review (`PhoenixKitAI.Reviews`), by status and kind; confirming or rejecting needs `ai.manage` |
 
 ## Supported providers
 
