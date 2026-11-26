@@ -96,7 +96,12 @@ defmodule PhoenixKitAI.Translatable do
   need it — most don't — ignore the key; it exists so an adapter that
   wants to fingerprint what was translated (e.g. to detect the source
   changing again before the translation lands) doesn't have to
-  reconstruct it from a possibly-stale `resource`.
+  reconstruct it from a possibly-stale `resource`. `:source_hash` is the
+  hash this translation is pinned to (the host's own from `enqueue/1`'s
+  `source_hash:`, else `PhoenixKitAI.Translations.source_hash/1` of
+  `:source_fields`): an adapter may store it with the translation; the
+  worker pins it either way, and `PhoenixKitAI.Translations.stale?/5`
+  reads that pin.
   """
   @callback put_translation(
               resource :: struct(),

@@ -26,8 +26,15 @@ defmodule PhoenixKitAI.TranslateWorker do
         "source_lang"   => "en",
         "target_lang"   => "es",
         "actor_uuid"    => uuid_or_nil,
-        "resource_scope" => scope_or_nil
+        "resource_scope" => scope_or_nil,
+        "source_hash"   => hash               # optional
       }
+
+  `source_hash` (optional) is the host's own hash of the source the
+  translation is made from; without it the worker uses a hash of the fields
+  it sends (`PhoenixKitAI.Translations.source_hash/1`). Either is passed to
+  `put_translation/4` as `:source_hash` and pinned to the translation
+  (`PhoenixKitAI.Translations.stale?/5`).
 
   `resource_scope` is an optional, opaque, JSON-safe string partitioning a
   resource's jobs (e.g. a version number). When present and the adapter exports
@@ -73,6 +80,7 @@ defmodule PhoenixKitAI.TranslateWorker do
         target: target,
         scope: scope,
         actor: Map.get(args, "actor_uuid"),
+        source_hash: source_hash_arg(Map.get(args, "source_hash")),
         adapter: adapter,
         resource: resource,
         attempt: job.attempt,
@@ -184,9 +192,13 @@ defmodule PhoenixKitAI.TranslateWorker do
     end
   end
 
+  defp source_hash_arg(hash) when is_binary(hash) and hash != "", do: hash
+  defp source_hash_arg(_hash), do: nil
+
   defp persist(ctx, translated, source_fields) do
     case safe_put_translation(ctx, translated, source_fields) do
       {:ok, _updated} ->
+        Translations.pin_after_persist(ctx, pin_hash(ctx, source_fields))
         log_added(ctx, translated)
         broadcast(ctx, :translation_completed, %{fields: translated})
         :ok
@@ -274,7 +286,8 @@ defmodule PhoenixKitAI.TranslateWorker do
   def safe_put_translation(ctx, translated, source_fields) do
     case ctx.adapter.put_translation(ctx.resource, ctx.target, translated,
            actor_uuid: ctx.actor,
-           source_fields: source_fields
+           source_fields: source_fields,
+           source_hash: pin_hash(ctx, source_fields)
          ) do
       {:ok, updated} -> {:ok, updated}
       {:error, reason} -> {:error, reason}
@@ -283,6 +296,11 @@ defmodule PhoenixKitAI.TranslateWorker do
   rescue
     e -> {:error, {:exception, Exception.message(e)}}
   end
+
+  # The source a translation is pinned to: the host's own hash when the job
+  # carries one, else a hash of the fields this job sent.
+  defp pin_hash(ctx, source_fields),
+    do: Map.get(ctx, :source_hash) || Translations.source_hash(source_fields)
 
   # ── Adapter resolution + loading ─────────────────────────────────
 

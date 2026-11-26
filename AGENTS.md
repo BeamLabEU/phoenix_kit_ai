@@ -1383,6 +1383,16 @@ Test database `phoenix_kit_ai_test`.
   `PhoenixKitAI.Translatable` (`fetch/2`, `source_fields/2`,
   `put_translation/4`); a configured entry wins over a module's adapter
   for the same type without a duplicate warning.
+- Translations are pinned to their source: the worker hands
+  `put_translation/4` a `:source_hash` (the job's `source_hash` arg, from
+  `Translations.enqueue/1`'s `source_hash:`, else `Translations.source_hash/1`
+  of the fields it sent) and, after a successful persist, records it in
+  `ContentHashes` under `"ai.translation:<resource_type>"`, key
+  `<uuid>[@<scope>]:<lang>` (a failed pin write is logged, never fails the
+  job). `Translations.stale?/5` (`true` / `false` / `:unknown` without a
+  pin) and `stale_languages/4` compare it with the current source, so a
+  re-crawl finds stale translations. Jobs without `source_hash` keep the
+  args they always had.
 - The translation glossary only reaches the model through a prompt that
   has a `{{Glossary}}` slot. The shared prompt carries one only on installs
   provisioned from 0.23.2 on — `Translations.ensure_default_prompt/0` never
