@@ -110,9 +110,15 @@ defmodule PhoenixKitAI.Runs do
   @spec ceiling(term(), Decimal.t() | String.t(), keyword()) ::
           {:ok, ceiling_status()} | {:error, term()}
   def ceiling(run, ceiling, opts \\ []) do
-    with {:ok, tag} <- tag(run),
-         {:ok, ceiling} <- ceiling_amount(ceiling) do
-      spent = spent(tag, opts[:since])
+    with {:ok, tag} <- tag(run), do: ceiling_of(tag, ceiling, opts[:since])
+  end
+
+  # `tag` is already a run tag: normalising it again could change it (a tag
+  # cut at the length limit may end in a space the second pass trims), and
+  # the rows carry the first normalisation.
+  defp ceiling_of(tag, ceiling, since) do
+    with {:ok, ceiling} <- ceiling_amount(ceiling) do
+      spent = spent(tag, since)
       remaining = Decimal.sub(ceiling, spent)
 
       {:ok,
@@ -139,7 +145,7 @@ defmodule PhoenixKitAI.Runs do
 
       budget ->
         with {:ok, tag} <- ceiling_run(opts[:run]),
-             {:ok, status} <- ceiling(tag, budget, since: since(opts)),
+             {:ok, status} <- ceiling_of(tag, budget, since(opts)),
              do: reached(status)
     end
   end
