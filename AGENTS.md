@@ -887,7 +887,10 @@ constraints and indexes, exactly as a fresh core builds them, a no-op on
 every existing install. **It is emitted ahead of V2's statements, not last**
 (`version_up/3`): V2's foreign keys and its journal index, and V4's
 conversions, touch those tables, and without core's copy only V5 creates
-them. The number is still the next one; a target below 5 builds the old chain.
+them. The number is still the next one; a target below 5 builds the old chain,
+except that its V2 runs the same adoption inside one `DO` block when any of
+the three tables is missing (a fresh database under core 3.x), so a host's
+old `up(version: 3)` migration file still builds a fresh database.
 Down from 5 only moves the marker and never drops an adopted table. Down to 2
 drops it (V3's table); down to 1 drops what V2 added; down to 0 also the snapshot, which the next
 refresh rebuilds.

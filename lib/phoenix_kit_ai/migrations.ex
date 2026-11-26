@@ -22,7 +22,13 @@ defmodule PhoenixKitAI.Migrations do
   no-op on every existing install. **Emitted ahead of V2's statements**, not
   after V4: V2 puts foreign keys and an index on those tables and V4 converts
   rows in them, so on a database without core's copy they must exist first.
-  A target below 5 builds the chain as it was. `down/1` never drops them.
+  A target below 5 builds the chain as it was on a database that has core's
+  copy of the tables; on one without it (a fresh database under today's
+  core, which no longer creates them) V2 first runs the same adoption, inside
+  one `DO` block that checks the three tables exist and does nothing when they
+  do. So a host's older migration file calling `up(version: 3)` still builds a
+  fresh database, and its later `up(version: 5)` finds the tables in place.
+  `down/1` never drops them.
   V4's guard (core's V223 `cost` column) is satisfied by this chain's own copy;
   on a database whose core copy predates V223 it still stops, as before.
   The core floor stays `~> 2.64`, which carries every version above.
@@ -236,7 +242,13 @@ defmodule PhoenixKitAI.Migrations do
   defp version_up(2, prefix, target) when target >= 5,
     do: v5_adoption_statements(prefix) ++ v2_statements(prefix)
 
-  defp version_up(2, prefix, _target), do: v2_statements(prefix)
+  # Below 5 the adoption runs only on a database that lacks core's copy of
+  # the tables (today's core no longer creates them): a host's old
+  # `up(version: 3)` migration must still build a fresh database, while an
+  # existing install below 5 gets exactly the chain it always did.
+  defp version_up(2, prefix, _target),
+    do: [v5_adoption_if_missing(prefix) | v2_statements(prefix)]
+
   defp version_up(3, prefix, _target), do: v3_statements(prefix)
   defp version_up(4, prefix, _target), do: v4_statements(prefix)
   defp version_up(5, _prefix, _target), do: []
@@ -285,6 +297,34 @@ defmodule PhoenixKitAI.Migrations do
     uuid7 = Helpers.uuid_v7_call(prefix)
 
     adoption_tables(p, uuid7) ++ adoption_constraints(p, prefix) ++ adoption_indexes(p)
+  end
+
+  # V5's adoption as one statement that does nothing unless one of the three
+  # tables is missing — for a target below 5 (see `version_up/3`). Each
+  # adoption statement is run as it is (all of them guard themselves), so
+  # where it does run it builds exactly what a target of 5 builds.
+  defp v5_adoption_if_missing(prefix) do
+    missing =
+      Enum.map_join(
+        ~w(phoenix_kit_ai_endpoints phoenix_kit_ai_prompts phoenix_kit_ai_requests),
+        "\n     OR ",
+        &"to_regclass('#{prefix}.#{&1}') IS NULL"
+      )
+
+    executes =
+      prefix
+      |> v5_adoption_statements()
+      |> Enum.map_join("\n", &"    EXECUTE $ai_adopt_stmt$#{String.trim(&1)}$ai_adopt_stmt$;")
+
+    """
+    DO $ai_adopt$
+    BEGIN
+      IF #{missing} THEN
+    #{executes}
+      END IF;
+    END
+    $ai_adopt$
+    """
   end
 
   defp adoption_tables(p, uuid7) do

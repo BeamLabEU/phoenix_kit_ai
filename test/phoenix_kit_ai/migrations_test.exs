@@ -281,6 +281,89 @@ defmodule PhoenixKitAI.MigrationsTest do
     end
   end
 
+  defmodule UpToThree do
+    @moduledoc false
+    use Ecto.Migration
+
+    def up, do: PhoenixKitAI.Migrations.up(prefix: "public", version: 3)
+    def down, do: :ok
+  end
+
+  describe "a target below 5 on a database without core's copy of the AI tables" do
+    @adopted ~w(phoenix_kit_ai_endpoints phoenix_kit_ai_prompts phoenix_kit_ai_requests)
+
+    defp adopted_tables do
+      query(
+        "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = ANY($1) ORDER BY 1",
+        [@adopted]
+      )
+      |> List.flatten()
+    end
+
+    # Today's core no longer creates the three tables, so a fresh host database
+    # has none of them when its old `up(version: 3)` migration runs. Dropped
+    # inside the sandbox's transaction, restored by its rollback.
+    defp drop_everything do
+      run(Migrations.down_statements("public", 0))
+
+      for table <- @adopted,
+          do: Repo.query!("DROP TABLE IF EXISTS public.#{table} CASCADE")
+
+      assert adopted_tables() == []
+    end
+
+    test "up to 3 or 4 builds them first, and a later up to the current version keeps them" do
+      for target <- [3, 4] do
+        drop_everything()
+
+        run(Migrations.up_statements("public", target))
+
+        assert adopted_tables() == @adopted
+        assert marker() == "ai_schema:#{target}"
+        assert index_names() == [[@task_index]]
+
+        run(Migrations.up_statements("public"))
+        assert marker() == "ai_schema:6"
+        assert existing_tables() == @tables
+        assert_structure()
+        assert_v2_structure()
+        assert_v3_structure()
+      end
+    end
+
+    test "a host's old migration file calling up(version: 3) runs through Ecto.Migrator" do
+      drop_everything()
+      version = 9_100_000_000_000_000 + System.unique_integer([:positive])
+
+      assert :ok =
+               Ecto.Migrator.up(Repo, version, __MODULE__.UpToThree,
+                 log: false,
+                 migration_lock: false
+               )
+
+      assert adopted_tables() == @adopted
+      assert Migrations.migrated_version_runtime() == 3
+    end
+
+    test "the adopted tables take rows the module writes" do
+      drop_everything()
+      run(Migrations.up_statements("public", 3))
+      run(Migrations.up_statements("public"))
+
+      assert is_binary(endpoint_uuid())
+    end
+
+    test "with the tables present, a target below 5 leaves them as they are" do
+      before = query("SELECT count(*) FROM pg_indexes WHERE tablename = ANY($1)", [@adopted])
+
+      run(Migrations.up_statements("public", 3))
+      run(Migrations.up_statements("public"))
+
+      assert query("SELECT count(*) FROM pg_indexes WHERE tablename = ANY($1)", [@adopted]) ==
+               before
+    end
+  end
+
   describe "V6: audio in" do
     defp audio_column do
       query(
