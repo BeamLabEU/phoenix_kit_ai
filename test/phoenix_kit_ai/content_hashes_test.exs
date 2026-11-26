@@ -93,6 +93,18 @@ defmodule PhoenixKitAI.ContentHashesTest do
 
       refute ContentHashes.changed?("", "k", "x")
     end
+
+    test "limits are in bytes, so a key of many-byte characters cannot overflow the index" do
+      # 2 048 characters, 8 192 bytes: past what one B-tree entry may hold.
+      wide = String.duplicate("😀", 2_048)
+      assert {:error, :invalid_source_key} = ContentHashes.record(@ns, wide, "x")
+
+      assert {:error, :invalid_namespace} =
+               ContentHashes.record(String.duplicate("é", 200), "k", "x")
+
+      # The largest key that is allowed is stored.
+      assert {:ok, :new, _} = ContentHashes.record(@ns, String.duplicate("k", 2_048), "x")
+    end
   end
 
   describe "unchecked_since/3, delete" do

@@ -35,8 +35,10 @@ defmodule PhoenixKitAI.ContentHashes do
   ## Keys
 
   `namespace` is the caller's (`"saali:pages"`, `"catalogue:import"`;
-  at most 255 characters); `source_key` names the source in it (a URL, an id;
-  at most 2 048 characters). `"ai."` namespaces are this module's own
+  at most 255 bytes); `source_key` names the source in it (a URL, an id;
+  at most 2 048 bytes — a URL in its percent-encoded form fits). Bytes, not
+  characters: the pair is one entry of a unique B-tree index, which takes
+  at most about 2 700 bytes. `"ai."` namespaces are this module's own
   (`PhoenixKitAI.Translations` pins translations under `"ai.translation:…"`).
   Rows are kept until deleted (`delete/2`, `delete_namespace/1`); journal
   retention does not touch them. `unchecked_since/3` lists the sources a crawl
@@ -225,9 +227,9 @@ defmodule PhoenixKitAI.ContentHashes do
   defp validate(namespace, source_key) do
     cond do
       not is_binary(namespace) or String.trim(namespace) == "" -> {:error, :invalid_namespace}
-      String.length(namespace) > @namespace_max -> {:error, :invalid_namespace}
+      byte_size(namespace) > @namespace_max -> {:error, :invalid_namespace}
       not is_binary(source_key) or source_key == "" -> {:error, :invalid_source_key}
-      String.length(source_key) > @key_max -> {:error, :invalid_source_key}
+      byte_size(source_key) > @key_max -> {:error, :invalid_source_key}
       true -> :ok
     end
   end
