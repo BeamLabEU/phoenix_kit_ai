@@ -51,6 +51,7 @@ defmodule PhoenixKitAI.ContentHashes do
 
   @namespace_max 255
   @key_max 2048
+  @hash_max 100
 
   @type content :: String.t() | %{optional(term()) => term()} | {:hash, String.t()}
   @type status :: :new | :changed | :unchanged
@@ -114,13 +115,14 @@ defmodule PhoenixKitAI.ContentHashes do
   counts), `now:` (a `DateTime`, for tests and backfills).
 
   Returns `{:ok, status, row}` with the status `check/3` would have given just
-  before, or `{:error, reason}`.
+  before, or `{:error, reason}` (`:invalid_hash` for a `{:hash, hash}` that is
+  empty or longer than 100 bytes).
   """
   @spec record(String.t(), String.t(), content(), keyword()) ::
           {:ok, status(), ContentHash.t()} | {:error, term()}
   def record(namespace, source_key, content, opts \\ []) do
-    with :ok <- validate(namespace, source_key) do
-      hash = hash(content, opts)
+    with :ok <- validate(namespace, source_key),
+         {:ok, hash} <- stored_form(hash(content, opts)) do
       now = Keyword.get_lazy(opts, :now, &DateTime.utc_now/0)
       previous = get(namespace, source_key)
 
@@ -233,6 +235,11 @@ defmodule PhoenixKitAI.ContentHashes do
       true -> :ok
     end
   end
+
+  # The column holds 100 characters: a caller's own `{:hash, hash}` longer
+  # than that is refused here, not by the insert raising.
+  defp stored_form(hash) when byte_size(hash) in 1..@hash_max, do: {:ok, hash}
+  defp stored_form(_hash), do: {:error, :invalid_hash}
 
   defp normalize(text, opts) do
     if Keyword.get(opts, :normalize, true) do

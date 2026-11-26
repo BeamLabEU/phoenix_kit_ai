@@ -102,6 +102,12 @@ defmodule PhoenixKitAI.ContentHashesTest do
       assert {:error, :invalid_namespace} =
                ContentHashes.record(String.duplicate("é", 200), "k", "x")
 
+      # A caller's own hash must fit the column.
+      assert {:error, :invalid_hash} =
+               ContentHashes.record(@ns, "k", {:hash, String.duplicate("h", 101)})
+
+      assert {:error, :invalid_hash} = ContentHashes.record(@ns, "k", {:hash, ""})
+
       # The largest key that is allowed is stored.
       assert {:ok, :new, _} = ContentHashes.record(@ns, String.duplicate("k", 2_048), "x")
     end
