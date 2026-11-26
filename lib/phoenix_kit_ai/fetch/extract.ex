@@ -104,34 +104,45 @@ defmodule PhoenixKitAI.Fetch.Extract do
     Enum.reduce(@raw_text, html, &drop_elements(&2, &1, :to_end))
   end
 
-  # A `<` that another `<` (or the end) follows before any `>` cannot start a
-  # tag: it becomes a space. After it every `<x[^>]*>` attempt stops at the
-  # `>` of its own tag, so no regex below rescans the page from each of a run
-  # of unclosed `<script ` (5 MB of them took minutes). Each lookahead stops
-  # at the next `<`, so this pass is linear itself.
+  # A run of `<` with no `>` between them: only its first and its last can
+  # be part of a tag (`<a title="x<y">`, `a < b</p>`); the ones in between
+  # become spaces. After it each `<x[^>]*>` attempt scans at most two
+  # openers' worth of page before its `>`, so no regex below rescans the
+  # page from each of a run of unclosed `<script ` (5 MB of them took
+  # minutes). One binary scan, linear.
   defp without_stray_lt(html) do
     case :binary.matches(html, ["<", ">"]) do
       [] -> html
-      marks -> html |> strays(marks, 0, []) |> IO.iodata_to_binary()
+      marks -> html |> strays(marks, [], 0, []) |> IO.iodata_to_binary()
     end
   end
 
-  # Walks the `<` / `>` positions: a `<` whose next mark is another `<`, or
-  # none, is replaced.
-  defp strays(html, [{at, 1} | rest], from, acc) do
-    stray? =
-      :binary.at(html, at) == ?< and
-        case rest do
-          [{next, 1} | _] -> :binary.at(html, next) == ?<
-          [] -> true
-        end
-
-    if stray?,
-      do: strays(html, rest, at + 1, [acc, binary_part(html, from, at - from), " "]),
-      else: strays(html, rest, from, acc)
+  # `run` holds the `<` positions since the last `>`, newest first.
+  defp strays(html, [{at, 1} | rest], run, from, acc) do
+    if :binary.at(html, at) == ?< do
+      strays(html, rest, [at | run], from, acc)
+    else
+      {from, acc} = blank_inner(html, run, from, acc)
+      strays(html, rest, [], from, acc)
+    end
   end
 
-  defp strays(html, [], from, acc), do: [acc, binary_part(html, from, byte_size(html) - from)]
+  defp strays(html, [], run, from, acc) do
+    {from, acc} = blank_inner(html, run, from, acc)
+    [acc, binary_part(html, from, byte_size(html) - from)]
+  end
+
+  # Every `<` of the run but its first and its last, replaced by a space.
+  defp blank_inner(html, [_last | inner_and_first], from, acc) when length(inner_and_first) > 1 do
+    inner_and_first
+    |> Enum.reverse()
+    |> tl()
+    |> Enum.reduce({from, acc}, fn at, {from, acc} ->
+      {at + 1, [acc, binary_part(html, from, at - from), " "]}
+    end)
+  end
+
+  defp blank_inner(_html, _run, from, acc), do: {from, acc}
 
   # Each `open … close` span replaced by a space; an `open` with no `close`
   # after it is left as it is.
@@ -351,27 +362,40 @@ defmodule PhoenixKitAI.Fetch.Extract do
   # Main content ends where the element that opened it closes — the same
   # tag name back at its depth — so a `<div role="main">` ends at its own
   # `</div>`, not at the page's end.
+  # Each open main-content element is `{name, inner}`: `inner` counts the
+  # elements opened while it was the innermost one, by name, so a closing
+  # tag is matched to what it closes.
   defp open_main(stack, name, attrs) do
-    if name in @main or attrs["role"] == "main",
-      do: [{name, 1} | stack],
-      else: nest(stack, name, 1)
-  end
+    cond do
+      name in @main or attrs["role"] == "main" ->
+        [{name, %{}} | stack]
 
-  # A closing tag ends the innermost open element of its name and, like a
-  # browser, every main-content element left open inside it; an element of
-  # that name nested inside it only counts down.
-  defp close_main(stack, name) do
-    case Enum.split_while(stack, fn {open, _depth} -> open != name end) do
-      {_inside, [{^name, 1} | rest]} -> rest
-      {_, [_ | _]} -> nest(stack, name, -1)
-      {_inside, []} -> stack
+      stack == [] ->
+        stack
+
+      true ->
+        [{top, inner} | rest] = stack
+        [{top, Map.update(inner, name, 1, &(&1 + 1))} | rest]
     end
   end
 
-  # The depth of the innermost open main-content element named `name`.
-  defp nest([{name, depth} | rest], name, by), do: [{name, depth + by} | rest]
-  defp nest([other | rest], name, by), do: [other | nest(rest, name, by)]
-  defp nest([], _name, _by), do: []
+  # A closing tag closes, from the innermost main element out, the first
+  # element of its name: one opened inside an entry (counted down), or the
+  # entry itself — and, like a browser, every main element left open inside
+  # what it closes.
+  defp close_main(stack, name) do
+    case Enum.split_while(stack, fn {open, inner} ->
+           open != name and Map.get(inner, name, 0) == 0
+         end) do
+      {_inside, [{open, inner} | rest]} ->
+        if Map.get(inner, name, 0) > 0,
+          do: [{open, Map.update!(inner, name, &(&1 - 1))} | rest],
+          else: rest
+
+      {_inside, []} ->
+        stack
+    end
+  end
 
   defp close(state, "a"), do: %{state | link: max(state.link - 1, 0)}
 
