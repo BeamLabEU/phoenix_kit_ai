@@ -323,6 +323,70 @@ defmodule PhoenixKitAI.FetchTest do
     end
   end
 
+  describe "Robots per RFC 9309" do
+    test "a group applies only when its user-agent is our product token" do
+      body = """
+      User-agent: Kit
+      Disallow: /
+
+      User-agent: *
+      Disallow: /private
+      """
+
+      # `Kit` is part of `PhoenixKitAI`, not its token.
+      rules = Robots.parse(body, "PhoenixKitAI")
+      assert Robots.allowed?(rules, "/halls")
+      refute Robots.allowed?(rules, "/private")
+
+      # A user-agent line's value is read as a token: `PhoenixKitAI/1.0` names us.
+      versioned =
+        Robots.parse("User-agent: PhoenixKitAI/1.0 (+x)\nDisallow: /a\n", "PhoenixKitAI")
+
+      refute Robots.allowed?(versioned, "/a")
+    end
+
+    test "lines other than the group's own (Sitemap) neither end a group nor count" do
+      rules =
+        Robots.parse(
+          """
+          User-agent: PhoenixKitAI
+          Sitemap: https://example.test/sitemap.xml
+          User-agent: OtherBot
+          Disallow: /private
+          """,
+          "PhoenixKitAI"
+        )
+
+      refute Robots.allowed?(rules, "/private")
+    end
+
+    test "paths and rules compare percent-encoded; the longest rule in octets wins" do
+      rules = Robots.parse("User-agent: *\nDisallow: /private\nDisallow: /café\n", "PhoenixKitAI")
+      refute Robots.allowed?(rules, "/%70rivate")
+      refute Robots.allowed?(rules, "/caf%C3%A9")
+      refute Robots.allowed?(rules, "/caf%c3%a9/menu")
+      assert Robots.allowed?(rules, "/cafe")
+
+      # `/é` is three octets encoded, longer than `/*`.
+      octets = Robots.parse("User-agent: *\nDisallow: /é\nAllow: /*\n", "PhoenixKitAI")
+      refute Robots.allowed?(octets, "/%C3%A9")
+    end
+
+    test "/robots.txt is always allowed; a hostile wildcard rule matches in time" do
+      assert Robots.allowed?(Robots.deny_all(), "/robots.txt")
+
+      pattern = "/" <> String.duplicate("*a", 30) <> "*b"
+      rules = Robots.parse("User-agent: *\nDisallow: #{pattern}\n", "PhoenixKitAI")
+      path = "/" <> String.duplicate("a", 3_000)
+
+      {microseconds, verdicts} =
+        :timer.tc(fn -> {Robots.allowed?(rules, path), Robots.allowed?(rules, path <> "b")} end)
+
+      assert verdicts == {true, false}
+      assert microseconds < 2_000_000
+    end
+  end
+
   describe "Extract" do
     test "without main content marks, link rows and boilerplate classes are dropped" do
       html = """
