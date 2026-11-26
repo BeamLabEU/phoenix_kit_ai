@@ -236,7 +236,8 @@ defmodule PhoenixKitAI.Fetch do
     robots_opts =
       Keyword.merge(opts,
         max_attempts: 1,
-        max_bytes: @robots_max_bytes,
+        # One byte over: a body that long was cut.
+        max_bytes: @robots_max_bytes + 1,
         robots: false,
         truncate: true
       )
@@ -259,8 +260,12 @@ defmodule PhoenixKitAI.Fetch do
   end
 
   # A body cut at the limit ends mid-line, and a cut rule is another rule
-  # (`Allow: /private/public` cut to `Allow: /private`): the cut line goes.
-  defp whole_lines(body) when byte_size(body) >= @robots_max_bytes do
+  # (`Allow: /private/public` cut to `Allow: /private`): its first 512 000
+  # bytes count, without the cut line. A file of exactly 512 000 bytes is
+  # whole.
+  defp whole_lines(body) when byte_size(body) > @robots_max_bytes do
+    body = binary_part(body, 0, @robots_max_bytes)
+
     case :binary.matches(body, "\n") do
       [] -> ""
       matches -> binary_part(body, 0, elem(List.last(matches), 0))

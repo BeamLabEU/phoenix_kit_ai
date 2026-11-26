@@ -375,6 +375,16 @@ defmodule PhoenixKitAI.FetchTest do
                Fetch.fetch("https://cut.test/private", opts())
     end
 
+    test "a robots.txt of exactly 512 000 bytes is read whole" do
+      head = "User-agent: *\n"
+      last = "Disallow: /x #"
+      body = head <> last <> String.duplicate("a", 512_000 - byte_size(head) - byte_size(last))
+      assert byte_size(body) == 512_000
+
+      routes(%{"/robots.txt" => &text(&1, body), "/x" => &html(&1, "<p>x</p>")})
+      assert {:error, {:disallowed_by_robots, _}} = Fetch.fetch("https://exact.test/x", opts())
+    end
+
     test "the robots cache is per product token; an unreadable file per call's policy" do
       routes(%{
         "/robots.txt" => &text(&1, "User-agent: BotA\nDisallow: /\n"),
@@ -603,6 +613,14 @@ defmodule PhoenixKitAI.FetchTest do
       end
     end
 
+    test "a < inside an attribute or in text is not taken for a stray one" do
+      html = ~s(<body><div class="nav x<y">Menu row</div><p>a < b</p><p>Content kept</p></body>)
+      %{text: text} = Extract.extract(html)
+      refute text =~ "Menu"
+      refute text =~ "nav"
+      assert text =~ "Content kept"
+    end
+
     test "comments, CDATA and raw-text elements are dropped, whatever their case" do
       html = """
       <body><!-- <p>comment</p> --><p>one</p><SCRIPT type="x">two</Script >
@@ -634,6 +652,12 @@ defmodule PhoenixKitAI.FetchTest do
       # …while a same-name element nested in an open one only counts down.
       nested =
         ~s(<body><div role="main"><article><div>The first part of the text</div><p>The rest of the main text</p></article></div><p>Out</p></body>)
+
+      # A closing tag closes what is open inside it too.
+      misnested =
+        ~s(<body><div role="main"><article><div>The inside, the main text of it all.</article></div><p>Outside</p></body>)
+
+      refute Extract.extract(misnested).text =~ "Outside"
 
       assert %{text: text} = Extract.extract(nested)
       assert text =~ "The rest of the main text"
