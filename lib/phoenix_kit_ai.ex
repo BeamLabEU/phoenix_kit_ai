@@ -5200,7 +5200,9 @@ defmodule PhoenixKitAI do
   See `Completion.edit_image/4` for the accepted input shapes and the
   options; the transport is the endpoint's `PhoenixKitAI.Provider`
   adapter. Options are sent as given — `process_image/4` is the verb that
-  fits them to the model.
+  fits them to the model. Whether the result's `:text` carries the model's
+  words depends on the route: on OpenRouter only `transport: :chat` returns
+  them (see "The model's text alongside the image" in `process_image/4`).
 
       {:ok, %{images: [%{data: png, content_type: "image/png"}]}} =
         PhoenixKitAI.edit_image(endpoint.uuid,
@@ -5264,6 +5266,33 @@ defmodule PhoenixKitAI do
   a vision-capable endpoint uuid (`verify: text_endpoint_uuid`); `true`
   uses the same endpoint, which works only when its model also answers
   in text (an image-only model returns a `:verification` error instead).
+
+  ## The model's text alongside the image
+
+  The result's `:text` is whatever the model wrote next to the image, and
+  which route the call takes decides whether there is any:
+
+    * On an OpenRouter endpoint the default route is `POST /images`, which
+      returns images only — `:text` is always `nil`, even when the prompt
+      asks the model to describe what it made.
+    * `transport: :chat` sends the same edit through chat completions with
+      `modalities: ["image", "text"]`, and the model's words come back in
+      `:text` beside the image. Use it when you want both:
+
+          {:ok, %{images: [%{data: png}], text: notes}} =
+            PhoenixKitAI.process_image(endpoint_uuid, [photo], [:remove_reflections],
+              transport: :chat
+            )
+
+    * Endpoints of other providers ignore `:transport`. xAI and OpenAI
+      edit through their `/images/edits` routes (no text); the
+      OpenAI-compatible default for every other provider is the chat
+      route, so `:text` carries the model's words when it wrote any.
+
+  On OpenRouter, only models that answer on chat completions with image
+  output can take `transport: :chat`; a prose-only answer is
+  `{:error, {:no_image_in_response, text}}`. The same holds for
+  `edit_image/4`.
   """
   @spec process_image(
           String.t() | Endpoint.t(),
