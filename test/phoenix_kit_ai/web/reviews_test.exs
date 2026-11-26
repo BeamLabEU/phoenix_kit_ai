@@ -13,6 +13,11 @@ defmodule PhoenixKitAI.Web.ReviewsTest do
   alias PhoenixKitAI.Test.Repo, as: TestRepo
 
   setup do
+    # `ai.manage` counts only while the module is registered (core's
+    # `Permissions.feature_enabled?/1`), as on the Tasks page's tests.
+    :ok = PhoenixKit.ModuleRegistry.register(PhoenixKitAI)
+    on_exit(fn -> PhoenixKit.ModuleRegistry.unregister(PhoenixKitAI) end)
+
     # The first user is the Owner.
     owner = Fixtures.user_fixture()
     on_exit(fn -> Application.delete_env(:phoenix_kit_ai, :review_handlers) end)

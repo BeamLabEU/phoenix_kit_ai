@@ -139,11 +139,13 @@ defmodule PhoenixKitAI.Runs do
 
       budget ->
         with {:ok, tag} <- ceiling_run(opts[:run]),
-             {:ok, %{reached?: reached?}} <- ceiling(tag, budget, since: since(opts)) do
-          if reached?, do: {:error, {:run_budget_reached, tag}}, else: :ok
-        end
+             {:ok, status} <- ceiling(tag, budget, since: since(opts)),
+             do: reached(status)
     end
   end
+
+  defp reached(%{reached?: true, run: tag}), do: {:error, {:run_budget_reached, tag}}
+  defp reached(_status), do: :ok
 
   @doc """
   Whether a call's `run_budget:` is usable, before anything is checked or

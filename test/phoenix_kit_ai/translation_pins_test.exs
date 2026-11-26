@@ -10,8 +10,8 @@ defmodule PhoenixKitAI.TranslationPinsTest do
 
   @moduletag :capture_log
 
-  alias PhoenixKitAI.{TranslateWorker, Translations}
   alias PhoenixKitAI.Test.FakeTranslatableValid
+  alias PhoenixKitAI.{TranslateWorker, Translations}
 
   describe "pins, by hand" do
     test "stale? is :unknown without a pin, then false for the same source, true for another" do

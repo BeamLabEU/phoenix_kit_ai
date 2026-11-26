@@ -540,8 +540,13 @@ defmodule PhoenixKitAI.SchemaCoverageTest do
 
       assert names[:endpoint_uuid] == "fk_ai_requests_endpoint_uuid"
       assert names[:user_uuid] == "fk_ai_requests_user_uuid"
+      # The prompt key is the one name module chain V7 keeps, which happens to
+      # be the derived shape; the others must not be.
+      assert names[:prompt_uuid] == PhoenixKitAI.Migrations.prompt_fk()
 
-      refute Enum.any?(names, fn {_field, name} -> String.ends_with?(name, "_fkey") end),
+      refute Enum.any?(Map.delete(names, :prompt_uuid), fn {_field, name} ->
+               String.ends_with?(name, "_fkey")
+             end),
              "a derived *_fkey name means the constraint can never match core's schema"
     end
   end

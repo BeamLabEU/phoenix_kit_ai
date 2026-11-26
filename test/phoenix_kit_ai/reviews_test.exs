@@ -6,6 +6,7 @@ defmodule PhoenixKitAI.ReviewsTest do
 
   use PhoenixKitAI.DataCase, async: false
 
+  alias Ecto.Adapters.SQL.Sandbox
   alias PhoenixKit.Test.Fixtures
   alias PhoenixKit.Users.Auth.Scope
   alias PhoenixKit.Users.{Permissions, Roles}
@@ -90,7 +91,7 @@ defmodule PhoenixKitAI.ReviewsTest do
     results =
       for decision <- [:confirmed, :rejected, :confirmed, :rejected] do
         Task.async(fn ->
-          Ecto.Adapters.SQL.Sandbox.allow(TestRepo, parent, self())
+          Sandbox.allow(TestRepo, parent, self())
           Reviews.decide(review.uuid, decision, on_decide: fn _ -> :ok end)
         end)
       end

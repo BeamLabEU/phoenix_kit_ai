@@ -162,18 +162,7 @@ defmodule PhoenixKitAI.Reviews do
     with {:ok, status} <- decision(decision),
          {:ok, actor_uuid} <- actor(opts),
          {:ok, uuid} <- cast_uuid(uuid) do
-      repo().transaction(fn ->
-        case flip(uuid, status, actor_uuid, opts) do
-          {:ok, review} ->
-            case run_handler(review, opts) do
-              :ok -> review
-              {:error, reason} -> repo().rollback({:on_decide_failed, reason})
-            end
-
-          {:error, reason} ->
-            repo().rollback(reason)
-        end
-      end)
+      repo().transaction(fn -> decide_in_transaction(uuid, status, actor_uuid, opts) end)
       |> tap(fn
         {:ok, review} -> after_decision(review, actor_uuid)
         _ -> :ok
@@ -184,6 +173,15 @@ defmodule PhoenixKitAI.Reviews do
   def decide(_review, _decision, _opts), do: {:error, :not_found}
 
   # ── internals ─────────────────────────────────────────────────────────
+
+  defp decide_in_transaction(uuid, status, actor_uuid, opts) do
+    with {:ok, review} <- flip(uuid, status, actor_uuid, opts),
+         :ok <- run_handler(review, opts) do
+      review
+    else
+      {:error, reason} -> repo().rollback(reason)
+    end
+  end
 
   defp filtered(opts) do
     Enum.reduce(opts, from(r in Review), fn
@@ -302,8 +300,14 @@ defmodule PhoenixKitAI.Reviews do
 
   defp run_handler(review, opts) do
     case handler(review, opts) do
-      nil -> :ok
-      fun -> fun |> call_handler(review) |> handler_result()
+      nil ->
+        :ok
+
+      fun ->
+        case fun |> call_handler(review) |> handler_result() do
+          :ok -> :ok
+          {:error, reason} -> {:error, {:on_decide_failed, reason}}
+        end
     end
   end
 

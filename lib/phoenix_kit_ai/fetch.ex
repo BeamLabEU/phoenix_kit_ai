@@ -252,14 +252,17 @@ defmodule PhoenixKitAI.Fetch do
         next = url |> URI.merge(location) |> URI.to_string()
 
         with {:ok, uri} <- check_url(next, opts),
-             :ok <- if(robots_txt?(url), do: :ok, else: check_robots(uri, opts)) do
-          get(next, opts, redirects_left - 1)
-        end
+             :ok <- check_hop_robots(url, uri, opts),
+             do: get(next, opts, redirects_left - 1)
 
       [] ->
         {:error, {:redirect_without_location, url}}
     end
   end
+
+  # robots.txt itself is fetched whatever the rules say.
+  defp check_hop_robots(url, uri, opts),
+    do: if(robots_txt?(url), do: :ok, else: check_robots(uri, opts))
 
   defp robots_txt?(url), do: String.ends_with?(URI.parse(url).path || "", "/robots.txt")
 
@@ -373,20 +376,17 @@ defmodule PhoenixKitAI.Fetch do
   # Streams the body, halting once it outgrows `max`.
   defp bounded_collector(max) do
     fn {:data, chunk}, {req, resp} ->
-      body = if is_binary(resp.body), do: resp.body, else: ""
-
-      case resp.body do
-        {:too_large, _} = marker ->
-          {:halt, {req, %{resp | body: marker}}}
-
-        _ ->
-          seen = byte_size(body) + byte_size(chunk)
-
-          if seen > max,
-            do: {:halt, {req, %{resp | body: {:too_large, seen}}}},
-            else: {:cont, {req, %{resp | body: body <> chunk}}}
-      end
+      {verdict, body} = collect(resp.body, chunk, max)
+      {verdict, {req, %{resp | body: body}}}
     end
+  end
+
+  defp collect({:too_large, _} = marker, _chunk, _max), do: {:halt, marker}
+
+  defp collect(body, chunk, max) do
+    body = if is_binary(body), do: body, else: ""
+    seen = byte_size(body) + byte_size(chunk)
+    if seen > max, do: {:halt, {:too_large, seen}}, else: {:cont, body <> chunk}
   end
 
   # ── the page ─────────────────────────────────────────────────────────
