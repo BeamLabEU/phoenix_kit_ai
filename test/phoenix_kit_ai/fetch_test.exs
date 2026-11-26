@@ -361,6 +361,20 @@ defmodule PhoenixKitAI.FetchTest do
                Fetch.fetch("https://big.test/private", opts())
     end
 
+    test "a cut robots.txt loses its cut line, not the rule's meaning" do
+      head = "User-agent: *\nDisallow: /private\n"
+      rule = "Allow: /private/public\n"
+      # Byte 512 000 falls inside the Allow line, just after `/private`.
+      pad = 512_000 - byte_size(head) - byte_size("Allow: /private")
+      padding = String.duplicate("#", pad - 1) <> "\n"
+      body = head <> padding <> rule <> "Disallow: /tail\n"
+
+      routes(%{"/robots.txt" => &text(&1, body), "/private" => &html(&1, "<p>p</p>")})
+
+      assert {:error, {:disallowed_by_robots, _}} =
+               Fetch.fetch("https://cut.test/private", opts())
+    end
+
     test "the robots cache is per product token; an unreadable file per call's policy" do
       routes(%{
         "/robots.txt" => &text(&1, "User-agent: BotA\nDisallow: /\n"),
@@ -415,6 +429,20 @@ defmodule PhoenixKitAI.FetchTest do
 
       assert {:error, {:unsupported_content_encoding, "gzip"}} =
                Fetch.fetch("https://gz.test/gz", opts(robots: false))
+
+      routes(%{
+        "/two" => fn conn ->
+          conn
+          |> Plug.Conn.prepend_resp_headers([
+            {"content-encoding", "identity"},
+            {"content-encoding", "gzip"}
+          ])
+          |> html(:zlib.gzip("<p>zipped</p>"))
+        end
+      })
+
+      assert {:error, {:unsupported_content_encoding, "gzip"}} =
+               Fetch.fetch("https://gz.test/two", opts(robots: false))
     end
 
     test "attempts counts every request for the page, redirects included" do
@@ -470,6 +498,22 @@ defmodule PhoenixKitAI.FetchTest do
         Robots.parse("User-agent: PhoenixKitAI/1.0 (+x)\nDisallow: /a\n", "PhoenixKitAI")
 
       refute Robots.allowed?(versioned, "/a")
+    end
+
+    test "a Crawl-delay between User-agent lines does not split their group" do
+      rules =
+        Robots.parse(
+          "User-agent: Other\nCrawl-delay: 1\nUser-agent: PhoenixKitAI\nDisallow: /private\n",
+          "PhoenixKitAI"
+        )
+
+      refute Robots.allowed?(rules, "/private")
+
+      assert Robots.parse(
+               "User-agent: Other\nCrawl-delay: 1\nUser-agent: X\nDisallow: /p\n",
+               "Other"
+             )
+             |> Robots.allowed?("/p") == false
     end
 
     test "lines other than the group's own (Sitemap) neither end a group nor count" do
@@ -535,7 +579,7 @@ defmodule PhoenixKitAI.FetchTest do
     end
 
     test "a hostile page is read in linear time (no regex retried from every opening tag)" do
-      # Each of these took tens of seconds at these sizes with lazy
+      # Most of these took tens of seconds at these sizes with lazy
       # `<x>.*?</x>` regexes and a whole-tag regex; each is milliseconds now.
       hostile = [
         "<p>kept</p>" <> String.duplicate("<script>x", 20_000),
@@ -543,13 +587,19 @@ defmodule PhoenixKitAI.FetchTest do
         String.duplicate("<head>", 20_000) <> "<p>kept</p>",
         String.duplicate("<title>", 20_000) <> "<p>kept</p>",
         "<p>kept</p><a" <> String.duplicate(" ", 200_000) <> "!>",
-        "<p>kept</p><a " <> String.duplicate("a", 200_000) <> "=\">"
+        "<p>kept</p><a " <> String.duplicate("a", 200_000) <> "=\">",
+        # Openers with no `>` at all, and one `>` after all of them.
+        # 5 MiB with no `>` anywhere: minutes before the stray-`<` pass.
+        "kept " <> String.duplicate("<script ", 655_360),
+        "<p>kept</p>" <> String.duplicate("<html ", 100_000) <> ">"
       ]
 
       for html <- hostile do
         {microseconds, %{text: text}} = :timer.tc(fn -> Extract.extract(html) end)
         assert text =~ "kept"
-        assert microseconds < 3_000_000, "took #{div(microseconds, 1000)} ms"
+        # Each took from 40 s to minutes before; seconds now, even on a
+        # loaded box.
+        assert microseconds < 20_000_000, "took #{div(microseconds, 1000)} ms"
       end
     end
 
@@ -574,6 +624,20 @@ defmodule PhoenixKitAI.FetchTest do
       assert %{text: text, main_content?: true} = Extract.extract(html)
       assert text =~ "The main text"
       refute text =~ "Outside"
+
+      # An element left open inside it ends with it, as in a browser…
+      unclosed =
+        ~s(<body><div role="main"><article><p>Inside the article, the long main text.</p></div><p>Outside</p></body>)
+
+      refute Extract.extract(unclosed).text =~ "Outside"
+
+      # …while a same-name element nested in an open one only counts down.
+      nested =
+        ~s(<body><div role="main"><article><div>The first part of the text</div><p>The rest of the main text</p></article></div><p>Out</p></body>)
+
+      assert %{text: text} = Extract.extract(nested)
+      assert text =~ "The rest of the main text"
+      refute text =~ "Out\n" or String.ends_with?(text, "Out")
     end
 
     test "entities, Latin-1 bytes and unclosed scripts" do

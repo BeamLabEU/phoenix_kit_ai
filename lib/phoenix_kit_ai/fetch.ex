@@ -121,6 +121,7 @@ defmodule PhoenixKitAI.Fetch do
   # How long an unreadable robots.txt keeps its verdict (RFC 9309 §2.4 lets a
   # crawler assume a full disallow while the server errs).
   @unreachable_ttl_ms 5 * 60_000
+  @robots_max_bytes 512_000
   @retry_statuses [408, 425, 429, 500, 502, 503, 504]
   @html_types ["text/html", "application/xhtml+xml"]
 
@@ -233,7 +234,12 @@ defmodule PhoenixKitAI.Fetch do
     # robots.txt (that would read robots.txt again, without end), and past
     # 512 000 bytes the rest is not read (RFC 9309 §2.5).
     robots_opts =
-      Keyword.merge(opts, max_attempts: 1, max_bytes: 512_000, robots: false, truncate: true)
+      Keyword.merge(opts,
+        max_attempts: 1,
+        max_bytes: @robots_max_bytes,
+        robots: false,
+        truncate: true
+      )
 
     case get(origin <> "/robots.txt", robots_opts, opts[:max_redirects], 0) do
       {:ok, %{status: status, body: body} = response, _final, _attempts}
@@ -241,7 +247,7 @@ defmodule PhoenixKitAI.Fetch do
         if encoded?(response),
           do: {:unreachable, @unreachable_ttl_ms},
           else:
-            {Robots.parse(to_string(body), agent_token(opts[:user_agent])),
+            {Robots.parse(whole_lines(body), agent_token(opts[:user_agent])),
              opts[:robots_ttl] * 1_000}
 
       {:ok, %{status: status}, _final, _attempts} when status in 400..499 and status != 429 ->
@@ -251,6 +257,17 @@ defmodule PhoenixKitAI.Fetch do
         {:unreachable, @unreachable_ttl_ms}
     end
   end
+
+  # A body cut at the limit ends mid-line, and a cut rule is another rule
+  # (`Allow: /private/public` cut to `Allow: /private`): the cut line goes.
+  defp whole_lines(body) when byte_size(body) >= @robots_max_bytes do
+    case :binary.matches(body, "\n") do
+      [] -> ""
+      matches -> binary_part(body, 0, elem(List.last(matches), 0))
+    end
+  end
+
+  defp whole_lines(body), do: to_string(body)
 
   defp agent_token(user_agent) do
     user_agent |> to_string() |> String.split(["/", " "], parts: 2) |> hd()
@@ -473,13 +490,19 @@ defmodule PhoenixKitAI.Fetch do
   end
 
   # A body sent compressed although no compression was asked for: its bytes
-  # are not the text.
-  defp encoded?(response), do: content_encoding(response) not in [nil, "identity"]
+  # are not the text. Every Content-Encoding field and every coding in one
+  # counts (`identity, gzip` is gzip).
+  defp encoded?(response), do: content_encoding(response) != nil
 
   defp content_encoding(response) do
-    case Req.Response.get_header(response, "content-encoding") do
-      [value | _] -> value |> String.trim() |> String.downcase()
+    response
+    |> Req.Response.get_header("content-encoding")
+    |> Enum.flat_map(&String.split(&1, ","))
+    |> Enum.map(&(&1 |> String.trim() |> String.downcase()))
+    |> Enum.reject(&(&1 in ["", "identity"]))
+    |> case do
       [] -> nil
+      codings -> Enum.join(codings, ", ")
     end
   end
 
