@@ -22,7 +22,7 @@ defmodule PhoenixKitAI.ExpectedSchema do
   @schema_token "__SCHEMA__"
   @name_marker_exempt "__PK_NAME_EXEMPT__"
   @name_marker_always "__PK_NAME_ALWAYS__"
-  @chain_hash "54f1bbdf609fd1c7f203bc40783dd30e83758b15d0de159e9aa36befb9a97896"
+  @chain_hash "86d799d7d939b8eab4a7ac322cecc6c166d3636eb1febb01200eac710d70d526"
 
   def objects(prefix) do
     prefix = normalize_prefix!(prefix)
@@ -1584,6 +1584,21 @@ defmodule PhoenixKitAI.ExpectedSchema do
         backfill: :default
       },
       %{
+        id: "column:phoenix_kit_ai_requests.subject_key",
+        owner: :phoenix_kit_ai,
+        check:
+          {:catalog, %{table: "phoenix_kit_ai_requests", column: "subject_key", kind: :column}},
+        create:
+          "ALTER TABLE __SCHEMA__.phoenix_kit_ai_requests ADD COLUMN IF NOT EXISTS \"subject_key\" character varying(255)",
+        since: 1,
+        class: :column,
+        revisions: [
+          {1, %{default: nil, type: "character varying(255)", pos: 20, not_null: false}}
+        ],
+        presence: :required,
+        backfill: nil
+      },
+      %{
         id: "column:phoenix_kit_ai_requests.total_tokens",
         owner: :phoenix_kit_ai,
         check:
@@ -2736,6 +2751,37 @@ defmodule PhoenixKitAI.ExpectedSchema do
                "CREATE INDEX phoenix_kit_ai_requests_status_idx ON __SCHEMA__.phoenix_kit_ai_requests USING btree (status)",
              predicate: nil,
              opclasses: ["text_ops"],
+             name_template: nil
+           }}
+        ],
+        presence: :required,
+        backfill: nil
+      },
+      %{
+        id: "index:phoenix_kit_ai_requests_subject_spend_idx",
+        owner: :phoenix_kit_ai,
+        check:
+          {:catalog,
+           %{
+             name: "phoenix_kit_ai_requests_subject_spend_idx",
+             table: "phoenix_kit_ai_requests",
+             kind: :index
+           }},
+        create:
+          "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_requests_subject_spend_idx ON __SCHEMA__.phoenix_kit_ai_requests USING btree (subject_key, inserted_at) INCLUDE (cost) WHERE (((status)::text = 'success'::text) AND (subject_key IS NOT NULL))",
+        since: 1,
+        class: :index,
+        revisions: [
+          {1,
+           %{
+             table: "phoenix_kit_ai_requests",
+             keys: ["subject_key", "inserted_at", "cost"],
+             unique: false,
+             method: "btree",
+             definition:
+               "CREATE INDEX phoenix_kit_ai_requests_subject_spend_idx ON __SCHEMA__.phoenix_kit_ai_requests USING btree (subject_key, inserted_at) INCLUDE (cost) WHERE (((status)::text = 'success'::text) AND (subject_key IS NOT NULL))",
+             predicate: "(((status)::text = 'success'::text) AND (subject_key IS NOT NULL))",
+             opclasses: ["text_ops", "timestamptz_ops"],
              name_template: nil
            }}
         ],

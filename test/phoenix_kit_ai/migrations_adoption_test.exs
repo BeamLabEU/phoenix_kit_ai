@@ -13,8 +13,8 @@ defmodule PhoenixKitAI.MigrationsAdoptionTest do
 
   defp index_of(statements, fun), do: Enum.find_index(statements, fun)
 
-  test "the chain is past V5 (V6 adds the audio flag)" do
-    assert Migrations.current_version() == 6
+  test "the chain is past V5 (V6 adds the audio flag, V7 the subject key)" do
+    assert Migrations.current_version() == 7
   end
 
   test "V6 only adds the audio flag column, after the adoption" do
@@ -163,8 +163,10 @@ defmodule PhoenixKitAI.MigrationsAdoptionTest do
   end
 
   test "down from V5 only rewrites the marker, and nothing drops an adopted table" do
-    # V6's own step (its column) comes first; V5 adds nothing but the marker.
-    assert [drop_audio, marker] = Migrations.down_statements("public", 4)
+    # V7's and V6's own steps come first; V5 adds nothing but the marker.
+    assert [drop_audio, marker] =
+             "public" |> Migrations.down_statements(4) |> Enum.drop(length(v7_down()))
+
     assert drop_audio =~ "DROP COLUMN IF EXISTS audio_input"
     assert marker =~ "ai_schema:4"
 
@@ -172,4 +174,6 @@ defmodule PhoenixKitAI.MigrationsAdoptionTest do
       refute Enum.any?(@adopted, &(statement =~ ~r/DROP TABLE[^;]*#{&1}/))
     end
   end
+
+  defp v7_down, do: "public" |> Migrations.down_statements(6) |> Enum.drop(-1)
 end

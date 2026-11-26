@@ -13,7 +13,7 @@ defmodule PhoenixKitAI.Budget do
   | `ai_daily_cap` | every call the module makes (`:global`) | trailing 24 hours |
   | `ai_monthly_cap` | every call the module makes (`:global_month`) | calendar month |
   | `ai_daily_cap_per_endpoint` | calls on one endpoint (`:endpoint`) | trailing 24 hours |
-  | `ai_daily_cap_per_user` | calls attributed to a `user_uuid:` (`:user`) | trailing 24 hours |
+  | `ai_daily_cap_per_user` | calls attributed to a `user_uuid:`, else a `subject_key:` (`:user`) | trailing 24 hours |
 
   The monthly cap is the same sum as the global daily one over a longer
   window: from the local midnight that starts the current month to now, in
@@ -47,9 +47,8 @@ defmodule PhoenixKitAI.Budget do
 
   It counts **successful** calls (cached answers included — each writes a
   zero-cost success row); failed provider calls cost nothing and do not
-  count. Like the money cap it reads the usage rows by `user_uuid`, so a
-  `user_uuid:` that is not a PhoenixKit user (its rows are written
-  unattributed, with a warning) is never capped — pass real user uuids.
+  count. Like the money cap it reads the usage rows by `user_uuid`, or by
+  `subject_key` for a call that names a `subject_key:` and no user.
 
   `ai_budget_warn_percent` (default 80) marks when a scope is close: the
   call still runs, but a `Logger.warning` and a
@@ -69,11 +68,14 @@ defmodule PhoenixKitAI.Budget do
   as the last good sum) — because the module would otherwise refuse everything
   on a blip. A warning names the exception, once per outage per scope per node.
 
-  The per-user cap only bites when the caller passes `user_uuid:`, and the
-  value must be a PhoenixKit user uuid (the usage row has a foreign key on
-  it; a row with an unknown user is written without it, with a warning, so
-  it counts toward no user). Anonymous visitors cannot be capped individually; cap the
-  endpoint or the site instead.
+  The per-user caps bite when the caller passes `user_uuid:` (a PhoenixKit
+  user uuid: the usage row has a foreign key on it) or `subject_key:` (any
+  string naming who asks — an anonymous visitor's own id, an API client; the
+  row's `subject_key`, module chain V7). With both, the user is the subject.
+  A `user_uuid:` that names no user is written to the row's `subject_key`
+  (and `metadata["unresolved_refs"]`), but on its own it still counts toward
+  no per-user cap: pass the visitor's id as `subject_key:` to cap visitors
+  one by one.
   """
 
   import Ecto.Query
@@ -156,11 +158,11 @@ defmodule PhoenixKitAI.Budget do
       nil ->
         entries = status(endpoint, opts, limits, now)
         unread = take_unread()
-        user_uuid = user_uuid(opts[:user_uuid])
+        who = who(opts)
 
         for %{scope: scope} = entry <- entries,
             scope not in unread,
-            do: maybe_warn(entry, endpoint, user_uuid, now)
+            do: maybe_warn(entry, endpoint, who, now)
 
         case Enum.find(entries, &reached?/1) do
           %{scope: scope} -> {:error, {:budget_exceeded, scope}}
@@ -175,7 +177,7 @@ defmodule PhoenixKitAI.Budget do
 
   @doc """
   Spent / limit / remaining for every scope that has a cap (the user scope
-  only when `user_uuid:` is given), with no warnings or refusals — hosts show
+  only when `user_uuid:` or `subject_key:` is given), with no warnings or refusals — hosts show
   it, `check/2` acts on it. It fills the monthly sum's cache and reads through
   it: the monthly `:global_month` spend can be up to 30 seconds old (2 seconds
   from 90% of the cap up). Takes an endpoint struct or uuid.
@@ -198,16 +200,32 @@ defmodule PhoenixKitAI.Budget do
 
   # A `user_uuid:` that is not a uuid (a visitor's own id) has no user scope:
   # the usage table's column is a uuid, so its sum could only fail — and was
-  # logged as the database failing.
+  # logged as the database failing. A `subject_key:` is the per-user scopes'
+  # subject when there is no user.
   defp status(endpoint, opts, limits, now) do
-    user_uuid = user_uuid(opts[:user_uuid])
+    who = who(opts)
 
     for scope <- @scopes,
         limit = limits[scope],
         positive?(limit),
-        scope not in @user_scopes or is_binary(user_uuid) do
-      spent = spent(scope, endpoint, user_uuid, limit, now)
+        scope not in @user_scopes or who != nil do
+      spent = spent(scope, endpoint, who, limit, now)
       %{scope: scope, spent: spent, limit: limit, remaining: subtract(limit, spent)}
+    end
+  end
+
+  # Whom the per-user scopes count: a PhoenixKit user, else the call's
+  # external subject, else nobody.
+  defp who(opts) do
+    case user_uuid(opts[:user_uuid]) do
+      nil ->
+        case PhoenixKitAI.Request.subject_key(opts[:subject_key]) do
+          nil -> nil
+          key -> {:subject, key}
+        end
+
+      uuid ->
+        {:user, uuid}
     end
   end
 
@@ -391,20 +409,20 @@ defmodule PhoenixKitAI.Budget do
   # computed outside, and a failing read is logged (once per outage per scope
   # per node) and reads as nothing spent. The month's sum handles its own
   # failures (`month_sum/3`): it falls back to the last good sum.
-  defp spent(scope, endpoint, user_uuid, limit, now),
-    do: read_spent(scope, window_start(scope, now), endpoint, user_uuid, limit)
+  defp spent(scope, endpoint, who, limit, now),
+    do: read_spent(scope, window_start(scope, now), endpoint, who, limit)
 
-  defp read_spent(:global_month, since, endpoint, user_uuid, limit) do
+  defp read_spent(:global_month, since, endpoint, who, limit) do
     guarded(:global_month, fn ->
-      month_sum(since, limit, fn -> money(:global_month, since, endpoint, user_uuid) end)
+      month_sum(since, limit, fn -> money(:global_month, since, endpoint, who) end)
     end)
   end
 
-  defp read_spent(:user_calls, since, _endpoint, user_uuid, _limit),
-    do: read(:user_calls, fn -> calls(since, user_uuid) end)
+  defp read_spent(:user_calls, since, _endpoint, who, _limit),
+    do: read(:user_calls, fn -> calls(since, who) end)
 
-  defp read_spent(scope, since, endpoint, user_uuid, _limit),
-    do: read(scope, fn -> money(scope, since, endpoint, user_uuid) end)
+  defp read_spent(scope, since, endpoint, who, _limit),
+    do: read(scope, fn -> money(scope, since, endpoint, who) end)
 
   @doc false
   # A database read of `scope`: its value, with the scope's read-failure flag
@@ -675,16 +693,17 @@ defmodule PhoenixKitAI.Budget do
 
   # Successful calls only, like the money sum: a failed call costs nothing
   # and is not the user's doing. Same literal status, same partial index.
-  defp calls(since, user_uuid) do
+  defp calls(since, who) do
     from(r in Request,
-      where: r.inserted_at >= ^since and r.status == "success" and r.user_uuid == ^user_uuid,
+      where: r.inserted_at >= ^since and r.status == "success",
       select: count(r.uuid)
     )
+    |> where_who(who)
     |> PhoenixKit.RepoHelper.repo().one()
     |> Kernel.||(0)
   end
 
-  defp money(scope, since, endpoint, user_uuid) do
+  defp money(scope, since, endpoint, who) do
     # `"success"` must stay a literal, not `^status`: core (V193) indexes this
     # sum with partial indexes `WHERE status = 'success'`, and Postgres can only
     # use them when it can prove the query's condition matches — which it
@@ -700,17 +719,20 @@ defmodule PhoenixKitAI.Budget do
         :global -> query
         :global_month -> query
         :endpoint -> where(query, [r], r.endpoint_uuid == ^endpoint.uuid)
-        :user -> where(query, [r], r.user_uuid == ^user_uuid)
+        :user -> where_who(query, who)
       end
 
     query |> PhoenixKit.RepoHelper.repo().one() |> Money.sum()
   end
 
+  defp where_who(query, {:user, uuid}), do: where(query, [r], r.user_uuid == ^uuid)
+  defp where_who(query, {:subject, key}), do: where(query, [r], r.subject_key == ^key)
+
   # Warn once per crossing: the flag is an ETS row per scope key and clears
   # when spend drops back under the line (a new day, or month).
-  defp maybe_warn(%{spent: spent, limit: limit, scope: scope}, endpoint, user_uuid, now) do
+  defp maybe_warn(%{spent: spent, limit: limit, scope: scope}, endpoint, who, now) do
     table = PhoenixKitAI.RequestCache.flags_table()
-    key = {__MODULE__, scope, scope_id(scope, endpoint, user_uuid, now)}
+    key = {__MODULE__, scope, scope_id(scope, endpoint, who, now)}
     percent = percent_of(spent, limit)
     over? = percent >= warn_percent()
     warned? = :ets.member(table, key)
@@ -727,7 +749,7 @@ defmodule PhoenixKitAI.Budget do
         :telemetry.execute(
           [:phoenix_kit_ai, :budget, :warning],
           %{spent: measure(spent), limit: measure(limit)},
-          %{scope: scope, endpoint_uuid: endpoint.uuid, user_uuid: user_uuid}
+          Map.merge(%{scope: scope, endpoint_uuid: endpoint.uuid}, who_metadata(who))
         )
 
       not over? and warned? ->
@@ -759,6 +781,12 @@ defmodule PhoenixKitAI.Budget do
 
   defp measure(%Decimal{} = dollars), do: Decimal.to_float(dollars)
   defp measure(calls), do: calls
+
+  # Telemetry names the user as it always did (nil when there is none) and
+  # the subject only when the per-user scopes count one.
+  defp who_metadata({:user, uuid}), do: %{user_uuid: uuid}
+  defp who_metadata({:subject, key}), do: %{user_uuid: nil, subject_key: key}
+  defp who_metadata(nil), do: %{user_uuid: nil}
 
   defp scope_id(:global, _endpoint, _user, _now), do: :all
 

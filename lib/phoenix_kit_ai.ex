@@ -44,8 +44,14 @@ defmodule PhoenixKitAI do
 
   - `user_uuid:` - a PhoenixKit user uuid recorded on the usage row and
     selecting the per-user spend cap. Host-supplied identity: the module has
-    no session of its own. An unknown uuid is logged as a warning and the
-    row is written without it, so that call is not attributed or capped.
+    no session of its own. An unknown uuid, or a value that is not a uuid,
+    is written to the row's `subject_key` instead (an unknown uuid with a
+    warning), so the row is kept and says who asked.
+  - `subject_key:` - who asks when it is not a PhoenixKit user: an anonymous
+    visitor's own id, an API client (any string; recorded on the row's
+    `subject_key`). With no user it selects the per-user spend caps
+    (`PhoenixKitAI.Budget`), so visitors can be capped one by one. Never part
+    of a cache key.
   - `source:`, `attribution:`, `idempotency_key:` - tracking only; never
     part of a cache key.
   - `capture_request_content: false` - keeps this call's message, prompt and
@@ -2624,6 +2630,7 @@ defmodule PhoenixKitAI do
   - `:page_size` - Results per page (default: 20)
   - `:endpoint_uuid` - Filter by endpoint
   - `:user_uuid` - Filter by user
+  - `:subject_key` - Filter by external subject (the row's `subject_key`)
   - `:status` - Filter by status
   - `:model` - Filter by model
   - `:source` - Filter by source (from metadata)
@@ -2850,6 +2857,12 @@ defmodule PhoenixKitAI do
   all dropped, and inside a caller's transaction the refused insert is
   confined to a savepoint so the retry — and the caller's transaction — go on.
 
+  A `user_uuid` that names no user — a uuid of no user, or a string that is
+  not a uuid at all (a visitor's own id, which used to cost the row) — still
+  says who asked: it becomes the row's `subject_key` unless the attrs carry
+  one, so the per-subject caps (`PhoenixKitAI.Budget`, `subject_key:`) can
+  count it.
+
   Any other validation failure still returns `{:error, changeset}`.
   """
   @spec create_request(map()) :: {:ok, Request.t()} | {:error, term()}
@@ -2858,6 +2871,7 @@ defmodule PhoenixKitAI do
   defp do_create_request(attrs, uuid) do
     result =
       attrs
+      |> user_as_subject()
       |> insert_request(uuid, [])
       |> broadcast_request_change(:request_created)
 
@@ -2933,6 +2947,24 @@ defmodule PhoenixKitAI do
         do: field
   end
 
+  # A `user_uuid` that is not a uuid at all (a visitor's own id) cannot be a
+  # user: it is the row's subject instead (unless the call named one), and
+  # kept in `unresolved_refs` as an unknown user uuid is. It used to fail the
+  # cast and cost the row.
+  defp user_as_subject(%{} = attrs) do
+    case attr(attrs, :user_uuid) do
+      value when is_binary(value) ->
+        if match?({:ok, _}, Ecto.UUID.cast(value)),
+          do: attrs,
+          else: without_refs(attrs, [:user_uuid])
+
+      _ ->
+        attrs
+    end
+  end
+
+  defp user_as_subject(attrs), do: attrs
+
   defp without_refs(attrs, []), do: attrs
 
   defp without_refs(attrs, fields) do
@@ -2943,12 +2975,29 @@ defmodule PhoenixKitAI do
         %{} = map -> map
         _ -> %{}
       end
-      |> Map.put("unresolved_refs", submitted_refs(attrs, fields))
+      |> Map.update("unresolved_refs", submitted_refs(attrs, fields), fn
+        %{} = earlier -> Map.merge(earlier, submitted_refs(attrs, fields))
+        _ -> submitted_refs(attrs, fields)
+      end)
 
     attrs
     |> Map.new(fn {key, value} -> {to_string(key), value} end)
     |> Map.drop(Enum.map(fields, &Atom.to_string/1))
     |> Map.put("metadata", metadata)
+    |> put_user_subject(attrs, fields)
+  end
+
+  # A user id that names no user still says who asked: it becomes the row's
+  # `subject_key` when the call named no subject of its own, so the row is
+  # attributable (and a later call with `subject_key:` counts it).
+  defp put_user_subject(stringified, attrs, fields) do
+    with true <- :user_uuid in fields,
+         nil <- Request.subject_key(stringified["subject_key"]),
+         key when is_binary(key) <- Request.subject_key(attr(attrs, :user_uuid)) do
+      Map.put(stringified, "subject_key", key)
+    else
+      _ -> stringified
+    end
   end
 
   defp submitted_refs(attrs, fields), do: Map.new(fields, &{Atom.to_string(&1), attr(attrs, &1)})
@@ -3792,6 +3841,7 @@ defmodule PhoenixKitAI do
           latency_ms: 0,
           status: "success",
           user_uuid: row.caller_context[:user_uuid],
+          subject_key: row.caller_context[:subject_key],
           metadata: metadata
         })
 
@@ -3849,6 +3899,7 @@ defmodule PhoenixKitAI do
     query
     |> maybe_filter_by(:endpoint_uuid, Keyword.get(opts, :endpoint_uuid))
     |> maybe_filter_by(:user_uuid, Keyword.get(opts, :user_uuid))
+    |> maybe_filter_by(:subject_key, Request.subject_key(Keyword.get(opts, :subject_key)))
     |> maybe_filter_by(:status, Keyword.get(opts, :status))
     |> maybe_filter_by(:model, Keyword.get(opts, :model))
     |> maybe_filter_by(:source, Keyword.get(opts, :source))
@@ -3871,6 +3922,8 @@ defmodule PhoenixKitAI do
   defp maybe_filter_by(query, :user_uuid, uuid) when is_binary(uuid) do
     where(query, [r], r.user_uuid == ^uuid)
   end
+
+  defp maybe_filter_by(query, :subject_key, key), do: where(query, [r], r.subject_key == ^key)
 
   # `"refused"` is not a stored status: the rows the guard refused (status
   # `"error"`, `metadata.refused`).
@@ -4216,7 +4269,7 @@ defmodule PhoenixKitAI do
       {auto_source, stacktrace, caller_context} = capture_caller_info()
       # Allow manual override of source, but all debug info is always captured
       source = Keyword.get(opts, :source) || auto_source
-      caller_context = Map.put(caller_context, :user_uuid, opts[:user_uuid])
+      caller_context = put_caller(caller_context, opts)
 
       # A hard requirement on OpenRouter: only providers that take every
       # parameter, and the ones the model does not list left out.
@@ -4315,6 +4368,7 @@ defmodule PhoenixKitAI do
       :attribution,
       :idempotency_key,
       :user_uuid,
+      :subject_key,
       # the provider's end-user id on an embedding: who asked, not what
       :user,
       :cache,
@@ -4537,7 +4591,7 @@ defmodule PhoenixKitAI do
       {auto_source, stacktrace, caller_context} = capture_caller_info()
       # Allow manual override of source, but all debug info is always captured
       source = Keyword.get(opts, :source) || auto_source
-      caller_context = Map.put(caller_context, :user_uuid, opts[:user_uuid])
+      caller_context = put_caller(caller_context, opts)
 
       merged_opts = merge_embedding_opts(endpoint, opts, convention)
       guard = Guard.row_metadata(admission)
@@ -4981,7 +5035,7 @@ defmodule PhoenixKitAI do
       {auto_source, stacktrace, caller_context} = capture_caller_info()
       # Allow manual override of source, but all debug info is always captured
       source = Keyword.get(opts, :source) || auto_source
-      caller_context = Map.put(caller_context, :user_uuid, opts[:user_uuid])
+      caller_context = put_caller(caller_context, opts)
 
       # Fall back to the endpoint's default voice (stored in
       # provider_settings by the endpoint form) when the caller didn't
@@ -5104,7 +5158,7 @@ defmodule PhoenixKitAI do
       endpoint = with_call_model(endpoint, opts)
       {auto_source, stacktrace, caller_context} = capture_caller_info()
       source = Keyword.get(opts, :source) || auto_source
-      caller_context = Map.put(caller_context, :user_uuid, opts[:user_uuid])
+      caller_context = put_caller(caller_context, opts)
 
       {opts, stripped} =
         if transport == :chat, do: Guard.require_parameters(opts, admission), else: {opts, []}
@@ -5164,7 +5218,7 @@ defmodule PhoenixKitAI do
            authorize(endpoint, opts, :generate_image, Guard.implied_needs(:generate_image, opts)) do
       {auto_source, stacktrace, caller_context} = capture_caller_info()
       source = Keyword.get(opts, :source) || auto_source
-      caller_context = Map.put(caller_context, :user_uuid, opts[:user_uuid])
+      caller_context = put_caller(caller_context, opts)
 
       trace = trace(source, stacktrace, caller_context, opts, Guard.row_metadata(admission))
 
@@ -5223,7 +5277,7 @@ defmodule PhoenixKitAI do
            authorize(endpoint, opts, :edit_image, Guard.implied_needs(:edit_image, opts)) do
       {auto_source, stacktrace, caller_context} = capture_caller_info()
       source = Keyword.get(opts, :source) || auto_source
-      caller_context = Map.put(caller_context, :user_uuid, opts[:user_uuid])
+      caller_context = put_caller(caller_context, opts)
 
       trace = trace(source, stacktrace, caller_context, opts, Guard.row_metadata(admission))
 
@@ -5315,7 +5369,7 @@ defmodule PhoenixKitAI do
            ) do
       {auto_source, stacktrace, caller_context} = capture_caller_info()
       source = Keyword.get(opts, :source) || auto_source
-      caller_context = Map.put(caller_context, :user_uuid, opts[:user_uuid])
+      caller_context = put_caller(caller_context, opts)
       {verify, opts} = Keyword.pop(opts, :verify, false)
 
       trace = trace(source, stacktrace, caller_context, opts, Guard.row_metadata(admission))
@@ -5399,6 +5453,7 @@ defmodule PhoenixKitAI do
       intent: intent,
       source: opts[:source],
       user_uuid: opts[:user_uuid],
+      subject_key: opts[:subject_key],
       capture_request_content: opts[:capture_request_content],
       task: opts[:task],
       run: opts[:run],
@@ -5462,7 +5517,7 @@ defmodule PhoenixKitAI do
            authorize(endpoint, opts, :describe_image, Guard.implied_needs(:describe_image, opts)) do
       {auto_source, stacktrace, caller_context} = capture_caller_info()
       source = Keyword.get(opts, :source) || auto_source
-      caller_context = Map.put(caller_context, :user_uuid, opts[:user_uuid])
+      caller_context = put_caller(caller_context, opts)
       prompt = opts[:prompt] || opts[:question] || PhoenixKitAI.Images.default_question()
       {opts, stripped} = Guard.require_parameters(opts, admission)
 
@@ -5543,7 +5598,7 @@ defmodule PhoenixKitAI do
            authorize(endpoint, opts, :extract_text, Guard.implied_needs(:extract_text, opts)) do
       {auto_source, stacktrace, caller_context} = capture_caller_info()
       source = Keyword.get(opts, :source) || auto_source
-      caller_context = Map.put(caller_context, :user_uuid, opts[:user_uuid])
+      caller_context = put_caller(caller_context, opts)
       prompt = "extract_text"
       {opts, stripped} = Guard.require_parameters(opts, admission)
 
@@ -5606,7 +5661,7 @@ defmodule PhoenixKitAI do
            authorize(endpoint, opts, :compare_images, Guard.implied_needs(:compare_images, opts)) do
       {auto_source, stacktrace, caller_context} = capture_caller_info()
       source = Keyword.get(opts, :source) || auto_source
-      caller_context = Map.put(caller_context, :user_uuid, opts[:user_uuid])
+      caller_context = put_caller(caller_context, opts)
       prompt = "compare: " <> to_string(opts[:intent] || "an edit")
       {opts, stripped} = Guard.require_parameters(opts, admission)
 
@@ -6046,10 +6101,22 @@ defmodule PhoenixKitAI do
       idempotency_key: opts[:idempotency_key],
       model: opts[:model],
       user_uuid: opts[:user_uuid],
+      subject_key: opts[:subject_key],
       capture: opts[:capture_request_content],
       attribution: normalize_attribution(opts[:attribution]),
       guard: guard
     }
+  end
+
+  # Who asked, as the caller context the rows carry: the user, and the
+  # external subject only when the call names one (`subject_key:`).
+  defp put_caller(caller_context, opts) do
+    caller_context = Map.put(caller_context, :user_uuid, opts[:user_uuid])
+
+    case Request.subject_key(opts[:subject_key]) do
+      nil -> caller_context
+      key -> Map.put(caller_context, :subject_key, key)
+    end
   end
 
   # What a cache hit of an image verb writes its row with.
@@ -6116,6 +6183,7 @@ defmodule PhoenixKitAI do
       latency_ms: result[:latency_ms],
       status: "success",
       user_uuid: trace[:user_uuid],
+      subject_key: trace[:subject_key],
       metadata: metadata
     })
   end
@@ -6167,6 +6235,7 @@ defmodule PhoenixKitAI do
       total_tokens: 0,
       status: "error",
       user_uuid: trace[:user_uuid],
+      subject_key: trace[:subject_key],
       error_message: failure_text(reason, capture_content),
       metadata: base_metadata |> maybe_add_content(:input, capture_content, fn -> prompt end)
     }
@@ -6433,7 +6502,7 @@ defmodule PhoenixKitAI do
         error_reason: inspect(reason),
         source: Keyword.get(opts, :source) || auto_source,
         stacktrace: stacktrace,
-        caller_context: Map.put(caller_context, :user_uuid, opts[:user_uuid])
+        caller_context: put_caller(caller_context, opts)
       }
       |> Map.merge(Guard.task_metadata(opts))
       |> maybe_put_attribution(normalize_attribution(opts[:attribution]))
@@ -6451,6 +6520,7 @@ defmodule PhoenixKitAI do
       latency_ms: 0,
       status: "error",
       user_uuid: opts[:user_uuid],
+      subject_key: opts[:subject_key],
       error_message: error_reason_to_string(reason),
       metadata: metadata
     })
@@ -6768,6 +6838,7 @@ defmodule PhoenixKitAI do
       latency_ms: response["latency_ms"],
       status: "success",
       user_uuid: caller_context[:user_uuid],
+      subject_key: caller_context[:subject_key],
       metadata: Map.merge(metadata, cost_metadata)
     })
   end
@@ -6815,6 +6886,7 @@ defmodule PhoenixKitAI do
       request_type: "chat",
       status: "error",
       user_uuid: caller_context[:user_uuid],
+      subject_key: caller_context[:subject_key],
       error_message: failure_text(reason, capture_content),
       metadata: metadata
     }
@@ -6932,6 +7004,7 @@ defmodule PhoenixKitAI do
       latency_ms: response["latency_ms"],
       status: "success",
       user_uuid: caller_context[:user_uuid],
+      subject_key: caller_context[:subject_key],
       metadata:
         Map.merge(
           %{
@@ -6985,6 +7058,7 @@ defmodule PhoenixKitAI do
       request_type: "embedding",
       status: "error",
       user_uuid: caller_context[:user_uuid],
+      subject_key: caller_context[:subject_key],
       error_message: error_reason_to_string(reason),
       metadata:
         Map.merge(
@@ -7032,6 +7106,7 @@ defmodule PhoenixKitAI do
       latency_ms: result[:latency_ms],
       status: "success",
       user_uuid: caller_context[:user_uuid],
+      subject_key: caller_context[:subject_key],
       cost: TtsPricing.cost(endpoint.provider, input_chars, audio_bytes),
       metadata:
         base_metadata
@@ -7099,6 +7174,7 @@ defmodule PhoenixKitAI do
       request_type: "tts",
       status: "error",
       user_uuid: caller_context[:user_uuid],
+      subject_key: caller_context[:subject_key],
       error_message: error_reason_to_string(reason),
       metadata:
         base_metadata
@@ -7156,6 +7232,7 @@ defmodule PhoenixKitAI do
       latency_ms: answer.latency_ms,
       status: "success",
       user_uuid: trace[:user_uuid],
+      subject_key: trace[:subject_key],
       metadata: metadata
     })
   end
@@ -7205,6 +7282,7 @@ defmodule PhoenixKitAI do
       total_tokens: 0,
       status: "error",
       user_uuid: trace[:user_uuid],
+      subject_key: trace[:subject_key],
       error_message: failure_text(reason, capture),
       metadata: metadata
     }

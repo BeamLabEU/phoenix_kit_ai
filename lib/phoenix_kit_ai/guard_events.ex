@@ -365,7 +365,10 @@ defmodule PhoenixKitAI.GuardEvents do
   @spec budget_refused(Budget.scope(), Endpoint.t(), keyword(), DateTime.t()) :: :ok
   def budget_refused(scope, %Endpoint{} = endpoint, opts, now \\ DateTime.utc_now()) do
     safely(fn ->
-      user_uuid = if is_binary(opts[:user_uuid]), do: opts[:user_uuid]
+      # Only a uuid can name the event's user (a foreign key). A refusal of
+      # an external subject (`subject_key:`) is one event a day for all of
+      # them: one per visitor would flood the watchers.
+      user_uuid = budget_user(opts[:user_uuid])
       spec = Tasks.get(Guard.task_key(opts) || "")
       {period, until} = budget_window(scope, now)
 
@@ -391,6 +394,15 @@ defmodule PhoenixKitAI.GuardEvents do
       end
     end)
   end
+
+  defp budget_user(value) when is_binary(value) do
+    case Ecto.UUID.cast(value) do
+      {:ok, uuid} -> uuid
+      :error -> nil
+    end
+  end
+
+  defp budget_user(_value), do: nil
 
   @doc """
   The model of `endpoint` no longer has what `spec` needs (`missing`): an

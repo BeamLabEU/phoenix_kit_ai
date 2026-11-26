@@ -103,6 +103,16 @@ defmodule PhoenixKitAI.Migrations do
       takes audio with a chat request (`PhoenixKitAI.Capabilities`, the
       guard's `:audio_input` need). Down to 5 drops the column.
 
+  ## V7: visitors
+
+    * `phoenix_kit_ai_requests.subject_key` — a nullable external subject
+      (`character varying(255)`) next to `user_uuid`, for a caller that is not
+      a PhoenixKit user (an anonymous visitor's own id, an API client), so the
+      per-user spend caps can count it (`PhoenixKitAI.Budget`, `subject_key:`).
+      With it the index `phoenix_kit_ai_requests_subject_spend_idx`,
+      `(subject_key, inserted_at) INCLUDE (cost)` over successful rows that
+      carry one — the shape of core's user spend index. Down to 6 drops both.
+
   ## Version marker
 
   `COMMENT ON TABLE phoenix_kit_ai_model_capabilities IS 'ai_schema:<N>'`.
@@ -119,7 +129,7 @@ defmodule PhoenixKitAI.Migrations do
 
   alias PhoenixKit.Migrations.Postgres.Helpers
 
-  @current_version 6
+  @current_version 7
   @default_prefix "public"
   @marker_prefix "ai_schema:"
   @version_table "phoenix_kit_ai_model_capabilities"
@@ -253,6 +263,7 @@ defmodule PhoenixKitAI.Migrations do
   defp version_up(4, prefix, _target), do: v4_statements(prefix)
   defp version_up(5, _prefix, _target), do: []
   defp version_up(6, prefix, _target), do: v6_statements(prefix)
+  defp version_up(7, prefix, _target), do: v7_statements(prefix)
 
   defp version_down(1, prefix),
     do: [
@@ -274,6 +285,31 @@ defmodule PhoenixKitAI.Migrations do
     do: [
       "ALTER TABLE #{Helpers.qualify_table(@version_table, prefix)} DROP COLUMN IF EXISTS audio_input"
     ]
+
+  defp version_down(7, prefix), do: v7_down_statements(prefix)
+
+  # ── V7: visitors ──────────────────────────────────────────────────────
+
+  defp v7_statements(prefix) do
+    requests = Helpers.qualify_table("phoenix_kit_ai_requests", prefix)
+
+    [
+      "ALTER TABLE #{requests} ADD COLUMN IF NOT EXISTS subject_key character varying(255)",
+      "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_requests_subject_spend_idx ON #{requests} " <>
+        "USING btree (subject_key, inserted_at) INCLUDE (cost) " <>
+        "WHERE (((status)::text = 'success'::text) AND (subject_key IS NOT NULL))"
+    ]
+  end
+
+  defp v7_down_statements(prefix) do
+    requests = Helpers.qualify_table("phoenix_kit_ai_requests", prefix)
+    index = Helpers.qualify_table("phoenix_kit_ai_requests_subject_spend_idx", prefix)
+
+    [
+      "DROP INDEX IF EXISTS #{index}",
+      "ALTER TABLE #{requests} DROP COLUMN IF EXISTS subject_key"
+    ]
+  end
 
   # ── V6: audio in ──────────────────────────────────────────────────────
 

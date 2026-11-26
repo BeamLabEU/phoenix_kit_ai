@@ -275,13 +275,15 @@ Repo-local aliases:
 - `user_uuid:` on a verb must be a PhoenixKit user uuid. The usage row has a
   foreign key on it, so an anonymous or external id cannot be stored there:
   the row is written without it (`user_uuid` nil, the submitted id kept in
-  `metadata["unresolved_refs"]`, a warning logged) and counts toward the
-  endpoint and global caps but never the per-user one. The same applies to
-  an `endpoint_uuid` or `prompt_uuid` that names no row. Task limits and the
-  spend caps read a `user_uuid:` that is not a uuid as no user: the task's
-  own limits and the endpoint and site caps apply, the per-user ones do not
-  (the caps used to sum it, fail on the uuid column and log a database
-  outage). Cap the endpoint or the site for visitors.
+  `metadata["unresolved_refs"]` and as the row's `subject_key`; a warning
+  logged for a uuid of no user) and counts toward the endpoint and global
+  caps. The same applies to an `endpoint_uuid` or `prompt_uuid` that names no
+  row (without the subject). Who asks when it is not a user is
+  `subject_key:` (any string, the row's `subject_key`, chain V7): with no
+  user it selects the per-user spend caps (`Budget`), so visitors are capped
+  one by one. A `user_uuid:` that is not a user, on its own, still selects
+  no per-user cap (unchanged), and task limits know users only: their
+  `:user` scope ignores `subject_key:`.
 - A usage row is written whatever the call carried: a label longer than its
   column (`model` 150, `endpoint_name` 100, `prompt_name` 255) is cut, and NUL
   characters are dropped from every string (`Request.changeset/2`; PostgreSQL
@@ -881,7 +883,9 @@ later version fills them). V3 creates `phoenix_kit_ai_guard_blocks`
 lift note ≤ 500; one active block per group and person — unique
 `(block_group, user_uuid) WHERE lifted_at IS NULL`). V4 converts money to dollar strings (needs core's V223 `cost`). V6 adds the
 `audio_input` flag to the snapshot (`unknown` by default, the same CHECK as
-the others); down to 5 drops it. V5 adopts
+the others); down to 5 drops it. V7 adds `phoenix_kit_ai_requests.subject_key`
+(`varchar(255)`, nullable) and its partial spend index
+`phoenix_kit_ai_requests_subject_spend_idx`; down to 6 drops both. V5 adopts
 the three core-created tables: `CREATE TABLE IF NOT EXISTS`, guarded
 constraints and indexes, exactly as a fresh core builds them, a no-op on
 every existing install. **It is emitted ahead of V2's statements, not last**
@@ -1528,9 +1532,8 @@ folder with no `FOLLOW_UP.md` means "not triaged yet"; a stub file is what
 - Not built, each a self-contained PR when a host needs it: a pluggable
   persistent cache backend behind `RequestCache` (ETS stays L1) with
   single-flight on a miss; atomic budget reservation before dispatch
-  (today concurrent calls can overshoot); a nullable external-subject
-  column on the requests table in core so anonymous visitors can be
-  capped per identity (today `user_uuid` is a foreign key); per-source /
+  (today concurrent calls can overshoot); task limits per `subject_key`
+  (the spend caps have it); per-source /
   per-user *rate* limits (per-key concurrency exists: `PhoenixKitAI.Limiter`;
   spend caps are too coarse against a scrape); retries and the limiter for the
   image adapters (`Providers.HTTP` — today they cover chat, embeddings and TTS only); one `%Result{}` struct

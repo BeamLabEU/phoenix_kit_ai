@@ -15,6 +15,11 @@ defmodule PhoenixKitAI.Request do
   - `prompt_uuid`: Foreign key to the AI prompt used (if request used a prompt template)
   - `prompt_name`: Denormalized prompt name for historical display
   - `user_uuid`: Foreign key to the user who made the request (nullable if user deleted)
+  - `subject_key`: Who asked, when that is not a PhoenixKit user — an anonymous
+    visitor's own id, an API client, a tenant (module chain V7). Free text,
+    set by a verb's `subject_key:` option, or from a `user_uuid:` that names
+    no user (`subject_key/1` normalises it). The per-user spend caps count it
+    (`PhoenixKitAI.Budget`).
   - `slot_index`: Which slot was used (deprecated, for backward compatibility)
 
   ### Request Details
@@ -138,6 +143,8 @@ defmodule PhoenixKitAI.Request do
     belongs_to(:endpoint, Endpoint, foreign_key: :endpoint_uuid, references: :uuid, type: UUIDv7)
     belongs_to(:prompt, Prompt, foreign_key: :prompt_uuid, references: :uuid, type: UUIDv7)
     belongs_to(:user, User, foreign_key: :user_uuid, references: :uuid, type: UUIDv7)
+    # Who asked when it is not a PhoenixKit user (module chain V7).
+    field(:subject_key, :string)
 
     timestamps(type: :utc_datetime)
   end
@@ -147,12 +154,13 @@ defmodule PhoenixKitAI.Request do
   """
   def changeset(request, attrs) do
     request
-    |> cast(attrs, [
+    |> cast(with_subject_key(attrs), [
       :endpoint_uuid,
       :endpoint_name,
       :prompt_uuid,
       :prompt_name,
       :user_uuid,
+      :subject_key,
       :slot_index,
       :model,
       :request_type,
@@ -393,6 +401,44 @@ defmodule PhoenixKitAI.Request do
   # hold — is dropped from every string. Either used to raise after the
   # provider was paid, with no row.
   @column_sizes [model: 150, endpoint_name: 100, prompt_name: 255]
+  @subject_key_max 255
+
+  @doc """
+  A subject key as the usage row stores it and the spend caps look it up: a
+  string (an integer or atom is turned into one), trimmed, without NUL
+  characters; `nil` for anything else or a blank one. A key longer than
+  #{@subject_key_max} characters is replaced by `"sha256:"` and the hex digest
+  of the whole key, so two long keys sharing a prefix never become one subject.
+  """
+  @spec subject_key(term()) :: String.t() | nil
+  def subject_key(value) when is_binary(value) do
+    case value |> without_nul() |> String.trim() do
+      "" ->
+        nil
+
+      key ->
+        if String.length(key) > @subject_key_max,
+          do: "sha256:" <> Base.encode16(:crypto.hash(:sha256, key), case: :lower),
+          else: key
+    end
+  end
+
+  def subject_key(value) when is_integer(value), do: subject_key(Integer.to_string(value))
+
+  def subject_key(value) when is_atom(value) and value not in [nil, true, false],
+    do: subject_key(Atom.to_string(value))
+
+  def subject_key(_value), do: nil
+
+  # Before the cast, so an integer or atom key is a string and not a cast error
+  # that would cost the row.
+  defp with_subject_key(%{} = attrs) do
+    Enum.reduce([:subject_key, "subject_key"], attrs, fn key, acc ->
+      if Map.has_key?(acc, key), do: Map.update!(acc, key, &subject_key/1), else: acc
+    end)
+  end
+
+  defp with_subject_key(attrs), do: attrs
 
   defp fit_for_the_database(changeset) do
     changeset =

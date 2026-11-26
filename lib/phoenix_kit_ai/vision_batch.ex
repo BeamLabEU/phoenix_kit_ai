@@ -74,7 +74,15 @@ defmodule PhoenixKitAI.VisionBatch do
   @fatal_atoms @account_atoms ++ [:model_not_found]
 
   # Item options that change who asks or what runs.
-  @scope_keys [:user_uuid, :task, :model, :models, :fallback_models, :guard_admission]
+  @scope_keys [
+    :user_uuid,
+    :subject_key,
+    :task,
+    :model,
+    :models,
+    :fallback_models,
+    :guard_admission
+  ]
   @fatal_tags [
     :budget_exceeded,
     :budget_unmigrated,
