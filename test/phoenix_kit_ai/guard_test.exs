@@ -648,7 +648,8 @@ defmodule PhoenixKitAI.GuardTest do
       stub(%{"error" => %{"message" => "boom"}}, 500)
       assert {:error, {:api_error, 500}} = PhoenixKitAI.ask(ep.uuid, "q3", task: "test.plain")
 
-      assert [_fresh, _hit, unparsed, failed] = rows(ep)
+      remaining = Enum.reject(rows(ep), &(&1.uuid in [fresh, hit]))
+      assert {[failed], [unparsed]} = Enum.split_with(remaining, &(&1.status == "error"))
       assert %{status: "success", metadata: %{"task" => "test.plain"}} = unparsed
       assert %{status: "error", metadata: %{"task" => "test.plain"}} = failed
       refute failed.metadata["refused"]
@@ -706,7 +707,9 @@ defmodule PhoenixKitAI.GuardTest do
       assert {:error, {:api_error, 500}} =
                PhoenixKitAI.extract_text(ep.uuid, @jpeg, task: "test.plain")
 
-      assert [%{status: "success"} = unparsed, %{status: "error"} = failed] = rows(ep)
+      assert {[failed], [%{status: "success"} = unparsed]} =
+               Enum.split_with(rows(ep), &(&1.status == "error"))
+
       assert unparsed.metadata["task"] == "test.plain"
       assert failed.metadata["task"] == "test.plain"
     end
