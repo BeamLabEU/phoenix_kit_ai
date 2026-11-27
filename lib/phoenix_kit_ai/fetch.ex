@@ -20,10 +20,13 @@ defmodule PhoenixKitAI.Fetch do
        or does not resolve at all — is refused (`{:error, {:unsafe_url, url}}`)
        unless `allow_internal: true` (or `config :phoenix_kit_ai, :fetch,
        allow_internal: true`). Every redirect hop is checked again; at most
-       `max_redirects:`. The check resolves the name and the connection
-       resolves it again, so a host that changes its answer in between (DNS
-       rebinding) is out of its reach: a server that must never reach its
-       internal network should also firewall its egress.
+       `max_redirects:`. The connection is pinned (`PhoenixKitAI.Fetch.Pinned`,
+       on Mint): the host is resolved once, every address it has must be
+       public, and the request goes to that address with the name for
+       `Host`, SNI and certificate verification — nothing resolves the name
+       again in between, so DNS rebinding cannot point it inside. One
+       connection per request, no pool. (A call routed to a `Req.Test` stub
+       through `req_options: [plug: …]` goes through Req instead.)
     2. **robots.txt** of the URL's origin is read (and cached on the node for
        `robots_ttl:` seconds, per origin and product token) and matched for
        the `user_agent:`'s product token. A disallowed path is
@@ -40,7 +43,12 @@ defmodule PhoenixKitAI.Fetch do
        503 or 504 is tried again up to `max_attempts:` in all, waiting
        `base_delay_ms × 2^(n-1)` (at most `max_delay_ms:`), or the
        `Retry-After` seconds when the server names them (capped the same).
-    5. **The body** is read up to `max_bytes:`; past it the fetch is
+    5. **The deadline**: the whole call — robots.txt, the host's slot,
+       retries and their backoff, redirects — ends within `deadline:`
+       milliseconds (60 000), else `{:error, :deadline}`. A robots.txt read
+       cut short by it is not cached.
+    6. **The body** is read up to `max_bytes:` (5 000 000; raise it for
+       larger pages); past it the fetch is
        `{:error, {:too_large, max}}`. No compression is asked for, and a body
        sent compressed anyway is `{:error, {:unsupported_content_encoding,
        encoding}}`. HTML is turned into text by
@@ -76,11 +84,13 @@ defmodule PhoenixKitAI.Fetch do
   `robots_ttl:` (3 600 s), `robots_unreachable:` (`:deny`), `rate_limit_ms:`
   (1 000), `max_crawl_delay_ms:` (30 000), `max_attempts:` (3),
   `base_delay_ms:` (500), `max_delay_ms:` (10 000), `timeout:` (15 000 ms,
-  receive; connect is at most 10 s), `max_bytes:` (5 000 000),
+  receive; connect is at most 10 s), `deadline:` (60 000 ms, the whole
+  call), `max_bytes:` (5 000 000),
   `max_redirects:` (5), `allow_internal:` (`false`), `keep_html:` (`false`),
-  `headers:` (extra request headers), `req_options:` (extra `Req` options;
-  `config :phoenix_kit_ai, :req_options` is appended too — tests stub with
-  `Req.Test` through it).
+  `headers:` (extra request headers), `req_options:` (`Req` options, used
+  only when they — or `config :phoenix_kit_ai, :req_options` — name a
+  `plug:`: tests stub with `Req.Test` through it; the pinned connection
+  takes no Req options).
 
   ## Scope
 
@@ -94,7 +104,7 @@ defmodule PhoenixKitAI.Fetch do
 
   require Logger
 
-  alias PhoenixKitAI.Fetch.{Extract, HostState, Robots}
+  alias PhoenixKitAI.Fetch.{Extract, HostState, Pinned, Robots}
   alias PhoenixKitAI.Providers.HTTP
 
   @version Mix.Project.config()[:version]
@@ -111,6 +121,7 @@ defmodule PhoenixKitAI.Fetch do
     max_delay_ms: 10_000,
     timeout: 15_000,
     max_bytes: 5_000_000,
+    deadline: 60_000,
     max_redirects: 5,
     allow_internal: false,
     keep_html: false,
@@ -147,7 +158,7 @@ defmodule PhoenixKitAI.Fetch do
   @doc "Fetches `url` and returns its main content (see the moduledoc)."
   @spec fetch(String.t(), keyword()) :: {:ok, page()} | {:error, term()}
   def fetch(url, opts \\ []) when is_binary(url) do
-    opts = options(opts)
+    opts = options_for(opts)
     warn_without_state()
 
     with {:ok, uri} <- check_url(url, opts),
@@ -163,12 +174,29 @@ defmodule PhoenixKitAI.Fetch do
   """
   @spec allowed?(String.t(), keyword()) :: boolean() | {:error, term()}
   def allowed?(url, opts \\ []) do
-    opts = options(opts)
+    opts = options_for(opts)
 
-    with {:ok, uri} <- check_url(url, opts) do
-      robots(uri, opts) |> Robots.allowed?(path(uri))
+    with {:ok, uri} <- check_url(url, opts),
+         {:ok, rules} <- robots(uri, opts) do
+      Robots.allowed?(rules, path(uri))
     end
   end
+
+  # The call's options with its deadline fixed: everything the call waits
+  # for — robots.txt, its slot, retries, redirects — ends by then.
+  defp options_for(opts) do
+    opts = options(opts)
+
+    deadline =
+      case opts[:deadline] do
+        ms when is_integer(ms) and ms > 0 -> ms
+        _ -> 60_000
+      end
+
+    Keyword.put_new(opts, :deadline_at, System.monotonic_time(:millisecond) + deadline)
+  end
+
+  defp remaining(opts), do: max(opts[:deadline_at] - System.monotonic_time(:millisecond), 0)
 
   @doc "The options a call runs with: the call's over `config :phoenix_kit_ai, :fetch` over the defaults."
   @spec options(keyword()) :: keyword()
@@ -197,9 +225,15 @@ defmodule PhoenixKitAI.Fetch do
   end
 
   defp check_robots(uri, opts) do
-    if opts[:robots] == false or Robots.allowed?(robots(uri, opts), path(uri)),
-      do: :ok,
-      else: {:error, {:disallowed_by_robots, URI.to_string(uri)}}
+    with false <- opts[:robots] == false,
+         {:ok, rules} <- robots(uri, opts) do
+      if Robots.allowed?(rules, path(uri)),
+        do: :ok,
+        else: {:error, {:disallowed_by_robots, URI.to_string(uri)}}
+    else
+      true -> :ok
+      {:error, _} = error -> error
+    end
   end
 
   # Cached per origin and product token (two agents read different groups);
@@ -208,21 +242,26 @@ defmodule PhoenixKitAI.Fetch do
   defp robots(uri, opts) do
     key = robots_key(uri, opts)
 
-    rules =
+    cached =
       case HostState.robots(key) do
         nil ->
-          {rules, ttl} = read_robots(origin(uri), opts)
-          HostState.put_robots(key, rules, ttl)
-          rules
+          # A read cut short by the call's deadline says nothing about the
+          # site: it is not cached.
+          with {:ok, rules, ttl} <- read_robots(origin(uri), opts) do
+            HostState.put_robots(key, rules, ttl)
+            {:ok, rules}
+          end
 
         rules ->
-          rules
+          {:ok, rules}
       end
 
-    cond do
-      rules != :unreachable -> rules
-      opts[:robots_unreachable] == :allow -> Robots.allow_all()
-      true -> Robots.deny_all()
+    allow_unreachable? = opts[:robots_unreachable] == :allow
+
+    case cached do
+      {:ok, :unreachable} when allow_unreachable? -> {:ok, Robots.allow_all()}
+      {:ok, :unreachable} -> {:ok, Robots.deny_all()}
+      other -> other
     end
   end
 
@@ -246,16 +285,19 @@ defmodule PhoenixKitAI.Fetch do
       {:ok, %{status: status, body: body} = response, _final, _attempts}
       when status in 200..299 ->
         if encoded?(response),
-          do: {:unreachable, @unreachable_ttl_ms},
+          do: {:ok, :unreachable, @unreachable_ttl_ms},
           else:
-            {Robots.parse(whole_lines(body), agent_token(opts[:user_agent])),
+            {:ok, Robots.parse(whole_lines(body), agent_token(opts[:user_agent])),
              opts[:robots_ttl] * 1_000}
 
       {:ok, %{status: status}, _final, _attempts} when status in 400..499 and status != 429 ->
-        {Robots.allow_all(), opts[:robots_ttl] * 1_000}
+        {:ok, Robots.allow_all(), opts[:robots_ttl] * 1_000}
+
+      {:error, :deadline} = error ->
+        error
 
       _unreachable ->
-        {:unreachable, @unreachable_ttl_ms}
+        {:ok, :unreachable, @unreachable_ttl_ms}
     end
   end
 
@@ -313,14 +355,21 @@ defmodule PhoenixKitAI.Fetch do
   end
 
   defp attempt(url, opts, n) do
-    wait_for_slot(url, opts)
+    with :ok <- wait_for_slot(url, opts) do
+      url |> request(opts) |> attempted(url, opts, n)
+    end
+  end
+
+  defp attempted(result, url, opts, n) do
     max_attempts = opts[:max_attempts]
 
-    case request(url, opts) do
+    case result do
+      {:refused, _reason} ->
+        {:error, {:unsafe_url, url}}
+
       {:ok, %Req.Response{status: status} = response}
       when status in @retry_statuses and n < max_attempts ->
-        backoff(n, retry_after(response), opts)
-        attempt(url, opts, n + 1)
+        with :ok <- backoff(n, retry_after(response), opts), do: attempt(url, opts, n + 1)
 
       {:ok, %Req.Response{body: {:too_large, _seen}}} ->
         {:error, {:too_large, opts[:max_bytes]}}
@@ -328,25 +377,42 @@ defmodule PhoenixKitAI.Fetch do
       {:ok, response} ->
         {:ok, response, n}
 
-      {:error, _reason} when n < max_attempts ->
-        backoff(n, nil, opts)
-        attempt(url, opts, n + 1)
-
-      {:error, reason} ->
-        {:error, {:fetch_failed, transport_tag(reason)}}
+      {:error, _reason} ->
+        cond do
+          remaining(opts) == 0 -> {:error, :deadline}
+          n < max_attempts -> with :ok <- backoff(n, nil, opts), do: attempt(url, opts, n + 1)
+          true -> {:error, {:fetch_failed, transport_tag(elem(result, 1))}}
+        end
     end
   end
 
+  # The connection: pinned to the checked address (`Fetch.Pinned`), unless
+  # the call is routed to a `Req.Test` stub (`plug:` in `req_options:` or
+  # `config :phoenix_kit_ai, :req_options`), which has no address.
   defp request(url, opts) do
-    timeout = opts[:timeout]
+    if stubbed?(opts),
+      do: req_request(url, opts),
+      else: Pinned.get(url, request_headers(opts), opts)
+  end
+
+  defp stubbed?(opts) do
+    Keyword.has_key?(List.wrap(opts[:req_options]), :plug) or
+      Keyword.has_key?(Application.get_env(:phoenix_kit_ai, :req_options, []), :plug)
+  end
+
+  defp request_headers(opts) do
+    [{"user-agent", opts[:user_agent]}, {"accept", "text/html,text/plain;q=0.9,*/*;q=0.1"}] ++
+      Enum.map(List.wrap(opts[:headers]), fn {name, value} -> {to_string(name), value} end)
+  end
+
+  defp req_request(url, opts) do
+    timeout = opts[:timeout] |> min(remaining(opts)) |> max(1)
 
     req =
       [
         url: url,
         method: :get,
-        headers:
-          [{"user-agent", opts[:user_agent]}, {"accept", "text/html,text/plain;q=0.9,*/*;q=0.1"}] ++
-            List.wrap(opts[:headers]),
+        headers: request_headers(opts),
         redirect: false,
         retry: false,
         decode_body: false,
@@ -365,8 +431,11 @@ defmodule PhoenixKitAI.Fetch do
     interval = interval(url, opts)
 
     case HostState.reserve(host, interval) do
-      0 -> :ok
-      wait -> Process.sleep(wait)
+      0 ->
+        if remaining(opts) > 0, do: :ok, else: {:error, :deadline}
+
+      wait ->
+        if wait < remaining(opts), do: Process.sleep(wait), else: {:error, :deadline}
     end
   end
 
@@ -402,7 +471,11 @@ defmodule PhoenixKitAI.Fetch do
         nil -> min(opts[:base_delay_ms] * Integer.pow(2, n - 1), max_delay)
       end
 
-    if delay > 0, do: Process.sleep(delay)
+    cond do
+      delay >= remaining(opts) -> {:error, :deadline}
+      delay > 0 -> Process.sleep(delay)
+      true -> :ok
+    end
   end
 
   defp retry_after(response) do

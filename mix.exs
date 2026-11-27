@@ -144,12 +144,18 @@ defmodule PhoenixKitAI.MixProject do
 
       # xAI realtime voice (WebSocket streaming TTS) — the one xAI capability
       # unreachable through the shared REST completions path. Only uses
-      # Xai.Realtime, so we deliberately do NOT add {:gun, ...} or
-      # {:mint, ...} here — xai >= 0.2 makes both optional adapters for
-      # its gRPC parts (Xai.Chat/Xai.Video, which we never call), so
-      # neither gun nor its cowlib CVE exposure end up in this dependency
-      # tree at all.
+      # Xai.Realtime, so we deliberately do NOT add {:gun, ...} here —
+      # xai >= 0.2 makes it an optional adapter for its gRPC parts
+      # (Xai.Chat/Xai.Video, which we never call), so neither gun nor its
+      # cowlib CVE exposure end up in this dependency tree at all. (Mint,
+      # below, is Fetch's own HTTP client; it pulls in no cowlib.)
       {:xai, "~> 0.2"},
+
+      # `PhoenixKitAI.Fetch` connects with Mint itself, to the address it
+      # checked (no re-resolution between the check and the connect). Mint
+      # is already in the tree through Req and Finch; named here because the
+      # module calls it directly.
+      {:mint, "~> 1.6"},
 
       # Optional rustler pin so the transitive `mdex_native` NIF (via phoenix_kit,
       # a test dependency) can source-build on hosts where its precompiled variant

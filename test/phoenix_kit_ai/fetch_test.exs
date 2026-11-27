@@ -474,6 +474,144 @@ defmodule PhoenixKitAI.FetchTest do
     end
   end
 
+  describe "the pinned connection (no Req stub)" do
+    # A one-shot HTTP server on 127.0.0.1: answers each connection with
+    # `reply.(request)` (nil: never answers) and sends the request to the test.
+    defp serve(reply) do
+      {:ok, listen} =
+        :gen_tcp.listen(0, [:binary, active: false, reuseaddr: true, ip: {127, 0, 0, 1}])
+
+      {:ok, port} = :inet.port(listen)
+      test = self()
+
+      server =
+        spawn_link(fn ->
+          accept = fn accept ->
+            case :gen_tcp.accept(listen, 5_000) do
+              {:ok, socket} ->
+                request = read_request(socket, "")
+                send(test, {:request, request})
+
+                case reply.(request) do
+                  nil -> Process.sleep(1_000)
+                  response -> :gen_tcp.send(socket, response)
+                end
+
+                :gen_tcp.close(socket)
+                accept.(accept)
+
+              {:error, _} ->
+                :ok
+            end
+          end
+
+          accept.(accept)
+        end)
+
+      on_exit(fn -> Process.exit(server, :kill) end)
+      port
+    end
+
+    defp read_request(socket, acc) do
+      if String.contains?(acc, "\r\n\r\n") do
+        acc
+      else
+        case :gen_tcp.recv(socket, 0, 5_000) do
+          {:ok, data} -> read_request(socket, acc <> data)
+          {:error, _} -> acc
+        end
+      end
+    end
+
+    defp http(status, body, type \\ "text/html") do
+      "HTTP/1.1 #{status} X\r\ncontent-type: #{type}\r\ncontent-length: #{byte_size(body)}\r\nconnection: close\r\n\r\n" <>
+        body
+    end
+
+    defp pinned(extra \\ []),
+      do:
+        Keyword.merge(
+          [allow_internal: true, robots: false, rate_limit_ms: 0, base_delay_ms: 0],
+          extra
+        )
+
+    test "connects to the address it resolved, with the name as Host" do
+      port = serve(fn _ -> http(200, "<p>pinned</p>") end)
+
+      assert {:ok, %{text: "pinned", status: 200}} =
+               Fetch.fetch("http://localhost:#{port}/page", pinned())
+
+      assert_received {:request, request}
+      assert request =~ "GET /page HTTP/1.1"
+      assert request =~ ~r/\r\nhost: localhost(:#{port})?\r\n/i
+    end
+
+    test "resolution refuses an internal address unless allowed" do
+      assert {:refused, :blocked_host} = PhoenixKitAI.Fetch.Pinned.resolve("localhost", false)
+      assert {:refused, :blocked_host} = PhoenixKitAI.Fetch.Pinned.resolve("127.0.0.1", false)
+      assert {:ok, {127, 0, 0, 1}} = PhoenixKitAI.Fetch.Pinned.resolve("127.0.0.1", true)
+    end
+
+    test "the body is bounded while it streams" do
+      port = serve(fn _ -> http(200, String.duplicate("x", 10_000), "text/plain") end)
+
+      assert {:error, {:too_large, 1_000}} =
+               Fetch.fetch("http://127.0.0.1:#{port}/big", pinned(max_bytes: 1_000))
+    end
+
+    test "a deadline during robots.txt is not cached as an unreadable file" do
+      calls = :counters.new(1, [])
+
+      port =
+        serve(fn request ->
+          :counters.add(calls, 1, 1)
+
+          cond do
+            :counters.get(calls, 1) == 1 -> nil
+            request =~ "GET /robots.txt" -> http(200, "User-agent: *\nDisallow:\n", "text/plain")
+            true -> http(200, "<p>ok</p>")
+          end
+        end)
+
+      url = "http://127.0.0.1:#{port}/a"
+      assert {:error, :deadline} = Fetch.fetch(url, pinned(robots: true, deadline: 300))
+      # Cached as unreadable, the default policy would now refuse it.
+      assert {:ok, %{text: "ok"}} = Fetch.fetch(url, pinned(robots: true))
+    end
+
+    test "deadline: a server that never answers ends the call by then" do
+      port = serve(fn _ -> nil end)
+
+      {microseconds, result} =
+        :timer.tc(fn ->
+          Fetch.fetch("http://127.0.0.1:#{port}/slow", pinned(deadline: 300, max_attempts: 5))
+        end)
+
+      assert result == {:error, :deadline}
+      assert microseconds < 3_000_000
+    end
+  end
+
+  describe "deadline: and the defaults" do
+    test "a wait for the host's next slot past the deadline is {:error, :deadline}" do
+      stub(&text(&1, "", 404), &html(&1, "<p>ok</p>"))
+
+      assert {:ok, _} = Fetch.fetch("https://pace.test/a", opts(rate_limit_ms: 5_000))
+
+      {microseconds, result} =
+        :timer.tc(fn ->
+          Fetch.fetch("https://pace.test/b", opts(rate_limit_ms: 5_000, deadline: 500))
+        end)
+
+      assert result == {:error, :deadline}
+      assert microseconds < 1_000_000
+    end
+
+    test "deadline defaults to 60 s" do
+      assert Fetch.options([])[:deadline] == 60_000
+    end
+  end
+
   describe "HostState" do
     test "prune/0 deletes expired rules and past slots, keeps the live ones" do
       HostState.put_robots({"https://old.test", "x"}, Robots.allow_all(), 0)
