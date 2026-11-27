@@ -219,6 +219,27 @@ defmodule PhoenixKitAI.SubjectKeyTest do
       assert [%{scope: :user}] = Budget.status(ep, user_uuid: ghost, subject_key: "visitor-9")
     end
 
+    test "the refusal of a uuid of no user is recorded as an event, with no user", %{endpoint: ep} do
+      stub_chat()
+      {:ok, _} = Budget.set_limit(:user, "0.40")
+      ghost = Ecto.UUID.generate()
+
+      assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "a", user_uuid: ghost, subject_key: "visitor-5")
+
+      assert {:error, {:budget_exceeded, :user}} =
+               PhoenixKitAI.ask(ep.uuid, "b", user_uuid: ghost, subject_key: "visitor-5")
+
+      assert [event] =
+               TestRepo.all(
+                 from(e in PhoenixKitAI.GuardEvent,
+                   where: e.kind == "limit_reached" and e.endpoint_uuid == ^ep.uuid
+                 )
+               )
+
+      assert event.user_uuid == nil
+      assert event.ref == %{"scope" => "budget:user", "subject_key" => "visitor-5"}
+    end
+
     test "with unknown_user_as_subject on, a user_uuid that is no user is capped as its subject",
          %{endpoint: ep} do
       Application.put_env(:phoenix_kit_ai, :unknown_user_as_subject, true)

@@ -365,10 +365,13 @@ defmodule PhoenixKitAI.GuardEvents do
   @spec budget_refused(Budget.scope(), Endpoint.t(), keyword(), DateTime.t()) :: :ok
   def budget_refused(scope, %Endpoint{} = endpoint, opts, now \\ DateTime.utc_now()) do
     safely(fn ->
-      # Only a uuid can name the event's user (a foreign key). A refusal of
-      # an external subject (`subject_key:`) is one event a day for all of
-      # them: one per visitor would flood the watchers.
+      # Only a user can be the event's user (a foreign key: a uuid of no
+      # user used to fail the insert, and the event was lost). Otherwise the
+      # subject is named in `ref`. A refusal of an external subject is one
+      # event a day for all of them: one per visitor would flood the
+      # watchers.
       user_uuid = budget_user(opts[:user_uuid])
+      subject = if is_nil(user_uuid), do: budget_subject(opts)
       spec = Tasks.get(Guard.task_key(opts) || "")
       {period, until} = budget_window(scope, now)
 
@@ -385,7 +388,7 @@ defmodule PhoenixKitAI.GuardEvents do
                task_key: Guard.task_key(opts),
                user_uuid: if(scope in [:user, :user_calls], do: user_uuid),
                endpoint_uuid: endpoint.uuid,
-               ref: %{"scope" => "budget:#{scope}"},
+               ref: budget_ref(scope, subject),
                dedupe_key: "limit_reached:budget:#{scope}:#{id}:#{period}",
                until: until
              }) do
@@ -396,13 +399,25 @@ defmodule PhoenixKitAI.GuardEvents do
   end
 
   defp budget_user(value) when is_binary(value) do
-    case Ecto.UUID.cast(value) do
-      {:ok, uuid} -> uuid
-      :error -> nil
+    with {:ok, uuid} <- Ecto.UUID.cast(value),
+         true <- repo().exists?(from(u in User, where: u.uuid == ^uuid)) do
+      uuid
+    else
+      _ -> nil
     end
   end
 
   defp budget_user(_value), do: nil
+
+  # Who was refused when it is no user: the call's subject, else the id it
+  # passed as `user_uuid:` (the row's subject too).
+  defp budget_subject(opts),
+    do: Request.subject_key(opts[:subject_key]) || Request.subject_key(opts[:user_uuid])
+
+  defp budget_ref(scope, subject) when scope in [:user, :user_calls] and is_binary(subject),
+    do: %{"scope" => "budget:#{scope}", "subject_key" => subject}
+
+  defp budget_ref(scope, _subject), do: %{"scope" => "budget:#{scope}"}
 
   @doc """
   The model of `endpoint` no longer has what `spec` needs (`missing`): an
