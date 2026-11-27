@@ -1458,6 +1458,33 @@ Test database `phoenix_kit_ai_test`.
   fitted to the model's published capabilities before anything is sent —
   `dev_docs/guides/image-processing.md`.
 
+## Content-Security-Policy
+
+The module works under a host policy that allows inline code by nonce only
+(`script-src 'self' 'nonce-…'; style-src 'self' 'nonce-…'`); core's guide is
+`guides/content-security-policy.md`. It renders no inline `<script>` /
+`<style>` and no inline event handler, and its bundle creates neither.
+
+- No inline event handlers (`onclick=`, `onerror=` …), in markup or in HTML a
+  hook builds: no nonce covers an attribute. Use a `phx-` binding or a hook in
+  `priv/static/assets/phoenix_kit_ai.js`. The bundle reaches the browser
+  through the host's `:phoenix_kit_js_sources` compiler.
+- A new inline `<style>` / `<script>` carries the page's nonce. Core's
+  `PhoenixKitWeb.CSP.nonce/1` is newer than this module's core floor, so read
+  it through a feature-detecting helper `lib/phoenix_kit_ai/web/csp.ex`
+  (`Code.ensure_loaded?/1` + `function_exported?/3` + `apply/3`, `nil` on an
+  older core; reference: `phoenix_kit_hello_world`). The module has no caller,
+  so the helper does not exist yet. Never raise the core floor for it, and
+  never put a nonce into a cached body or an e-mail.
+- A `<style>` / `<script>` the bundle creates is stamped before insertion:
+  `window.PhoenixKitInternals && window.PhoenixKitInternals.adoptStyle && window.PhoenixKitInternals.adoptStyle(el)`.
+- The Playground needs more than script and style sources from a host that
+  starts from `default-src 'self'`: `img-src data:` for an edited image (and
+  the provider's origin when it answers with a URL), `media-src data:` for
+  playing a speech-to-text clip back. Without them only that preview fails.
+- `test/csp_inline_tags_test.exs` guards the inline tags, the handlers and the
+  bundle. Inline `style="…"` attributes are not covered.
+
 ## Versioning & releases
 
 SemVer. The version is single-sourced in `mix.exs` (`@version`); `version/0`
