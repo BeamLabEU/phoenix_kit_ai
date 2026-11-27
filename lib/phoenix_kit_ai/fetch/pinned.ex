@@ -45,7 +45,7 @@ defmodule PhoenixKitAI.Fetch.Pinned do
   defp host_header(%URI{scheme: scheme, host: host, port: port}) do
     host = if String.contains?(host, ":"), do: "[#{host}]", else: host
     default? = (scheme == "https" and port == 443) or (scheme == "http" and port == 80)
-    if default? or is_nil(port), do: host, else: "#{host}:#{port}"
+    if default?, do: host, else: "#{host}:#{port}"
   end
 
   # The lookup has no deadline of its own: it runs in a task the call
