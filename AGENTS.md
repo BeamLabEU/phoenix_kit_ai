@@ -1479,11 +1479,14 @@ The module works under a host policy that allows inline code by nonce only
 - A `<style>` / `<script>` the bundle creates is stamped before insertion:
   `window.PhoenixKitInternals && window.PhoenixKitInternals.adoptStyle && window.PhoenixKitInternals.adoptStyle(el)`.
 - The Playground needs more than script and style sources from a host that
-  starts from `default-src 'self'`: `img-src data:` for an edited image (and
-  the provider's origin when it answers with a URL), `media-src data:` for
-  playing a speech-to-text clip back. Without them only that preview fails.
+  starts from `default-src 'self'`: `img-src data:` for the edited-image
+  preview (and the provider's origin when it answers with a URL),
+  `img-src blob:` for the upload thumbnails (LiveView's `<.live_img_preview>`
+  uses an object URL), `media-src data:` for playing a speech-to-text clip
+  back. Without them only that preview fails.
 - `test/csp_inline_tags_test.exs` guards the inline tags, the handlers and the
-  bundle. Inline `style="…"` attributes are not covered.
+  bundle. Inline `style="…"` attributes are not covered, and the module has
+  none.
 
 ## Versioning & releases
 
