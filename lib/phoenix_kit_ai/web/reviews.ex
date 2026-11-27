@@ -3,7 +3,8 @@ defmodule PhoenixKitAI.Web.Reviews do
   LiveView of the review envelope (`PhoenixKitAI.Reviews`): the AI results
   apps have put up for a person's word, newest first, filtered by status
   (pending by default) and kind. Every holder of the base `ai` permission
-  sees the list; confirming or rejecting needs `ai.manage` (or an Owner),
+  sees the list; confirming or rejecting needs `ai.review` or `ai.manage`
+  (or an Owner),
   checked again on every event against the scope as it is now
   (`PhoenixKitAI.Web.Access`) and once more by `Reviews.decide/3`. A
   decision runs the app's `on_decide` handler for the kind; when the handler
@@ -63,19 +64,19 @@ defmodule PhoenixKitAI.Web.Reviews do
      |> assign(:current_path, URI.parse(uri).path)
      |> assign(:status, status)
      |> assign(:kind, kind)
-     |> assign(:can_manage, Access.may_manage?(socket))
+     |> assign(:can_manage, Access.may_review?(socket))
      |> load()}
   end
 
   @doc "Recomputes the right to decide when core updates the viewer's scope."
   @spec phoenix_kit_scope_changed(Phoenix.LiveView.Socket.t()) :: Phoenix.LiveView.Socket.t()
   def phoenix_kit_scope_changed(socket),
-    do: assign(socket, :can_manage, Access.may_manage?(socket))
+    do: assign(socket, :can_manage, Access.may_review?(socket))
 
   @impl true
   def handle_event("decide", %{"uuid" => uuid, "decision" => decision} = params, socket)
       when decision in ["confirmed", "rejected"] do
-    case Access.manage_scope(socket) do
+    case Access.review_scope(socket) do
       {:ok, scope} ->
         result = Reviews.decide(uuid, decision, scope: scope, note: params["note"])
         {:noreply, socket |> flash_result(result) |> load()}
@@ -220,7 +221,7 @@ defmodule PhoenixKitAI.Web.Reviews do
       </div>
 
       <p :if={not @can_manage} id="ai-reviews-read-only" class="text-sm text-base-content/70">
-        {gettext("You can see the reviews; deciding them needs the permission to manage AI.")}
+        {gettext("You can see the reviews; deciding them needs the permission to decide AI reviews.")}
       </p>
 
       <p :if={@reviews == []} id="ai-reviews-empty" class="text-base-content/70">

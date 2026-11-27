@@ -49,7 +49,7 @@ defmodule PhoenixKitAI.Reviews do
   ## Who may decide
 
   With `scope:` (a `PhoenixKit.Users.Auth.Scope`) the decision needs
-  `ai.manage` or an Owner, and the person is recorded; app code deciding on
+  `ai.review`, `ai.manage` or an Owner, and the person is recorded; app code deciding on
   its own (a rule, a job) passes `actor_uuid:` (a user's uuid:
   `{:error, :unknown_actor}` for one that names no user) or nothing. The admin page
   (AI → Reviews) always passes the viewer's scope.
@@ -233,7 +233,7 @@ defmodule PhoenixKitAI.Reviews do
         opts |> Keyword.get(:actor_uuid) |> uuid_or_nil() |> known_actor()
 
       %Scope{} = scope ->
-        if Guard.may_manage?(scope),
+        if Guard.may_review?(scope),
           do: {:ok, scope |> Scope.user_uuid() |> uuid_or_nil()},
           else: {:error, :forbidden}
 

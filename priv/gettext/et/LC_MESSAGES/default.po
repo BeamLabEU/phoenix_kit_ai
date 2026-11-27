@@ -1471,7 +1471,7 @@ msgstr "Uuenda oma AI lõpp-punkti seadistust"
 msgid "Updating…"
 msgstr "Uuendamine…"
 
-#: lib/phoenix_kit_ai.ex:1250
+#: lib/phoenix_kit_ai.ex:1258
 #: lib/phoenix_kit_ai/web/endpoints.ex:93
 #: lib/phoenix_kit_ai/web/prompts.ex:41
 #, elixir-autogen, elixir-format
@@ -1741,33 +1741,33 @@ msgid_plural "tokens"
 msgstr[0] "token"
 msgstr[1] "tokenit"
 
-#: lib/phoenix_kit_ai.ex:1246
+#: lib/phoenix_kit_ai.ex:1254
 #: lib/phoenix_kit_ai/web/endpoint_form.ex:688
 #: lib/phoenix_kit_ai/web/endpoints.ex:130
 #: lib/phoenix_kit_ai/web/playground.ex:70
 #: lib/phoenix_kit_ai/web/prompt_form.ex:36
 #: lib/phoenix_kit_ai/web/prompts.ex:62
-#: lib/phoenix_kit_ai/web/reviews.ex:37
+#: lib/phoenix_kit_ai/web/reviews.ex:38
 #: lib/phoenix_kit_ai/web/tasks.ex:63
 #, elixir-autogen, elixir-format
 msgid "AI"
 msgstr "AI"
 
-#: lib/phoenix_kit_ai.ex:1247
+#: lib/phoenix_kit_ai.ex:1255
 #: lib/phoenix_kit_ai/web/endpoint_form.ex:824
 #: lib/phoenix_kit_ai/web/endpoints.ex:97
 #, elixir-autogen, elixir-format
 msgid "Endpoints"
 msgstr "Lõpp-punktid"
 
-#: lib/phoenix_kit_ai.ex:1249
-#: lib/phoenix_kit_ai.ex:1296
+#: lib/phoenix_kit_ai.ex:1257
+#: lib/phoenix_kit_ai.ex:1306
 #: lib/phoenix_kit_ai/web/playground.ex:73
 #, elixir-autogen, elixir-format
 msgid "Playground"
 msgstr "Liivakast"
 
-#: lib/phoenix_kit_ai.ex:1248
+#: lib/phoenix_kit_ai.ex:1256
 #: lib/phoenix_kit_ai/web/prompt_form.ex:81
 #: lib/phoenix_kit_ai/web/prompts.ex:65
 #, elixir-autogen, elixir-format
@@ -2491,7 +2491,7 @@ msgstr "Värskenda katalooge"
 msgid "Some model catalogues could not be read"
 msgstr "Mõnda mudelite kataloogi ei õnnestunud lugeda"
 
-#: lib/phoenix_kit_ai.ex:1251
+#: lib/phoenix_kit_ai.ex:1259
 #: lib/phoenix_kit_ai/web/tasks.ex:66
 #, elixir-autogen, elixir-format
 msgid "Tasks"
@@ -2502,7 +2502,7 @@ msgstr "Ülesanded"
 msgid "The endpoint's model cannot do what this task needs: %{needs}"
 msgstr "Lõpp-punkti mudel ei oska seda, mida ülesanne vajab: %{needs}"
 
-#: lib/phoenix_kit_ai.ex:1284
+#: lib/phoenix_kit_ai.ex:1294
 #, elixir-autogen, elixir-format
 msgid "Translation"
 msgstr "Tõlkimine"
@@ -2544,12 +2544,12 @@ msgstr "Keeldutud"
 msgid "Refused before reaching the provider"
 msgstr "Keeldutud enne teenusepakkujani jõudmist"
 
-#: lib/phoenix_kit_ai.ex:1299
+#: lib/phoenix_kit_ai.ex:1309
 #, elixir-autogen, elixir-format
 msgid "Let an administrator try endpoints and prompts by hand."
 msgstr "Laseb administraatoril lõpp-punkte ja prompte käsitsi proovida."
 
-#: lib/phoenix_kit_ai.ex:1287
+#: lib/phoenix_kit_ai.ex:1297
 #, elixir-autogen, elixir-format
 msgid "Translate the text fields of a record from one language into another, keeping the field structure."
 msgstr "Tõlgib kirje tekstiväljad ühest keelest teise, säilitades väljade struktuuri."
@@ -2680,7 +2680,7 @@ msgstr "Piir peab olema täisarv, raha puhul summa dollarites"
 msgid "A user"
 msgstr "Kasutaja"
 
-#: lib/phoenix_kit_ai.ex:1103
+#: lib/phoenix_kit_ai.ex:1111
 #, elixir-autogen, elixir-format
 msgid "AI task guard"
 msgstr "AI-ülesannete valve"
@@ -2744,7 +2744,7 @@ msgstr "Piirid ja kasutus:"
 msgid "Limits saved"
 msgstr "Piirid on salvestatud"
 
-#: lib/phoenix_kit_ai.ex:1254
+#: lib/phoenix_kit_ai.ex:1262
 #, elixir-autogen, elixir-format
 msgid "Manage the AI task guard"
 msgstr "Halda AI-ülesannete valvet"
@@ -2959,7 +2959,7 @@ msgstr "ühe kasutaja päringud"
 msgid "one user's spending"
 msgstr "ühe kasutaja kulu"
 
-#: lib/phoenix_kit_ai.ex:1846
+#: lib/phoenix_kit_ai.ex:1856
 #, elixir-autogen, elixir-format
 msgid "only a holder of ai.manage may declare capabilities while only verified models are allowed"
 msgstr "kui lubatud on ainult kontrollitud mudelid, saab võimekusi märkida ainult ai.manage õiguse omanik"
@@ -3049,7 +3049,7 @@ msgstr "%{email} on AI-ülesandest %{task} blokeeritud."
 msgid "%{email} is no longer blocked from the AI task %{task}."
 msgstr "%{email} ei ole enam AI-ülesandest %{task} blokeeritud."
 
-#: lib/phoenix_kit_ai.ex:1105
+#: lib/phoenix_kit_ai.ex:1113
 #, elixir-autogen, elixir-format
 msgid "An AI task is near or at a limit, a spending cap refused a call, a task's model no longer fits it, a request was flagged as off-purpose, a task is used unusually, or a person was blocked or unblocked"
 msgstr "AI-ülesanne on piiri lähedal või selleni jõudnud, kulupiir lükkas päringu tagasi, ülesande mudel ei sobi enam, päring märgiti eesmärgiväliseks, ülesannet kasutatakse ebatavaliselt või inimene blokeeriti või blokeering eemaldati"
@@ -3081,7 +3081,7 @@ msgstr "Praegu blokeeritud:"
 msgid "By"
 msgstr "Kes"
 
-#: lib/phoenix_kit_ai.ex:1255
+#: lib/phoenix_kit_ai.ex:1263
 #, elixir-autogen, elixir-format
 msgid "Change the limits of AI tasks, who is told about them and which models may be used; block a person from a task; see why a private task's request was flagged"
 msgstr "Muuta AI-ülesannete piire, kellele neist teatatakse ja milliseid mudeleid tohib kasutada; blokeerida inimene ülesandest; näha, miks privaatse ülesande päring märgiti"
@@ -3602,7 +3602,7 @@ msgstr "Kataloog annab sellele mudelile hinna, mida kasutatakse esimesena: seda 
 msgid "Setting a price needs the “Manage the AI task guard” permission: it decides what the money limits count."
 msgstr "Hinna määramiseks on vaja õigust „Halda AI-ülesannete valvet“: sellest sõltub, mida rahalised piirid arvestavad."
 
-#: lib/phoenix_kit_ai.ex:1869
+#: lib/phoenix_kit_ai.ex:1879
 #, elixir-autogen, elixir-format
 msgid "only a holder of ai.manage may set or change a manual price"
 msgstr "käsitsi hinda saab määrata või muuta ainult ai.manage õiguse omaja"
@@ -3663,22 +3663,22 @@ msgstr "Selle ülesande kulupiir vajab uuendamist, enne kui see saab uuesti toim
 msgid "needs to be set again in dollars"
 msgstr "tuleb uuesti dollarites määrata"
 
-#: lib/phoenix_kit_ai.ex:1265
+#: lib/phoenix_kit_ai.ex:1273
 #, elixir-autogen, elixir-format
 msgid "Create, edit, enable, disable, reorder and delete AI endpoints"
 msgstr "AI lõpp-punktide loomine, muutmine, lubamine, keelamine, järjestamine ja kustutamine"
 
-#: lib/phoenix_kit_ai.ex:1264
+#: lib/phoenix_kit_ai.ex:1272
 #, elixir-autogen, elixir-format
 msgid "Manage AI endpoints"
 msgstr "AI lõpp-punktide haldamine"
 
-#: lib/phoenix_kit_ai.ex:1260
+#: lib/phoenix_kit_ai.ex:1268
 #, elixir-autogen, elixir-format
 msgid "Open the Usage tab: every AI request on the site with its prompt and response"
 msgstr "Kasutuse vahekaardi avamine: iga saidi AI-päring koos prompti ja vastusega"
 
-#: lib/phoenix_kit_ai.ex:1259
+#: lib/phoenix_kit_ai.ex:1267
 #, elixir-autogen, elixir-format
 msgid "See AI usage"
 msgstr "AI kasutuse vaatamine"
@@ -4523,7 +4523,7 @@ msgstr "Teenusepakkuja keeldus sellest sisust"
 msgid "Dictate"
 msgstr "Dikteeri"
 
-#: lib/phoenix_kit_ai.ex:1305
+#: lib/phoenix_kit_ai.ex:1315
 #, elixir-autogen, elixir-format
 msgid "Dictation"
 msgstr "Dikteerimine"
@@ -4573,7 +4573,7 @@ msgstr "Me ei kuulnud midagi. Palun proovi uuesti, mikrofonile veidi lähemal."
 msgid "We couldn't write that down. Please try again."
 msgstr "Seda ei õnnestunud üles kirjutada. Palun proovi uuesti."
 
-#: lib/phoenix_kit_ai.ex:1308
+#: lib/phoenix_kit_ai.ex:1318
 #, elixir-autogen, elixir-format
 msgid "Write down what a person says on a page, word for word."
 msgstr "Kirjutab lehel inimese öeldu sõna-sõnalt üles."
@@ -4652,7 +4652,7 @@ msgstr "%{tokens} väljund"
 msgid "A run needs a name: a non-empty string, atom or integer"
 msgstr "Käivitusel peab olema nimi: mittetühi string, aatom või täisarv"
 
-#: lib/phoenix_kit_ai.ex:1253
+#: lib/phoenix_kit_ai.ex:1261
 #, elixir-autogen, elixir-format
 msgid "AI endpoints, prompts, and usage tracking"
 msgstr "AI lõpp-punktid, promptid ja kasutuse jälgimine"
@@ -5028,104 +5028,114 @@ msgstr "Käivituse eelarve peab olema summa dollarites"
 msgid "This run has spent its budget; it stops here for now"
 msgstr "See käivitus on oma eelarve ära kasutanud; see peatub praegu siin"
 
-#: lib/phoenix_kit_ai/web/reviews.ex:43
+#: lib/phoenix_kit_ai/web/reviews.ex:44
 #, elixir-autogen, elixir-format
 msgid "AI results waiting for a person to confirm or reject them"
 msgstr "Tehisintellekti tulemused, mis ootavad, et keegi need kinnitaks või tagasi lükkaks"
 
-#: lib/phoenix_kit_ai/web/reviews.ex:148
+#: lib/phoenix_kit_ai/web/reviews.ex:149
 #, elixir-autogen, elixir-format
 msgid "All"
 msgstr "Kõik"
 
-#: lib/phoenix_kit_ai/web/reviews.ex:270
+#: lib/phoenix_kit_ai/web/reviews.ex:271
 #, elixir-autogen, elixir-format
 msgid "Confirm"
 msgstr "Kinnita"
 
-#: lib/phoenix_kit_ai/web/reviews.ex:146
+#: lib/phoenix_kit_ai/web/reviews.ex:147
 #, elixir-autogen, elixir-format
 msgid "Confirmed"
 msgstr "Kinnitatud"
 
-#: lib/phoenix_kit_ai/web/reviews.ex:251
+#: lib/phoenix_kit_ai/web/reviews.ex:252
 #, elixir-autogen, elixir-format
 msgid "Decided %{at}"
 msgstr "Otsustatud %{at}"
 
-#: lib/phoenix_kit_ai/web/reviews.ex:227
+#: lib/phoenix_kit_ai/web/reviews.ex:228
 #, elixir-autogen, elixir-format
 msgid "No reviews here."
 msgstr "Siin ülevaatusi pole."
 
-#: lib/phoenix_kit_ai/web/reviews.ex:267
+#: lib/phoenix_kit_ai/web/reviews.ex:268
 #, elixir-autogen, elixir-format
 msgid "Note (optional)"
 msgstr "Märkus (valikuline)"
 
-#: lib/phoenix_kit_ai/web/reviews.ex:145
+#: lib/phoenix_kit_ai/web/reviews.ex:146
 #, elixir-autogen, elixir-format
 msgid "Pending"
 msgstr "Ootel"
 
-#: lib/phoenix_kit_ai/web/reviews.ex:273
+#: lib/phoenix_kit_ai/web/reviews.ex:274
 #, elixir-autogen, elixir-format
 msgid "Reject"
 msgstr "Lükka tagasi"
 
-#: lib/phoenix_kit_ai/web/reviews.ex:147
+#: lib/phoenix_kit_ai/web/reviews.ex:148
 #, elixir-autogen, elixir-format
 msgid "Rejected"
 msgstr "Tagasi lükatud"
 
-#: lib/phoenix_kit_ai/web/reviews.ex:103
+#: lib/phoenix_kit_ai/web/reviews.ex:104
 #, elixir-autogen, elixir-format
 msgid "Review confirmed"
 msgstr "Ülevaatus kinnitatud"
 
-#: lib/phoenix_kit_ai/web/reviews.ex:106
+#: lib/phoenix_kit_ai/web/reviews.ex:107
 #, elixir-autogen, elixir-format
 msgid "Review rejected"
 msgstr "Ülevaatus tagasi lükatud"
 
-#: lib/phoenix_kit_ai.ex:1252
-#: lib/phoenix_kit_ai/web/reviews.ex:40
+#: lib/phoenix_kit_ai.ex:1260
+#: lib/phoenix_kit_ai/web/reviews.ex:41
 #, elixir-autogen, elixir-format
 msgid "Reviews"
 msgstr "Ülevaatused"
 
-#: lib/phoenix_kit_ai/web/reviews.ex:218
+#: lib/phoenix_kit_ai/web/reviews.ex:219
 #, elixir-autogen, elixir-format
 msgid "Show every kind"
 msgstr "Näita kõiki liike"
 
-#: lib/phoenix_kit_ai/web/reviews.ex:280
+#: lib/phoenix_kit_ai/web/reviews.ex:281
 #, elixir-autogen, elixir-format
 msgid "Showing the newest %{shown} of %{total}."
 msgstr "Näidatakse %{total}-st %{shown} uusimat."
 
-#: lib/phoenix_kit_ai/web/reviews.ex:116
+#: lib/phoenix_kit_ai/web/reviews.ex:117
 #, elixir-autogen, elixir-format
 msgid "The app could not apply this decision; the review is still pending"
 msgstr "Rakendus ei saanud seda otsust rakendada; ülevaatus on endiselt ootel"
 
-#: lib/phoenix_kit_ai/web/reviews.ex:123
+#: lib/phoenix_kit_ai/web/reviews.ex:124
 #, elixir-autogen, elixir-format
 msgid "The review could not be decided"
 msgstr "Ülevaatust ei õnnestunud otsustada"
 
-#: lib/phoenix_kit_ai/web/reviews.ex:109
+#: lib/phoenix_kit_ai/web/reviews.ex:110
 #, elixir-autogen, elixir-format
 msgid "This review has already been decided"
 msgstr "See ülevaatus on juba otsustatud"
 
-#: lib/phoenix_kit_ai/web/reviews.ex:223
-#, elixir-autogen, elixir-format
-msgid "You can see the reviews; deciding them needs the permission to manage AI."
-msgstr "Sa näed ülevaatusi; nende otsustamiseks on vaja tehisintellekti haldamise õigust."
-
-#: lib/phoenix_kit_ai/web/reviews.ex:87
-#: lib/phoenix_kit_ai/web/reviews.ex:120
+#: lib/phoenix_kit_ai/web/reviews.ex:88
+#: lib/phoenix_kit_ai/web/reviews.ex:121
 #, elixir-autogen, elixir-format
 msgid "You may not decide AI reviews"
 msgstr "Sa ei tohi tehisintellekti ülevaatusi otsustada"
+
+#: lib/phoenix_kit_ai.ex:1278
+#, elixir-autogen, elixir-format
+msgid "Confirm or reject the AI results waiting on AI → Reviews"
+msgstr "Kinnita või lükka tagasi tehisintellekti tulemused, mis ootavad lehel AI → Ülevaatused"
+
+#: lib/phoenix_kit_ai.ex:1277
+#, elixir-autogen, elixir-format
+msgid "Decide AI reviews"
+msgstr "Tehisintellekti ülevaatuste otsustamine"
+
+#: lib/phoenix_kit_ai/web/reviews.ex:224
+#, elixir-autogen, elixir-format
+msgid "You can see the reviews; deciding them needs the permission to decide AI reviews."
+msgstr "Sa näed ülevaatusi; nende otsustamiseks on vaja tehisintellekti ülevaatuste otsustamise õigust."

@@ -1471,7 +1471,7 @@ msgstr "Mettez à jour la configuration de votre point de terminaison IA"
 msgid "Updating…"
 msgstr "Mise à jour…"
 
-#: lib/phoenix_kit_ai.ex:1250
+#: lib/phoenix_kit_ai.ex:1258
 #: lib/phoenix_kit_ai/web/endpoints.ex:93
 #: lib/phoenix_kit_ai/web/prompts.ex:41
 #, elixir-autogen, elixir-format
@@ -1741,33 +1741,33 @@ msgid_plural "tokens"
 msgstr[0] "jeton"
 msgstr[1] "jetons"
 
-#: lib/phoenix_kit_ai.ex:1246
+#: lib/phoenix_kit_ai.ex:1254
 #: lib/phoenix_kit_ai/web/endpoint_form.ex:688
 #: lib/phoenix_kit_ai/web/endpoints.ex:130
 #: lib/phoenix_kit_ai/web/playground.ex:70
 #: lib/phoenix_kit_ai/web/prompt_form.ex:36
 #: lib/phoenix_kit_ai/web/prompts.ex:62
-#: lib/phoenix_kit_ai/web/reviews.ex:37
+#: lib/phoenix_kit_ai/web/reviews.ex:38
 #: lib/phoenix_kit_ai/web/tasks.ex:63
 #, elixir-autogen, elixir-format
 msgid "AI"
 msgstr "IA"
 
-#: lib/phoenix_kit_ai.ex:1247
+#: lib/phoenix_kit_ai.ex:1255
 #: lib/phoenix_kit_ai/web/endpoint_form.ex:824
 #: lib/phoenix_kit_ai/web/endpoints.ex:97
 #, elixir-autogen, elixir-format
 msgid "Endpoints"
 msgstr "Points de terminaison"
 
-#: lib/phoenix_kit_ai.ex:1249
-#: lib/phoenix_kit_ai.ex:1296
+#: lib/phoenix_kit_ai.ex:1257
+#: lib/phoenix_kit_ai.ex:1306
 #: lib/phoenix_kit_ai/web/playground.ex:73
 #, elixir-autogen, elixir-format
 msgid "Playground"
 msgstr "Bac à sable"
 
-#: lib/phoenix_kit_ai.ex:1248
+#: lib/phoenix_kit_ai.ex:1256
 #: lib/phoenix_kit_ai/web/prompt_form.ex:81
 #: lib/phoenix_kit_ai/web/prompts.ex:65
 #, elixir-autogen, elixir-format
@@ -2491,7 +2491,7 @@ msgstr "Actualiser les catalogues"
 msgid "Some model catalogues could not be read"
 msgstr "Certains catalogues de modèles n'ont pas pu être lus"
 
-#: lib/phoenix_kit_ai.ex:1251
+#: lib/phoenix_kit_ai.ex:1259
 #: lib/phoenix_kit_ai/web/tasks.ex:66
 #, elixir-autogen, elixir-format
 msgid "Tasks"
@@ -2502,7 +2502,7 @@ msgstr "Tâches"
 msgid "The endpoint's model cannot do what this task needs: %{needs}"
 msgstr "Le modèle du point de terminaison ne peut pas faire ce dont cette tâche a besoin : %{needs}"
 
-#: lib/phoenix_kit_ai.ex:1284
+#: lib/phoenix_kit_ai.ex:1294
 #, elixir-autogen, elixir-format
 msgid "Translation"
 msgstr "Traduction"
@@ -2544,12 +2544,12 @@ msgstr "Refusé"
 msgid "Refused before reaching the provider"
 msgstr "Refusé avant d'atteindre le fournisseur"
 
-#: lib/phoenix_kit_ai.ex:1299
+#: lib/phoenix_kit_ai.ex:1309
 #, elixir-autogen, elixir-format
 msgid "Let an administrator try endpoints and prompts by hand."
 msgstr "Permet à un administrateur d'essayer à la main les points de terminaison et les prompts."
 
-#: lib/phoenix_kit_ai.ex:1287
+#: lib/phoenix_kit_ai.ex:1297
 #, elixir-autogen, elixir-format
 msgid "Translate the text fields of a record from one language into another, keeping the field structure."
 msgstr "Traduit les champs texte d'un enregistrement d'une langue à une autre, en conservant la structure des champs."
@@ -2680,7 +2680,7 @@ msgstr "Une limite doit être un nombre entier, ou un montant en dollars pour le
 msgid "A user"
 msgstr "Un utilisateur"
 
-#: lib/phoenix_kit_ai.ex:1103
+#: lib/phoenix_kit_ai.ex:1111
 #, elixir-autogen, elixir-format
 msgid "AI task guard"
 msgstr "Contrôle des tâches IA"
@@ -2744,7 +2744,7 @@ msgstr "Limites et consommation :"
 msgid "Limits saved"
 msgstr "Limites enregistrées"
 
-#: lib/phoenix_kit_ai.ex:1254
+#: lib/phoenix_kit_ai.ex:1262
 #, elixir-autogen, elixir-format
 msgid "Manage the AI task guard"
 msgstr "Gérer le contrôle des tâches IA"
@@ -2959,7 +2959,7 @@ msgstr "les appels d'un utilisateur"
 msgid "one user's spending"
 msgstr "les dépenses d'un utilisateur"
 
-#: lib/phoenix_kit_ai.ex:1846
+#: lib/phoenix_kit_ai.ex:1856
 #, elixir-autogen, elixir-format
 msgid "only a holder of ai.manage may declare capabilities while only verified models are allowed"
 msgstr "seul un détenteur de ai.manage peut déclarer des capacités tant que seuls les modèles vérifiés sont autorisés"
@@ -3049,7 +3049,7 @@ msgstr "%{email} est bloqué pour la tâche IA %{task}."
 msgid "%{email} is no longer blocked from the AI task %{task}."
 msgstr "%{email} n'est plus bloqué pour la tâche IA %{task}."
 
-#: lib/phoenix_kit_ai.ex:1105
+#: lib/phoenix_kit_ai.ex:1113
 #, elixir-autogen, elixir-format
 msgid "An AI task is near or at a limit, a spending cap refused a call, a task's model no longer fits it, a request was flagged as off-purpose, a task is used unusually, or a person was blocked or unblocked"
 msgstr "Une tâche IA approche d'une limite ou l'a atteinte, un plafond de dépenses a refusé un appel, le modèle d'une tâche ne lui convient plus, une requête a été signalée comme hors sujet, une tâche est utilisée de façon inhabituelle, ou une personne a été bloquée ou débloquée"
@@ -3081,7 +3081,7 @@ msgstr "Blocages en cours :"
 msgid "By"
 msgstr "Par"
 
-#: lib/phoenix_kit_ai.ex:1255
+#: lib/phoenix_kit_ai.ex:1263
 #, elixir-autogen, elixir-format
 msgid "Change the limits of AI tasks, who is told about them and which models may be used; block a person from a task; see why a private task's request was flagged"
 msgstr "Modifier les limites des tâches IA, les personnes qui en sont informées et les modèles autorisés ; bloquer une personne pour une tâche ; voir pourquoi une requête d'une tâche privée a été signalée"
@@ -3602,7 +3602,7 @@ msgstr "Le catalogue donne un prix à ce modèle, et il est utilisé en priorit�
 msgid "Setting a price needs the “Manage the AI task guard” permission: it decides what the money limits count."
 msgstr "Définir un prix nécessite la permission « Gérer le contrôle des tâches IA » : il détermine ce que comptent les limites de dépenses."
 
-#: lib/phoenix_kit_ai.ex:1869
+#: lib/phoenix_kit_ai.ex:1879
 #, elixir-autogen, elixir-format
 msgid "only a holder of ai.manage may set or change a manual price"
 msgstr "seul un détenteur de ai.manage peut définir ou modifier un prix manuel"
@@ -3663,22 +3663,22 @@ msgstr "La limite de dépenses de cette tâche doit être mise à jour avant qu'
 msgid "needs to be set again in dollars"
 msgstr "à redéfinir en dollars"
 
-#: lib/phoenix_kit_ai.ex:1265
+#: lib/phoenix_kit_ai.ex:1273
 #, elixir-autogen, elixir-format
 msgid "Create, edit, enable, disable, reorder and delete AI endpoints"
 msgstr "Créer, modifier, activer, désactiver, réorganiser et supprimer les points de terminaison IA"
 
-#: lib/phoenix_kit_ai.ex:1264
+#: lib/phoenix_kit_ai.ex:1272
 #, elixir-autogen, elixir-format
 msgid "Manage AI endpoints"
 msgstr "Gérer les points de terminaison IA"
 
-#: lib/phoenix_kit_ai.ex:1260
+#: lib/phoenix_kit_ai.ex:1268
 #, elixir-autogen, elixir-format
 msgid "Open the Usage tab: every AI request on the site with its prompt and response"
 msgstr "Ouvrir l'onglet Utilisation : chaque requête IA du site avec son prompt et sa réponse"
 
-#: lib/phoenix_kit_ai.ex:1259
+#: lib/phoenix_kit_ai.ex:1267
 #, elixir-autogen, elixir-format
 msgid "See AI usage"
 msgstr "Voir l'utilisation de l'IA"
@@ -4523,7 +4523,7 @@ msgstr "Le fournisseur a refusé ce contenu"
 msgid "Dictate"
 msgstr "Dicter"
 
-#: lib/phoenix_kit_ai.ex:1305
+#: lib/phoenix_kit_ai.ex:1315
 #, elixir-autogen, elixir-format
 msgid "Dictation"
 msgstr "Dictée"
@@ -4573,7 +4573,7 @@ msgstr "Nous n'avons rien entendu. Veuillez réessayer, un peu plus près du mic
 msgid "We couldn't write that down. Please try again."
 msgstr "Nous n'avons pas pu transcrire cela. Veuillez réessayer."
 
-#: lib/phoenix_kit_ai.ex:1308
+#: lib/phoenix_kit_ai.ex:1318
 #, elixir-autogen, elixir-format
 msgid "Write down what a person says on a page, word for word."
 msgstr "Transcrit mot pour mot ce qu'une personne dit sur une page."
@@ -4652,7 +4652,7 @@ msgstr "%{tokens} en sortie"
 msgid "A run needs a name: a non-empty string, atom or integer"
 msgstr "Une exécution doit avoir un nom : une chaîne non vide, un atome ou un entier"
 
-#: lib/phoenix_kit_ai.ex:1253
+#: lib/phoenix_kit_ai.ex:1261
 #, elixir-autogen, elixir-format
 msgid "AI endpoints, prompts, and usage tracking"
 msgstr "Points de terminaison IA, prompts et suivi de l'utilisation"
@@ -5028,104 +5028,114 @@ msgstr "Le budget d'exécution doit être un montant en dollars"
 msgid "This run has spent its budget; it stops here for now"
 msgstr "Cette exécution a dépensé son budget ; elle s'arrête ici pour l'instant"
 
-#: lib/phoenix_kit_ai/web/reviews.ex:43
+#: lib/phoenix_kit_ai/web/reviews.ex:44
 #, elixir-autogen, elixir-format
 msgid "AI results waiting for a person to confirm or reject them"
 msgstr "Résultats d'IA en attente de confirmation ou de rejet par une personne"
 
-#: lib/phoenix_kit_ai/web/reviews.ex:148
+#: lib/phoenix_kit_ai/web/reviews.ex:149
 #, elixir-autogen, elixir-format
 msgid "All"
 msgstr "Toutes"
 
-#: lib/phoenix_kit_ai/web/reviews.ex:270
+#: lib/phoenix_kit_ai/web/reviews.ex:271
 #, elixir-autogen, elixir-format
 msgid "Confirm"
 msgstr "Confirmer"
 
-#: lib/phoenix_kit_ai/web/reviews.ex:146
+#: lib/phoenix_kit_ai/web/reviews.ex:147
 #, elixir-autogen, elixir-format
 msgid "Confirmed"
 msgstr "Confirmée"
 
-#: lib/phoenix_kit_ai/web/reviews.ex:251
+#: lib/phoenix_kit_ai/web/reviews.ex:252
 #, elixir-autogen, elixir-format
 msgid "Decided %{at}"
 msgstr "Décidée %{at}"
 
-#: lib/phoenix_kit_ai/web/reviews.ex:227
+#: lib/phoenix_kit_ai/web/reviews.ex:228
 #, elixir-autogen, elixir-format
 msgid "No reviews here."
 msgstr "Aucune revue ici."
 
-#: lib/phoenix_kit_ai/web/reviews.ex:267
+#: lib/phoenix_kit_ai/web/reviews.ex:268
 #, elixir-autogen, elixir-format
 msgid "Note (optional)"
 msgstr "Note (facultative)"
 
-#: lib/phoenix_kit_ai/web/reviews.ex:145
+#: lib/phoenix_kit_ai/web/reviews.ex:146
 #, elixir-autogen, elixir-format
 msgid "Pending"
 msgstr "En attente"
 
-#: lib/phoenix_kit_ai/web/reviews.ex:273
+#: lib/phoenix_kit_ai/web/reviews.ex:274
 #, elixir-autogen, elixir-format
 msgid "Reject"
 msgstr "Rejeter"
 
-#: lib/phoenix_kit_ai/web/reviews.ex:147
+#: lib/phoenix_kit_ai/web/reviews.ex:148
 #, elixir-autogen, elixir-format
 msgid "Rejected"
 msgstr "Rejetée"
 
-#: lib/phoenix_kit_ai/web/reviews.ex:103
+#: lib/phoenix_kit_ai/web/reviews.ex:104
 #, elixir-autogen, elixir-format
 msgid "Review confirmed"
 msgstr "Revue confirmée"
 
-#: lib/phoenix_kit_ai/web/reviews.ex:106
+#: lib/phoenix_kit_ai/web/reviews.ex:107
 #, elixir-autogen, elixir-format
 msgid "Review rejected"
 msgstr "Revue rejetée"
 
-#: lib/phoenix_kit_ai.ex:1252
-#: lib/phoenix_kit_ai/web/reviews.ex:40
+#: lib/phoenix_kit_ai.ex:1260
+#: lib/phoenix_kit_ai/web/reviews.ex:41
 #, elixir-autogen, elixir-format
 msgid "Reviews"
 msgstr "Revues"
 
-#: lib/phoenix_kit_ai/web/reviews.ex:218
+#: lib/phoenix_kit_ai/web/reviews.ex:219
 #, elixir-autogen, elixir-format
 msgid "Show every kind"
 msgstr "Afficher tous les types"
 
-#: lib/phoenix_kit_ai/web/reviews.ex:280
+#: lib/phoenix_kit_ai/web/reviews.ex:281
 #, elixir-autogen, elixir-format
 msgid "Showing the newest %{shown} of %{total}."
 msgstr "Affichage des %{shown} plus récentes sur %{total}."
 
-#: lib/phoenix_kit_ai/web/reviews.ex:116
+#: lib/phoenix_kit_ai/web/reviews.ex:117
 #, elixir-autogen, elixir-format
 msgid "The app could not apply this decision; the review is still pending"
 msgstr "L'application n'a pas pu appliquer cette décision ; la revue reste en attente"
 
-#: lib/phoenix_kit_ai/web/reviews.ex:123
+#: lib/phoenix_kit_ai/web/reviews.ex:124
 #, elixir-autogen, elixir-format
 msgid "The review could not be decided"
 msgstr "La revue n'a pas pu être décidée"
 
-#: lib/phoenix_kit_ai/web/reviews.ex:109
+#: lib/phoenix_kit_ai/web/reviews.ex:110
 #, elixir-autogen, elixir-format
 msgid "This review has already been decided"
 msgstr "Cette revue a déjà été décidée"
 
-#: lib/phoenix_kit_ai/web/reviews.ex:223
-#, elixir-autogen, elixir-format
-msgid "You can see the reviews; deciding them needs the permission to manage AI."
-msgstr "Vous pouvez voir les revues ; pour les décider, il vous faut l'autorisation de gérer l'IA."
-
-#: lib/phoenix_kit_ai/web/reviews.ex:87
-#: lib/phoenix_kit_ai/web/reviews.ex:120
+#: lib/phoenix_kit_ai/web/reviews.ex:88
+#: lib/phoenix_kit_ai/web/reviews.ex:121
 #, elixir-autogen, elixir-format
 msgid "You may not decide AI reviews"
 msgstr "Vous ne pouvez pas décider des revues d'IA"
+
+#: lib/phoenix_kit_ai.ex:1278
+#, elixir-autogen, elixir-format
+msgid "Confirm or reject the AI results waiting on AI → Reviews"
+msgstr "Confirmer ou rejeter les résultats d'IA en attente dans IA → Revues"
+
+#: lib/phoenix_kit_ai.ex:1277
+#, elixir-autogen, elixir-format
+msgid "Decide AI reviews"
+msgstr "Décider des revues d'IA"
+
+#: lib/phoenix_kit_ai/web/reviews.ex:224
+#, elixir-autogen, elixir-format
+msgid "You can see the reviews; deciding them needs the permission to decide AI reviews."
+msgstr "Vous pouvez voir les revues ; pour en décider, vous avez besoin de l'autorisation de décider des revues d'IA."

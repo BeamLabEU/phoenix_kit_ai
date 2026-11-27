@@ -1077,6 +1077,14 @@ defmodule PhoenixKitAI do
           key: "manage_endpoints",
           label: "Manage AI endpoints",
           description: "Create, edit, enable, disable, reorder and delete AI endpoints"
+        },
+        # `ai.review`: confirming or rejecting the AI results on AI → Reviews
+        # (`PhoenixKitAI.Reviews`) without the rest of `ai.manage`, which
+        # may decide them too. Seeing the list stays on the base key.
+        %{
+          key: "review",
+          label: "Decide AI reviews",
+          description: "Confirm or reject the AI results waiting on AI → Reviews"
         }
       ],
       # Renders the label translated in the admin permissions matrix, the
@@ -1210,7 +1218,7 @@ defmodule PhoenixKitAI do
         path: "ai/reviews",
         priority: 646,
         level: :admin,
-        # Every `ai` holder sees the list; deciding needs `ai.manage`
+        # Every `ai` holder sees the list; deciding needs `ai.review` or `ai.manage`
         # (`Web.Reviews` checks it on every event).
         permission: module_key(),
         parent: :admin_ai,
@@ -1265,7 +1273,9 @@ defmodule PhoenixKitAI do
       dgettext_noop(
         "default",
         "Create, edit, enable, disable, reorder and delete AI endpoints"
-      )
+      ),
+      dgettext_noop("default", "Decide AI reviews"),
+      dgettext_noop("default", "Confirm or reject the AI results waiting on AI → Reviews")
     ]
   end
 

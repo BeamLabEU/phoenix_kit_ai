@@ -567,7 +567,7 @@ journal rows; never cleared, so the "retained since" notes stay after a
 run that deletes nothing).
 
 Permissions: the module permission `"ai"` from `permission_metadata/0`,
-checked with `Scope.has_module_access?/2`, and three sub-permissions.
+checked with `Scope.has_module_access?/2`, and four sub-permissions.
 `"ai.view_usage"`: the Usage tab (every request with its prompt and
 response). `"ai.manage_endpoints"`: creating, editing, enabling,
 reordering and deleting endpoints — the base key still lists them, and the
@@ -588,6 +588,9 @@ The endpoint form leaves on a lost `ai.manage_endpoints`; the Tasks page
 reloads private reasons and clears editors on a scope change; the Usage
 card refreshes its retention rights and drops previews when `ai.manage`
 is lost. Regaining a permission never restores a discarded confirmation.
+`"ai.review"`: confirming or rejecting AI results on AI → Reviews
+(`Guard.may_review?/1`; `ai.manage` and Owners may too; seeing the list
+stays on the base key).
 `"ai.manage"`: changing the task guard (limits, personal limits, forgiving,
 watchers, "only verified models", declaring capabilities while that is on,
 a task's self-flag mode, blocking and lifting), seeing the reasons of a private task's flags and
@@ -1408,10 +1411,11 @@ Test database `phoenix_kit_ai_test`.
   `{:already_decided, status}` — and run the app's handler for the kind
   (`config :phoenix_kit_ai, review_handlers: %{kind => module}`,
   `PhoenixKitAI.ReviewHandler`; a call's `on_decide:` fun wins) inside the
-  same transaction: `{:error, _}` or a raise rolls the decision back. With
-  `scope:` it needs `ai.manage` (or an Owner). AI → Reviews lists them for
-  every `ai` holder and decides with `ai.manage`, checked per event through
-  `Access.manage_scope/1`; it implements `phoenix_kit_scope_changed/1`.
+  same transaction: `{:error, _}`, a raise, throw or exit rolls the decision
+  back. With `scope:` it needs `ai.review` or `ai.manage` (or an Owner,
+  `Guard.may_review?/1`). AI → Reviews lists them for every `ai` holder and
+  decides with `ai.review` / `ai.manage`, checked per event through
+  `Access.review_scope/1`; it implements `phoenix_kit_scope_changed/1`.
   Broadcasts `{:review_created | :review_decided, uuid}` on
   `phoenix_kit:ai:reviews`; Activity `review.confirmed` / `review.rejected`
   (kind and subject, never the payload).

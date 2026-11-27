@@ -48,6 +48,33 @@ defmodule PhoenixKitAI.Web.ReviewsTest do
     review
   end
 
+  test "ai.review alone may decide; ai alone may only look", %{conn: conn} do
+    {reviewer, _} = admin(["ai", "ai.review"])
+    r = review()
+    view = open(conn, reviewer)
+    assert has_element?(view, "#ai-review-form-#{r.uuid}")
+
+    view
+    |> form("#ai-review-form-#{r.uuid}", %{"note" => ""})
+    |> render_submit(%{"decision" => "rejected"})
+
+    assert TestRepo.get!(Review, r.uuid).status == "rejected"
+    assert TestRepo.get!(Review, r.uuid).decided_by_uuid == reviewer.uuid
+
+    {viewer, _} = admin(["ai"])
+    other = review()
+    view = open(conn, viewer)
+    refute has_element?(view, "#ai-review-form-#{other.uuid}")
+    assert has_element?(view, "#ai-reviews-read-only")
+    assert {:error, :forbidden} = Reviews.confirm(other, scope: Scope.for_user(viewer))
+  end
+
+  test "ai.review is a declared, translated sub-permission" do
+    keys = Enum.map(PhoenixKitAI.permission_metadata().sub_permissions, & &1.key)
+    assert "review" in keys
+    assert "Decide AI reviews" in PhoenixKitAI.translatable_labels()
+  end
+
   test "an Owner sees pending reviews and confirms one with a note", %{conn: conn, owner: owner} do
     r = review()
     view = open(conn, owner)

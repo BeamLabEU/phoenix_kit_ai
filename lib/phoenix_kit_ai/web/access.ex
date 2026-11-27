@@ -70,10 +70,23 @@ defmodule PhoenixKitAI.Web.Access do
   once); `:error` when the person may not.
   """
   @spec manage_scope(Phoenix.LiveView.Socket.t()) :: {:ok, Scope.t()} | :error
-  def manage_scope(socket) do
+  def manage_scope(socket), do: scope_with(socket, &Guard.may_manage?/1)
+
+  @doc """
+  `manage_scope/1` for deciding AI reviews: `ai.review`, `ai.manage` or an
+  Owner (`Guard.may_review?/1`), in both scopes.
+  """
+  @spec review_scope(Phoenix.LiveView.Socket.t()) :: {:ok, Scope.t()} | :error
+  def review_scope(socket), do: scope_with(socket, &Guard.may_review?/1)
+
+  @doc "Whether the signed-in person may decide AI reviews now (see `review_scope/1`)."
+  @spec may_review?(Phoenix.LiveView.Socket.t()) :: boolean()
+  def may_review?(socket), do: match?({:ok, _scope}, review_scope(socket))
+
+  defp scope_with(socket, allowed?) do
     with %Scope{} = scope <- socket.assigns[:phoenix_kit_current_scope],
          %Scope{} = now <- session_scope(socket),
-         true <- Guard.may_manage?(scope) and Guard.may_manage?(now) do
+         true <- allowed?.(scope) and allowed?.(now) do
       {:ok, now}
     else
       _ -> :error
