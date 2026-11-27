@@ -219,6 +219,32 @@ defmodule PhoenixKitAI.SubjectKeyTest do
       assert [%{scope: :user}] = Budget.status(ep, user_uuid: ghost, subject_key: "visitor-9")
     end
 
+    test "with unknown_user_as_subject on, a user_uuid that is no user is capped as its subject",
+         %{endpoint: ep} do
+      Application.put_env(:phoenix_kit_ai, :unknown_user_as_subject, true)
+      on_exit(fn -> Application.delete_env(:phoenix_kit_ai, :unknown_user_as_subject) end)
+
+      stub_chat()
+      {:ok, _} = Budget.set_limit(:user, "0.40")
+      ghost = Ecto.UUID.generate()
+
+      # A visitor's own id…
+      assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "a", user_uuid: "visitor-77")
+
+      assert {:error, {:budget_exceeded, :user}} =
+               PhoenixKitAI.ask(ep.uuid, "b", user_uuid: "visitor-77")
+
+      # …and a uuid of no user, each its own subject.
+      assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "c", user_uuid: ghost)
+
+      assert {:error, {:budget_exceeded, :user}} =
+               PhoenixKitAI.ask(ep.uuid, "d", user_uuid: ghost)
+
+      # A real user is still counted as the user.
+      user = Fixtures.confirmed_user_fixture().uuid
+      assert {:ok, _} = PhoenixKitAI.ask(ep.uuid, "e", user_uuid: user)
+    end
+
     test "a visitor id passed as user_uuid is recorded as the subject; on its own it is not capped",
          %{endpoint: ep} do
       stub_chat()

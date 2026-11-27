@@ -77,7 +77,9 @@ defmodule PhoenixKitAI.Budget do
   A `user_uuid:` that names no user is written to the row's `subject_key`
   (and `metadata["unresolved_refs"]`), but on its own it still counts toward
   no per-user cap: pass the visitor's id as `subject_key:` to cap visitors
-  one by one.
+  one by one, or set `config :phoenix_kit_ai, unknown_user_as_subject: true`
+  to have such a `user_uuid:` count as that subject (off by default, so a
+  host passing visitor ids as `user_uuid:` is not newly capped).
   """
 
   import Ecto.Query
@@ -223,21 +225,34 @@ defmodule PhoenixKitAI.Budget do
   # only for a call naming both while a per-user cap is set.
   defp who(opts, limits) do
     subject = PhoenixKitAI.Request.subject_key(opts[:subject_key])
+    # Opt-in: a `user_uuid:` that is no user counts as the subject its rows
+    # are written under (`config :phoenix_kit_ai, unknown_user_as_subject:`).
+    as_subject =
+      if unknown_user_as_subject?(), do: PhoenixKitAI.Request.subject_key(opts[:user_uuid])
 
     case user_uuid(opts[:user_uuid]) do
-      nil when is_binary(subject) ->
-        {:subject, subject}
-
-      nil ->
-        nil
-
-      uuid when is_binary(subject) ->
-        if user_capped?(limits) and not user?(uuid), do: {:subject, subject}, else: {:user, uuid}
-
-      uuid ->
-        {:user, uuid}
+      nil when is_binary(subject) -> {:subject, subject}
+      nil when is_binary(as_subject) -> {:subject, as_subject}
+      nil -> nil
+      uuid -> user_or_subject(uuid, subject || as_subject, limits)
     end
   end
+
+  defp user_or_subject(uuid, nil, _limits), do: {:user, uuid}
+
+  defp user_or_subject(uuid, subject, limits) do
+    if user_capped?(limits) and not user?(uuid), do: {:subject, subject}, else: {:user, uuid}
+  end
+
+  @doc """
+  Whether a `user_uuid:` that names no PhoenixKit user counts for the
+  per-user caps as the subject its rows carry (`config :phoenix_kit_ai,
+  unknown_user_as_subject: true`; default `false`, where such a call
+  selects no per-user cap unless it names a `subject_key:`).
+  """
+  @spec unknown_user_as_subject?() :: boolean()
+  def unknown_user_as_subject?,
+    do: Application.get_env(:phoenix_kit_ai, :unknown_user_as_subject, false) == true
 
   defp user_capped?(limits), do: Enum.any?(@user_scopes, &positive?(limits[&1]))
 
