@@ -9,7 +9,7 @@ defmodule PhoenixKitAI.FetchTest do
   @moduletag :capture_log
 
   alias PhoenixKitAI.Fetch
-  alias PhoenixKitAI.Fetch.{Extract, HostState, Robots}
+  alias PhoenixKitAI.Fetch.{Extract, HostState, Pinned, Robots}
 
   @page """
   <!doctype html>
@@ -484,32 +484,29 @@ defmodule PhoenixKitAI.FetchTest do
       {:ok, port} = :inet.port(listen)
       test = self()
 
-      server =
-        spawn_link(fn ->
-          accept = fn accept ->
-            case :gen_tcp.accept(listen, 5_000) do
-              {:ok, socket} ->
-                request = read_request(socket, "")
-                send(test, {:request, request})
-
-                case reply.(request) do
-                  nil -> Process.sleep(1_000)
-                  response -> :gen_tcp.send(socket, response)
-                end
-
-                :gen_tcp.close(socket)
-                accept.(accept)
-
-              {:error, _} ->
-                :ok
-            end
-          end
-
-          accept.(accept)
-        end)
+      server = spawn_link(fn -> accept_loop(listen, reply, test) end)
 
       on_exit(fn -> Process.exit(server, :kill) end)
       port
+    end
+
+    defp accept_loop(listen, reply, test) do
+      with {:ok, socket} <- :gen_tcp.accept(listen, 5_000) do
+        answer(socket, reply, test)
+        accept_loop(listen, reply, test)
+      end
+    end
+
+    defp answer(socket, reply, test) do
+      request = read_request(socket, "")
+      send(test, {:request, request})
+
+      case reply.(request) do
+        nil -> Process.sleep(1_000)
+        response -> :gen_tcp.send(socket, response)
+      end
+
+      :gen_tcp.close(socket)
     end
 
     defp read_request(socket, acc) do
@@ -585,7 +582,7 @@ defmodule PhoenixKitAI.FetchTest do
       ref = make_ref()
 
       assert {:cont, %{status: 200}} =
-               PhoenixKitAI.Fetch.Pinned.handle(
+               Pinned.handle(
                  [{:status, ref, 103}, {:headers, ref, []}, {:done, ref}, {:status, ref, 200}],
                  ref,
                  state,
@@ -594,9 +591,9 @@ defmodule PhoenixKitAI.FetchTest do
     end
 
     test "resolution refuses an internal address unless allowed" do
-      assert {:refused, :blocked_host} = PhoenixKitAI.Fetch.Pinned.resolve("localhost", false)
-      assert {:refused, :blocked_host} = PhoenixKitAI.Fetch.Pinned.resolve("127.0.0.1", false)
-      assert {:ok, {127, 0, 0, 1}} = PhoenixKitAI.Fetch.Pinned.resolve("127.0.0.1", true)
+      assert {:refused, :blocked_host} = Pinned.resolve("localhost", false)
+      assert {:refused, :blocked_host} = Pinned.resolve("127.0.0.1", false)
+      assert {:ok, {127, 0, 0, 1}} = Pinned.resolve("127.0.0.1", true)
     end
 
     test "the body is bounded while it streams" do

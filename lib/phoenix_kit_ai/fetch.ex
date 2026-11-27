@@ -372,7 +372,7 @@ defmodule PhoenixKitAI.Fetch do
 
       {:ok, %Req.Response{status: status} = response}
       when status in @retry_statuses and n < max_attempts ->
-        with :ok <- backoff(n, retry_after(response), opts), do: attempt(url, opts, n + 1)
+        retry(url, opts, n, retry_after(response))
 
       {:ok, %Req.Response{body: {:too_large, _seen}}} ->
         {:error, {:too_large, opts[:max_bytes]}}
@@ -380,13 +380,22 @@ defmodule PhoenixKitAI.Fetch do
       {:ok, response} ->
         {:ok, response, n}
 
-      {:error, _reason} ->
-        cond do
-          remaining(opts) == 0 -> {:error, :deadline}
-          n < max_attempts -> with :ok <- backoff(n, nil, opts), do: attempt(url, opts, n + 1)
-          true -> {:error, {:fetch_failed, transport_tag(elem(result, 1))}}
-        end
+      {:error, reason} ->
+        failed(reason, url, opts, n)
     end
+  end
+
+  # A transport failure: retried while attempts and the deadline last.
+  defp failed(reason, url, opts, n) do
+    cond do
+      remaining(opts) == 0 -> {:error, :deadline}
+      n < opts[:max_attempts] -> retry(url, opts, n, nil)
+      true -> {:error, {:fetch_failed, transport_tag(reason)}}
+    end
+  end
+
+  defp retry(url, opts, n, retry_after) do
+    with :ok <- backoff(n, retry_after, opts), do: attempt(url, opts, n + 1)
   end
 
   # The connection: pinned to the checked address (`Fetch.Pinned`), unless

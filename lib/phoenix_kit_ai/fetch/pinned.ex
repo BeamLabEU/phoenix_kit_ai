@@ -82,12 +82,14 @@ defmodule PhoenixKitAI.Fetch.Pinned do
         {:ok, ip}
 
       {:error, _} ->
-        Enum.find_value([:inet, :inet6], {:refused, :nxdomain}, fn family ->
-          case :inet.getaddr(charlist, family) do
-            {:ok, ip} -> {:ok, ip}
-            {:error, _} -> nil
-          end
-        end)
+        Enum.find_value([:inet, :inet6], {:refused, :nxdomain}, &address(charlist, &1))
+    end
+  end
+
+  defp address(charlist, family) do
+    case :inet.getaddr(charlist, family) do
+      {:ok, ip} -> {:ok, ip}
+      {:error, _} -> nil
     end
   end
 
@@ -130,18 +132,19 @@ defmodule PhoenixKitAI.Fetch.Pinned do
     if timeout <= 0 do
       finish(conn, {:error, %Mint.TransportError{reason: :timeout}})
     else
-      case Mint.HTTP.recv(conn, 0, timeout) do
-        {:ok, conn, responses} ->
-          case handle(responses, ref, state, opts) do
-            {:cont, state} -> receive_loop(conn, ref, state, opts)
-            {:done, state} -> finish(conn, {:ok, response(state)})
-          end
-
-        {:error, conn, error, _responses} ->
-          finish(conn, {:error, error})
-      end
+      conn |> Mint.HTTP.recv(0, timeout) |> received(ref, state, opts)
     end
   end
+
+  defp received({:ok, conn, responses}, ref, state, opts) do
+    case handle(responses, ref, state, opts) do
+      {:cont, state} -> receive_loop(conn, ref, state, opts)
+      {:done, state} -> finish(conn, {:ok, response(state)})
+    end
+  end
+
+  defp received({:error, conn, error, _responses}, _ref, _state, _opts),
+    do: finish(conn, {:error, error})
 
   @doc false
   # One batch of Mint responses folded into the response being read.
