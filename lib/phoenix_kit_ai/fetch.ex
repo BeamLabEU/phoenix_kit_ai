@@ -193,7 +193,10 @@ defmodule PhoenixKitAI.Fetch do
         _ -> 60_000
       end
 
-    Keyword.put_new(opts, :deadline_at, System.monotonic_time(:millisecond) + deadline)
+    case opts[:deadline_at] do
+      at when is_integer(at) -> opts
+      _ -> Keyword.put(opts, :deadline_at, System.monotonic_time(:millisecond) + deadline)
+    end
   end
 
   defp remaining(opts), do: max(opts[:deadline_at] - System.monotonic_time(:millisecond), 0)
@@ -396,8 +399,13 @@ defmodule PhoenixKitAI.Fetch do
   end
 
   defp stubbed?(opts) do
-    Keyword.has_key?(List.wrap(opts[:req_options]), :plug) or
-      Keyword.has_key?(Application.get_env(:phoenix_kit_ai, :req_options, []), :plug)
+    plug?(opts[:req_options]) or plug?(Application.get_env(:phoenix_kit_ai, :req_options, []))
+  end
+
+  # A plug that is set (`plug: nil` leaves Req on the network).
+  defp plug?(options) do
+    options = List.wrap(options)
+    Keyword.keyword?(options) and Keyword.get(options, :plug) != nil
   end
 
   defp request_headers(opts) do

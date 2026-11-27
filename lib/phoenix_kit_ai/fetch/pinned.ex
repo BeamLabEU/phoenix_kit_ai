@@ -33,9 +33,29 @@ defmodule PhoenixKitAI.Fetch.Pinned do
   def get(url, headers, opts) do
     uri = URI.parse(url)
 
-    with {:ok, ip} <- resolve(uri.host, opts[:allow_internal] == true),
+    with {:ok, ip} <- resolve_within(uri.host, opts),
          {:ok, conn} <- connect(uri, ip, opts) do
-      request(conn, uri, headers, opts)
+      request(conn, uri, [{"host", host_header(uri)} | headers], opts)
+    end
+  end
+
+  # The Host header from the URL as written: an IPv6 literal in brackets
+  # (Mint would join the bare address and the port), the port only when it
+  # is not the scheme's.
+  defp host_header(%URI{scheme: scheme, host: host, port: port}) do
+    host = if String.contains?(host, ":"), do: "[#{host}]", else: host
+    default? = (scheme == "https" and port == 443) or (scheme == "http" and port == 80)
+    if default? or is_nil(port), do: host, else: "#{host}:#{port}"
+  end
+
+  # The lookup has no deadline of its own: it runs in a task the call
+  # abandons when its deadline comes.
+  defp resolve_within(host, opts) do
+    task = Task.async(fn -> resolve(host, opts[:allow_internal] == true) end)
+
+    case Task.yield(task, max(remaining(opts), 1)) || Task.shutdown(task, :brutal_kill) do
+      {:ok, result} -> result
+      _ -> {:error, %Mint.TransportError{reason: :timeout}}
     end
   end
 
@@ -159,6 +179,11 @@ defmodule PhoenixKitAI.Fetch.Pinned do
         {:done, %{state | body: {:too_large, seen}}}
     end
   end
+
+  # A `:done` before any final status ends an interim response (older Mint
+  # versions send one): the final response follows.
+  def handle([{:done, ref} | rest], ref, %{status: nil} = state, opts),
+    do: handle(rest, ref, state, opts)
 
   def handle([{:done, ref} | _rest], ref, state, _opts), do: {:done, state}
   def handle([_other | rest], ref, state, opts), do: handle(rest, ref, state, opts)

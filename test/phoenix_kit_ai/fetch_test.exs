@@ -546,6 +546,53 @@ defmodule PhoenixKitAI.FetchTest do
       assert request =~ ~r/\r\nhost: localhost(:#{port})?\r\n/i
     end
 
+    test "an IPv6 literal goes to Host in brackets; a caller's deadline_at: nil is no deadline" do
+      {:ok, listen} =
+        :gen_tcp.listen(0, [
+          :binary,
+          :inet6,
+          active: false,
+          reuseaddr: true,
+          ip: {0, 0, 0, 0, 0, 0, 0, 1}
+        ])
+
+      {:ok, port} = :inet.port(listen)
+      test = self()
+
+      spawn_link(fn ->
+        {:ok, socket} = :gen_tcp.accept(listen, 5_000)
+        send(test, {:request, read_request(socket, "")})
+        :gen_tcp.send(socket, http(200, "<p>six</p>"))
+        :gen_tcp.close(socket)
+      end)
+
+      assert {:ok, %{text: "six"}} =
+               Fetch.fetch("http://[::1]:#{port}/", pinned(deadline_at: nil))
+
+      assert_received {:request, request}
+      assert request =~ ~r/\r\nhost: \[::1\]:#{port}\r\n/i
+    end
+
+    test "a Req option plug: nil does not route around the pinned connection" do
+      port = serve(fn _ -> http(200, "<p>pinned anyway</p>") end)
+
+      assert {:ok, %{text: "pinned anyway"}} =
+               Fetch.fetch("http://127.0.0.1:#{port}/", pinned(req_options: [plug: nil]))
+    end
+
+    test "an interim :done before the final status is not the end of the response" do
+      state = %{status: nil, headers: [], body: [], bytes: 0, done?: false}
+      ref = make_ref()
+
+      assert {:cont, %{status: 200}} =
+               PhoenixKitAI.Fetch.Pinned.handle(
+                 [{:status, ref, 103}, {:headers, ref, []}, {:done, ref}, {:status, ref, 200}],
+                 ref,
+                 state,
+                 max_bytes: 10
+               )
+    end
+
     test "resolution refuses an internal address unless allowed" do
       assert {:refused, :blocked_host} = PhoenixKitAI.Fetch.Pinned.resolve("localhost", false)
       assert {:refused, :blocked_host} = PhoenixKitAI.Fetch.Pinned.resolve("127.0.0.1", false)
