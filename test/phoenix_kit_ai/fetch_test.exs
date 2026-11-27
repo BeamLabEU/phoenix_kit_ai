@@ -607,7 +607,8 @@ defmodule PhoenixKitAI.FetchTest do
       assert microseconds < 1_000_000
     end
 
-    test "deadline defaults to 60 s" do
+    test "max_bytes defaults to 2 MB and deadline to 60 s" do
+      assert Fetch.options([])[:max_bytes] == 2_000_000
       assert Fetch.options([])[:deadline] == 60_000
     end
   end

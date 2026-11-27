@@ -47,7 +47,7 @@ defmodule PhoenixKitAI.Fetch do
        retries and their backoff, redirects — ends within `deadline:`
        milliseconds (60 000), else `{:error, :deadline}`. A robots.txt read
        cut short by it is not cached.
-    6. **The body** is read up to `max_bytes:` (5 000 000; raise it for
+    6. **The body** is read up to `max_bytes:` (2 000 000; raise it for
        larger pages); past it the fetch is
        `{:error, {:too_large, max}}`. No compression is asked for, and a body
        sent compressed anyway is `{:error, {:unsupported_content_encoding,
@@ -85,7 +85,7 @@ defmodule PhoenixKitAI.Fetch do
   (1 000), `max_crawl_delay_ms:` (30 000), `max_attempts:` (3),
   `base_delay_ms:` (500), `max_delay_ms:` (10 000), `timeout:` (15 000 ms,
   receive; connect is at most 10 s), `deadline:` (60 000 ms, the whole
-  call), `max_bytes:` (5 000 000),
+  call), `max_bytes:` (2 000 000),
   `max_redirects:` (5), `allow_internal:` (`false`), `keep_html:` (`false`),
   `headers:` (extra request headers), `req_options:` (`Req` options, used
   only when they — or `config :phoenix_kit_ai, :req_options` — name a
@@ -120,7 +120,7 @@ defmodule PhoenixKitAI.Fetch do
     base_delay_ms: 500,
     max_delay_ms: 10_000,
     timeout: 15_000,
-    max_bytes: 5_000_000,
+    max_bytes: 2_000_000,
     deadline: 60_000,
     max_redirects: 5,
     allow_internal: false,
