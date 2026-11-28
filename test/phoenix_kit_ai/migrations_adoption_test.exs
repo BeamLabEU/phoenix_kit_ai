@@ -13,8 +13,8 @@ defmodule PhoenixKitAI.MigrationsAdoptionTest do
 
   defp index_of(statements, fun), do: Enum.find_index(statements, fun)
 
-  test "the chain is past V5 (V6 adds the audio flag)" do
-    assert Migrations.current_version() == 6
+  test "the chain is past V5 (V6 adds the audio flag, V7 the subject key)" do
+    assert Migrations.current_version() == 7
   end
 
   test "V6 only adds the audio flag column, after the adoption" do
@@ -88,12 +88,62 @@ defmodule PhoenixKitAI.MigrationsAdoptionTest do
     assert Enum.all?(adoption, &String.contains?(&1, "IF NOT EXISTS"))
   end
 
-  test "a target below 5 builds the chain as it was, without the adoption" do
-    for target <- 1..4 do
-      refute Enum.any?(
-               Migrations.up_statements("public", target),
-               &String.contains?(&1, "CREATE TABLE IF NOT EXISTS public.phoenix_kit_ai_endpoints")
-             )
+  test "a target below 5 adopts only inside a block that checks the tables are missing" do
+    refute Enum.any?(
+             Migrations.up_statements("public", 1),
+             &String.contains?(&1, "phoenix_kit_ai_endpoints")
+           )
+
+    for target <- 2..4 do
+      statements = Migrations.up_statements("public", target)
+
+      adopting =
+        Enum.filter(
+          statements,
+          &String.contains?(&1, "CREATE TABLE IF NOT EXISTS public.phoenix_kit_ai_endpoints")
+        )
+
+      assert [block] = adopting
+      assert block =~ "to_regclass('public.phoenix_kit_ai_endpoints') IS NULL"
+      assert block =~ "to_regclass('public.phoenix_kit_ai_prompts') IS NULL"
+      assert block =~ "to_regclass('public.phoenix_kit_ai_requests') IS NULL"
+
+      # Ahead of V2's first statement that references the tables.
+      v2 = index_of(statements, &String.contains?(&1, "phoenix_kit_ai_task_settings ("))
+      assert index_of(statements, &(&1 == block)) < v2
+    end
+  end
+
+  test "below 5, the guarded block runs every adoption statement a target of 5 runs" do
+    full = Migrations.up_statements("public", 5)
+
+    [block] =
+      Migrations.up_statements("public", 3)
+      |> Enum.filter(&String.contains?(&1, "$ai_adopt$"))
+
+    adoption =
+      Enum.filter(full, fn s ->
+        String.contains?(s, [
+          "CREATE TABLE IF NOT EXISTS public.phoenix_kit_ai_endpoints",
+          "CREATE TABLE IF NOT EXISTS public.phoenix_kit_ai_prompts",
+          "CREATE TABLE IF NOT EXISTS public.phoenix_kit_ai_requests",
+          "ADD CONSTRAINT phoenix_kit_ai_",
+          "ADD CONSTRAINT fk_ai_",
+          "ON public.phoenix_kit_ai_endpoints USING",
+          "ON public.phoenix_kit_ai_prompts USING",
+          "ON public.phoenix_kit_ai_requests USING btree (endpoint_uuid",
+          "ON public.phoenix_kit_ai_requests USING btree (inserted_at)",
+          "ON public.phoenix_kit_ai_requests USING btree (model)",
+          "ON public.phoenix_kit_ai_requests USING btree (prompt_uuid)",
+          "ON public.phoenix_kit_ai_requests USING btree (status)",
+          "ON public.phoenix_kit_ai_requests USING btree (user_uuid"
+        ])
+      end)
+
+    assert length(adoption) >= 20
+
+    for statement <- adoption do
+      assert String.contains?(block, String.trim(statement)), statement
     end
   end
 
@@ -113,8 +163,10 @@ defmodule PhoenixKitAI.MigrationsAdoptionTest do
   end
 
   test "down from V5 only rewrites the marker, and nothing drops an adopted table" do
-    # V6's own step (its column) comes first; V5 adds nothing but the marker.
-    assert [drop_audio, marker] = Migrations.down_statements("public", 4)
+    # V7's and V6's own steps come first; V5 adds nothing but the marker.
+    assert [drop_audio, marker] =
+             "public" |> Migrations.down_statements(4) |> Enum.drop(length(v7_down()))
+
     assert drop_audio =~ "DROP COLUMN IF EXISTS audio_input"
     assert marker =~ "ai_schema:4"
 
@@ -122,4 +174,6 @@ defmodule PhoenixKitAI.MigrationsAdoptionTest do
       refute Enum.any?(@adopted, &(statement =~ ~r/DROP TABLE[^;]*#{&1}/))
     end
   end
+
+  defp v7_down, do: "public" |> Migrations.down_statements(6) |> Enum.drop(-1)
 end

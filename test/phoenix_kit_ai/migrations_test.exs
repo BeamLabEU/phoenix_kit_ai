@@ -214,10 +214,10 @@ defmodule PhoenixKitAI.MigrationsTest do
 
   describe "the chain as built at boot" do
     test "is at the current version, with its table" do
-      assert Migrations.current_version() == 6
-      assert marker() == "ai_schema:6"
+      assert Migrations.current_version() == 7
+      assert marker() == "ai_schema:7"
       assert existing_tables() == @tables
-      assert Migrations.migrated_version_runtime() == 6
+      assert Migrations.migrated_version_runtime() == 7
     end
 
     test "the base URL and model pair is unique; the flags take yes, no or unknown only" do
@@ -237,7 +237,7 @@ defmodule PhoenixKitAI.MigrationsTest do
       run(Migrations.up_statements("public"))
       run(Migrations.up_statements("public"))
 
-      assert marker() == "ai_schema:6"
+      assert marker() == "ai_schema:7"
       assert existing_tables() == @tables
     end
 
@@ -249,7 +249,7 @@ defmodule PhoenixKitAI.MigrationsTest do
 
       run(Migrations.up_statements("public"))
       assert existing_tables() == @tables
-      assert marker() == "ai_schema:6"
+      assert marker() == "ai_schema:7"
 
       # Built here, from the statements as they are now — not the schema a
       # persistent test database kept from an earlier V1.
@@ -268,8 +268,8 @@ defmodule PhoenixKitAI.MigrationsTest do
     end
 
     test "a version the chain does not have is refused in both directions" do
-      assert_raise ArgumentError, fn -> Migrations.up_statements("public", 7) end
-      assert_raise ArgumentError, fn -> Migrations.down_statements("public", 7) end
+      assert_raise ArgumentError, fn -> Migrations.up_statements("public", 8) end
+      assert_raise ArgumentError, fn -> Migrations.down_statements("public", 8) end
     end
 
     test "an invalid prefix is refused" do
@@ -278,6 +278,198 @@ defmodule PhoenixKitAI.MigrationsTest do
 
     test "up to 0 applies nothing" do
       assert Migrations.up_statements("public", 0) == []
+    end
+  end
+
+  defmodule UpToThree do
+    @moduledoc false
+    use Ecto.Migration
+
+    def up, do: PhoenixKitAI.Migrations.up(prefix: "public", version: 3)
+    def down, do: :ok
+  end
+
+  describe "a target below 5 on a database without core's copy of the AI tables" do
+    @adopted ~w(phoenix_kit_ai_endpoints phoenix_kit_ai_prompts phoenix_kit_ai_requests)
+
+    defp adopted_tables do
+      query(
+        "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = ANY($1) ORDER BY 1",
+        [@adopted]
+      )
+      |> List.flatten()
+    end
+
+    # Today's core no longer creates the three tables, so a fresh host database
+    # has none of them when its old `up(version: 3)` migration runs. Dropped
+    # inside the sandbox's transaction, restored by its rollback.
+    defp drop_everything do
+      run(Migrations.down_statements("public", 0))
+
+      for table <- @adopted,
+          do: Repo.query!("DROP TABLE IF EXISTS public.#{table} CASCADE")
+
+      assert adopted_tables() == []
+    end
+
+    test "up to 3 or 4 builds them first, and a later up to the current version keeps them" do
+      for target <- [3, 4] do
+        drop_everything()
+
+        run(Migrations.up_statements("public", target))
+
+        assert adopted_tables() == @adopted
+        assert marker() == "ai_schema:#{target}"
+        assert index_names() == [[@task_index]]
+
+        run(Migrations.up_statements("public"))
+        assert marker() == "ai_schema:7"
+        assert existing_tables() == @tables
+        assert_structure()
+        assert_v2_structure()
+        assert_v3_structure()
+      end
+    end
+
+    test "a host's old migration file calling up(version: 3) runs through Ecto.Migrator" do
+      drop_everything()
+      version = 9_100_000_000_000_000 + System.unique_integer([:positive])
+
+      assert :ok =
+               Ecto.Migrator.up(Repo, version, __MODULE__.UpToThree,
+                 log: false,
+                 migration_lock: false
+               )
+
+      assert adopted_tables() == @adopted
+      assert Migrations.migrated_version_runtime() == 3
+    end
+
+    test "the adopted tables take rows the module writes" do
+      drop_everything()
+      run(Migrations.up_statements("public", 3))
+      run(Migrations.up_statements("public"))
+
+      assert is_binary(endpoint_uuid())
+    end
+
+    test "with the tables present, a target below 5 leaves them as they are" do
+      before = query("SELECT count(*) FROM pg_indexes WHERE tablename = ANY($1)", [@adopted])
+
+      run(Migrations.up_statements("public", 3))
+      run(Migrations.up_statements("public"))
+
+      assert query("SELECT count(*) FROM pg_indexes WHERE tablename = ANY($1)", [@adopted]) ==
+               before
+    end
+  end
+
+  describe "V7: subject key" do
+    defp subject_column do
+      query(
+        "SELECT data_type, character_maximum_length, is_nullable FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'phoenix_kit_ai_requests' AND column_name = 'subject_key'"
+      )
+    end
+
+    test "the journal gets a nullable subject_key and its partial spend index" do
+      assert [["character varying", 255, "YES"]] = subject_column()
+      index = indexdef("phoenix_kit_ai_requests_subject_spend_idx")
+      assert index =~ "(subject_key, inserted_at) INCLUDE (cost)"
+      assert index =~ "subject_key IS NOT NULL"
+      assert index =~ "'success'"
+    end
+
+    test "down to 6 drops the column, its index, the content hashes and the reviews; up adds them again" do
+      run(Migrations.down_statements("public", 6))
+      assert subject_column() == []
+
+      assert query(
+               "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('phoenix_kit_ai_content_hashes', 'phoenix_kit_ai_reviews')"
+             ) == []
+
+      assert query(
+               "SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'phoenix_kit_ai_requests_subject_spend_idx'"
+             ) == []
+
+      assert marker() == "ai_schema:6"
+
+      run(Migrations.up_statements("public"))
+      assert [["character varying", 255, "YES"]] = subject_column()
+      assert marker() == "ai_schema:7"
+
+      assert indexdef("phoenix_kit_ai_content_hashes_namespace_source_key_index") =~
+               "UNIQUE INDEX"
+
+      assert {:error, %Postgrex.Error{postgres: %{code: :check_violation}}} =
+               Repo.query(
+                 "INSERT INTO phoenix_kit_ai_reviews (kind, status, inserted_at, updated_at) VALUES ('k', 'maybe', now(), now())"
+               )
+
+      assert {:error, %Postgrex.Error{postgres: %{code: :check_violation}}} =
+               Repo.query(
+                 "INSERT INTO phoenix_kit_ai_content_hashes (namespace, source_key, content_hash, changed_at, checked_at, inserted_at, updated_at) VALUES ('n', repeat('k', 2049), 'h', now(), now(), now(), now())"
+               )
+    end
+  end
+
+  describe "V7: one key on the journal's prompt_uuid" do
+    @canonical "phoenix_kit_ai_requests_prompt_uuid_fkey"
+    @duplicate "fk_ai_requests_prompt_uuid"
+
+    defp prompt_keys do
+      query("""
+      SELECT c.conname, c.confdeltype FROM pg_constraint c
+      JOIN pg_class t ON t.oid = c.conrelid
+      JOIN pg_namespace n ON n.oid = t.relnamespace
+      JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(c.conkey)
+      WHERE c.contype = 'f' AND t.relname = 'phoenix_kit_ai_requests'
+        AND n.nspname = 'public' AND a.attname = 'prompt_uuid'
+      ORDER BY c.conname
+      """)
+    end
+
+    defp add_duplicate do
+      run([
+        "ALTER TABLE public.phoenix_kit_ai_requests ADD CONSTRAINT #{@duplicate} " <>
+          "FOREIGN KEY (prompt_uuid) REFERENCES public.phoenix_kit_ai_prompts(uuid) ON DELETE SET NULL"
+      ])
+    end
+
+    test "with both names, the duplicate is dropped" do
+      add_duplicate()
+      assert [[@duplicate, _], [@canonical, _]] = prompt_keys()
+
+      run(Migrations.down_statements("public", 6))
+      # Down leaves the keys as they are.
+      assert length(prompt_keys()) == 2
+      run(Migrations.up_statements("public"))
+
+      assert prompt_keys() == [[@canonical, "n"]]
+    end
+
+    test "with only the duplicate, it is renamed, so the column never loses its key" do
+      run(["ALTER TABLE public.phoenix_kit_ai_requests DROP CONSTRAINT #{@canonical}"])
+      add_duplicate()
+      run(Migrations.down_statements("public", 6))
+      run(Migrations.up_statements("public"))
+
+      assert prompt_keys() == [[@canonical, "n"]]
+    end
+
+    test "a re-run changes nothing" do
+      run(Migrations.up_statements("public"))
+      assert prompt_keys() == [[@canonical, "n"]]
+    end
+
+    test "the step looks at its own schema only" do
+      statement =
+        "tenant_a"
+        |> Migrations.up_statements()
+        |> Enum.find(&String.contains?(&1, "RENAME CONSTRAINT"))
+
+      assert statement =~ "n.nspname = 'tenant_a'"
+      assert statement =~ "ALTER TABLE tenant_a.phoenix_kit_ai_requests"
+      refute statement =~ "public"
     end
   end
 
@@ -307,7 +499,7 @@ defmodule PhoenixKitAI.MigrationsTest do
 
       run(Migrations.up_statements("public"))
       assert [["'unknown'::character varying", "NO"]] = audio_column()
-      assert marker() == "ai_schema:6"
+      assert marker() == "ai_schema:7"
     end
   end
 
@@ -377,7 +569,7 @@ defmodule PhoenixKitAI.MigrationsTest do
 
       run(Migrations.up_statements("public"))
       assert existing_tables() == @tables
-      assert marker() == "ai_schema:6"
+      assert marker() == "ai_schema:7"
       assert_v2_structure()
     end
   end
@@ -434,7 +626,7 @@ defmodule PhoenixKitAI.MigrationsTest do
 
       run(Migrations.up_statements("public"))
       assert existing_tables() == @tables
-      assert marker() == "ai_schema:6"
+      assert marker() == "ai_schema:7"
       assert_v3_structure()
     end
   end
@@ -549,7 +741,7 @@ defmodule PhoenixKitAI.MigrationsTest do
 
       run(Migrations.up_statements("public"))
       assert_converted(seeded)
-      assert marker() == "ai_schema:6"
+      assert marker() == "ai_schema:7"
 
       run(Migrations.up_statements("public"))
       assert_converted(seeded)
@@ -604,7 +796,7 @@ defmodule PhoenixKitAI.MigrationsTest do
       assert %{"input" => 600_000, "output" => 2_200_000} = pricing(seeded.endpoint)
 
       run(Migrations.up_statements("public"))
-      assert marker() == "ai_schema:6"
+      assert marker() == "ai_schema:7"
       assert setting("ai_daily_cap") == "5.00"
 
       assert %{"task" => %{"money" => %{"day" => "1.50"}}} =
@@ -630,7 +822,7 @@ defmodule PhoenixKitAI.MigrationsTest do
 
       assert :ok = Ecto.Migrator.up(Repo, version, SchemaMigration, @migrator_opts)
       assert existing_tables() == @tables
-      assert Migrations.migrated_version_runtime() == 6
+      assert Migrations.migrated_version_runtime() == 7
       assert_structure()
       assert_v2_structure()
       assert_v3_structure()

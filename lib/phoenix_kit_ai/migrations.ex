@@ -22,7 +22,13 @@ defmodule PhoenixKitAI.Migrations do
   no-op on every existing install. **Emitted ahead of V2's statements**, not
   after V4: V2 puts foreign keys and an index on those tables and V4 converts
   rows in them, so on a database without core's copy they must exist first.
-  A target below 5 builds the chain as it was. `down/1` never drops them.
+  A target below 5 builds the chain as it was on a database that has core's
+  copy of the tables; on one without it (a fresh database under today's
+  core, which no longer creates them) V2 first runs the same adoption, inside
+  one `DO` block that checks the three tables exist and does nothing when they
+  do. So a host's older migration file calling `up(version: 3)` still builds a
+  fresh database, and its later `up(version: 5)` finds the tables in place.
+  `down/1` never drops them.
   V4's guard (core's V223 `cost` column) is satisfied by this chain's own copy;
   on a database whose core copy predates V223 it still stops, as before.
   The core floor stays `~> 2.64`, which carries every version above.
@@ -97,6 +103,40 @@ defmodule PhoenixKitAI.Migrations do
       takes audio with a chat request (`PhoenixKitAI.Capabilities`, the
       guard's `:audio_input` need). Down to 5 drops the column.
 
+  ## V7: visitors, one prompt key, content hashes, reviews
+
+    * `phoenix_kit_ai_requests.subject_key` — a nullable external subject
+      (`character varying(255)`) next to `user_uuid`, for a caller that is not
+      a PhoenixKit user (an anonymous visitor's own id, an API client), so the
+      per-user spend caps can count it (`PhoenixKitAI.Budget`, `subject_key:`).
+      With it the index `phoenix_kit_ai_requests_subject_spend_idx`,
+      `(subject_key, inserted_at) INCLUDE (cost)` over successful rows that
+      carry one — the shape of core's user spend index. Down to 6 drops both.
+    * One foreign key on `phoenix_kit_ai_requests.prompt_uuid`. Core's V135
+      added it twice under two names (`fk_ai_requests_prompt_uuid` and
+      `phoenix_kit_ai_requests_prompt_uuid_fkey`), and V5's adoption adds the
+      second where only the first existed, so an install could carry both —
+      two identical checks on every write of a usage row.
+      `phoenix_kit_ai_requests_prompt_uuid_fkey` is the one kept (the name
+      the installed base carries, the one V5 builds, and the one Ecto
+      derives): with both present the `fk_` one is dropped, with only the
+      `fk_` one it is renamed, so the column is never without its key. Both
+      names are looked up in the chain's own schema only. Down to 6 leaves
+      the survivor alone (re-adding a duplicate restores nothing).
+    * `phoenix_kit_ai_content_hashes` — what a source (`namespace` +
+      `source_key`, unique together) held when last recorded: its content
+      hash, size, `changed_at` / `checked_at` and a small `metadata` map
+      (`PhoenixKitAI.ContentHashes`, for "has this page changed since the
+      last crawl"). `source_key` ≤ 2 048 characters (CHECK). Down to 6
+      drops it.
+    * `phoenix_kit_ai_reviews` — AI results waiting for a person's word
+      (`PhoenixKitAI.Reviews`): `kind`, the subject (`subject_type`,
+      `subject_id`, no foreign key), the `payload`, `status` (`pending`,
+      `confirmed`, `rejected` — CHECK), who decided and when, a note
+      (≤ 1 000). `request_uuid` references the journal `ON DELETE SET NULL`
+      with an index leading with it (journal retention requires both),
+      `decided_by_uuid` the users `ON DELETE SET NULL`. Down to 6 drops it.
+
   ## Version marker
 
   `COMMENT ON TABLE phoenix_kit_ai_model_capabilities IS 'ai_schema:<N>'`.
@@ -113,7 +153,7 @@ defmodule PhoenixKitAI.Migrations do
 
   alias PhoenixKit.Migrations.Postgres.Helpers
 
-  @current_version 6
+  @current_version 7
   @default_prefix "public"
   @marker_prefix "ai_schema:"
   @version_table "phoenix_kit_ai_model_capabilities"
@@ -236,11 +276,18 @@ defmodule PhoenixKitAI.Migrations do
   defp version_up(2, prefix, target) when target >= 5,
     do: v5_adoption_statements(prefix) ++ v2_statements(prefix)
 
-  defp version_up(2, prefix, _target), do: v2_statements(prefix)
+  # Below 5 the adoption runs only on a database that lacks core's copy of
+  # the tables (today's core no longer creates them): a host's old
+  # `up(version: 3)` migration must still build a fresh database, while an
+  # existing install below 5 gets exactly the chain it always did.
+  defp version_up(2, prefix, _target),
+    do: [v5_adoption_if_missing(prefix) | v2_statements(prefix)]
+
   defp version_up(3, prefix, _target), do: v3_statements(prefix)
   defp version_up(4, prefix, _target), do: v4_statements(prefix)
   defp version_up(5, _prefix, _target), do: []
   defp version_up(6, prefix, _target), do: v6_statements(prefix)
+  defp version_up(7, prefix, _target), do: v7_statements(prefix)
 
   defp version_down(1, prefix),
     do: [
@@ -262,6 +309,137 @@ defmodule PhoenixKitAI.Migrations do
     do: [
       "ALTER TABLE #{Helpers.qualify_table(@version_table, prefix)} DROP COLUMN IF EXISTS audio_input"
     ]
+
+  defp version_down(7, prefix), do: v7_down_statements(prefix)
+
+  # ── V7: visitors, one prompt key, content hashes, reviews ─────────────
+
+  defp v7_statements(prefix) do
+    requests = Helpers.qualify_table("phoenix_kit_ai_requests", prefix)
+
+    [
+      "ALTER TABLE #{requests} ADD COLUMN IF NOT EXISTS subject_key character varying(255)",
+      "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_requests_subject_spend_idx ON #{requests} " <>
+        "USING btree (subject_key, inserted_at) INCLUDE (cost) " <>
+        "WHERE (((status)::text = 'success'::text) AND (subject_key IS NOT NULL))",
+      prompt_fk_dedupe(prefix)
+    ] ++ content_hash_statements(prefix) ++ review_statements(prefix)
+  end
+
+  defp review_statements(prefix) do
+    uuid7 = Helpers.uuid_v7_call(prefix)
+    reviews = Helpers.qualify_table("phoenix_kit_ai_reviews", prefix)
+    requests = Helpers.qualify_table("phoenix_kit_ai_requests", prefix)
+    users = Helpers.qualify_table("phoenix_kit_users", prefix)
+
+    [
+      """
+      CREATE TABLE IF NOT EXISTS #{reviews} (
+        uuid uuid DEFAULT #{uuid7} NOT NULL,
+        kind character varying(100) NOT NULL,
+        subject_type character varying(100),
+        subject_id character varying(255),
+        request_uuid uuid,
+        payload jsonb DEFAULT '{}'::jsonb NOT NULL,
+        status character varying(16) DEFAULT 'pending' NOT NULL,
+        decided_by_uuid uuid,
+        decided_at timestamp without time zone,
+        decision_note text,
+        metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+        inserted_at timestamp without time zone NOT NULL,
+        updated_at timestamp without time zone NOT NULL,
+        CONSTRAINT phoenix_kit_ai_reviews_pkey PRIMARY KEY (uuid),
+        CONSTRAINT phoenix_kit_ai_reviews_request_uuid_fkey
+          FOREIGN KEY (request_uuid) REFERENCES #{requests}(uuid) ON DELETE SET NULL,
+        CONSTRAINT phoenix_kit_ai_reviews_decided_by_uuid_fkey
+          FOREIGN KEY (decided_by_uuid) REFERENCES #{users}(uuid) ON DELETE SET NULL,
+        CONSTRAINT phoenix_kit_ai_reviews_values_check CHECK (
+          status IN ('pending', 'confirmed', 'rejected') AND
+          (decision_note IS NULL OR char_length(decision_note) <= 1000)
+        )
+      )
+      """,
+      "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_reviews_status_inserted_at_index ON #{reviews} (status, inserted_at)",
+      "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_reviews_kind_status_index ON #{reviews} (kind, status)",
+      "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_reviews_subject_index ON #{reviews} (subject_type, subject_id)",
+      "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_reviews_request_uuid_index ON #{reviews} (request_uuid) WHERE request_uuid IS NOT NULL",
+      "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_reviews_decided_by_uuid_index ON #{reviews} (decided_by_uuid) WHERE decided_by_uuid IS NOT NULL"
+    ]
+  end
+
+  defp content_hash_statements(prefix) do
+    uuid7 = Helpers.uuid_v7_call(prefix)
+    hashes = Helpers.qualify_table("phoenix_kit_ai_content_hashes", prefix)
+
+    [
+      """
+      CREATE TABLE IF NOT EXISTS #{hashes} (
+        uuid uuid DEFAULT #{uuid7} NOT NULL,
+        namespace character varying(255) NOT NULL,
+        source_key text NOT NULL,
+        content_hash character varying(100) NOT NULL,
+        content_bytes integer,
+        metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+        changed_at timestamp without time zone NOT NULL,
+        checked_at timestamp without time zone NOT NULL,
+        inserted_at timestamp without time zone NOT NULL,
+        updated_at timestamp without time zone NOT NULL,
+        CONSTRAINT phoenix_kit_ai_content_hashes_pkey PRIMARY KEY (uuid),
+        CONSTRAINT phoenix_kit_ai_content_hashes_source_key_check
+          CHECK (char_length(source_key) <= 2048)
+      )
+      """,
+      "CREATE UNIQUE INDEX IF NOT EXISTS phoenix_kit_ai_content_hashes_namespace_source_key_index ON #{hashes} (namespace, source_key)",
+      "CREATE INDEX IF NOT EXISTS phoenix_kit_ai_content_hashes_namespace_checked_at_index ON #{hashes} (namespace, checked_at)"
+    ]
+  end
+
+  @prompt_fk "phoenix_kit_ai_requests_prompt_uuid_fkey"
+  @prompt_fk_duplicate "fk_ai_requests_prompt_uuid"
+
+  @doc "The name of the one foreign key on `phoenix_kit_ai_requests.prompt_uuid` (V7 on)."
+  @spec prompt_fk() :: String.t()
+  def prompt_fk, do: @prompt_fk
+
+  # Both names checked in this schema only, so a sibling schema's constraints
+  # never decide what happens here.
+  defp prompt_fk_dedupe(prefix) do
+    requests = Helpers.qualify_table("phoenix_kit_ai_requests", prefix)
+
+    exists = fn name ->
+      "EXISTS (SELECT 1 FROM pg_constraint c " <>
+        "JOIN pg_class t ON t.oid = c.conrelid " <>
+        "JOIN pg_namespace n ON n.oid = t.relnamespace " <>
+        "WHERE c.conname = '#{name}' AND t.relname = 'phoenix_kit_ai_requests' " <>
+        "AND n.nspname = '#{prefix}')"
+    end
+
+    """
+    DO $$
+    BEGIN
+      IF #{exists.(@prompt_fk_duplicate)} THEN
+        IF #{exists.(@prompt_fk)} THEN
+          ALTER TABLE #{requests} DROP CONSTRAINT #{@prompt_fk_duplicate};
+        ELSE
+          ALTER TABLE #{requests} RENAME CONSTRAINT #{@prompt_fk_duplicate} TO #{@prompt_fk};
+        END IF;
+      END IF;
+    END
+    $$
+    """
+  end
+
+  defp v7_down_statements(prefix) do
+    requests = Helpers.qualify_table("phoenix_kit_ai_requests", prefix)
+    index = Helpers.qualify_table("phoenix_kit_ai_requests_subject_spend_idx", prefix)
+
+    [
+      "DROP TABLE IF EXISTS #{Helpers.qualify_table("phoenix_kit_ai_reviews", prefix)}",
+      "DROP TABLE IF EXISTS #{Helpers.qualify_table("phoenix_kit_ai_content_hashes", prefix)}",
+      "DROP INDEX IF EXISTS #{index}",
+      "ALTER TABLE #{requests} DROP COLUMN IF EXISTS subject_key"
+    ]
+  end
 
   # ── V6: audio in ──────────────────────────────────────────────────────
 
@@ -285,6 +463,34 @@ defmodule PhoenixKitAI.Migrations do
     uuid7 = Helpers.uuid_v7_call(prefix)
 
     adoption_tables(p, uuid7) ++ adoption_constraints(p, prefix) ++ adoption_indexes(p)
+  end
+
+  # V5's adoption as one statement that does nothing unless one of the three
+  # tables is missing — for a target below 5 (see `version_up/3`). Each
+  # adoption statement is run as it is (all of them guard themselves), so
+  # where it does run it builds exactly what a target of 5 builds.
+  defp v5_adoption_if_missing(prefix) do
+    missing =
+      Enum.map_join(
+        ~w(phoenix_kit_ai_endpoints phoenix_kit_ai_prompts phoenix_kit_ai_requests),
+        "\n     OR ",
+        &"to_regclass('#{prefix}.#{&1}') IS NULL"
+      )
+
+    executes =
+      prefix
+      |> v5_adoption_statements()
+      |> Enum.map_join("\n", &"    EXECUTE $ai_adopt_stmt$#{String.trim(&1)}$ai_adopt_stmt$;")
+
+    """
+    DO $ai_adopt$
+    BEGIN
+      IF #{missing} THEN
+    #{executes}
+      END IF;
+    END
+    $ai_adopt$
+    """
   end
 
   defp adoption_tables(p, uuid7) do

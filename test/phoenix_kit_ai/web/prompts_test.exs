@@ -2,6 +2,14 @@ defmodule PhoenixKitAI.Web.PromptsTest do
   use PhoenixKitAI.LiveCase
 
   describe "mount" do
+    test "keeps its page number under a module-specific assign, never a host layout's :page",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/en/admin/ai/prompts")
+      assigns = :sys.get_state(view.pid).socket.assigns
+      refute Map.has_key?(assigns, :page)
+      assert assigns[:prompts_page] == 1
+    end
+
     test "renders the prompts list with the seeded prompt", %{conn: conn} do
       fixture_prompt(name: "Visible Prompt")
 

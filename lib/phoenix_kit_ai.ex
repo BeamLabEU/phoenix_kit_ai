@@ -44,8 +44,14 @@ defmodule PhoenixKitAI do
 
   - `user_uuid:` - a PhoenixKit user uuid recorded on the usage row and
     selecting the per-user spend cap. Host-supplied identity: the module has
-    no session of its own. An unknown uuid is logged as a warning and the
-    row is written without it, so that call is not attributed or capped.
+    no session of its own. An unknown uuid, or a value that is not a uuid,
+    is written to the row's `subject_key` instead (an unknown uuid with a
+    warning), so the row is kept and says who asked.
+  - `subject_key:` - who asks when it is not a PhoenixKit user: an anonymous
+    visitor's own id, an API client (any string; recorded on the row's
+    `subject_key`). With no user it selects the per-user spend caps
+    (`PhoenixKitAI.Budget`), so visitors can be capped one by one. Never part
+    of a cache key.
   - `source:`, `attribution:`, `idempotency_key:` - tracking only; never
     part of a cache key.
   - `capture_request_content: false` - keeps this call's message, prompt and
@@ -65,6 +71,13 @@ defmodule PhoenixKitAI do
   - Every verb returns `{:error, {:budget_exceeded, scope}}` once a spend
     cap (daily or monthly) is reached (`PhoenixKitAI.Budget`), cached
     answers included, and every usage row emits `[:phoenix_kit_ai, :request]`.
+  - `run:` / `step:` - tags every row of the call with a run (one job, one
+    nightly crawl; `PhoenixKitAI.Runs`). `run_budget:` (dollars) with
+    `run:` - the run's own ceiling: once the run's rows (from `run_since:`, a
+    `DateTime`, when given) have cost that much, the call returns
+    `{:error, {:run_budget_reached, run}}` with no provider call —
+    `PhoenixKitAI.Runs.ceiling_reached?/1` tells a job it is done, not
+    failed. None of them is part of a cache key.
 
   ### Usage Tracking
   - `list_requests/1` - List requests with pagination/filters
@@ -134,6 +147,7 @@ defmodule PhoenixKitAI do
   alias PhoenixKitAI.Money
   alias PhoenixKitAI.ProviderError
   alias PhoenixKitAI.Request
+  alias PhoenixKitAI.Runs
   alias PhoenixKitAI.TaskLimits
   alias PhoenixKitAI.Tasks
   alias PhoenixKitAI.TaskSpec
@@ -1063,6 +1077,14 @@ defmodule PhoenixKitAI do
           key: "manage_endpoints",
           label: "Manage AI endpoints",
           description: "Create, edit, enable, disable, reorder and delete AI endpoints"
+        },
+        # `ai.review`: confirming or rejecting the AI results on AI → Reviews
+        # (`PhoenixKitAI.Reviews`) without the rest of `ai.manage`, which
+        # may decide them too. Seeing the list stays on the base key.
+        %{
+          key: "review",
+          label: "Decide AI reviews",
+          description: "Confirm or reject the AI results waiting on AI → Reviews"
         }
       ],
       # Renders the label translated in the admin permissions matrix, the
@@ -1188,6 +1210,20 @@ defmodule PhoenixKitAI do
         parent: :admin_ai,
         gettext_backend: PhoenixKitAI.Gettext,
         gettext_domain: "default"
+      },
+      %Tab{
+        id: :admin_ai_reviews,
+        label: "Reviews",
+        icon: "hero-check-badge",
+        path: "ai/reviews",
+        priority: 646,
+        level: :admin,
+        # Every `ai` holder sees the list; deciding needs `ai.review` or `ai.manage`
+        # (`Web.Reviews` checks it on every event).
+        permission: module_key(),
+        parent: :admin_ai,
+        gettext_backend: PhoenixKitAI.Gettext,
+        gettext_domain: "default"
       }
     ]
   end
@@ -1221,6 +1257,7 @@ defmodule PhoenixKitAI do
       dgettext_noop("default", "Playground"),
       dgettext_noop("default", "Usage"),
       dgettext_noop("default", "Tasks"),
+      dgettext_noop("default", "Reviews"),
       dgettext_noop("default", "AI endpoints, prompts, and usage tracking"),
       dgettext_noop("default", "Manage the AI task guard"),
       dgettext_noop(
@@ -1236,7 +1273,9 @@ defmodule PhoenixKitAI do
       dgettext_noop(
         "default",
         "Create, edit, enable, disable, reorder and delete AI endpoints"
-      )
+      ),
+      dgettext_noop("default", "Decide AI reviews"),
+      dgettext_noop("default", "Confirm or reject the AI results waiting on AI → Reviews")
     ]
   end
 
@@ -1317,7 +1356,9 @@ defmodule PhoenixKitAI do
       PhoenixKitAI.GuardWatch,
       PhoenixKitAI.Cache,
       PhoenixKitAI.Limiter,
-      PhoenixKitAI.RequestLog
+      PhoenixKitAI.RequestLog,
+      # robots.txt cache and per-host pace of `PhoenixKitAI.Fetch`.
+      PhoenixKitAI.Fetch.HostState
     ]
   end
 
@@ -2624,6 +2665,7 @@ defmodule PhoenixKitAI do
   - `:page_size` - Results per page (default: 20)
   - `:endpoint_uuid` - Filter by endpoint
   - `:user_uuid` - Filter by user
+  - `:subject_key` - Filter by external subject (the row's `subject_key`)
   - `:status` - Filter by status
   - `:model` - Filter by model
   - `:source` - Filter by source (from metadata)
@@ -2850,6 +2892,12 @@ defmodule PhoenixKitAI do
   all dropped, and inside a caller's transaction the refused insert is
   confined to a savepoint so the retry — and the caller's transaction — go on.
 
+  A `user_uuid` that names no user — a uuid of no user, or a string that is
+  not a uuid at all (a visitor's own id, which used to cost the row) — still
+  says who asked: it becomes the row's `subject_key` unless the attrs carry
+  one, so the per-subject caps (`PhoenixKitAI.Budget`, `subject_key:`) can
+  count it.
+
   Any other validation failure still returns `{:error, changeset}`.
   """
   @spec create_request(map()) :: {:ok, Request.t()} | {:error, term()}
@@ -2858,6 +2906,7 @@ defmodule PhoenixKitAI do
   defp do_create_request(attrs, uuid) do
     result =
       attrs
+      |> user_as_subject()
       |> insert_request(uuid, [])
       |> broadcast_request_change(:request_created)
 
@@ -2933,6 +2982,24 @@ defmodule PhoenixKitAI do
         do: field
   end
 
+  # A `user_uuid` that is not a uuid at all (a visitor's own id) cannot be a
+  # user: it is the row's subject instead (unless the call named one), and
+  # kept in `unresolved_refs` as an unknown user uuid is. It used to fail the
+  # cast and cost the row.
+  defp user_as_subject(%{} = attrs) do
+    case attr(attrs, :user_uuid) do
+      value when is_binary(value) ->
+        if match?({:ok, _}, Ecto.UUID.cast(value)),
+          do: attrs,
+          else: without_refs(attrs, [:user_uuid])
+
+      _ ->
+        attrs
+    end
+  end
+
+  defp user_as_subject(attrs), do: attrs
+
   defp without_refs(attrs, []), do: attrs
 
   defp without_refs(attrs, fields) do
@@ -2943,12 +3010,29 @@ defmodule PhoenixKitAI do
         %{} = map -> map
         _ -> %{}
       end
-      |> Map.put("unresolved_refs", submitted_refs(attrs, fields))
+      |> Map.update("unresolved_refs", submitted_refs(attrs, fields), fn
+        %{} = earlier -> Map.merge(earlier, submitted_refs(attrs, fields))
+        _ -> submitted_refs(attrs, fields)
+      end)
 
     attrs
     |> Map.new(fn {key, value} -> {to_string(key), value} end)
     |> Map.drop(Enum.map(fields, &Atom.to_string/1))
     |> Map.put("metadata", metadata)
+    |> put_user_subject(attrs, fields)
+  end
+
+  # A user id that names no user still says who asked: it becomes the row's
+  # `subject_key` when the call named no subject of its own, so the row is
+  # attributable (and a later call with `subject_key:` counts it).
+  defp put_user_subject(stringified, attrs, fields) do
+    with true <- :user_uuid in fields,
+         nil <- Request.subject_key(stringified["subject_key"]),
+         key when is_binary(key) <- Request.subject_key(attr(attrs, :user_uuid)) do
+      Map.put(stringified, "subject_key", key)
+    else
+      _ -> stringified
+    end
   end
 
   defp submitted_refs(attrs, fields), do: Map.new(fields, &{Atom.to_string(&1), attr(attrs, &1)})
@@ -3792,6 +3876,7 @@ defmodule PhoenixKitAI do
           latency_ms: 0,
           status: "success",
           user_uuid: row.caller_context[:user_uuid],
+          subject_key: row.caller_context[:subject_key],
           metadata: metadata
         })
 
@@ -3849,6 +3934,7 @@ defmodule PhoenixKitAI do
     query
     |> maybe_filter_by(:endpoint_uuid, Keyword.get(opts, :endpoint_uuid))
     |> maybe_filter_by(:user_uuid, Keyword.get(opts, :user_uuid))
+    |> maybe_filter_by(:subject_key, Request.subject_key(Keyword.get(opts, :subject_key)))
     |> maybe_filter_by(:status, Keyword.get(opts, :status))
     |> maybe_filter_by(:model, Keyword.get(opts, :model))
     |> maybe_filter_by(:source, Keyword.get(opts, :source))
@@ -3871,6 +3957,8 @@ defmodule PhoenixKitAI do
   defp maybe_filter_by(query, :user_uuid, uuid) when is_binary(uuid) do
     where(query, [r], r.user_uuid == ^uuid)
   end
+
+  defp maybe_filter_by(query, :subject_key, key), do: where(query, [r], r.subject_key == ^key)
 
   # `"refused"` is not a stored status: the rows the guard refused (status
   # `"error"`, `metadata.refused`).
@@ -4216,7 +4304,7 @@ defmodule PhoenixKitAI do
       {auto_source, stacktrace, caller_context} = capture_caller_info()
       # Allow manual override of source, but all debug info is always captured
       source = Keyword.get(opts, :source) || auto_source
-      caller_context = Map.put(caller_context, :user_uuid, opts[:user_uuid])
+      caller_context = put_caller(caller_context, opts)
 
       # A hard requirement on OpenRouter: only providers that take every
       # parameter, and the ones the model does not list left out.
@@ -4315,6 +4403,7 @@ defmodule PhoenixKitAI do
       :attribution,
       :idempotency_key,
       :user_uuid,
+      :subject_key,
       # the provider's end-user id on an embedding: who asked, not what
       :user,
       :cache,
@@ -4328,6 +4417,8 @@ defmodule PhoenixKitAI do
       # bookkeeping tags: which run asked, not what is asked
       :run,
       :step,
+      :run_budget,
+      :run_since,
       :fallback_models,
       # delivery options: how the call is made, not what is asked
       :retry,
@@ -4537,7 +4628,7 @@ defmodule PhoenixKitAI do
       {auto_source, stacktrace, caller_context} = capture_caller_info()
       # Allow manual override of source, but all debug info is always captured
       source = Keyword.get(opts, :source) || auto_source
-      caller_context = Map.put(caller_context, :user_uuid, opts[:user_uuid])
+      caller_context = put_caller(caller_context, opts)
 
       merged_opts = merge_embedding_opts(endpoint, opts, convention)
       guard = Guard.row_metadata(admission)
@@ -4981,7 +5072,7 @@ defmodule PhoenixKitAI do
       {auto_source, stacktrace, caller_context} = capture_caller_info()
       # Allow manual override of source, but all debug info is always captured
       source = Keyword.get(opts, :source) || auto_source
-      caller_context = Map.put(caller_context, :user_uuid, opts[:user_uuid])
+      caller_context = put_caller(caller_context, opts)
 
       # Fall back to the endpoint's default voice (stored in
       # provider_settings by the endpoint form) when the caller didn't
@@ -5104,7 +5195,7 @@ defmodule PhoenixKitAI do
       endpoint = with_call_model(endpoint, opts)
       {auto_source, stacktrace, caller_context} = capture_caller_info()
       source = Keyword.get(opts, :source) || auto_source
-      caller_context = Map.put(caller_context, :user_uuid, opts[:user_uuid])
+      caller_context = put_caller(caller_context, opts)
 
       {opts, stripped} =
         if transport == :chat, do: Guard.require_parameters(opts, admission), else: {opts, []}
@@ -5164,7 +5255,7 @@ defmodule PhoenixKitAI do
            authorize(endpoint, opts, :generate_image, Guard.implied_needs(:generate_image, opts)) do
       {auto_source, stacktrace, caller_context} = capture_caller_info()
       source = Keyword.get(opts, :source) || auto_source
-      caller_context = Map.put(caller_context, :user_uuid, opts[:user_uuid])
+      caller_context = put_caller(caller_context, opts)
 
       trace = trace(source, stacktrace, caller_context, opts, Guard.row_metadata(admission))
 
@@ -5200,7 +5291,9 @@ defmodule PhoenixKitAI do
   See `Completion.edit_image/4` for the accepted input shapes and the
   options; the transport is the endpoint's `PhoenixKitAI.Provider`
   adapter. Options are sent as given — `process_image/4` is the verb that
-  fits them to the model.
+  fits them to the model. Whether the result's `:text` carries the model's
+  words depends on the route: on OpenRouter only `transport: :chat` returns
+  them (see "The model's text alongside the image" in `process_image/4`).
 
       {:ok, %{images: [%{data: png, content_type: "image/png"}]}} =
         PhoenixKitAI.edit_image(endpoint.uuid,
@@ -5221,7 +5314,7 @@ defmodule PhoenixKitAI do
            authorize(endpoint, opts, :edit_image, Guard.implied_needs(:edit_image, opts)) do
       {auto_source, stacktrace, caller_context} = capture_caller_info()
       source = Keyword.get(opts, :source) || auto_source
-      caller_context = Map.put(caller_context, :user_uuid, opts[:user_uuid])
+      caller_context = put_caller(caller_context, opts)
 
       trace = trace(source, stacktrace, caller_context, opts, Guard.row_metadata(admission))
 
@@ -5264,6 +5357,33 @@ defmodule PhoenixKitAI do
   a vision-capable endpoint uuid (`verify: text_endpoint_uuid`); `true`
   uses the same endpoint, which works only when its model also answers
   in text (an image-only model returns a `:verification` error instead).
+
+  ## The model's text alongside the image
+
+  The result's `:text` is whatever the model wrote next to the image, and
+  which route the call takes decides whether there is any:
+
+    * On an OpenRouter endpoint the default route is `POST /images`, which
+      returns images only — `:text` is always `nil`, even when the prompt
+      asks the model to describe what it made.
+    * `transport: :chat` sends the same edit through chat completions with
+      `modalities: ["image", "text"]`, and the model's words come back in
+      `:text` beside the image. Use it when you want both:
+
+          {:ok, %{images: [%{data: png}], text: notes}} =
+            PhoenixKitAI.process_image(endpoint_uuid, [photo], [:remove_reflections],
+              transport: :chat
+            )
+
+    * Endpoints of other providers ignore `:transport`. xAI and OpenAI
+      edit through their `/images/edits` routes (no text); the
+      OpenAI-compatible default for every other provider is the chat
+      route, so `:text` carries the model's words when it wrote any.
+
+  On OpenRouter, only models that answer on chat completions with image
+  output can take `transport: :chat`; a prose-only answer is
+  `{:error, {:no_image_in_response, text}}`. The same holds for
+  `edit_image/4`.
   """
   @spec process_image(
           String.t() | Endpoint.t(),
@@ -5286,7 +5406,7 @@ defmodule PhoenixKitAI do
            ) do
       {auto_source, stacktrace, caller_context} = capture_caller_info()
       source = Keyword.get(opts, :source) || auto_source
-      caller_context = Map.put(caller_context, :user_uuid, opts[:user_uuid])
+      caller_context = put_caller(caller_context, opts)
       {verify, opts} = Keyword.pop(opts, :verify, false)
 
       trace = trace(source, stacktrace, caller_context, opts, Guard.row_metadata(admission))
@@ -5370,6 +5490,7 @@ defmodule PhoenixKitAI do
       intent: intent,
       source: opts[:source],
       user_uuid: opts[:user_uuid],
+      subject_key: opts[:subject_key],
       capture_request_content: opts[:capture_request_content],
       task: opts[:task],
       run: opts[:run],
@@ -5433,7 +5554,7 @@ defmodule PhoenixKitAI do
            authorize(endpoint, opts, :describe_image, Guard.implied_needs(:describe_image, opts)) do
       {auto_source, stacktrace, caller_context} = capture_caller_info()
       source = Keyword.get(opts, :source) || auto_source
-      caller_context = Map.put(caller_context, :user_uuid, opts[:user_uuid])
+      caller_context = put_caller(caller_context, opts)
       prompt = opts[:prompt] || opts[:question] || PhoenixKitAI.Images.default_question()
       {opts, stripped} = Guard.require_parameters(opts, admission)
 
@@ -5514,7 +5635,7 @@ defmodule PhoenixKitAI do
            authorize(endpoint, opts, :extract_text, Guard.implied_needs(:extract_text, opts)) do
       {auto_source, stacktrace, caller_context} = capture_caller_info()
       source = Keyword.get(opts, :source) || auto_source
-      caller_context = Map.put(caller_context, :user_uuid, opts[:user_uuid])
+      caller_context = put_caller(caller_context, opts)
       prompt = "extract_text"
       {opts, stripped} = Guard.require_parameters(opts, admission)
 
@@ -5577,7 +5698,7 @@ defmodule PhoenixKitAI do
            authorize(endpoint, opts, :compare_images, Guard.implied_needs(:compare_images, opts)) do
       {auto_source, stacktrace, caller_context} = capture_caller_info()
       source = Keyword.get(opts, :source) || auto_source
-      caller_context = Map.put(caller_context, :user_uuid, opts[:user_uuid])
+      caller_context = put_caller(caller_context, opts)
       prompt = "compare: " <> to_string(opts[:intent] || "an edit")
       {opts, stripped} = Guard.require_parameters(opts, admission)
 
@@ -5946,8 +6067,9 @@ defmodule PhoenixKitAI do
   cost, counts: %{ok, error, unparsed, skipped}, stopped}}`: `status` is
   `:ok`, `:error`, `:unparsed` (the model answered without valid JSON —
   billed, no result) or `:skipped` (not started after the batch stopped);
-  `stopped` is nil, `:budget`, or `{:error, reason}` for a refusal every
-  later item would hit. `cost` sums the items' costs, unparsed answers and
+  `stopped` is nil, `:budget`, `:run_budget` (the run's own ceiling,
+  `run_budget:`, was reached — a graceful end, the rest `:skipped`), or
+  `{:error, reason}` for a refusal every later item would hit. `cost` sums the items' costs, unparsed answers and
   billed fallback attempts included; `run_costs/2` on `run` totals the
   journal rows. A call that times out (`item_timeout:`) may still be billed
   by the provider: its cost is unknown here, and the provider's own row, if
@@ -5967,6 +6089,17 @@ defmodule PhoenixKitAI do
   """
   @spec run_costs(term(), keyword()) :: {:ok, PhoenixKitAI.Runs.t()} | {:error, :invalid_run}
   def run_costs(run, opts \\ []), do: PhoenixKitAI.Runs.costs(run, opts)
+
+  @doc """
+  What a run has spent against a ceiling of its own — the question every verb
+  asks before its call when given `run_budget:`. See `PhoenixKitAI.Runs.ceiling/3`.
+
+      {:ok, %{remaining: left, reached?: false}} =
+        PhoenixKitAI.run_ceiling("crawl-2026-11-26", "2.00")
+  """
+  @spec run_ceiling(term(), Decimal.t() | String.t(), keyword()) ::
+          {:ok, PhoenixKitAI.Runs.ceiling_status()} | {:error, term()}
+  def run_ceiling(run, ceiling, opts \\ []), do: PhoenixKitAI.Runs.ceiling(run, ceiling, opts)
 
   @doc """
   The image models the endpoint's provider offers, with what each accepts
@@ -6017,10 +6150,22 @@ defmodule PhoenixKitAI do
       idempotency_key: opts[:idempotency_key],
       model: opts[:model],
       user_uuid: opts[:user_uuid],
+      subject_key: opts[:subject_key],
       capture: opts[:capture_request_content],
       attribution: normalize_attribution(opts[:attribution]),
       guard: guard
     }
+  end
+
+  # Who asked, as the caller context the rows carry: the user, and the
+  # external subject only when the call names one (`subject_key:`).
+  defp put_caller(caller_context, opts) do
+    caller_context = Map.put(caller_context, :user_uuid, opts[:user_uuid])
+
+    case Request.subject_key(opts[:subject_key]) do
+      nil -> caller_context
+      key -> Map.put(caller_context, :subject_key, key)
+    end
   end
 
   # What a cache hit of an image verb writes its row with.
@@ -6087,6 +6232,7 @@ defmodule PhoenixKitAI do
       latency_ms: result[:latency_ms],
       status: "success",
       user_uuid: trace[:user_uuid],
+      subject_key: trace[:subject_key],
       metadata: metadata
     })
   end
@@ -6138,6 +6284,7 @@ defmodule PhoenixKitAI do
       total_tokens: 0,
       status: "error",
       user_uuid: trace[:user_uuid],
+      subject_key: trace[:subject_key],
       error_message: failure_text(reason, capture_content),
       metadata: base_metadata |> maybe_add_content(:input, capture_content, fn -> prompt end)
     }
@@ -6325,7 +6472,8 @@ defmodule PhoenixKitAI do
   # `refuse/4`; an unusable endpoint is not (that is a configuration error,
   # not a call that was turned away).
   defp authorize(endpoint, opts, verb, implied, spends? \\ true) do
-    with {:ok, endpoint} <- validate_endpoint(endpoint) do
+    with {:ok, endpoint} <- validate_endpoint(endpoint),
+         :ok <- Runs.validate_ceiling(opts) do
       # The model checked (and named on a refusal row) is the one the verb
       # sends: speech always sends the endpoint's; chat, embeddings and the
       # image verbs send a call's `model:` when it names one.
@@ -6348,7 +6496,9 @@ defmodule PhoenixKitAI do
          {:ok, admission} <- Guard.check(endpoint, opts, task, implied),
          :ok <- check_fallbacks(endpoint, opts, task, implied),
          :ok <- if(spends?, do: task_limits(task, opts), else: :ok),
-         :ok <- if(spends?, do: budget(endpoint, opts), else: :ok) do
+         :ok <- if(spends?, do: budget(endpoint, opts), else: :ok),
+         # The run's own ceiling (`run_budget:`) after the site's caps.
+         :ok <- if(spends?, do: Runs.check_ceiling(opts), else: :ok) do
       {:ok, admission}
     end
   end
@@ -6404,7 +6554,7 @@ defmodule PhoenixKitAI do
         error_reason: inspect(reason),
         source: Keyword.get(opts, :source) || auto_source,
         stacktrace: stacktrace,
-        caller_context: Map.put(caller_context, :user_uuid, opts[:user_uuid])
+        caller_context: put_caller(caller_context, opts)
       }
       |> Map.merge(Guard.task_metadata(opts))
       |> maybe_put_attribution(normalize_attribution(opts[:attribution]))
@@ -6422,6 +6572,7 @@ defmodule PhoenixKitAI do
       latency_ms: 0,
       status: "error",
       user_uuid: opts[:user_uuid],
+      subject_key: opts[:subject_key],
       error_message: error_reason_to_string(reason),
       metadata: metadata
     })
@@ -6739,6 +6890,7 @@ defmodule PhoenixKitAI do
       latency_ms: response["latency_ms"],
       status: "success",
       user_uuid: caller_context[:user_uuid],
+      subject_key: caller_context[:subject_key],
       metadata: Map.merge(metadata, cost_metadata)
     })
   end
@@ -6786,6 +6938,7 @@ defmodule PhoenixKitAI do
       request_type: "chat",
       status: "error",
       user_uuid: caller_context[:user_uuid],
+      subject_key: caller_context[:subject_key],
       error_message: failure_text(reason, capture_content),
       metadata: metadata
     }
@@ -6903,6 +7056,7 @@ defmodule PhoenixKitAI do
       latency_ms: response["latency_ms"],
       status: "success",
       user_uuid: caller_context[:user_uuid],
+      subject_key: caller_context[:subject_key],
       metadata:
         Map.merge(
           %{
@@ -6956,6 +7110,7 @@ defmodule PhoenixKitAI do
       request_type: "embedding",
       status: "error",
       user_uuid: caller_context[:user_uuid],
+      subject_key: caller_context[:subject_key],
       error_message: error_reason_to_string(reason),
       metadata:
         Map.merge(
@@ -7003,6 +7158,7 @@ defmodule PhoenixKitAI do
       latency_ms: result[:latency_ms],
       status: "success",
       user_uuid: caller_context[:user_uuid],
+      subject_key: caller_context[:subject_key],
       cost: TtsPricing.cost(endpoint.provider, input_chars, audio_bytes),
       metadata:
         base_metadata
@@ -7070,6 +7226,7 @@ defmodule PhoenixKitAI do
       request_type: "tts",
       status: "error",
       user_uuid: caller_context[:user_uuid],
+      subject_key: caller_context[:subject_key],
       error_message: error_reason_to_string(reason),
       metadata:
         base_metadata
@@ -7127,6 +7284,7 @@ defmodule PhoenixKitAI do
       latency_ms: answer.latency_ms,
       status: "success",
       user_uuid: trace[:user_uuid],
+      subject_key: trace[:subject_key],
       metadata: metadata
     })
   end
@@ -7176,6 +7334,7 @@ defmodule PhoenixKitAI do
       total_tokens: 0,
       status: "error",
       user_uuid: trace[:user_uuid],
+      subject_key: trace[:subject_key],
       error_message: failure_text(reason, capture),
       metadata: metadata
     }

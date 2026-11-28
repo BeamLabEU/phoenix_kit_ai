@@ -92,6 +92,7 @@ defmodule PhoenixKitAI.Guard do
 
   @verified_only_setting "ai_guard_verified_models_only"
   @manage "ai.manage"
+  @review "ai.review"
 
   # Request options a `require_parameters` call may leave out, by the name
   # OpenRouter's `supported_parameters` uses. The ones that ARE the
@@ -415,6 +416,14 @@ defmodule PhoenixKitAI.Guard do
   @spec may_manage?(term()) :: boolean()
   def may_manage?(%Scope{} = scope), do: Scope.owner?(scope) or Scope.can?(scope, @manage)
   def may_manage?(_scope), do: false
+
+  @doc """
+  Whether `scope` may confirm or reject AI reviews (`PhoenixKitAI.Reviews`):
+  a holder of `ai.review` or of `ai.manage`, or an Owner.
+  """
+  @spec may_review?(term()) :: boolean()
+  def may_review?(%Scope{} = scope), do: may_manage?(scope) or Scope.can?(scope, @review)
+  def may_review?(_scope), do: false
 
   @doc """
   Whether `scope` sees the reason (and the journal row) of a flag or a

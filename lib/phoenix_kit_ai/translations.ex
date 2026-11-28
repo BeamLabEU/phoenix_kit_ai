@@ -33,6 +33,28 @@ defmodule PhoenixKitAI.Translations do
   `:reason`, a `{category, detail}` pair of short static strings (`detail`
   may be `nil`) — never the raw failure term, which can wrap the translated
   text or a whole provider response.
+
+  ## Pinned to the source they were made from
+
+  Every translation the worker persists is pinned to the source it was made
+  from: a hash of the source fields it sent (`source_hash/1`), or the hash
+  the host passed to `enqueue/1` as `source_hash:` — the natural key of a
+  host that holds one, a crawler's hash of the page text. The adapter gets it
+  as `put_translation/4`'s `:source_hash` option (to store with the row, if it
+  likes), and this module keeps it in `PhoenixKitAI.ContentHashes` under the
+  namespace `"ai.translation:<resource_type>"`. After a re-crawl,
+  `stale?/5` asks whether one language's translation was made from other
+  source text, `stale_languages/4` lists every such language, so a stale
+  Russian page is found rather than kept:
+
+      current = PhoenixKitAI.Translations.source_hash(adapter.source_fields(page, "en"))
+
+      for lang <- PhoenixKitAI.Translations.stale_languages("page", page.uuid, current),
+          do: PhoenixKitAI.Translations.enqueue(%{params | target_lang: lang, source_hash: current})
+
+  A translation made before pins existed, or written outside the worker
+  without `pin_translation/5`, has no pin: `stale?/5` answers `:unknown`.
+  Pins follow `resource_scope:` (`scope:`), so each scope has its own.
   """
 
   import Ecto.Query
@@ -40,6 +62,8 @@ defmodule PhoenixKitAI.Translations do
   require Logger
   alias PhoenixKit.PubSub.Manager, as: PubSubManager
   alias PhoenixKit.Settings
+  alias PhoenixKitAI.ContentHash
+  alias PhoenixKitAI.ContentHashes
   alias PhoenixKitAI.Endpoint
   alias PhoenixKitAI.ObanQuery
   alias PhoenixKitAI.Request
@@ -474,11 +498,16 @@ defmodule PhoenixKitAI.Translations do
           required(:source_lang) => String.t(),
           required(:target_lang) => String.t(),
           optional(:actor_uuid) => String.t() | nil,
-          optional(:resource_scope) => String.t() | nil
+          optional(:resource_scope) => String.t() | nil,
+          optional(:source_hash) => String.t() | nil
         }
 
   @doc """
   Enqueue one translation job for a single `(resource, target_lang)`.
+
+  `source_hash` (optional) pins the translation to the host's own hash of the
+  source (1–100 bytes of UTF-8 text without NUL). Without it the
+  worker pins a hash of the fields it sent.
 
   Returns `{:ok, %{conflict?: boolean}}` (`conflict?: true` when an
   identical job is already in flight) or `{:error, reason}` on a malformed
@@ -669,11 +698,22 @@ defmodule PhoenixKitAI.Translations do
           do: key
 
     cond do
-      missing != [] -> {:error, {:invalid, missing}}
-      bad_uuids != [] -> {:error, {:invalid_uuids, bad_uuids}}
-      true -> :ok
+      missing != [] ->
+        {:error, {:invalid, missing}}
+
+      bad_uuids != [] ->
+        {:error, {:invalid_uuids, bad_uuids}}
+
+      not valid_source_hash?(value_for(params, :source_hash)) ->
+        {:error, {:invalid, [:source_hash]}}
+
+      true ->
+        :ok
     end
   end
+
+  defp valid_source_hash?(nil), do: true
+  defp valid_source_hash?(hash), do: ContentHashes.valid_hash?(hash)
 
   defp value_for(params, key) when is_atom(key) do
     case Map.fetch(params, key) do
@@ -703,7 +743,12 @@ defmodule PhoenixKitAI.Translations do
       "actor_uuid" => value_for(params, :actor_uuid),
       "resource_scope" => normalize_scope(value_for(params, :resource_scope))
     }
+    |> put_source_hash(value_for(params, :source_hash))
   end
+
+  # Only when given, so a job without one has the args it always had.
+  defp put_source_hash(args, nil), do: args
+  defp put_source_hash(args, hash), do: Map.put(args, "source_hash", hash)
 
   # `resource_scope` partitions a resource's translation jobs (e.g. by version).
   # It must be a canonical, JSON-safe scalar so the dedup query (`->>` text
@@ -727,4 +772,179 @@ defmodule PhoenixKitAI.Translations do
     :exit, _ -> default
     :throw, _ -> default
   end
+
+  # ── Pins: which source a translation was made from ───────────────
+
+  @pin_namespace "ai.translation:"
+
+  @doc """
+  The hash of a translation's source: `fields` (`%{field => text}`, as
+  `source_fields/2` returns them — hashed field by field, normalised), a
+  text, or `{:hash, hash}` for a hash the host holds already. See
+  `PhoenixKitAI.ContentHashes.hash/2`.
+  """
+  @spec source_hash(ContentHashes.content()) :: String.t()
+  def source_hash(source), do: ContentHashes.hash(source)
+
+  @doc """
+  Pins the translation of `resource_type` / `resource_uuid` into `lang` to the
+  source it was made from (`source`: fields, a text or `{:hash, hash}`).
+  The worker calls it after every persisted translation; a host that writes
+  translations itself calls it the same way. Options: `scope:` (the
+  `resource_scope`), `source_lang:` (kept with the pin), `now:`.
+  """
+  @spec pin_translation(String.t(), String.t(), String.t(), ContentHashes.content(), keyword()) ::
+          {:ok, ContentHash.t()} | {:error, term()}
+  def pin_translation(resource_type, resource_uuid, lang, source, opts \\ []) do
+    metadata =
+      %{"target_lang" => lang, "resource_uuid" => resource_uuid}
+      |> maybe_put("source_lang", opts[:source_lang])
+      |> maybe_put("resource_scope", normalize_scope(opts[:scope]))
+
+    case ContentHashes.record(
+           pin_namespace(resource_type),
+           pin_key(resource_uuid, opts[:scope], lang),
+           {:hash, source_hash(source)},
+           Keyword.merge([metadata: metadata], Keyword.take(opts, [:now]))
+         ) do
+      {:ok, _status, pin} -> {:ok, pin}
+      {:error, _} = error -> error
+    end
+  end
+
+  @doc """
+  The pin of one language's translation: `%{source_hash, translated_at,
+  source_lang}`, or nil when there is none. Options: `scope:`.
+  """
+  @spec translation_pin(String.t(), String.t(), String.t(), keyword()) :: map() | nil
+  def translation_pin(resource_type, resource_uuid, lang, opts \\ []) do
+    case ContentHashes.get(
+           pin_namespace(resource_type),
+           pin_key(resource_uuid, opts[:scope], lang)
+         ) do
+      %ContentHash{} = pin -> pin_info(pin)
+      nil -> nil
+    end
+  end
+
+  @doc """
+  Whether the translation into `lang` was made from another source than
+  `current` (fields, a text or `{:hash, hash}`): `true` or `false`, or
+  `:unknown` when it has no pin. Options: `scope:`.
+  """
+  @spec stale?(String.t(), String.t(), String.t(), ContentHashes.content(), keyword()) ::
+          boolean() | :unknown
+  def stale?(resource_type, resource_uuid, lang, current, opts \\ []) do
+    case translation_pin(resource_type, resource_uuid, lang, opts) do
+      nil -> :unknown
+      %{source_hash: hash} -> hash != source_hash(current)
+    end
+  end
+
+  @doc """
+  The languages whose pinned translation of the resource was made from another
+  source than `current`, sorted. Languages without a pin are not listed (their
+  translation's source is unknown; `missing_languages/3` finds absent ones).
+  Options: `scope:`.
+  """
+  @spec stale_languages(String.t(), String.t(), ContentHashes.content(), keyword()) :: [
+          String.t()
+        ]
+  def stale_languages(resource_type, resource_uuid, current, opts \\ []) do
+    current = source_hash(current)
+
+    resource_type
+    |> pins(resource_uuid, opts[:scope])
+    |> Enum.reject(&(&1.content_hash == current))
+    |> Enum.map(&pin_lang/1)
+    |> Enum.sort()
+  end
+
+  @doc """
+  Every pin of the resource, `%{lang => %{source_hash, translated_at,
+  source_lang}}`. Options: `scope:`.
+  """
+  @spec translation_pins(String.t(), String.t(), keyword()) :: %{String.t() => map()}
+  def translation_pins(resource_type, resource_uuid, opts \\ []) do
+    resource_type
+    |> pins(resource_uuid, opts[:scope])
+    |> Map.new(&{pin_lang(&1), pin_info(&1)})
+  end
+
+  @doc false
+  # The worker's step after a persisted translation: never fails the job.
+  @spec pin_after_persist(map(), String.t()) :: :ok
+  def pin_after_persist(ctx, source_hash) do
+    case pin_translation(ctx.type, ctx.uuid, ctx.target, {:hash, source_hash},
+           scope: ctx.scope,
+           source_lang: ctx.source
+         ) do
+      {:ok, _pin} ->
+        :ok
+
+      {:error, _reason} ->
+        Logger.warning(
+          "[PhoenixKitAI.Translations] translation of #{ctx.type} #{ctx.uuid} → #{ctx.target} " <>
+            "persisted, but its source pin was not written"
+        )
+
+        :ok
+    end
+  rescue
+    error ->
+      Logger.warning(
+        "[PhoenixKitAI.Translations] source pin of #{ctx.type} #{ctx.uuid} → #{ctx.target} " <>
+          "failed: #{inspect(error.__struct__)}"
+      )
+
+      :ok
+  end
+
+  defp pins(resource_type, resource_uuid, scope) do
+    prefix = pin_key_prefix(resource_uuid, scope)
+    namespace = pin_namespace(resource_type)
+
+    from(c in ContentHash,
+      where: c.namespace == ^namespace and like(c.source_key, ^(like_escape(prefix) <> "%"))
+    )
+    |> PhoenixKit.RepoHelper.repo().all()
+    # The prefix is `uuid:` or `uuid@scope:`; a longer scope sharing the
+    # start is not this one.
+    |> Enum.filter(&(not String.contains?(String.replace_prefix(&1.source_key, prefix, ""), ":")))
+  end
+
+  defp pin_namespace(resource_type), do: @pin_namespace <> to_string(resource_type)
+
+  defp pin_key(resource_uuid, scope, lang),
+    do: pin_key_prefix(resource_uuid, scope) <> to_string(lang)
+
+  defp pin_key_prefix(resource_uuid, scope) do
+    case normalize_scope(scope) do
+      nil -> "#{resource_uuid}:"
+      scope -> "#{resource_uuid}@#{scope}:"
+    end
+  end
+
+  defp pin_lang(%ContentHash{metadata: %{"target_lang" => lang}}) when is_binary(lang), do: lang
+
+  defp pin_lang(%ContentHash{source_key: key}),
+    do: key |> String.split(":") |> List.last()
+
+  defp pin_info(%ContentHash{} = pin) do
+    %{
+      source_hash: pin.content_hash,
+      translated_at: pin.checked_at,
+      source_lang: (pin.metadata || %{})["source_lang"]
+    }
+  end
+
+  defp like_escape(text) do
+    text
+    |> String.replace("\\", "\\\\")
+    |> String.replace("%", "\\%")
+    |> String.replace("_", "\\_")
+  end
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
 end

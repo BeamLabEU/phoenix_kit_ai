@@ -20,15 +20,17 @@ host supplies endpoint and router (`config/` exists only for tests).
   minimum core every module requires, ceiling open through 3.x. Core 3.x does
   not create this module's tables). No sibling
   `phoenix_kit_*` deps. Non-kit deps: `phoenix_live_view` `~> 1.1`, `gettext` `~> 1.0`, `xai`
-  `~> 0.2` (realtime voice only — `Xai.Realtime`; `gun`/`mint` are deliberately
-  not added so cowlib's CVE surface stays out of the tree), `rustler`
+  `~> 0.2` (realtime voice only — `Xai.Realtime`; `gun` is deliberately
+  not added so cowlib's CVE surface stays out of the tree), `mint` `~> 1.6`
+  (`Fetch.Pinned`'s connection; already in the tree through Req), `rustler`
   (optional, lets the transitive `mdex_native` NIF source-build), plus
   `lazy_html` and `mox` in `:test`.
 - **Consumed by:** `phoenix_kit_catalogue`, `phoenix_kit_publishing`,
   `phoenix_kit_projects`, `phoenix_kit_restyle`, `phoenix_kit_ecommerce` — all
   through the `PhoenixKitAI` context module.
-- **Admin surface:** one parent tab `AI` at `ai` with five subtabs —
-  `ai/endpoints`, `ai/prompts`, `ai/playground`, `ai/usage`, `ai/tasks`.
+- **Admin surface:** one parent tab `AI` at `ai` with six subtabs —
+  `ai/endpoints`, `ai/prompts`, `ai/playground`, `ai/usage`, `ai/tasks`,
+  `ai/reviews`.
   Sub-routes for the new/edit forms come from `route_module/0`.
 - **Module key** `"ai"`; settings prefix `ai_`.
 
@@ -55,6 +57,10 @@ host supplies endpoint and router (`config/` exists only for tests).
   The migration is opt-in: a host calls
   `PhoenixKit.ModuleRegistry.run_all_legacy_migrations/0` from
   `Application.start/2`, which invokes `PhoenixKitAI.migrate_legacy/0`.
+- **No crawling of its own.** `PhoenixKitAI.Fetch` fetches one page when
+  a host asks (robots.txt, per-host pace, retries, clean text); the host
+  owns the crawl — what to visit, when, and what to do with the text. No
+  JavaScript is run.
 - **No public HTTP/API surface.** Admin-only; consumers call the `PhoenixKitAI`
   context module.
 - **No file storage.** Image verbs take bytes or URLs in and hand bytes back;
@@ -275,13 +281,16 @@ Repo-local aliases:
 - `user_uuid:` on a verb must be a PhoenixKit user uuid. The usage row has a
   foreign key on it, so an anonymous or external id cannot be stored there:
   the row is written without it (`user_uuid` nil, the submitted id kept in
-  `metadata["unresolved_refs"]`, a warning logged) and counts toward the
-  endpoint and global caps but never the per-user one. The same applies to
-  an `endpoint_uuid` or `prompt_uuid` that names no row. Task limits and the
-  spend caps read a `user_uuid:` that is not a uuid as no user: the task's
-  own limits and the endpoint and site caps apply, the per-user ones do not
-  (the caps used to sum it, fail on the uuid column and log a database
-  outage). Cap the endpoint or the site for visitors.
+  `metadata["unresolved_refs"]` and as the row's `subject_key`; a warning
+  logged for a uuid of no user) and counts toward the endpoint and global
+  caps. The same applies to an `endpoint_uuid` or `prompt_uuid` that names no
+  row (without the subject). Who asks when it is not a user is
+  `subject_key:` (any string, the row's `subject_key`, chain V7): with no
+  user it selects the per-user spend caps (`Budget`), so visitors are capped
+  one by one. A `user_uuid:` that is not a user, on its own, still selects
+  no per-user cap (unchanged) unless `config :phoenix_kit_ai,
+  unknown_user_as_subject: true`, and task limits know users only: their
+  `:user` scope ignores `subject_key:`.
 - A usage row is written whatever the call carried: a label longer than its
   column (`model` 150, `endpoint_name` 100, `prompt_name` 255) is cut, and NUL
   characters are dropped from every string (`Request.changeset/2`; PostgreSQL
@@ -354,6 +363,10 @@ Repo-local aliases:
   across users (scope a caller `key:` yourself), and without the module's
   supervisor tree every lookup is a silent miss. Never use it as the store
   for "write once, keep forever".
+  "Has this page changed since the last crawl" is `PhoenixKitAI.ContentHashes`
+  (a table, keyed on a hash of the extracted text, not on the request):
+  `check/3` only reads, `record/4` writes — record after the processing
+  succeeded, or a failed page counts as done.
 - Clearing a field in the endpoint form must write `""`, not `nil`. The
   template's `@form.params[...] || @endpoint...` fallback treats `nil` as "no
   intent" and the old value reappears; `""` is truthy and wins.
@@ -392,7 +405,11 @@ lib/phoenix_kit_ai/
                                  images/regions.ex — schemas, prompts and parsing of located answers (regions, text boxes, statements)
   box.ex                         PhoenixKitAI.Box — the one box type ([x0, y0, x1, y1] fractions, top-left) and each model's box format
   vision_batch.ex                PhoenixKitAI.VisionBatch — one vision verb over many items, per-item status, budget and fatal stop
-  runs.ex                        PhoenixKitAI.Runs — a run's totals from the journal (`run:` / `step:` tags)
+  runs.ex                        PhoenixKitAI.Runs — a run's totals from the journal (`run:` / `step:` tags), its ceiling (`run_budget:`)
+  content_hashes.ex content_hash.ex   PhoenixKitAI.ContentHashes — "has this content changed": a stored hash per (namespace, source key)
+  reviews.ex review.ex review_handler.ex   PhoenixKitAI.Reviews — the review envelope: pending → confirmed / rejected once, the app's on_decide in the transaction
+  fetch.ex fetch/                PhoenixKitAI.Fetch — optional page fetching for crawl-style input: robots.txt (fetch/robots.ex), per-host pace and robots cache
+                                 (fetch/host_state.ex, in children/0), retries, a size bound, main-content extraction to clean text (fetch/extract.ex)
   openrouter_client.ex           generic across providers despite the name
   embedding_conventions.ex       PhoenixKitAI.EmbeddingConventions — per-model-family query/document conventions (`input_type`, prefixes, instructions), batch limits
   capabilities.ex                what a model can do (catalogue + declared), ETS cache process
@@ -460,6 +477,8 @@ Notes on the less obvious modules:
 | `phoenix_kit_ai_task_user_limits` | `PhoenixKitAI.TaskUserLimit` | a user's personal limits in a task (module chain V2) |
 | `phoenix_kit_ai_guard_events` | `PhoenixKitAI.GuardEvent` | what the guard noticed; `dedupe_key` unique where set (module chain V2) |
 | `phoenix_kit_ai_guard_blocks` | `PhoenixKitAI.GuardBlock` | a person blocked from a block group until lifted; one active per group and person (module chain V3) |
+| `phoenix_kit_ai_reviews` | `PhoenixKitAI.Review` | AI results waiting for a person: `pending` → `confirmed` / `rejected`, decided once (module chain V7; `PhoenixKitAI.Reviews`) |
+| `phoenix_kit_ai_content_hashes` | `PhoenixKitAI.ContentHash` | what a source (`namespace`, `source_key`) held when last recorded: its content hash, `changed_at` / `checked_at` (module chain V7; `PhoenixKitAI.ContentHashes`) |
 
 ### PubSub topics
 
@@ -470,6 +489,7 @@ Notes on the less obvious modules:
 | `phoenix_kit:ai:requests` | `subscribe_requests/0` |
 | `phoenix_kit:ai:capabilities` | `Capabilities.subscribe/0` |
 | `phoenix_kit:ai:guard` | `TaskLimits.topic/0` (`GuardWatch` subscribes) |
+| `phoenix_kit:ai:reviews` | `Reviews.subscribe/0` |
 
 Every message is `{event, uuid}`; a subscriber that needs the record reads
 it by uuid. The capabilities topic carries
@@ -547,7 +567,7 @@ journal rows; never cleared, so the "retained since" notes stay after a
 run that deletes nothing).
 
 Permissions: the module permission `"ai"` from `permission_metadata/0`,
-checked with `Scope.has_module_access?/2`, and three sub-permissions.
+checked with `Scope.has_module_access?/2`, and four sub-permissions.
 `"ai.view_usage"`: the Usage tab (every request with its prompt and
 response). `"ai.manage_endpoints"`: creating, editing, enabling,
 reordering and deleting endpoints — the base key still lists them, and the
@@ -568,6 +588,9 @@ The endpoint form leaves on a lost `ai.manage_endpoints`; the Tasks page
 reloads private reasons and clears editors on a scope change; the Usage
 card refreshes its retention rights and drops previews when `ai.manage`
 is lost. Regaining a permission never restores a discarded confirmation.
+`"ai.review"`: confirming or rejecting AI results on AI → Reviews
+(`Guard.may_review?/1`; `ai.manage` and Owners may too; seeing the list
+stays on the base key).
 `"ai.manage"`: changing the task guard (limits, personal limits, forgiving,
 watchers, "only verified models", declaring capabilities while that is on,
 a task's self-flag mode, blocking and lifting), seeing the reasons of a private task's flags and
@@ -619,6 +642,9 @@ so the context function gets that same, current scope.
 | `:log_cache_hits` | `true` | `false` skips the zero-cost usage row of a cache hit (a call's `log_cache_hit:` wins); the hit telemetry event still fires |
 | `:box_formats` | `%{}` | Model-id prefix → how that model writes a box (`:yx_1000`, `:xy_1000`, `:xy_fraction`, `:yx_fraction`), merged over the built-in table (`PhoenixKitAI.Box.format_for/2`; longest prefix wins; a call's `box_format:` wins over both). An unknown value is ignored with a warning |
 | `:allow_internal_image_urls` | `false` | Lift the image-fetch host policy (loopback / link-local / RFC 1918 / `.local`, resolved addresses included) — tests and air-gapped installs only; separate from the endpoint base-URL switch |
+| `:fetch` | `[]` | Defaults of `PhoenixKitAI.Fetch` (a call's options win): `user_agent:`, `robots:` (`true`), `robots_ttl:` (3 600 s), `robots_unreachable:` (`:deny`), `rate_limit_ms:` (1 000 per host), `max_crawl_delay_ms:` (30 000), `max_attempts:` (3), `base_delay_ms:` (500), `max_delay_ms:` (10 000), `timeout:` (15 000), `deadline:` (60 000 ms for the whole call, else `{:error, :deadline}`), `max_bytes:` (2 000 000), `max_redirects:` (5), `allow_internal:` (`false` — every address of the host must be public, and the connection is pinned to the checked address: `Fetch.Pinned`, Mint, no pool), `keep_html:`, `headers:`, `req_options:` (only with a `plug:`, i.e. `Req.Test` stubs) |
+| `:unknown_user_as_subject` | `false` | `true`: a `user_uuid:` that names no PhoenixKit user (a visitor's own id, a uuid of no user) counts for the per-user spend caps as the subject its rows are written under (`Budget.unknown_user_as_subject?/0`); off, such a call selects no per-user cap unless it names a `subject_key:` |
+| `:review_handlers` | `%{}` | Review kind → module implementing `PhoenixKitAI.ReviewHandler` (`on_decide/1`, optional `summary/1`), run when a review of the kind is decided |
 | `:journal_prune` | `[]` | Options of the journal cleanup (`PhoenixKitAI.JournalPruneWorker` → `Retention.run/3`): `request_batch:` 1 000, `content_batch:` 500 (halved after a chunk's `statement_timeout`, down to `content_min_batch:` 50, which is capped at `content_batch`), `event_batch:` 1 000, `pause_ms:` 50 between chunks (at most 5 000; a longer one is 5 000, with a warning), `max_rows:` 1 000 000 per counter per run, `statement_timeout_ms:` 30 000 and `lock_timeout_ms:` 5 000 per chunk, `time_limits:` `%{requests: 600_000, content: 360_000, guard_reasons: 60_000, guard_events: 120_000}` (ms). An invalid value falls back to its default with a warning; time limits that would not fit in the job's 25-minute `timeout/1` — their sum plus, per counter, one `pause_ms` and one chunk and one probe at `statement_timeout_ms` + 5 s (a counter overruns its slice by at most that; the content step starts no later range once its slice is over), plus a minute — fall back to the defaults as a whole, and a `statement_timeout_ms` too long for even the default slices (32 500 − `pause_ms` / 2 or more; 32 475 at the default pause) is lowered, with a warning naming it, to the largest that fits (`Retention.run_options/1`; the run never budgets past `timeout/1`). `lock_timeout_ms` is not part of the budget: PostgreSQL's statement timeout bounds a lock wait too. `:now` and `:actor_uuid` are ignored (they are the job's own); a value that is not a keyword list is ignored with a warning. `preview_timeout_ms:` (60 000) is the statement and lock timeout of a preview's counts, read separately; past it the preview is `{:error, :preview_timeout}` |
 
 ### Providers
@@ -744,7 +770,14 @@ provided the API exposes `<base_url>/chat/completions` and `/models`.
   `step:`. Not part of the cache key (`cacheable/1` drops them), so two
   runs over the same input share an entry. `process_image(verify:)` passes
   them to its check. The tag has no index: pass `since:` on a large
-  journal.
+  journal. A run's own ceiling: `run_budget:` (dollars) with `run:` (and
+  `run_since:`) refuses a call once the run's successful rows cost that
+  much — `{:run_budget_reached, run}`, a refusal row, checked in `admit/4`
+  after `Budget`; `Runs.ceiling_reached?/1` tells a job it is done rather
+  than failed, `Runs.ceiling/3` / `run_ceiling/3` asks without a call,
+  `vision_batch/3` stops with `stopped: :run_budget`. A ceiling without a
+  run or not an amount is refused before the gate, with no row
+  (`Runs.validate_ceiling/1`). Not in the cache key.
 - **Image embeddings**: `embed/3` takes images (`{:image, input}`,
   `%{image:, text:}`), checked and inlined by `Images.normalize_inputs/2`
   and sent as OpenRouter multimodal `content` inputs; the image bytes are
@@ -881,13 +914,24 @@ later version fills them). V3 creates `phoenix_kit_ai_guard_blocks`
 lift note ≤ 500; one active block per group and person — unique
 `(block_group, user_uuid) WHERE lifted_at IS NULL`). V4 converts money to dollar strings (needs core's V223 `cost`). V6 adds the
 `audio_input` flag to the snapshot (`unknown` by default, the same CHECK as
-the others); down to 5 drops it. V5 adopts
+the others); down to 5 drops it. V7 adds `phoenix_kit_ai_requests.subject_key`
+(`varchar(255)`, nullable) and its partial spend index
+`phoenix_kit_ai_requests_subject_spend_idx`; down to 6 drops both. V7 also
+leaves one foreign key on `phoenix_kit_ai_requests.prompt_uuid` (below) and
+creates `phoenix_kit_ai_content_hashes` (unique `(namespace, source_key)`,
+`source_key` ≤ 2 048) and `phoenix_kit_ai_reviews` (status CHECK, note ≤ 1 000;
+`request_uuid` → the journal `SET NULL` with a partial index, as journal
+retention's foreign-key check requires; `decided_by_uuid` → users `SET NULL`);
+down to 6 drops both. V5 adopts
 the three core-created tables: `CREATE TABLE IF NOT EXISTS`, guarded
 constraints and indexes, exactly as a fresh core builds them, a no-op on
 every existing install. **It is emitted ahead of V2's statements, not last**
 (`version_up/3`): V2's foreign keys and its journal index, and V4's
 conversions, touch those tables, and without core's copy only V5 creates
-them. The number is still the next one; a target below 5 builds the old chain.
+them. The number is still the next one; a target below 5 builds the old chain,
+except that its V2 runs the same adoption inside one `DO` block when any of
+the three tables is missing (a fresh database under core 3.x), so a host's
+old `up(version: 3)` migration file still builds a fresh database.
 Down from 5 only moves the marker and never drops an adopted table. Down to 2
 drops it (V3's table); down to 1 drops what V2 added; down to 0 also the snapshot, which the next
 refresh rebuilds.
@@ -921,9 +965,12 @@ string, so kit tables are always queried through their schema (core's
 of ours covers, through `PhoenixKitAI.ObanQuery.scoped/1`.
 
 `Request` declares `foreign_key_constraint` for `endpoint_uuid`, `user_uuid`
-and `prompt_uuid`; the prompt constraint has to tolerate two possible index
-names, because databases created before and after the named-constraint change
-carry different ones.
+and `prompt_uuid`, each by the name the database carries. The prompt key used
+to exist under two names depending on install age (core's V135 added it twice,
+and V5's adoption adds `phoenix_kit_ai_requests_prompt_uuid_fkey` beside an
+`fk_ai_requests_prompt_uuid`); V7 keeps that one name — dropping the `fk_`
+duplicate, or renaming it when it is the only one — so the changeset declares
+one name (`Migrations.prompt_fk/0`).
 
 ## Testing
 
@@ -1357,6 +1404,31 @@ Test database `phoenix_kit_ai_test`.
   `PhoenixKitAI.Translatable` (`fetch/2`, `source_fields/2`,
   `put_translation/4`); a configured entry wins over a module's adapter
   for the same type without a duplicate warning.
+- Review envelope (`PhoenixKitAI.Reviews`): an app `create/1`s a review
+  (kind, subject, payload, the journal row); `decide/3` / `confirm/2` /
+  `reject/2` move it from `pending` once — one conditional `UPDATE … WHERE
+  status = 'pending'`, so a race has one winner and the rest get
+  `{:already_decided, status}` — and run the app's handler for the kind
+  (`config :phoenix_kit_ai, review_handlers: %{kind => module}`,
+  `PhoenixKitAI.ReviewHandler`; a call's `on_decide:` fun wins) inside the
+  same transaction: `{:error, _}`, a raise, throw or exit rolls the decision
+  back. With `scope:` it needs `ai.review` or `ai.manage` (or an Owner,
+  `Guard.may_review?/1`). AI → Reviews lists them for every `ai` holder and
+  decides with `ai.review` / `ai.manage`, checked per event through
+  `Access.review_scope/1`; it implements `phoenix_kit_scope_changed/1`.
+  Broadcasts `{:review_created | :review_decided, uuid}` on
+  `phoenix_kit:ai:reviews`; Activity `review.confirmed` / `review.rejected`
+  (kind and subject, never the payload).
+- Translations are pinned to their source: the worker hands
+  `put_translation/4` a `:source_hash` (the job's `source_hash` arg, from
+  `Translations.enqueue/1`'s `source_hash:`, else `Translations.source_hash/1`
+  of the fields it sent) and, after a successful persist, records it in
+  `ContentHashes` under `"ai.translation:<resource_type>"`, key
+  `<uuid>[@<scope>]:<lang>` (a failed pin write is logged, never fails the
+  job). `Translations.stale?/5` (`true` / `false` / `:unknown` without a
+  pin) and `stale_languages/4` compare it with the current source, so a
+  re-crawl finds stale translations. Jobs without `source_hash` keep the
+  args they always had.
 - The translation glossary only reaches the model through a prompt that
   has a `{{Glossary}}` slot. The shared prompt carries one only on installs
   provisioned from 0.23.2 on — `Translations.ensure_default_prompt/0` never
@@ -1525,9 +1597,8 @@ folder with no `FOLLOW_UP.md` means "not triaged yet"; a stub file is what
 - Not built, each a self-contained PR when a host needs it: a pluggable
   persistent cache backend behind `RequestCache` (ETS stays L1) with
   single-flight on a miss; atomic budget reservation before dispatch
-  (today concurrent calls can overshoot); a nullable external-subject
-  column on the requests table in core so anonymous visitors can be
-  capped per identity (today `user_uuid` is a foreign key); per-source /
+  (today concurrent calls can overshoot); task limits per `subject_key`
+  (the spend caps have it); per-source /
   per-user *rate* limits (per-key concurrency exists: `PhoenixKitAI.Limiter`;
   spend caps are too coarse against a scrape); retries and the limiter for the
   image adapters (`Providers.HTTP` — today they cover chat, embeddings and TTS only); one `%Result{}` struct

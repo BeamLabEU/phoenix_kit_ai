@@ -69,7 +69,7 @@ defmodule PhoenixKitAI.Web.Prompts do
       |> assign(:sort_by, :sort_order)
       |> assign(:sort_dir, :asc)
       |> assign(:sort_options, sort_options())
-      |> assign(:page, 1)
+      |> assign(:prompts_page, 1)
       |> assign(:page_size, @page_size)
       |> assign(:total_prompts, 0)
 
@@ -85,7 +85,7 @@ defmodule PhoenixKitAI.Web.Prompts do
       socket
       |> assign(:sort_by, sort_by)
       |> assign(:sort_dir, sort_dir)
-      |> assign(:page, page)
+      |> assign(:prompts_page, page)
       |> assign(:current_path, current_path)
       |> reload_prompts()
 
@@ -237,7 +237,7 @@ defmodule PhoenixKitAI.Web.Prompts do
   defp reload_prompts(socket) do
     sort_by = socket.assigns.sort_by
     sort_dir = socket.assigns.sort_dir
-    page = socket.assigns.page
+    page = socket.assigns.prompts_page
     page_size = socket.assigns.page_size
 
     {prompts, total} =
